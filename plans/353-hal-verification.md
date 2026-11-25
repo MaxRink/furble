@@ -1,14 +1,15 @@
 # 353 - HAL verification pass 2
 
 Status: fixed on `fix/hal-verification`, branched from master `92618bff` and
-pushed as PR 479. No firmware file changes and no image changes: nothing in
-firmware includes `lib/hal` yet, so this branch only touches the drivers, their
-host test and the documents.
+rebased onto `afb8513b` before merge, then pushed as PR 479. No firmware file
+changes and no image changes: nothing in firmware includes `lib/hal` yet, so
+this branch only touches the drivers, their host test and the documents.
 
 Related: [322](322-hardware-abstraction.md) (the HAL design and board gap
 tables), [322-review-feedback.md](322-review-feedback.md) (the first review of
-the same drivers). The rule changes that follow from this pass live in
-`lib/hal/CLAUDE.md`.
+the same drivers), [353-review-feedback.md](353-review-feedback.md) (every
+finding of this pass and of the review of the fix, with its disposition). The
+rule changes that follow from this pass live in `lib/hal/CLAUDE.md`.
 
 ## Why
 
@@ -37,7 +38,9 @@ compared driver constants with driver constants.
 ## Review of the fix
 
 The fix came back with five items. All five are folded into the rows and
-decisions above rather than kept as a separate list:
+decisions above, and each is recorded with its evidence in
+[353-review-feedback.md](353-review-feedback.md) rather than kept as a separate
+list here:
 
 - The fake bus held reads and delays in separate logs, so a pacing gap could be
   counted but not placed, and a driver that spent all four gaps before the first
@@ -205,3 +208,11 @@ checks. The tree was restored and the suite re-ran green after each.
 - `lib/hal` is outside the clang-format gate's directory list, in
   `tools/check_format.py` and in `main.yml` alike. Formatting the drivers is
   manual until both lists grow `lib/hal`, which is a CI change of its own.
+- The SX1262 header cites Table 8-2 for the 3.5 ms cold start and for the
+  absence of a standby-to-sleep row. The revision history of the cited revision
+  (Rev 2.2, December 2024) records "Modified Startup and sleep in Table 8-3", so
+  the startup and sleep rows may sit in Table 8-3 in that revision. No copy of
+  the datasheet may be committed, so this pass could not re-read the table. The
+  citation is unchanged from master and needs a read against the PDF; no value
+  or bound depends on the table number, only on the 3.5 ms figure it is sized
+  from.

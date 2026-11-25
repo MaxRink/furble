@@ -563,12 +563,14 @@ constexpr uint32_t SLEEP_SEQUENCE_BUDGET_US = 20'000;
  * waiting for the post-reset calibration, 500 us of no-SPI settle and 5,000 us
  * confirming sleep, so 15,700 us at worst.
  *
- * Only the 500 us comes from the datasheet (section 13.1.1). The two budgets
- * are driver choices for transitions no cited table times, so the header's
- * total is the contract a board budgets its power-off path against. Summing the
- * header's own constants against that total keeps the paragraph honest: with no
- * such check a 9,000 us confirm budget or a 14,000 us ready budget passes every
- * other case here and quietly contradicts the document.
+ * The 500 us is section 13.1.1's figure and the 200 us reset pulse is twice
+ * section 8.1's 100 us minimum; the 10 ms ready budget covers Table 8-2's 3.5 ms
+ * cold start with room, and only the 5,000 us sleep-confirm budget has no
+ * tabulated value behind it. The header's total is the contract a board budgets
+ * its power-off path against. Summing the header's own constants against that
+ * total keeps the paragraph honest: with no such check a 9,000 us confirm budget
+ * or a 14,000 us ready budget passes every other case here and quietly
+ * contradicts the document.
  */
 constexpr uint32_t DOCUMENTED_SLEEP_BOUND_US = 15'700;
 constexpr uint32_t HEADER_SLEEP_BOUND_US = SX1262::RESET_PULSE_US + SX1262::READY_BUDGET_US
