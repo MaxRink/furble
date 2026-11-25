@@ -532,7 +532,10 @@ the hook registered with `heap_caps_register_failed_alloc_callback`, prints
 therefore cannot assert anything after an allocation fails.
 `sim/scripts/run-panic-fixtures.sh` runs the allocation fixtures under
 `sim/fixtures/hardware/panic-*.txt`, requires status 3 and checks that the
-next boot reports the panic record.
+next boot reports the panic record. `panic-psram-task-no-psram.txt` is the
+`task_stack_region psram` case on a board with no PSRAM: the stack request
+cannot be served from the pool the build asked for, so it fails like any other
+allocation the model cannot satisfy.
 
 One UI timer period after the production `UI_FIRST_FRAME` boot mark, once no
 LVGL animation runs, the simulator charges every device allocation to the

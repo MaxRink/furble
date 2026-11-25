@@ -103,6 +103,8 @@ run_fixture "$BIN" sim/fixtures/hardware/panic-webui-pre-gate-alloc.txt \
   "Mem alloc fail. size 0x2000 caps 0x00000804" webui_supervisor webui_superviso
 run_fixture "$BIN" sim/fixtures/hardware/panic-icon-no-psram.txt \
   "Mem alloc fail. size 0x3003 caps 0x00001800" icon_decode icon_decode
+run_fixture "$BIN" sim/fixtures/hardware/panic-psram-task-no-psram.txt \
+  "Mem alloc fail. size 0x2000 caps 0x00000404" control control
 run_fixture "$MQTT_BIN" sim/fixtures/hardware/panic-mqtt-task-alloc-fail.txt \
   "Mem alloc fail. size 0x2800 caps 0x00000804" mqtt mqtt
 
@@ -120,9 +122,12 @@ assert_token "abort() was called: Mem alloc fail. size 0x2000 caps 0x00000804"
 assert_token "SIM PANIC: allocation failure in task webui_supervisor"
 assert_token "abort() was called: Mem alloc fail. size 0x3003 caps 0x00001800"
 assert_token "SIM PANIC: allocation failure in task icon_decode"
+assert_token "abort() was called: Mem alloc fail. size 0x2000 caps 0x00000404"
+assert_token "SIM PANIC: allocation failure in task control"
 assert_token "SIM PANIC: allocation failure in task mqtt aborts"
 assert_token "crash.task = webui_superviso"
 assert_token "crash.task = icon_decode"
+assert_token "crash.task = control"
 assert_token "crash.task = mqtt"
 
 if [ "$status" -eq 0 ]; then

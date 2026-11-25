@@ -1214,6 +1214,25 @@ add_executable(sim_action_parser_test sim_action_parser_test.cpp
 target_include_directories(sim_action_parser_test PRIVATE ${FURBLE_ROOT}/sim)
 target_compile_options(sim_action_parser_test PRIVATE -Wall -Wextra -Werror)
 
+# The heap_caps shim's charge, caps filtering, zeroing and realloc copy, plus
+# heap_caps_get_info against the per-caps queries. sim/heap_count.cpp is linked
+# so the charge runs through the simulator's device counter, not a fallback.
+# The board policy is compiled in because every furble sdkconfig sets it, so
+# the failing cases abort and the test asserts the panic exit status.
+add_executable(sim_heap_caps_shim_test
+               sim_heap_caps_shim_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp
+               ${FURBLE_ROOT}/sim/heap_count.cpp
+               ${FURBLE_ROOT}/sim/heap_model.cpp)
+target_include_directories(sim_heap_caps_shim_test BEFORE PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/sim/shim)
+target_compile_definitions(sim_heap_caps_shim_test PRIVATE
+                           CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS=1)
+target_compile_options(sim_heap_caps_shim_test PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+add_test(NAME sim-heap-caps-shim COMMAND sim_heap_caps_shim_test)
+
 add_executable(sim_scheduler_test
                sim_scheduler_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp

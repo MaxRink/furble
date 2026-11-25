@@ -34,6 +34,20 @@ owner, 3 KiB plain worker, a 9,392-byte MQTT event queue in PSRAM, a
 `heap.*` queries expose the pool. `mem.*` queries expose the static map, owner
 totals, leaks, timeline count and watermarks.
 
+`sim/shim/esp_heap_caps.h` is the firmware-facing surface. `heap_caps_malloc`,
+`heap_caps_malloc_prefer`, `heap_caps_calloc` and `heap_caps_realloc` charge the
+pool their caps name, filter caps the same way, and abort through the same
+policy. `heap_caps_realloc` has no in-place growth here: it charges the new
+block, copies, then refunds the old one. `heap_caps_get_info` fills
+`multi_heap_info_t` under one lock for the one pool its caps name, so its byte
+figures match the per-caps getters for a set that names a pool;
+`allocated_blocks` counts the blocks the model charged, two per task, and
+`free_blocks` is one for a non-empty pool because the model carries no
+fragmentation. A set that names no pool still resolves to the internal one,
+where the per-caps getters now sum every matching heap, and the struct's
+`minimum_free_bytes` is the internal watermark for either pool.
+`heap_caps_zalloc` is not declared.
+
 ## Dumps and budget
 
 `action memory-dump PATH` writes one JSON document:
@@ -101,6 +115,9 @@ Seeds:
 - `wifi_fast_connect`, `wifi_auth`
 - `task_create_fail <name|all>`: the named task's allocation fails, which
   aborts the run with status 3 under the board's heap abort policy
+- `task_stack_region psram` on a board whose PSRAM is absent or failed: the
+  stack cannot come from the requested pool, so the allocation fails and aborts
+  the run the same way
 
 Actions:
 
