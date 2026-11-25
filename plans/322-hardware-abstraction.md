@@ -5,6 +5,15 @@ coupling ratchet from #460 (`f4cf0d32`). No new board env, no support claim and
 no hardware run in this work. Firmware includes none of the drivers yet: the
 first non-M5 board is what wires them in, as the sequence below records.
 
+The T-Beam Supreme facts in this plan were re-read against the LilyGO
+documents on 2026-11-25 and nine findings changed it: the ALDO1 rail feeds the
+display, BLDO2 is the external pin header, the RTC is battery backed, the OLED
+address is not fixed, GPIO7 is not a documented enable on the M10S trim,
+`M5UnitOLED` cannot drive the panel, four profile columns cannot express the
+board, the GPS UART pins belong in the pin seam, and the PSRAM is quad. The
+corrections are applied below and listed with their sources in the
+`Verification pass (2026-11-25)` section at the end.
+
 Related: [287](287-mcu-portability-and-bundle-hardware.md) (board survey),
 [127](127-nordic-port-baseline.md) (port contract and the coupling ratchet
 from `refactor/port-1-ratchet`), [30](30-m5stack-framework.md) (board support
@@ -36,7 +45,7 @@ library sources.
 | XL9555 IO expander | none (M5Unified has PI4IOE5V6408 and M5IOE1 behind `IOExpander_Base`) | - | Needed for Pager GPS_EN and Watch Ultra rails. |
 | TCA8418 keyboard | none in M5Unified (lives in the separate M5Cardputer library) | - | Cardputer Adv and Pager keyboards. |
 | SX1262 radio | none | - | Must be put to sleep on T-Beam, Pager, Watch Ultra and the Cardputer Cap. |
-| SH1106 OLED | `lgfx::Panel_SH110x` with `Bus_I2C` | Yes | No 128x64 1-bit UI tier in furble. |
+| SH1106 OLED | `lgfx::Panel_SH110x` with `Bus_I2C` | Yes, as a custom `LGFX_Device`. Not through `M5UnitOLED`: M5GFX 0.2.27 `src/M5UnitOLED.h` hardcodes `panel_width` 64 with `offset_x` 32, defaults to the M5 Port A pins and address 0x3C, and so cannot drive a 128x64 panel on SDA 17 and SCL 18. | No 128x64 1-bit UI tier in furble. The panel must be configured 128x64 explicitly and the column offset is a bench check. |
 | ST7789 / ST7789V2 | `Panel_ST7789` | Yes; Cardputer Adv is a known board (`board_M5CardputerADV`) | None. |
 | ST7796U | not present (only a comment in `Panel_Device.hpp`) | - | Add a `Panel_LCD` subclass with the ST7796 init table from upstream LovyanGFX (FreeBSD licence). |
 | CO5300 AMOLED | `Panel_CO5300` on `Panel_AMOLED` | Yes. `Bus_SPI` has `pin_io0`..`pin_io3` for quad SPI on the S3. | AMOLED has no backlight; brightness is a panel command. |
@@ -88,21 +97,22 @@ geometry, not hardware, and stay in the UI.
 
 ### Per-board gaps
 
-T-Beam Supreme (ESP32-S3, 8 MB flash, 8 MB PSRAM). Pins from LilyGO's
-`examples/Factory/utilities.h` and the rail map from `LoRaBoards.cpp` in
-LilyGo-LoRa-Series:
+T-Beam Supreme (ESP32-S3, 8 MB flash, 8 MB quad PSRAM). Pins from LilyGO's
+`examples/Factory/utilities.h`, the rail map from `LoRaBoards.cpp` in
+LilyGo-LoRa-Series, and the wiring from the schematics at their title-block
+revisions V3.0 and V3.1 (source IDs resolve in plan 318):
 
 | Need | Chip and pins | Covered by | Gap |
 | :--- | :--- | :--- | :--- |
-| Battery %, V, charging | AXP2101 on I2C1 SDA 42 SCL 41, IRQ 40 | `lib/hal/AXP2101` | Board adapter (I2C bus) |
-| GPS rail | ALDO4 3.3 V; GPS UART RX 9 TX 8, `GPS_EN_PIN` 7, PPS 6, 9600 baud | `AXP2101::setRail(ALDO4)` | Route the GPS rail through the power backend |
-| GPS backup | V_BCKP on AXP2101 VRTC (RTCLDO1), always on while VBAT is present | No code: VRTC has no switch | LilyGO disables VBACKUP charge; keep it off unless a cell is fitted |
-| LoRa | SX1262 CS 10, SCK 12, MOSI 11, MISO 13, RST 5, BUSY 4, DIO1 1, on ALDO3 | `lib/hal/SX1262::sleep()` | SPI port adapter, NSS hold through sleep; or switch ALDO3 off |
-| Sensors and SD | ALDO1/2 sensors, BLDO1/2 SD, DCDC3/4/5 M.2 | `AXP2101::setRail()` | Switch off what furble does not use |
-| Display | SH1106 128x64 on I2C SDA 17 SCL 18 | `Panel_SH110x` + `Bus_I2C` | 1-bit 128x64 UI tier |
+| Battery %, V, charging | AXP2101 on I2C1 SDA 42 SCL 41, IRQ 40 [L32, sheet Power rev V3.0] | `lib/hal/AXP2101` | Board adapter (I2C bus) |
+| GPS rail | ALDO4 3.3 V into the GNSS VCC pin [L32, sheet Radio & GNSS rev V3.0]; UART RX 9 TX 8, PPS 6 through a series 1N4148, GPIO7 on WAKE_UP for the L76K trim only [L14, L32] | `AXP2101::setRail(ALDO4)` | Route the GPS rail through the power backend. The pin 7 enable is UNVERIFIED for the M10S trim. |
+| GPS backup | V_BCKP (L76K pin 6) on AXP2101 VRTC, which has no enable bit and stays up while VBAT is present [L32; AXP2101 datasheet rev 1.0 section 6.5.4] | No code: VRTC has no switch | Keep the VBACKUP charge off, as LilyGO does [L33]. The M10S trim's backup path is unverified: there is no M10S schematic. |
+| LoRa | SX1262 CS 10, SCK 12, MOSI 11, MISO 13, RST 5, BUSY 4, DIO1 1, on ALDO3 [L33] | `lib/hal/SX1262::sleep()` | SPI port adapter, NSS hold through sleep; or switch ALDO3 off |
+| Rails | ALDO1 display (FPC pin 6), BME280 and magnetometer; ALDO2 sensor; BLDO1 microSD; BLDO2 external pin header; DCDC3/4/5 M.2 [L14, L31, L30] | `AXP2101::setRail()` | ALDO1 must stay on. The verification pass records what furble may switch off. |
+| Display | SH1106 128x64 on I2C0 SDA 17 SCL 18, address 0x3C or 0x3D by strap [L14, L31] | `Panel_SH110x` + `Bus_I2C` | 1-bit 128x64 UI tier; probe both addresses |
 | Input | BOOT (GPIO0) only, plus AXP2101 PEK | `AXP2101::readPowerKey()` | One-button input class |
-| RTC | PCF8563 IRQ 14, 32 kHz crystal on XTAL_32K | `m5::RTC8563_Class` on a custom bus | Profile row `rtcBatteryBacked` |
-| IMU | QMI8658 on SPI (CS 34, INT 33) | none | Motion backend or software only |
+| RTC | PCF8563 with its own 32.768 kHz crystal, IRQ 14; VDD from VDD3V3 through a 1N4148 and a 1K resistor, and from BAT1 [L30, L31] | `m5::RTC8563_Class` on a custom bus | Profile row `rtcBatteryBacked` is true. Whether BAT1 is fitted is open, and the part is unsettled: the wiki feature list says PCF85063ATL where its address table and the schematic say PCF8563. |
+| IMU | QMI8658 on SPI (CS 34, INT 33); the quad PSRAM keeps GPIO33 to GPIO37 free [L14] | none | Motion backend or software only |
 
 T-Watch Ultra: AXP2101 (as above), CO5300 over QSPI (M5GFX), CST9217 touch
 (missing driver), MIA-M10Q GNSS (UBX, merged in #459), V_BCKP
@@ -185,7 +195,7 @@ command), and the minimum brightness, which is already a profile field.
 
 | Board | Panel and bus | Brightness |
 | :--- | :--- | :--- |
-| T-Beam Supreme | `Panel_SH110x` 128x64, `Bus_I2C` port 0, SDA 17, SCL 18, address 0x3C | contrast command; no backlight, no APB lock needed for LEDC |
+| T-Beam Supreme | `Panel_SH110x` 128x64, `Bus_I2C` port 0, SDA 17, SCL 18, address 0x3C or 0x3D by strap, probed 0x3C first | contrast command; no backlight, no APB lock needed for LEDC; column offset a bench check |
 | T-Watch Ultra | `Panel_CO5300`, `Bus_SPI` quad (`pin_io0`..`pin_io3`) | AMOLED brightness command |
 | T-LoRa Pager | ST7796U 480x222 (new `Panel_LCD` subclass), `Bus_SPI` | LEDC backlight, keep the APB lock rule |
 | Cardputer Adv | `Panel_ST7789` via M5GFX autodetect | as the M5 boards |
@@ -224,23 +234,89 @@ M5Unified.
 The row it would get (columns as in `src/FurbleBoard.cpp`):
 
 ```
-constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true,  true,  false, true},  0,   false, -1,
+constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true,  true,  false, true},  0,   true,  -1,
     MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  true,  32,
     false, false, false, -1, false};
 ```
 
-The row has all 19 columns of `include/FurbleBoard.h:36-54`. The trailing
-`false` is `gpsRail`: the AXP2101 switches the GPS rail, not `M5.Power`.
+The row has all 19 columns of `include/FurbleBoard.h:36-54`, and
+`rtcBatteryBacked` is the only value that changed in the 2026-11-25 pass. The
+trailing `false` is `gpsRail`: `M5.Power` does not switch this board's GPS
+rail, the AXP2101 does.
 
 Battery level, voltage and charging come from the AXP2101 E-gauge and status
 registers; it has no current sense. Capacity is 0 because the 18650 is the
-user's. RTC backing stays false until the PCF8563 supply is traced on the
-schematic. No IR, no motion wake (QMI8658 on SPI is not supported), no timed
-wake (the AXP2101 has no wake timer; a PCF8563 alarm on GPIO14 could be added
-later). `modemSleep` is true because of the 32 kHz crystal, once the sdkconfig
-selects it. SD stays false: its slot is on its own SPI bus, not the display
-bus `FurbleSD` expects. Rails: GPS ALDO4, LoRa ALDO3, sensors ALDO1/ALDO2, SD
-BLDO1/BLDO2, M.2 DCDC3/4/5; protected DCDC1.
+user's. RTC backing is true: both schematic revisions feed the PCF8563 VDD
+from VDD3V3 through a 1N4148 and a 1K series resistor and from BAT1, so the
+clock keeps time with the 18650 out while BAT1 is fitted [L30, L31]. Whether
+BAT1 is populated is the only open question there. No IR, no motion wake
+(QMI8658 on SPI is not supported), no timed wake (the AXP2101 has no wake
+timer; a PCF8563 alarm on GPIO14 could be added later). `modemSleep` is true
+because of the 32 kHz crystal, once the sdkconfig selects it. SD stays false:
+its slot is on its own SPI bus, not the display bus `FurbleSD` expects.
+
+Rails, and the one that must never be switched off:
+
+| Rail | Feeds | Boot state |
+| :--- | :--- | :--- |
+| ALDO1 | OLED display (FPC pin 6), BME280 with its 4.7K I2C pull-ups, magnetometer [L14, L31] | on, always |
+| ALDO2 | sensor rail [L14] | on, as the factory code leaves it [L33] |
+| ALDO3 | SX1262 radio [L14] | on until `SX1262::sleep()`, then off |
+| ALDO4 | GNSS VCC (L76K pin 8) [L32] | on, this is the `GPS` rail |
+| BLDO1 | microSD, its VDD and pull-ups [L14, L30] | on, as the factory code leaves it [L33] |
+| BLDO2 | external pin header [L14, L31] | on; switching it off is safe and a bench decision |
+| DCDC3/4/5 | M.2 socket [L14] | on, as the factory code leaves it |
+| DCDC1 | the SoC | on, protected |
+| DCDC2, DLDO1/2, VBACKUP | unused, and the backup cell charge | off, as the factory code does [L33] |
+
+The factory code does pulse ALDO1, ALDO2 and BLDO1 low for 250 ms on a cold
+boot before re-enabling them, with the comment that it restarts the SD card
+and the QMC sensor [L33]. That is a bus reset, not a steady state. Turning
+ALDO1 off at boot, as this plan used to say, would blank the display, drop the
+sensor and magnetometer supply and remove the I2C pull-ups from the bus.
+
+Column-semantics gap, recorded rather than papered over. Four of the 19 columns
+cannot say what this board is, so the row keeps today's values and these
+meanings:
+
+- `batteryCapacityMah` 0 means unknown. This board's cell is the user's, so the
+  capacity is unknowable at build time rather than unknown at runtime.
+- `sdSlot` false means no slot on the display SPI bus. This board has a
+  microSD slot on its own bus, which `FurbleSD` cannot drive.
+- `minBrightness` 32 is a backlight floor. The SH110x has no backlight and
+  brightness is a contrast command, so any value in this column is a
+  placeholder.
+- `gpsRail` false means `M5.Power` does not switch a Port A output. This board
+  switches ALDO4 through the AXP2101, so the rail exists and the column cannot
+  say so.
+
+A column set that told the truth would separate "unknown capacity" from
+"user-supplied cell", "slot present, different bus" from "no slot", "no
+backlight" from a floor, and "rail on another controller" from "no rail". That
+touches `include/FurbleBoard.h` and all nine rows, and is not part of this
+plan.
+
+Display: a custom `lgfx::LGFX_Device` with `Panel_SH110x` and `Bus_I2C` on port
+0, SDA 17, SCL 18, 128x64 is the right device. `M5UnitOLED` in M5GFX 0.2.27
+cannot be reused: it hardcodes `panel_width` 64 with `offset_x` 32 and defaults
+to the M5 Port A pins and address 0x3C. Set 128x64 explicitly and keep the
+column offset as a bench check. The address is 0x3C or 0x3D, strapped by R51
+and R52 for the radio band variant [L31], and the magnetometer shares bus 0 at
+0x1C, 0x3C or 0x7C depending on the variant [L14]. The vendor factory code
+scans both addresses and decides between OLED and QMC6310N by reading register
+0x00, where 0x80 means the magnetometer [L33]. Probe 0x3C, then 0x3D.
+
+GPS enable: GPIO7 is a WAKE_UP line on the L76K trim only. The ESP32S3 sheet
+maps GPIO7 to the net GPS_WAKEUP and the Radio and GNSS sheet drives the L76K
+WAKE_UP input with it [L32], and the wiki marks the row L76K only [L14]. The
+vendor header defines `GPS_EN_PIN 7` without distinguishing trims [L33]. The
+MAX-M10S has no enable pin: its pin 5 is EXTINT and its pin 7 is V_IO [U1 table
+10], and there is no M10S schematic. The enable claim is UNVERIFIED for that
+trim, and what supplies V_IO is a bench check.
+
+PSRAM: the 8 MB PSRAM is quad, so GPIO33 to GPIO37 stay usable; the IMU takes
+33 and 34 and the peripheral SPI 35, 36 and 37 [L14]. An octal-PSRAM S3 board
+takes those pins, which is why the row must not assume them lost.
 
 Exact steps:
 
@@ -254,28 +330,40 @@ Exact steps:
    `FURBLE_HAS_SD 0`. Neither new macro exists yet.
 3. `src/FurbleBoard.cpp`: the row above, returned by `profile()` under
    `FURBLE_HAS_AXP2101_HAL` because `M5.getBoard()` reports `board_unknown`.
-   Add GPS UART pins (RX 9, TX 8, 9600 baud) to the row; `FurbleGPS` reads
-   Port A pins from M5Unified, which has none for this board.
+   The GPS UART pins do not go in this row: RX, TX and baud would make 22
+   columns and put wiring in a table of runtime facts. They belong in the pin
+   seam, the two `M5.getPin()` calls in `GPS::getInstance()`
+   (`src/FurbleGPS.cpp:167-169`), which return -1 on this board and must return
+   RX 9 and TX 8 for it. The baud is already the `GPS_BAUD` setting, whose
+   default is `BAUD_9600` (`src/FurbleSettings.cpp:741`).
 4. A `RegisterBus` adapter over `m5::I2C_Class` (`In_I2C.begin(I2C_NUM_1, 42,
    41)`) and an `SX1262::Port` adapter over `spi_master` and GPIO, with
    `gpio_hold_en` on NSS so the radio stays asleep through MCU sleep.
 5. `Platform` under `FURBLE_HAS_AXP2101_HAL`: build `HAL::AXP2101` with
-   DCDC1 protected; at boot switch off ALDO1/2, BLDO1/2 and DCDC3/4/5, run
-   `SX1262::sleep()` and then switch off ALDO3; keep VBACKUP charge off (no
-   cell fitted; GNSS backup is VRTC). `readBattery()` from the driver,
-   `setRail(GPS)` maps to ALDO4,
-   `powerOff()` to `AXP2101::powerOff()`, `getPWRClickCount()` from
-   `readPowerKey()` short presses with `enablePowerKeyIrq(true)` at boot.
+   DCDC1 protected and bring the rails up in the factory order (ALDO4, ALDO3,
+   ALDO1, ALDO2, BLDO1, BLDO2, DCDC3/4/5), run `SX1262::sleep()` and then
+   switch off ALDO3 only. ALDO1 stays on unconditionally: it feeds the OLED,
+   the BME280 and magnetometer, and the I2C pull-ups. ALDO2 and BLDO1 stay on
+   as the vendor code leaves them; switching BLDO2 off (external pin header)
+   is a bench decision, not a boot default. Keep the VBACKUP charge off (no
+   cell fitted; the GNSS backup is VRTC). `readBattery()` from the driver,
+   `setRail(GPS)` maps to ALDO4, `powerOff()` to `AXP2101::powerOff()`,
+   `getPWRClickCount()` from `readPowerKey()` short presses with
+   `enablePowerKeyIrq(true)` at boot.
 6. Display: an `lgfx::LGFX_Device` with `Panel_SH110x` and `Bus_I2C` (port 0,
-   SDA 17, SCL 18, 0x3C, 128x64) made the primary display, and a 1-bit 128x64
-   UI tier. That tier is the largest single item.
+   SDA 17, SCL 18, 128x64) made the primary display, and a 1-bit 128x64 UI
+   tier. Set `panel_width` 128 and `panel_height` 64 explicitly, do not use
+   M5GFX's `M5UnitOLED`, probe address 0x3C then 0x3D, and record the column
+   offset measured on the bench. That tier is the largest single item.
 7. Input: BOOT (GPIO0) fed into `M5.BtnA` from `Platform::update()` the way
    the StickS3 feeds `BtnPWR`, the AXP2101 key as `BtnPWR`, and the one-button
    navigation tier.
 8. Simulator: a 128x64 panel model and the board in the profile matrix.
 9. Docs and gates: a `board-profile` case, the README supported controllers,
    `docs/supported-hardware.md`, `docs/wiki/Getting-Started.md`, the size and
-   stack budgets, and a bench measurement of BLE-connected light sleep.
+   stack budgets, a bench measurement of BLE-connected light sleep, and bench
+   checks for the OLED address and column offset, BAT1, and the M10S V_IO
+   supply.
 
 ## Implementation state
 
@@ -398,3 +486,36 @@ waveshare-s3-eth 1,696,432 bytes (DRAM 51,332, IRAM 132,352); size and stack
 budgets pass, and DRAM and IRAM equal the pre-rebase hal-2 builds. The few
 extra bytes come from port-4's own code. `pre_review --base origin/master`:
 9 of 9 gates. `check-doc-tokens`: tokens present.
+
+## Verification pass (2026-11-25)
+
+Every T-Beam Supreme claim in this plan was re-read against the LilyGO
+documents at their own revisions, the pinned M5GFX 0.2.27 sources, the u-blox
+MAX-M10S data sheet and the AXP2101 datasheet. Nine findings changed text in
+this plan. The corrections above are applied in place; this table is the
+record of what was wrong and where the corrected fact comes from. Nothing in
+`src/`, `lib/` or `sim/` changed.
+
+| # | What this plan said | Corrected to | Source |
+| ---: | :--- | :--- | :--- |
+| 1 | Step 5: switch ALDO1/2 off at boot, and switch off what furble does not use. | ALDO1 feeds the OLED display (FPC pin 6), the BME280 with its 4.7K I2C pull-ups and the magnetometer, so it must stay on. The vendor factory code ends with ALDO1, ALDO2, BLDO1 and BLDO2 enabled and only pulses ALDO1, ALDO2 and BLDO1 low for 250 ms on a cold boot as a bus reset. | L14 "AXP2101 Power Channels" (ALDO1 = BME280 + Display + MAG Sensor, ALDO2 = Sensor); L31 "OLED Display" (CN1 pin 6 to A_LDO1) and "Sensor" (U4 VDD and VDDIO, R26 and R27 4.7K pull-ups, both on A_LDO1); L33 T_BEAM_S3_SUPREME branch |
+| 2 | Gap row "ALDO1/2 sensors, BLDO1/2 SD", and step 5 switches BLDO2 off. | BLDO1 is the microSD rail. BLDO2 is the external pin header. The factory code comments both BLDO blocks "Sdcard", which is where the mistake came from. | L14 "AXP2101 Power Channels" (BLDO1 SD Card, BLDO2 External pin header); L31 "Bottom" headers (PM1 pin 6 to B_LDO2); L30 TF CARD block (card VDD and the 10K SD_CS pull-up on B_LDO1) |
+| 3 | The row set `rtcBatteryBacked` false, "until the PCF8563 supply is traced". | It is true. Both revisions feed the PCF8563 VDD from VDD3V3 through a 1N4148 and a 1K series resistor and from BAT1, so the RTC is battery backed. Whether BAT1 is populated is the only open question. Two smaller fixes ride along: the 32 kHz crystal on XTAL_32K belongs to the SoC, not the RTC, and the wiki is inconsistent about the part (feature list PCF85063ATL, address table and schematic PCF8563). | L31 "RTC" block (U2 pin 8 VDD, D2 1N4148, R3 1K, BAT1, C2 100nF); L30 "RTC" block (D4 1N4148, 1K, BAT1, C9 100nF); L14 "Key Features" and "I2C Device Addresses"; L32 "ESP32S3" sheet (X2 32.768 kHz on XTAL_32K) |
+| 4 | Display address 0x3C, fixed, in the gap row, the display table and step 6. | The address is 0x3C or 0x3D. R51 and R52 strap it, the sheet's note gives VHF R52=0R R51=NC 0x3C and UHF R52=NC R51=0R 0x3D, and the wiki lists 0x3C/0x3D. The magnetometer shares bus 0 at 0x1C, 0x3C or 0x7C by variant, so an address alone does not identify the device: the factory scan reads register 0x00 and takes 0x80 as the QMC6310N. Probe 0x3C, then 0x3D. | L31 "OLED Display" note "Slave 7bit address definition"; L14 "I2C Device Addresses"; L33 `display_address` (0x3C, "It might be 0x3D") and the 0x3C/0x3D cases in `scanDevices()` |
+| 5 | Gap row "`GPS_EN_PIN` 7" as a GPS enable. The same pass corrected plan 318's GNSS table, which had described the M10S trim as the same board and net as the L76K trim. | GPIO7 is a WAKE_UP line on the L76K trim only: the ESP32S3 sheet maps GPIO7 to GPS_WAKEUP and the Radio and GNSS sheet drives the L76K WAKE_UP input with it. The MAX-M10S has no enable input, its pin 5 is EXTINT and its pin 7 is V_IO, and there is no M10S schematic. The enable is UNVERIFIED for that trim and V_IO joins the bench checks. The vendor header defines `GPS_EN_PIN` 7 without distinguishing trims. | L32 "ESP32S3" sheet (GPIO7 to GPS_WAKEUP) and "Radio and GNSS" sheet (L76K pin 5 WAKE_UP, pin 6 V_BCKP, pin 7 RESERVED); L14 "Pin Mapping" (GNSS Wake-up (L76K only) 7); U1 table 10 (pin 5 EXTINT, pin 6 V_BCKP, pin 7 V_IO); L33 `utilities.h` |
+| 6 | The dependency table offered `Panel_SH110x` with `Bus_I2C` as usable, and step 6 named an address but not a panel size. | `Panel_SH110x` with `Bus_I2C` is right, but not through `M5UnitOLED`: M5GFX 0.2.27 hardcodes `panel_width` 64 with `offset_x` 32 and defaults to the M5 Port A pins and 0x3C. The custom device must set 128x64 explicitly and the column offset is a bench check. | M5GFX 0.2.27 `src/M5UnitOLED.h`, `init_impl()` (`cfg.panel_width = 64; cfg.offset_x = 32;`) and the `M5UNITOLED_SDA`/`SCL`/`ADDR` defaults |
+| 7 | The row was presented as complete at 19 columns with no note on what the columns cannot express. | `rtcBatteryBacked` is the only value change. `minBrightness`, `batteryCapacityMah`, `sdSlot` and `gpsRail` cannot be expressed honestly with the current column semantics, recorded above as a gap rather than filled with invented values. | `include/FurbleBoard.h:36-54` column comments; `src/FurbleBoard.cpp` table |
+| 8 | Step 3: add GPS UART pins (RX 9, TX 8, 9600 baud) to the row. | That would make 22 columns and put wiring in a table of runtime facts. The pins belong in the pin seam, the two `M5.getPin()` calls in `GPS::getInstance()`, which return -1 on this board. The baud is already the `GPS_BAUD` setting, default `BAUD_9600`. | `src/FurbleGPS.cpp:167-169`; `include/FurbleSettings.h:216-217`; `src/FurbleSettings.cpp:741` |
+| 9 | Nothing said about PSRAM width, so the plan could not say whether GPIO33 to GPIO37 survive. | The 8 MB PSRAM is quad (QSPI), so GPIO33 to GPIO37 stay usable: the IMU takes 33 and 34, the peripheral SPI 35, 36 and 37. An octal-PSRAM S3 board would take those pins. | L14 "Product Parameters" (PSRAM 8 MB (QSPI)) and "Pin Mapping"; L31 ESP32-S3 module block |
+
+Source key for this table. L14, L30, L31, L32 and L33 resolve in full in plan
+318's Sources section, added there in the same pass. U1 is the u-blox MAX-M10S
+data sheet UBX-20035208, already a source of plan 318. M5GFX 0.2.27 and the
+AXP2101 datasheet revision 1.0 are the pinned library and the datasheet this
+plan's hal-1 already cites (`lib/hal/AXP2101.h`), section 6.13.2.75 for the
+REG 0x90 enable bits and section 6.5.4 for the off state.
+
+Still unsettled by the documents, and left as open items rather than guessed:
+whether BAT1 is populated, which RTC part is fitted (PCF8563 or PCF85063ATL),
+what supplies the M10S module's V_IO, which radio band maps to the VHF and UHF
+straps, and the panel's column offset.
