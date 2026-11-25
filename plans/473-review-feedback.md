@@ -10,6 +10,8 @@ It updates plan 95 as a `## Follow-up:` section, plan 287, plan 322,
 `src/CLAUDE.md`, `docs/power/` and two source comments. Every finding is
 recorded as fixed, already fixed or a false positive, with evidence.
 
+Line references are positions in the tree this PR produces on master.
+
 ## PR #473 (8ff406ea)
 
 Source: review of the branch before 8ff406ea.
@@ -20,7 +22,7 @@ Source: review of the branch before 8ff406ea.
 
 The passages that state the rule at 8ff406ea, all per panel:
 
-- root `CLAUDE.md:357-377`, the display sleep trap.
+- root `CLAUDE.md:367-387`, the display sleep trap in `## Hardware traps`.
 - `src/CLAUDE.md:402-408`, the display off state machine.
 - `include/FurbleUI.h:1135`, the comment on `DISPLAY_SLEEP_DWELL_MS`.
 - `src/FurbleUI.cpp:1841`, the Sleep Out to next Sleep In gate, and
@@ -31,8 +33,8 @@ The passages that state the rule at 8ff406ea, all per panel:
 - `docs/power/datasheet-register.md:36-38`, the new ST7796S row and the revised
   ILI9342C and ILI9341 rows.
 - `plans/287-mcu-portability-and-bundle-hardware.md:338`.
-- `plans/322-hardware-abstraction.md:75`, `:172-178`.
-- `plans/95-engineering-lessons.md:61-79` and follow-up item 4 at `:397-417`.
+- `plans/322-hardware-abstraction.md:82`, `:178-186`.
+- `plans/95-engineering-lessons.md:59-79` and follow-up item 4 at `:404-424`.
 - `plans/implemented/12-display-off.md:30-32`.
 
 Evidence: at 8ff406ea `git grep -iE "between (the )?(SLPIN|SLPOUT|Sleep In|Sleep
@@ -68,10 +70,10 @@ Source: an independent check of every line citation the PR touches against the
 | 2 | `docs/power/soc.md` "IR and SD tasks" row. The PR recomputed the IR half to `src/FurbleIR.cpp:219` and left the SD half at `src/FurbleSD.cpp:744-751`, which at HEAD is `SD::isSupported()` and the head of `SD::init()`, not a blocking queue read. | Fixed. Cites `src/FurbleSD.cpp:818`, the `xQueueReceive(..., portMAX_DELAY)` in `SD::taskLoop()`. | `docs/power/soc.md:999`; `src/FurbleSD.cpp:815-822` |
 | 3 | `docs/power/soc.md` cited `src/FurbleUI.cpp:371-374`, `1316-1318`, `1333-1335` for the display `APB_FREQ_MAX` lock in the lock table, in the LOCK-03 current behaviour and in the LOCK-03 citation. At HEAD those lines are the roller helper, `UI::m_Mutex` and the connect-error dialog text; the bundle predates the move of the display state machine. | Fixed. All three cite `src/FurbleUI.cpp:511` (the `UI::UI()` acquire, before `lv_init()` at `:513`), `:1879` (the release in `sleepDisplay()`) and `:1900` (the reacquire in `wakeDisplay()`). | `docs/power/soc.md:93`, `:774`, `:805`; `src/FurbleUI.cpp:476-513`, `:1879`, `:1900` |
 | 4 | The PR description still stated the one-way rule for every panel, and that "every sdkconfig caps the CPU at 80 MHz, which pins APB". The head commit says the opposite in both cases: the rule is per panel, and the 160 MHz runtime CPU maximum is what holds APB at 80 MHz, not the boot default. | Fixed in the description. | The "What" section of #473 |
-| 5 | `plans/95-engineering-lessons.md:359-361` said every path without a `docs/`, `plans/`, `src/`, `include/` or `tests/` prefix is inside the ESP-IDF or esptool package, but the M5GFX citations the same commit adds (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`, `src/lgfx/v1/LGFXBase.hpp:1436-1437`) carry the library's own `src/` prefix and are in no tree path. | Fixed. The preamble now names the M5GFX `src/lgfx/` paths and says they live in the pinned `libdeps` copy. The two citations resolve in the M5GFX 0.2.27 package: `setSleep()` writes the bare SLPIN or SLPOUT at `Panel_LCD.cpp:101-107`, and `sleep()` and `wakeup()` add only the brightness write at `LGFXBase.hpp:1436-1437`. | `plans/95-engineering-lessons.md:358-362`; `.pio/libdeps/m5stick-s3/M5GFX/library.json` (0.2.27) |
+| 5 | `plans/95-engineering-lessons.md:364-365` said every path without a `docs/`, `plans/`, `src/`, `include/` or `tests/` prefix is inside the ESP-IDF or esptool package, but the M5GFX citations the same commit adds (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`, `src/lgfx/v1/LGFXBase.hpp:1436-1437`) carry the library's own `src/` prefix and are in no tree path. | Fixed. The preamble now names the M5GFX `src/lgfx/` paths and says they live in the pinned `libdeps` copy. The two citations resolve in the M5GFX 0.2.27 package: `setSleep()` writes the bare SLPIN or SLPOUT at `Panel_LCD.cpp:101-107`, and `sleep()` and `wakeup()` add only the brightness write at `LGFXBase.hpp:1436-1437`. | `plans/95-engineering-lessons.md:363-368`; `.pio/libdeps/m5stick-s3/M5GFX/library.json` (0.2.27) |
 
-Accepted as is: the "three of the six display boards" count at `CLAUDE.md:367`
-and `plans/95-engineering-lessons.md:69` and `:406` counts display builds.
+Accepted as is: the "three of the six display boards" count at `CLAUDE.md:377`
+and `plans/95-engineering-lessons.md:69` and `:413` counts display builds.
 Six builds carry a panel (StickC, StickC Plus, StickS3, Core, Core2 and the
 Core USB debug profile) and three of them are ILI9342C. `waveshare-s3-eth` is
 one of the six board environments and has no panel
