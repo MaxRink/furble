@@ -391,7 +391,7 @@ Control::state_t Control::connectAll(void) {
     if (retireCancelledTargetsLocked()) {
       return STATE_IDLE;
     }
-    if (allConnected()) {
+    if (allConnectedLocked()) {
       m_ConnectFailCount = 0;
       m_ReconnectAttempt.store(0, std::memory_order_release);
       m_ReconnectHintLogged.store(false, std::memory_order_release);
@@ -529,7 +529,17 @@ void Control::task(void) {
         break;
 
       case STATE_ACTIVE:
-        if (!allConnected()) {
+      {
+        // The liveness check and the command fan-out below are the two unlocked
+        // walks of m_Targets this task used to do. Taking the lock here is what
+        // makes the check and the walks agree with addActive() and with a
+        // disconnect() arriving on the UI or companion task.
+        bool connected;
+        {
+          const std::lock_guard<std::mutex> lock(m_Mutex);
+          connected = allConnectedLocked();
+        }
+        if (!connected) {
           {
             const std::lock_guard<std::mutex> lock(m_Mutex);
             resetAdaptiveState();
@@ -541,6 +551,9 @@ void Control::task(void) {
         sampleAdaptivePower();
 
         if ((ret == pdTRUE) && (cmd != CMD_ERROR)) {
+          // Held across the fan-out only: Target::sendCommand() is a
+          // non-blocking queue post, so no radio call and no wait runs here.
+          const std::lock_guard<std::mutex> lock(m_Mutex);
           for (const auto &target : m_Targets) {
             switch (cmd) {
               case CMD_SHUTTER_PRESS:
@@ -557,6 +570,7 @@ void Control::task(void) {
           }
         }
         break;
+      }
 
       case STATE_DISCONNECTING:
         break;
@@ -670,15 +684,39 @@ BaseType_t Control::updateGPS(const Camera::gps_t &gps, const Camera::timesync_t
     local.dst = false;
   }
 
-  for (const auto &target : m_Targets) {
-    target->updateGPS(gps, local);
+  // Fan the fix out under m_Mutex. This runs on the GPS task, while addActive()
+  // reallocates m_Targets and disconnect() empties it from the UI, companion and
+  // control tasks. Walking the live vector here read its storage while it was
+  // being replaced, so a fix landing on a connect or a teardown could follow a
+  // freed buffer.
+  //
+  // The whole walk stays inside one critical section because owning the lock is
+  // also what keeps each Target alive: m_Targets owns the targets, so a snapshot
+  // taken without the lock would let a retire free one between the copy and the
+  // call. Target::updateGPS() is two struct assignments with no radio call, no
+  // heap allocation and no delay, which is why it may run here; FurbleControl.h
+  // records that contract, and it must not grow one.
+  {
+    const std::lock_guard<std::mutex> lock(m_Mutex);
+    for (const auto &target : m_Targets) {
+      target->updateGPS(gps, local);
+    }
   }
 
+  // Posted outside the lock, so the control queue's own lock is never taken
+  // under m_Mutex. m_Mutex already nests outside a target queue's lock
+  // (disconnect() posts under it); keeping this pair one-way is what leaves the
+  // control task free to do work on receive.
   cmd_t cmd = CMD_GPS_UPDATE;
   return xQueueSend(m_Queue, &cmd, 0);
 }
 
 bool Control::allConnected(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return allConnectedLocked();
+}
+
+bool Control::allConnectedLocked(void) {
   // No targets is not "all connected". The vacuous truth published STATE_ACTIVE
   // for a session containing nothing: the UI signalled CONNECTED, revealed the
   // main menu and set sessionEstablished, while sendCommand() iterated an empty

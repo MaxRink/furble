@@ -108,6 +108,7 @@ the git history. They are no longer ownership rows.
 | [321-review-feedback.md](321-review-feedback.md) | Review-feedback record for the u-blox M10 stack: tick-wrap gate, non-switchable rails, time resolution, ANA default, demux fuzzing, receiver encoder payload bound, source URLs |
 | [325-peer-subscription-race.md](325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
 | [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
+| [327-control-gps-race.md](327-control-gps-race.md) | Locked `Control::m_Targets` walk for the GPS fan-out and the control task's `STATE_ACTIVE` liveness check |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 

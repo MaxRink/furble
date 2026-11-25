@@ -8,6 +8,15 @@ is `control-connect-camera-race: PASS`; near matches do not count. Keep the
 shell contract test runnable without a compiler so wrapper behavior remains
 covered even when the TSAN binary is unavailable.
 
+`control-gps-race` is the GPS fan-out probe: one thread loops
+`Control::updateGPS()` while the main thread alternates `addActive()` and
+`disconnect()`. It sits beside `control-connect-camera-race` and
+`control-connecting-snapshot` in the TSan exclusion list of
+`tools/run_sanitized_host_tests.sh`, because `-fsanitize=thread` cannot share a
+tree with ASan. Its plain twin, `control-gps-race-plain`, builds the same source
+without the sanitizer, so the walk stays covered in the normal host suite and
+under ASan and UBSan.
+
 Every other host test must pass under ASan and UBSan
 (`tools/run_sanitized_host_tests.sh`) and, on Linux, LeakSanitizer. A host
 double that stands in for a production type must keep its full value range:

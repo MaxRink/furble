@@ -22,6 +22,21 @@ Public headers for the app layer in src/, one header per module
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
+- `Control::m_Targets` is owned by `m_Mutex`, and every reader takes it. The
+  GPS task is a fourth owner of that vector: `updateGPS()` walks it, so it walks
+  and stores under the same lock and releases it before posting `CMD_GPS_UPDATE`
+  on the control queue, so that queue's own lock is never taken under `m_Mutex`.
+  `Target::updateGPS()` is therefore a pure member copy with no radio
+  call, allocation or delay, and it must stay one; a snapshot copied out of
+  `m_Targets` to shorten the section would hand the GPS task ownership of a
+  `Target`, because the vector holds the only reference. `allConnected()` keeps a
+  second, `m_Mutex`-taking entry point for callers that hold nothing, and
+  `allConnectedLocked()` for `connectAll()` and the control task's
+  `STATE_ACTIVE` branch, which also fans commands out under that lock. The lock
+  order inside Control is unchanged: `m_Mutex` stays outermost, then the
+  governor mutex (released), then a hook's own locks. That is Control's order
+  only; the companion order, advertising then `m_Mutex` then `m_BondMutex`, is
+  documented below.
 - `Control::setAdmitHook()` is registered once at boot, before the control
   task starts, with `MemoryPressure::admit()`; host Control harnesses
   register none. `addActive()` calls it under `Control::m_Mutex`, after the
