@@ -26,6 +26,10 @@ namespace HAL {
 
 class AXP2101 {
  public:
+  /*
+   * 7-bit TWSI address. Section 6.3 gives the default slave address as
+   * 0x68/0x69 in 8-bit form, so 0x34 is that address shifted right by one.
+   */
   static constexpr uint8_t ADDRESS = 0x34;
 
   /** Switchable outputs. VRTC is not one, see the header comment. */

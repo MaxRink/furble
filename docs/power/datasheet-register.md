@@ -17,6 +17,10 @@ Rules:
   filled with an invented document.
 - A datasheet number is not a local measurement. See `measurement-plan.md` for
   the boundary and promotion rules.
+- Per-part register and timing citations live in
+  [`docs/components/`](../components/README.md). This file records the document
+  inventory a power lane cited. That corpus records what the firmware depends on,
+  with the code location and a verification state per fact.
 
 ## 1. SoC, radio, and module datasheets
 
@@ -62,6 +66,7 @@ Rules:
 | WIZnet W5500 | W5500 datasheet, https://www.wiznet.io/wp-content/uploads/wiznethome/Chip/W5500/Document/W5500_ds_v1.0.6.pdf | v1.1.0 quoted for the reset pulse; the linked copy is v1.0.6 | RESETn must stay low for at least 500 us (version 1.1.0, section 5.5.1 figure 22 and table 2; RESETn is pin 37 in the pin description table on page 9). The pinned PHY hard-codes 100 us (`components/esp_eth/src/spi/w5500/esp_eth_phy_w5500.c:160`), a known defect recorded in `plans/implemented/42-waveshare-eth-node.md`. PHY power-down mode exists; link-dependent current; the exact figure is not quoted because the copy was not opened | Reset minimum quoted by the correction lane; PHY current still not reopened by the Board lane | Board, Wi-Fi |
 | Vybronics VC1030B028F | Coin vibration motor datasheet, https://www.vybronics.com/coin-vibration-motors/with-brushes/v-c1030b028f | Not stated | 64 mA typical operating, 85 mA rated maximum, more at start and stall. Representative part because M5Stack names no motor | Quoted through the model | Board |
 | BM8563 RTC | BM8563 documentation, cited for the Plus2 alarm wake | Not stated | RTC alarm is the Plus2 timed-wake source | Cited, not opened | Board, SoC |
+| NXP PCF8563 | PCF8563 Real-Time Clock/Calendar product data sheet, https://www.nxp.com/docs/en/data-sheet/PCF8563.pdf | Rev. 11.1, 19 January 2026 | Timer control 0x0E and timer value 0x0F carry the Plus2 alarm wake. M5Unified writes 0x0E = 0x82 for a 1 Hz tick and 0x83 for a 1/60 Hz tick, so the same count means seconds or minutes. The register and timing facts are on docs/components/pcf8563.md | Front matter and the voltage-low section opened; the timer section number was not supplied | Board, SoC |
 | FT6336U touch controller | Core2 touch documentation and FT6336U datasheet | Not stated | Monitor and hibernate modes exist; current not in the tree; the datasheet was not opened by the Board lane | Not opened | Board, Display |
 | ES8311 codec and AW8737 amplifier | M5Stack StickS3 product page | Web page, no revision | Parts are named; quiescent currents are not in the tree | Cited, not opened | Board |
 
