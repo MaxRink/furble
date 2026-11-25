@@ -27,8 +27,10 @@ Read for this lane:
   no Furble display or backlight board file. The only file in `boards/` is the
   headless Waveshare S3 Ethernet board. Panel pins, backlight drive, and
   brightness mapping come from M5GFX.
-- ST7789V, ST7735S, ILI9342C, AXP192, IP5306, and ESP32-S3 datasheets where a
-  number is claimed.
+- ST7789V, ST7789V2, ST7789P3, ST7796S, ST7796U, ST7735S, ILI9342C, CO5300,
+  SH1106, CST9217, AXP192, IP5306 and ESP32-S3 datasheets where a number is
+  claimed. The display and touch set was re-read on 2026-11-26; see the
+  reference list at the end for revision, page count and hash.
 
 Evidence labels used here follow `docs/power/README.md`: measured, modeled,
 inferred, unknown. `datasheet` and `published-measurement` name the source of a
@@ -64,18 +66,20 @@ Key code:
 
 | Board | Panel | Backlight drive | Brightness mapping | Display power note |
 | --- | --- | --- | --- | --- |
-| M5StickC | ST7735S, 80x160 | AXP192 LDO2, voltage dimmed | `Light_M5StickC`, brightness mapped to AXP192 register 5..15 | 0.9 mA panel typ, 15 uA sleep-in. No LEDC. |
-| M5StickC Plus | ST7789, 135x240 | AXP192 LDO2, voltage dimmed | same `Light_M5StickC` mapping | 6.0 mA panel typ, 15 uA sleep-in. No LEDC. |
-| M5StickS3 | ST7789, 135x240 | LEDC PWM, GPIO38, channel 7, 256 Hz, 9-bit | `Light_PWM`, roughly linear duty | 6.0 mA panel typ, 15 uA sleep-in. APB lock has a real reason here. |
-| M5Stack Core | ILI9342, 320x240 | LEDC PWM, GPIO32, 44.1 kHz | `Light_PWM` | 6 to 8 mA panel estimate, ILI9342C has no current table. IP5306 cuts power below 45 mA after 32 s. |
-| M5Stack Core2 | ILI9342, 320x240 | AXP192 DCDC3, voltage dimmed | `Light_M5StackCore2`, 2.4 to 3.3 V | 6 to 8 mA panel estimate. No LEDC. |
+| M5StickC | ST7735S, 80x160 | AXP192 LDO2, voltage dimmed | `Light_M5StickC`, brightness mapped to AXP192 register 5..15 | 0.9 mA panel typ, 2.0 mA max, 15 uA typ and 30 uA max sleep-in (v1.1 Table 3 page 30). No LEDC. |
+| M5StickC Plus | ST7789V, 135x240 | AXP192 LDO2, voltage dimmed | same `Light_M5StickC` mapping | 6.0 mA panel typ, 7.5 mA max, 15 uA typ and 30 uA max sleep-in (v1.3 Table 3 page 40). No LEDC. |
+| M5StickS3 | ST7789P3, 135x240 | LEDC PWM, GPIO38, channel 7, 256 Hz, 9-bit | `Light_PWM`, roughly linear duty | 6.0 mA panel typ, 7.5 mA max, and a higher sleep-in than the ST7789V: 20 uA typ, 50 uA max (v0.1 Table 3 page 34). APB lock has a real reason here. |
+| M5Stack Core | ILI9342C, 320x240 | LEDC PWM, GPIO32, 44.1 kHz | `Light_PWM` | 6 to 8 mA panel estimate. ILI9342C V101 has no supply current table at all, only the 0.1 uA logic leakage on page 227. IP5306 cuts power below 45 mA after 32 s. |
+| M5Stack Core2 | ILI9342C, 320x240 | AXP192 DCDC3, voltage dimmed | `Light_M5StackCore2`, 2.4 to 3.3 V | 6 to 8 mA panel estimate, same missing table as Core. No LEDC. |
 
 Sources: `src/M5GFX.cpp` in M5GFX 0.2.27 for the StickS3 PWM setup
 (`_set_pwm_backlight(GPIO_NUM_38, 7, 256, false, 16)`), the Core PWM setup
 (`GPIO_NUM_32, 7, 44100`), and the AXP192 light implementations. Panel currents
-are from ST7789V v1.3 Table 3 page 40 and ST7735S v1.1 Table 3 page 30. The
-ILI9342C and Core2 backlight figures are `estimated` in
-`tools/power-model/board-currents.yaml`.
+are read from ST7789V v1.3 Table 3 page 40, ST7789P3 v0.1 Table 3 page 34 and
+ST7735S v1.1 Table 3 page 30 on 2026-11-26. The ILI9342C current is not a
+datasheet line and cannot become one: V101 has no supply current table, so the
+6 to 8 mA figure stays an ST7789V analogy and the Core2 backlight figure stays
+`estimated` in `tools/power-model/board-currents.yaml`.
 
 ### State costs
 
@@ -103,14 +107,27 @@ quoting 81.2 mA as the default case.
 - Panel sleep is real SLPIN, not just backlight zero:
   M5GFX `sleep()` is `setBrightness(0)` then `setSleep(true)`; `wakeup()` is
   `setSleep(false)` then restore brightness. `Panel_LCD::setSleep()` writes
-  SLPIN/SLPOUT. Code: `src/FurbleUI.cpp:1305`, `src/FurbleUI.cpp:1335`.
-- The 120 ms SLPIN to SLPOUT dwell is enforced in both directions:
-  `DISPLAY_SLEEP_DWELL_MS`, `include/FurbleUI.h:897-898`,
-  `src/FurbleUI.cpp:1299-1303`, `src/FurbleUI.cpp:1325-1331`.
+  SLPIN/SLPOUT. Code: `src/FurbleUI.cpp:1863`, `src/FurbleUI.cpp:1897`.
+- The panel dwell rule is per panel, and the code enforces both waits through
+  one constant: `DISPLAY_SLEEP_DWELL_MS` is 120 ms,
+  `include/FurbleUI.h:1136`. `UI::sleepDisplay()` refuses to sleep within that
+  window of the last wake, `src/FurbleUI.cpp:1843-1845`, and `UI::wakeDisplay()`
+  waits the window out before waking, `src/FurbleUI.cpp:1891-1892`. The
+  datasheets, re-read on 2026-11-26, split the rule in two. ILI9342C needs
+  120 ms in both directions, SLPIN to SLPOUT and SLPOUT to the next SLPIN
+  (V101 sections 8.2.11 and 8.2.12, pages 100 and 101). ST7789V v1.3 sections
+  9.1.11 and 9.1.12 (pages 182 and 184), ST7789V2 v1.0 (pages 184 and 186),
+  ST7789P3 v0.1 (pages 143 and 145), ST7796S v1.0 sections 9.2.12 and 9.2.13
+  (pages 159 and 160) and ST7796U v1.0 (pages 163 and 164) need 120 ms from
+  SLPOUT to the next SLPIN only. All of them also ask for 5 ms after SLPIN and
+  after SLPOUT before any other command. Enforcing both directions everywhere
+  is therefore correct for every panel and costs wake latency only on the ST
+  parts. Do not restate this as a one-way rule, and do not restate it as a
+  two-way datasheet rule for the ST parts; the direction depends on the panel.
 - The APB lock is released when the panel sleeps and reacquired before wake:
-  `src/FurbleUI.cpp:1316-1317`, `src/FurbleUI.cpp:1333-1334`.
+  `src/FurbleUI.cpp:1879`, `src/FurbleUI.cpp:1896`.
 - The icon timer is paused while the panel is off:
-  `src/FurbleUI.cpp:1314`, `src/FurbleUI.cpp:1344`.
+  `src/FurbleUI.cpp:1872`, `src/FurbleUI.cpp:1916`.
 - StickS3 status LED is cut on display off and restored on wake:
   `src/FurblePlatform.cpp:221-254`.
 - LVGL uses partial rendering, two DMA buffers, and `pushImageDMA`:
@@ -472,8 +489,15 @@ absolute model.
 - Effort: medium.
 - Required test: touch controller current in monitor mode versus idle; tap
   wake from panel off; 24 hour soak; calibration retained.
-- Citation: `plans/implemented/12-display-off.md:121-124`, `src/FurbleUI.cpp:1416-1428`,
-  `src/FurbleUI.cpp:1294-1348`.
+- Citation: `plans/implemented/12-display-off.md:121-124`, the touch read at
+  `src/FurbleUI.cpp:1667-1681`, and the sleep path at `src/FurbleUI.cpp:1836-1920`.
+- A second touch part has a document. Hynitron CST9217 V1.0, 10 pages, read
+  2026-11-26, gives 1.3 mA dynamic at 100 Hz, 12 uA in monitor mode at 30 Hz and
+  2 uA asleep (section 9.1, page 5), with TPOR 100 ms, TPR 1 ms, TRON 100 ms and
+  TRST 0.1 ms on page 9. It is the controller on the AMOLED Waveshare boards,
+  and plan 322 carries it for the next board. The FT6336U on Core2 and Tough
+  still has no opened document, so the Core2 part of this item stays an
+  estimate.
 
 ### D-014 Stop the LEDC timer when the backlight is zero
 
@@ -550,7 +574,7 @@ enabled by default.
 | R-09 | Add adaptive brightness | No supported board has an ambient light sensor. The BLE camera link and the UI do not provide a lux measurement. |
 | R-10 | Pause the inactivity timer while the panel is off | The timer is what wakes the panel after activity from the IMU or another non-input source, and it enforces the display policy. Slow it under D-008, do not pause it. |
 | R-11 | Disable the touch controller outright while the panel is off | It removes tap to wake on Core2 and Tough. D-013 is the low-power monitor version of this idea. |
-| R-12 | Reset or power-cycle the panel controller on every sleep | SLPIN is already 15 uA typical, 30 uA maximum on ST7789. A reset adds no measurable benefit and risks panel state loss. |
+| R-12 | Reset or power-cycle the panel controller on every sleep | Sleep-in is already 15 uA typical and 30 uA maximum on ST7789V and ST7789V2, 20 uA and 50 uA on ST7789P3, and 15 uA and 30 uA on ST7735S, all read on 2026-11-26. A reset adds no measurable benefit and risks panel state loss. |
 | R-13 | Enable the ST7789 content adaptive brightness control (CABC) | It reduces panel current by changing image brightness and contrast, not by reducing the LED backlight. The UI would visibly shift. The datasheet target is a panel-side reduction, and the panel is only about 6 mA against a 35 mA full backlight on the S3. Not a clean power lever. |
 
 ## Measurement plan
@@ -740,15 +764,57 @@ behavior change. The 500 ms connected liveness poll is already gentle.
 
 ### Datasheets
 
-- Sitronix ST7789V, version 1.3, Table 3 page 40: normal mode 6.0 mA typ,
-  7.5 mA max; sleep-in 0.015 mA typ, 0.03 mA max at 60 Hz, VDD 2.75 V.
+The display and touch documents below were downloaded and read on 2026-11-26.
+Each line carries the version, the page count and the first eight hex digits of
+the file's sha256, so the same copy can be checked again.
+
+- Sitronix ST7789V, version 1.3, 2014/03, 316 pages, sha256 8ecf0e43. Table 3
+  page 40: normal mode 6.0 mA typ, 7.5 mA max; sleep-in 0.015 mA typ, 0.03 mA
+  max at 60 Hz, VDD 2.75 V. Table 9 reset timing on page 48. Sleep in and out
+  on pages 182 and 184.
   `https://newhavendisplay.com/content/datasheets/ST7789V.pdf`
-- Sitronix ST7735S, version 1.1, Table 3 page 30: normal mode 0.9 mA typ,
-  2.0 mA max; sleep-in 0.015 mA typ, 0.03 mA max.
-  `https://cdn.sparkfun.com/assets/9/0/2/5/8/ST7735S_v1.1.pdf`
-- ILITEK ILI9342C: no operating current table in the datasheet; the model uses
-  an ST7789V analogy, tagged estimated.
+- Sitronix ST7789V2, version 1.0, 2016/11, 319 pages, sha256 89376784. Table 3 page 40
+  and Table 9 page 48 match the ST7789V rows; sleep in and out on pages 184 and
+  186. `https://files.waveshare.com/upload/c/c9/ST7789V2.pdf`
+- Sitronix ST7789P3, version 0.1, 2022/03, 276 pages, sha256 26e62a24. Table 3
+  page 34: normal mode 6.0 mA typ, 7.5 mA max; partial plus idle 5.0 mA typ,
+  6.0 mA max; sleep-in 20 uA typ, 50 uA max. Table 8 reset timing on page 41,
+  TRW 10 us minimum and TRT 120 ms maximum. Sleep in and out on pages 143 and
+  145. This is the M5StickS3 panel.
+  `https://files.waveshare.com/wiki/ESP32-S3-GEEK/ST7789P3.pdf`
+- Sitronix ST7735S, version 1.1, 2011-11-21, 201 pages, sha256 0322a527. Table 3
+  page 30: normal mode 0.9 mA typ, 2.0 mA max; sleep-in 0.015 mA typ, 0.03 mA
+  max. `https://cdn.sparkfun.com/assets/9/0/2/5/8/ST7735S_v1.1.pdf`
+- Sitronix ST7796S, version 1.0, 2014/11, 279 pages, sha256 212f7a8e. 320x480,
+  262K colours; sleep in and out on pages 159 and 160; MIPI DSI in section 8.5.
+  `https://dl.espressif.com/dl/schematics/ST7796S_SPEC_V1.0.pdf`
+- Sitronix ST7796U, version 1.0, 2020/02, 287 pages, sha256 c907c64e. 320x480,
+  16.7M colours; sleep in and out on pages 163 and 164; MIPI DSI in section 8.5.
+  The host file is named `ST7796S_spec.pdf`, which is how the wrong part name
+  entered the tree.
+  `https://www.smartdisplaytech.com/wp-content/uploads/2023/03/ST7796S_spec.pdf`
+- ILITEK ILI9342C, version V101, document ILI9342C_DTS_V101_20111214, 235 pages
+  and complete, sha256 604a35c0. No supply current table anywhere; section 18.2
+  page 227 gives only plus or minus 0.1 uA logic input leakage, so the model
+  uses an ST7789V analogy, tagged estimated. Sleep in and out on pages 100 and
+  101 require 120 ms in both directions. Revision history on page 235 carries a
+  2011/12/26 item.
   `https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/ILI9342C-ILITEK.pdf`
+- Chipone CO5300, version 0.01, 2023/07/24, 226 pages, sha256 2ad0461a. Page 103:
+  deep stand-by 2 uA VDDI plus 1 uA VCI; Sleep In 110 uA plus 25 uA on DSI LP
+  and 85 uA plus 25 uA on DSI ULP. Commands start at page 117. Version 0.00,
+  sha256 20161057, has the same page count and no deep stand-by row.
+  `https://files.waveshare.com/wiki/common/Co5300_Datasheet.pdf`
+- Sino Wealth SH1106, version 2.3, June 2013, 49 pages, sha256 ab5ce5f3. Page 35: sleep
+  current 5 mA maximum on the VDD1 and VDD2 row and on the external VPP row at
+  TA 25 C. It is not a microamp figure. Page 49 revision history. The
+  Crystalfontz OCR copy, 49 pages, sha256 3baf1812, is the same text.
+  `https://www.pololu.com/file/0J1813/SH1106.pdf`
+- Hynitron CST9217, version 1.0, 2022-08-11, 10 pages, sha256 74cf16e6. Page 5:
+  1.3 mA at 100 Hz, 12 uA monitor at 30 Hz, 2 uA sleep. Page 8: 8-bit I2C
+  address 0xB4 and 0xB5, so 0x5A in 7-bit form, configurable in the chip. Page
+  9: TPOR 100 ms, TPR 1 ms, TRON 100 ms, TRST 0.1 ms. No register map.
+  `https://raw.githubusercontent.com/ScripTerasu/cst92xx-touch-driver/0e4cede38d860ba08cf98c7a69400e10e8274608/docs/CST9217.pdf`
 - Espressif ESP32-S3 Series Datasheet v2.2, Tables 5-9 and 5-10: 80, 160, and
   240 MHz active and idle rows. There is no 40 MHz row in the model.
   `https://documentation.espressif.com/esp32-s3_datasheet_en.pdf`
@@ -758,6 +824,29 @@ behavior change. The 500 ms connected liveness poll is already gentle.
 - Injoinic IP5306 datasheet v1.01: standby 50 uA, boost cutoff below 45 mA for
   32 s.
   `https://www.laskakit.cz/user/related_files/ip5306.pdf`
+
+### Licence limits on these documents
+
+Sitronix and ILITEK print the same restriction on their pages: the document
+"shall not be distributed, reproduced, or disclosed in whole or in part without
+prior written permission" of the vendor. Chipone's Important Notice on page 226
+of the CO5300 datasheet and Hynitron's declaration on page 10 of the CST9217
+datasheet grant no redistribution right. Only the URL, the version, the page and
+the hash are recorded here. No vendor PDF is committed to this repository, and
+none may be.
+
+Register-level facts for the touch part come from code, not from the datasheet,
+because the CST9217 datasheet has no register map. The Linux
+`hynitron_cstxxx.c` driver is GPL-2.0-only and the ESPHome CST92xx component is
+GPLv3, and neither licence can be satisfied inside this MIT tree, so neither was
+read for this file. The MIT-licensed Rust `cst92xx` crate, `src/registers.rs` at
+commit `0e4cede3`, is the source used, and it records that it was itself ported
+from the MIT SensorLib. Its registers are 0xD000 for a touch report and its
+acknowledge byte, 0xD101 for command and debug mode, 0xD105 for sleep, 0xD109
+for normal mode, 0xD1F8 for resolution, 0xD1FC for the check code, 0xD204 for
+the chip type and 0xD208 for the firmware version. The finger count is byte 5 of
+the 15-byte read from 0xD000, so it lands on 0xD005, masked with 0x7F. Do not
+copy code from any of these drivers into this repository.
 
 ### Library and platform documentation
 

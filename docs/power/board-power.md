@@ -57,8 +57,12 @@ the text says `measured-local`.
   M5GFX 0.2.27, M5PM1 1.0.6.
 - Datasheets opened for this document: AXP192, IP5306, M5PM1, ESP32-S3. The
   other component numbers are taken from the repo model, which tags them
-  `datasheet` and carries the URL. They were not re-opened here, and the
-  datasheet table says so.
+  `datasheet` and carries the URL, and the datasheet table says which rows were
+  re-opened.
+- Display and touch documents re-opened on 2026-11-26 for section 7 only:
+  ST7735S v1.1, ST7789V v1.3, ST7789P3 v0.1, ST7796S v1.0, ST7796U v1.0,
+  ILI9342C V101, CO5300 V0.01 and V0.00, SH1106 V2.3 and CST9217 V1.0. Each row
+  carries the page count and the hash. No vendor PDF is committed.
 
 ### 1.2 What was not available
 
@@ -109,7 +113,7 @@ as separate boards when a rail is involved.
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `m5stick-c` | M5StickC | ESP32 | AXP192, 100 mA charge, 4.2 V | Voltage, current, charge state | DCDC1 3.35 V MCU, LDO2 backlight, LDO3 3.0 V LCD, EXTEN Grove 5 V, ST7735S, IR on G9, LED on G10, no SD | Light sleep 0.8 mA plus AXP192, deep sleep 10 uA plus AXP192, off 27 uA, no PMIC timed wake |
 | `m5stick-c-plus` | M5StickC Plus and Plus2 | ESP32 | Plus: AXP192, 100 mA. Plus2: no PMIC, external charger | Plus: voltage, current, charge. Plus2: ADC voltage only | Plus: LDO2 backlight, LDO3 LCD, EXTEN. Plus2: PWM backlight G27, HOLD G4, battery divider G38, LED and IR G19, ST7789V, no SD | Plus as above. Plus2 light 0.8 mA plus divider, deep 10 uA plus divider, power off through HOLD |
-| `m5stick-s3` | M5StickS3 | ESP32-S3-PICO-1-N8R8 | M5PM1, charger on by default, profile not documented | Voltage and charge state on PM1 GPIO0, no current | 3.3 V DCDC and LDO, 5 V boost for Grove and EXT_5V and IR, L3B on PM1 GPIO2, ST7789P3 backlight G38, BMI270, ES8311 and AW8737, IR TX G46 and RX G42, no SD, USB Serial/JTAG | Light sleep 240 uA plus 140 uA PSRAM plus PM1, deep sleep 7 uA plus PM1, off 14.02 uA, L1 52.47 uA, L2 102.40 uA, PM1 timer wake |
+| `m5stick-s3` | M5StickS3 | ESP32-S3-PICO-1-N8R8 | M5PM1, charger on by default, profile not documented | Voltage and charge state on PM1 GPIO0, no current | 3.3 V DCDC and LDO, 5 V boost for Grove and EXT_5V and IR, L3B on PM1 GPIO2, ST7789P3 backlight G38, 20 uA typ and 50 uA max sleep-in, BMI270, ES8311 and AW8737, IR TX G46 and RX G42, no SD, USB Serial/JTAG | Light sleep 240 uA plus 140 uA PSRAM plus PM1, deep sleep 7 uA plus PM1, off 14.02 uA, L1 52.47 uA, L2 102.40 uA, PM1 timer wake |
 | `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD; IMU on the Gray variant, part not recorded in this tree | Light sleep only with boost keep-on, below 45 mA for 32 s cuts the boost, no immediate PMIC off, deep sleep only with keep-on |
 | `m5stack-core2` | Core2 and M5Tough (untested) | ESP32 | AXP192, 390 mA charge on Core2 | Voltage, current, charge state | DCDC3 backlight, LDO2 3.3 V LCD and SD, LDO3 vibration on Core2 and backlight on Tough, LDOIO0 Grove 5 V, ILI9342C, FT6336U touch, MPU6886, NS4168, SD, BM8563 | Light sleep 0.8 mA plus AXP192 plus touch, deep sleep 10 uA plus AXP192, off 27 uA, touch wake on G39 |
 | `waveshare-s3-eth` | Waveshare ESP32-S3-ETH | ESP32-S3R8, 8 MB octal PSRAM | None, no battery | None | USB-C 5 V or PoE HAT, W5500 on SPI, WS2812 on G21, microSD in 1-line mode and unused by furble, no display or IMU; GPS only through the Pico header | Tickless idle off, so no automatic light sleep; DFS is left on; mains powered |
@@ -1076,8 +1080,9 @@ Estimates are not measurements unless the label says `measured-local`.
 - Estimated saving: 0.5 to 4 mA with the screen off (`inferred`). If a wake
   costs 0.2 to 0.5 ms at 40 mA, 200 wakes per second cost 1.6 to 4 mA before
   any useful work. This is exactly the term the 3.61 mA what-if does not model.
-- Risk: medium. Input latency, the 120 ms display dwell, the connect timer
-  cadence, and the watchdog feed margin must all be rechecked.
+- Risk: medium. Input latency, the 120 ms panel dwell in the direction each
+  panel requires, the connect timer cadence, and the watchdog feed margin must
+  all be rechecked.
 - Effort: small to medium.
 - Required test: screen-off idle 30 minutes at 5, 20, and 50 ms; measure
   current, wake count from the profiler, button latency, and watchdog margin.
@@ -1128,7 +1133,9 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 30 minutes idle on each battery board, screen off at the
   threshold, wake on the first press, no missed input, current measured.
 - Citation: `plans/implemented/12-display-off.md`, `plans/98-power-optimization-audit.md`;
-  ST7735S and ST7789V sleep-in currents.
+  ST7735S v1.1 Table 3 page 30, ST7789V v1.3 Table 3 page 40, ST7789P3 v0.1
+  Table 3 page 34, and ILI9342C V101, which has no supply current table at all.
+  All four were read on 2026-11-26.
 
 #### PL-08 All boards: tickless and RTOS idle tuning
 
@@ -1477,8 +1484,8 @@ This is the part the existing plan 111 protocol does not resolve.
    M5PM1: clear `PWR_CFG` bit 0. Re-enable it after the run. Record the
    register value before and after.
 3. Reach the state and let it settle for at least 60 s. For a display state,
-   wait through the 120 ms SLPIN and SLPOUT dwell and confirm the panel is in
-   the intended state.
+   wait through the 120 ms panel dwell in each direction the panel requires,
+   then confirm the panel is in the intended state.
 4. Capture at least 10 minutes per state, three repeats, with the analyzer and
    the state marker aligned. Reject a run that changes state, reconnects,
    charges, or receives a touch it did not intend.
@@ -1553,8 +1560,15 @@ not-reopened row as a new verification.
 | ESP32-S3 | same | Internal weak pull-up `R_PU` 45 kOhm typical. | Opened. |
 | ESP32-S3 | same | Table 5-8 radio peak: BLE TX 176 mA at 0 dBm, 193 mA at 9 dBm, RX 93 mA. | Opened. |
 | ESP32 | Espressif ESP32 Series Datasheet v5.3, as recorded in `tools/power-model/README.md` | Table 4-2 and 5-4: light sleep 0.8 mA, deep sleep 10 uA, BLE TX 130 mA at 0 dBm at 50 percent duty. | Not reopened here. Repo model, datasheet-tagged. |
-| ST7789V | Sitronix ST7789V datasheet v1.3, as recorded in the repo model | Table 3: normal 6.0 mA typical and 7.5 mA max, sleep-in 15 uA typical and 30 uA max. | Not reopened here. |
-| ST7735S | Sitronix ST7735S datasheet v1.1, as recorded in the repo model | Table 3: normal 0.9 mA typical and 2.0 mA max, sleep-in 15 uA typical and 30 uA max. | Not reopened here. |
+| ST7789V | Sitronix ST7789V datasheet v1.3, 2014/03, 316 pages, sha256 8ecf0e43 | Table 3 page 40: normal 6.0 mA typical and 7.5 mA max, sleep-in 15 uA typical and 30 uA max. Table 9 page 48 reset timing. | Opened 2026-11-26 at pages 40, 48, 182 and 184. |
+| ST7789P3 | Sitronix ST7789P3 datasheet v0.1, 2022/03, 276 pages, sha256 26e62a24 | Table 3 page 34: normal 6.0 mA typical and 7.5 mA max, partial plus idle 5.0 mA typical and 6.0 mA max, sleep-in 20 uA typical and 50 uA max. Table 8 page 41 reset timing, TRW 10 us minimum and TRT 120 ms maximum. | Opened 2026-11-26 at pages 34, 41, 143 and 145. This is the StickS3 panel. |
+| ST7796S | Sitronix ST7796S datasheet v1.0, 2014/11, 279 pages, sha256 212f7a8e | Sleep in and out, sleep in pages 159 and 160, 5 ms after SLPIN and 120 ms from SLPOUT to the next SLPIN only. | Opened 2026-11-26. |
+| ST7796U | Sitronix ST7796U datasheet v1.0, 2020/02, 287 pages, sha256 c907c64e | Same dwell rows on pages 163 and 164. The host file is named `ST7796S_spec.pdf`, the cover says ST7796U. | Opened 2026-11-26. |
+| ILI9342C | ILITEK ILI9342C datasheet V101, document ILI9342C_DTS_V101_20111214, 235 pages and complete, sha256 604a35c0 | No supply current table. Section 18.2 page 227 gives only plus or minus 0.1 uA logic input leakage. Section 8.2.11 and 8.2.12, pages 100 and 101, require 120 ms in both directions. | Opened 2026-11-26 at pages 100, 101, 227 and 235. |
+| CO5300 | Chipone CO5300 datasheet V0.01, 2023/07/24, 226 pages, sha256 2ad0461a | Page 103: deep stand-by 2 uA VDDI plus 1 uA VCI, Sleep In 110 uA plus 25 uA on DSI LP and 85 uA plus 25 uA on DSI ULP. | Opened 2026-11-26. |
+| SH1106 | Sino Wealth SH1106 datasheet V2.3, 49 pages, sha256 ab5ce5f3 | Page 35: sleep current 5 mA maximum on both the VDD1 and VDD2 row and the external VPP row at TA 25 C. | Opened 2026-11-26 at pages 35 and 49. |
+| CST9217 | Hynitron CST9217 datasheet V1.0, 2022-08-11, 10 pages, sha256 74cf16e6 | Page 5: 1.3 mA at 100 Hz, 12 uA monitor at 30 Hz, 2 uA sleep. Page 9 reset timing. No register map. | Opened 2026-11-26, all ten pages. |
+| ST7735S | Sitronix ST7735S datasheet v1.1, 2011-11-21, 201 pages, sha256 0322a527 | Table 3 page 30: normal 0.9 mA typical and 2.0 mA max, sleep-in 15 uA typical and 30 uA max. | Opened 2026-11-26 at page 30. |
 | BMI270 | Bosch BST-BMI270-DS000-08 | `PWR_CTRL` `0x7D`, `PWR_CONF` `0x7C`, `ACC_CONF` `0x40`. Normal accel and gyro 685 uA; suspend 3.5 uA; accel low power 4 to 10 uA. | Not reopened here. Repo model, datasheet-tagged. |
 | MPU6886 | TDK MPU-6886 datasheet v1.1 | `PWR_MGMT_1` `0x6B`, `PWR_MGMT_2` `0x6C`. Six-axis 2.79 mA typical; sleep 6 uA; accel low power 40 uA. | Not reopened here. Repo model, datasheet-tagged. |
 | AT6558 | CASIC AT6558 datasheet, used as the AT6668 proxy | Tracking 23 mA typical BD plus GPS; standby below 10 uA; VBAT 10 uA typical. | Not reopened here. Repo model, datasheet-tagged. |

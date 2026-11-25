@@ -36,11 +36,11 @@ library sources.
 | XL9555 IO expander | none (M5Unified has PI4IOE5V6408 and M5IOE1 behind `IOExpander_Base`) | - | Needed for Pager GPS_EN and Watch Ultra rails. |
 | TCA8418 keyboard | none in M5Unified (lives in the separate M5Cardputer library) | - | Cardputer Adv and Pager keyboards. |
 | SX1262 radio | none | - | Must be put to sleep on T-Beam, Pager, Watch Ultra and the Cardputer Cap. |
-| SH1106 OLED | `lgfx::Panel_SH110x` with `Bus_I2C` | Yes | No 128x64 1-bit UI tier in furble. |
-| ST7789 / ST7789V2 | `Panel_ST7789` | Yes; Cardputer Adv is a known board (`board_M5CardputerADV`) | None. |
-| ST7796U | not present (only a comment in `Panel_Device.hpp`) | - | Add a `Panel_LCD` subclass with the ST7796 init table from upstream LovyanGFX (FreeBSD licence). |
-| CO5300 AMOLED | `Panel_CO5300` on `Panel_AMOLED` | Yes. `Bus_SPI` has `pin_io0`..`pin_io3` for quad SPI on the S3. | AMOLED has no backlight; brightness is a panel command. |
-| CST9217 touch | not present (CST816S, CST226, FT5x06, GT911, CHSC6540 only) | - | New `ITouch` subclass for the Watch Ultra. |
+| SH1106 OLED | `lgfx::Panel_SH110x` with `Bus_I2C` | Yes | No 128x64 1-bit UI tier in furble. Sino Wealth SH1106 V2.3, 49 pages, sha256 ab5ce5f3, read 2026-11-26: sleep current is 5 mA maximum on both supply rows, not microamps (page 35). There is no vendor copy of this datasheet; the Pololu and Crystalfontz copies are the same V2.3 text. |
+| ST7789 / ST7789V2 | `Panel_ST7789` | Yes; Cardputer Adv is a known board (`board_M5CardputerADV`) | None. The StickS3 panel is the sibling ST7789P3, v0.1, 276 pages, sha256 26e62a24, read 2026-11-26: 6.0 mA typical and 7.5 mA maximum at work, and a higher sleep-in than the ST7789V at 20 uA typical, 50 uA maximum (Table 3 page 34). |
+| ST7796U | not present (only a comment in `Panel_Device.hpp`) | - | Add a `Panel_LCD` subclass with the ST7796 init table from upstream LovyanGFX (FreeBSD licence). ST7796U v1.0, 2020/02, 287 pages, sha256 c907c64e, read 2026-11-26. It is a Sitronix part, not a module name, and Sitronix's AIoT DDI table lists ST7796U, UI, HU and U2 without ST7796S. MIPI DSI is in both the U and the S document (section 8.5), so DSI is not what separates them; the U is the 16.7M-colour 287-page document and the S the 262K-colour 279-page one. LilyGo's own Pager hardware document names ST7796U over SPI with 480x222, 2.33 inch and 262K colours. |
+| CO5300 AMOLED | `Panel_CO5300` on `Panel_AMOLED` | Yes. `Bus_SPI` has `pin_io0`..`pin_io3` for quad SPI on the S3. | AMOLED has no backlight; brightness is a panel command. Chipone CO5300 V0.01, 226 pages, sha256 2ad0461a, read 2026-11-26: deep stand-by 2 uA VDDI plus 1 uA VCI, and Sleep In 110 uA plus 25 uA on DSI LP or 85 uA plus 25 uA on DSI ULP (page 103). V0.00 has no deep stand-by row. |
+| CST9217 touch | not present (CST816S, CST226, FT5x06, GT911, CHSC6540 only) | - | New `ITouch` subclass for the Watch Ultra. Hynitron CST9217 V1.0, 2022-08-11, 10 pages, sha256 74cf16e6, read 2026-11-26: 1.3 mA at 100 Hz, 12 uA in monitor at 30 Hz, 2 uA asleep, default I2C 8-bit address 0xB4 and 0xB5, so 0x5A, configurable in the chip. The document has no register map. Zephyr has no CST92xx driver, only cst8xx for CST816S, T and D and CST820, and Hynitron's own product page for the part, `http://www.hynitron.com/product/wearable/204`, links no datasheet PDF. |
 | Rotary encoder | none needed: ESP-IDF PCNT | - | Pager input class. |
 | Cardputer Adv battery | `Power_Class` ADC on GPIO10, ratio 2.0 | Yes, M5 board | None. |
 
@@ -79,7 +79,7 @@ at `sim/FurblePlatformSim.cpp:289`. The audit below is the state at `e66e8807`.
 | Feedback outputs | `Feedback::init()` | LED pin, buzzer, vibration per board. |
 | Brightness floor | `UI::UI()` | 48 on StickC/Plus, 32 elsewhere. |
 | Modem sleep switch | UI power menu | StickS3 only. |
-| Display sleep | `UI` display state machine | Holds `ESP_PM_APB_FREQ_MAX` while lit, waits the 120 ms SLPIN/SLPOUT dwell, sleeps through `M5.Display`. |
+| Display sleep | `UI` display state machine | Holds `ESP_PM_APB_FREQ_MAX` while lit, waits the 120 ms panel dwell that the ILI934x needs in both directions and the ST parts need from SLPOUT to the next SLPIN, sleeps through `M5.Display`. |
 | Buttons and touch | `FurbleUI.cpp` | `M5.BtnA/B/C/PWR`, `M5.Touch`. |
 | IMU | `FurbleIMU*.cpp`, console, UI | `M5.Imu` plus BMI270 and MPU6886 engines on `M5.In_I2C`. |
 
@@ -107,12 +107,17 @@ LilyGo-LoRa-Series:
 T-Watch Ultra: AXP2101 (as above), CO5300 over QSPI (M5GFX), CST9217 touch
 (missing driver), MIA-M10Q GNSS (UBX, merged in #459), V_BCKP
 from VRTC, SX1262 sleep, crystal. Gaps: CST9217 `ITouch`, round AMOLED UI
-geometry, brightness as a panel command.
+geometry, brightness as a panel command. The CST9217 register knowledge must
+come from the MIT `cst92xx` Rust crate, `src/registers.rs` at commit
+`0e4cede3`, and be attributed there. The Linux `hynitron_cstxxx.c` driver is
+GPL-2.0-only and the ESPHome CST92xx component is GPLv3, so neither may be
+copied into this MIT tree.
 
-T-LoRa Pager: ST7796U 480x222 (missing panel class), BQ27220 (`lib/hal`),
-BQ25896 (not needed yet), XL9555 with GPS_EN (`lib/hal`), TCA8418 keyboard
-(missing), rotary encoder (PCNT), MIA-M10Q (UBX, #459), SX1262 sleep. Gaps:
-ST7796 panel, keyboard and encoder input classes, wide UI layout.
+T-LoRa Pager: ST7796U 480x222 (missing panel class; LilyGo's own hardware
+document names the driver IC, the size and the 262K colour depth), BQ27220
+(`lib/hal`), BQ25896 (not needed yet), XL9555 with GPS_EN (`lib/hal`), TCA8418
+keyboard (missing), rotary encoder (PCNT), MIA-M10Q (UBX, #459), SX1262 sleep.
+Gaps: ST7796 panel, keyboard and encoder input classes, wide UI layout.
 
 Cardputer Adv: M5Unified knows the board, display (ST7789V2) and ADC battery.
 Gaps: TCA8418 keyboard input class, a profile row, and the Cap LoRa-1262 radio
@@ -177,8 +182,14 @@ added with their first caller.
 Display backend, as a description rather than code until a second panel class
 exists. Every board keeps the rules the UI enforces today: hold
 `ESP_PM_APB_FREQ_MAX` while the backlight is lit, release it while the panel
-sleeps and reacquire it before wake, and wait 120 ms between SLPIN and SLPOUT
-(ST7789, ILI934x). Per
+sleeps and reacquire it before wake, and keep the panel dwell per panel. The
+documents read on 2026-11-26 split it two ways. ILI9342C V101 sections 8.2.11
+and 8.2.12 need 120 ms in both directions. ST7789V v1.3, ST7789V2 v1.0,
+ST7789P3 v0.1 (sections 9.1.11 and 9.1.12), ST7796S v1.0 and ST7796U v1.0
+(sections 9.2.12 and 9.2.13) need 120 ms from SLPOUT to the next SLPIN only,
+plus 5 ms after SLPIN and after SLPOUT before any other command. Never write
+this as a one-way rule for every panel or as a two-way rule for every panel.
+Per
 board the description is: panel class, bus, pins, size, rotation, brightness
 method (LEDC backlight, PMIC backlight rail, or panel contrast/brightness
 command), and the minimum brightness, which is already a profile field.
