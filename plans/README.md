@@ -111,6 +111,7 @@ the git history. They are no longer ownership rows.
 | [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
 | [326-docs-accuracy.md](326-docs-accuracy.md) | Documentation accuracy refresh: stale plan status, wiki screenshot claims and gate numbers |
 | [326-review-feedback.md](326-review-feedback.md) | Review-feedback record for the documentation accuracy refresh |
+| [327-control-gps-race.md](327-control-gps-race.md) | Locked `Control::m_Targets` walk for the GPS fan-out and the control task's `STATE_ACTIVE` liveness check |
 | [328-reference-docs-audit.md](328-reference-docs-audit.md) | Reference documentation audit: settings and console claims re-verified against the code, with the fixes and the claims that did not hold |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
