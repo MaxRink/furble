@@ -75,9 +75,9 @@ and the feature matrix.
 
 ## GPS units
 
-Location tagging uses a GPS unit on Grove Port A. Every M5Stack GPS receiver
-furble targets is the AT6668/CASIC family, so the existing $PCAS and NMEA
-support covers them with no per-unit protocol code. A u-blox M10 receiver is
+Location tagging uses a GPS unit on Grove Port A. M5Stack's own receivers are
+the AT6668/CASIC family, which the $PCAS and NMEA path covers with no per-unit
+protocol code. A u-blox M10 receiver is
 detected at GPS start by a UBX-MON-VER poll and configured over UBX; any other
 receiver keeps the CASIC and NMEA path. The stored default
 baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >

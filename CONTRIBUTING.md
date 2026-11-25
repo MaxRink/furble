@@ -376,8 +376,9 @@ attempt to infer changed paths without a pull request or push comparison base.
   `tests/fuzz/seeds.json`; `tests/fuzz/README.md` lists the replay commands.
   The gate covers seeded input on all three panels in both layouts, the WebUI,
   companion, MQTT and OTA protocol fuzzers, the fixed memory-pressure
-  scenarios and randomized heap-pressure boots. The full corpus currently
-  passes: 10 targets, 135 seed runs, 89,145 iterations and zero failures. The
+  scenarios and randomized heap-pressure boots. The committed artifact in
+  `sim/coverage/fuzz_results.json` passes: 11 targets, 145 seed runs, 124,148
+  iterations and zero failures. The
   earlier MQTT owner stack overflow and Home Assistant discovery OOM are fixed
   and carry regressions; no fuzz seed is open.
 

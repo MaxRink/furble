@@ -72,10 +72,10 @@ returns non-zero while any blocker remains. It runs every manifest `runner` and
 fails on a nonzero exit, so the linked boundaries are executed evidence. It
 also refuses a dirty worktree.
 
-The fuzz corpus has landed and passes: 10 targets, 135 seed runs, 89,145
-iterations and zero failures. On master at `2d2be868` the readiness report
-passes: 6,912 of 6,912 permutations, 13 of 13 memory dumps and 18 of 18 linked
-boundaries. The memory dumps are ignored generated evidence, so run
+The committed artifact in `sim/coverage/fuzz_results.json` passes: 11 targets,
+145 seed runs, 124,148 iterations and zero failures. The committed manifests
+list 6,912 permutations, 13 memory scenarios and 18 linked boundaries. The
+memory dumps are ignored generated evidence, so run
 `python3 sim/scripts/run-memory-profile.py` before the final readiness check.
 No fuzz seed is open. Hardware validation is deferred; #407 has not been
 hardware-retested.

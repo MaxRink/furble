@@ -54,8 +54,8 @@ sim-e2e S3 job runs `sim/scripts/run-env-order.sh`, which fails any setenv that
 adds a variable while SDL is live (issue #283).
 The pre-hardware fuzz budget is `python3 tools/check_fuzz.py --full
 --host-build <dir> --mqtt-binary sim/build-mqtt/furble-sim`; the full corpus
-currently passes 10 targets, 135 seed runs and 89,145 iterations with zero
-failures. Its fixed seeds live in `tests/fuzz/seeds.json`; the earlier MQTT
+artifact in `sim/coverage/fuzz_results.json` passes 11 targets, 145 seed runs
+and 124,148 iterations with zero failures. Its fixed seeds live in `tests/fuzz/seeds.json`; the earlier MQTT
 owner stack overflow and Home Assistant discovery OOM are fixed and carry
 regressions. The flash-readiness gate below remains the authority.
 Static analysis is `python3 tools/check_static_analysis.py --base origin/master`
@@ -130,9 +130,9 @@ TLS/socket paths unchanged against peripheral doubles; those linked paths back
 the boundary manifest entries. The fuzz harness publishes
 `sim/coverage/fuzz_results.json` with
 `python3 sim/scripts/run-fuzz-target.py --all`; every target must pass before
-the readiness gate can pass. On master at `2d2be868` the gate passes: 188 of
-188 hardware entries, 20 of 20 crash entries, 10 of 10 fuzz targets, 6,912 of
-6,912 permutations, 13 of 13 memory dumps, 18 of 18 linked boundaries and 206 of 206 end-to-end scenarios. The
+the readiness gate can pass. The committed manifests hold 198 modeled hardware
+entries, 20 crash entries, 11 fuzz targets, 6,912 permutations, 13 memory
+scenarios and 18 linked boundaries. The
 memory dumps are ignored generated evidence, so run
 `python3 sim/scripts/run-memory-profile.py` before the final check. Hardware
 validation is deferred in sim-only mode and #407 has not been hardware-retested;
