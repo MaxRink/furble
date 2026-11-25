@@ -237,8 +237,9 @@ CLAUDE.md whose directory it touches.
   `sim/scripts/check-hardware-quirks.sh`, `sim/scripts/run-memory-profile.py`
   and the full `sim/scripts/run-permutations.py --compact` before asking for
   hardware. The committed manifests hold 198 modeled hardware entries, 20 crash
-  entries, 11 fuzz targets, 6,912 permutations, 13 memory scenarios and 18
-  linked boundaries. The
+  entries, 11 fuzz targets, 6,912 permutations and 13 memory profile scenarios.
+  `sh sim/scripts/run-boundary-conformance.sh` runs the 18 linked boundary ctest
+  cases registered in `tests/host/CMakeLists.txt`. The
   memory dumps are ignored generated evidence, so run
   `python3 sim/scripts/run-memory-profile.py` before the final check. Hardware
   validation is deferred in sim-only mode and #407 has not been

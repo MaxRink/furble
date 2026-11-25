@@ -1636,7 +1636,9 @@ three panel binaries and both layouts.
 The earlier MQTT owner stack overflow at 4 KiB/6 KiB and the Home Assistant
 discovery OOM are fixed by #398/#393 and recorded in `fixed_regressions` in
 `sim/coverage/fuzz_results.json`. The committed manifests list 6,912
-permutations, 13 memory scenarios and 18 linked boundaries. The memory dumps
+permutations and 13 memory profile scenarios, and
+`sh sim/scripts/run-boundary-conformance.sh` runs the 18 linked boundary ctest
+cases. The memory dumps
 are ignored generated evidence, so run
 `python3 sim/scripts/run-memory-profile.py` before the final check. No fuzz
 seed is open. Hardware validation is deferred; #407 has not been

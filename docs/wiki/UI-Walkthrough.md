@@ -256,8 +256,8 @@ fully visible.
 
 The Infrared submenu holds the Infrared on/off switch and the IR Protocol roller
 (Nikon, Sony, Canon, Canon 2s). The whole submenu is hidden unless the board has
-an IR LED. The screenshot below comes from a simulator build with the IR LED
-enabled (`FURBLE_SIM_IR=1`); see the
+an IR LED. The simulator reports an IR LED present behind the `FURBLE_SIM_IR`
+capture flag, so the submenu renders; see the
 [settings reference](Settings-Reference#infrared) for the values.
 
 ![Infrared settings](img/settings-infrared.png)
@@ -381,8 +381,8 @@ Diagnostics groups read-only status pages.
 
 The Storage submenu holds GPX Logging on/off, a GPX Interval roller, Export and
 Import Settings actions, and a Card Info page. It appears only on boards with a
-supported SD card slot. The screenshot below comes from a simulator build with
-an SD slot modelled (`FURBLE_SIM_SD=1`); see the
+supported SD card slot. The simulator reports a mounted SD card behind the
+`FURBLE_SIM_SD` capture flag, so the submenu renders; see the
 [settings reference](Settings-Reference#storage).
 
 ![Storage settings](img/settings-storage.png)

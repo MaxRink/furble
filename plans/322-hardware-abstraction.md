@@ -54,10 +54,11 @@ are. Write a register driver only where the table shows a gap, and put it in
 `src/FurbleUI.cpp` 11, and one each in `FurbleBootScreen.cpp`,
 `FurbleFeedback.cpp`, `FurbleIR.cpp`, `FurbleSD.cpp` and `FurbleTimeKeeper.cpp`.
 
-Current count after hal-2 (#462): eight call sites, six UI geometry switches in
-`src/FurbleUI.cpp:843`, `:2000`, `:10560`, `:10668`, `:11348` and `:13536`, the
-profile lookup at `src/FurbleBoard.cpp:83` and one simulator board check at
-`sim/FurblePlatformSim.cpp:289`. The audit below is the state at `e66e8807`.
+Current count after hal-2 (#462): eight call sites. Six are switches in
+`src/FurbleUI.cpp`, four of them geometry at `:843`, `:10560`, `:10668` and
+`:11348`, and two are input wiring at `:2000` and `:13536`. The seventh is the
+profile lookup at `src/FurbleBoard.cpp:83`, the eighth a simulator board check
+at `sim/FurblePlatformSim.cpp:289`. The audit below is the state at `e66e8807`.
 
 | Path | Where | Board knowledge today |
 | :--- | :--- | :--- |
@@ -202,7 +203,11 @@ Every non-UI `M5.getBoard()` switch now reads the profile: Platform battery
 caps, click streak, Plus2 hold pin, motion wake, timed wake, TimeKeeper RTC
 backing, IR pin, SD slot, boot name, Feedback outputs, and the UI brightness
 floor, modem sleep switch and power-off policies. `M5.getBoard()` drops from
-31 calls to 7: the profile lookup and six UI geometry switches. The M5PM1
+31 calls to 7 in the firmware: the profile lookup and six UI switches, four
+geometry at `:843`, `:10560`, `:10668` and `:11348`, and two input wiring at
+`:2000` and `:13536`. The simulator adds one more check at
+`sim/FurblePlatformSim.cpp:289`, which is why the census above counts eight. The
+M5PM1
 specific paths still sit under `FURBLE_HAS_M5PM1`; the profile only says which
 path the board takes. The GPS rail goes through `Platform::setRail(GPS)` with
 the same set, read back and single retry. A `gpsRail` profile column names the
@@ -224,7 +229,7 @@ constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true,  true,  false, true},  0, 
     false, false, false, -1, false};
 ```
 
-The row has all 19 columns of `include/FurbleBoard.h:37-56`. The trailing
+The row has all 19 columns of `include/FurbleBoard.h:36-54`. The trailing
 `false` is `gpsRail`: the AXP2101 switches the GPS rail, not `M5.Power`.
 
 Battery level, voltage and charging come from the AXP2101 E-gauge and status

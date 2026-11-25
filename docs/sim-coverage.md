@@ -74,7 +74,9 @@ also refuses a dirty worktree.
 
 The committed artifact in `sim/coverage/fuzz_results.json` passes: 11 targets,
 145 seed runs, 124,148 iterations and zero failures. The committed manifests
-list 6,912 permutations, 13 memory scenarios and 18 linked boundaries. The
+list 6,912 permutations and 13 memory profile scenarios, and
+`sh sim/scripts/run-boundary-conformance.sh` runs the 18 linked boundary ctest
+cases. The
 memory dumps are ignored generated evidence, so run
 `python3 sim/scripts/run-memory-profile.py` before the final readiness check.
 No fuzz seed is open. Hardware validation is deferred; #407 has not been
@@ -123,7 +125,8 @@ that came from a production PR are listed in `fixed_regressions` with the file
 and the regression command.
 
 The target list covers touch and physical-button layouts, WebUI HTTP,
-companion BLE, MQTT, OTA, allocation failure, fragmentation, PSRAM and NVS.
+companion BLE, MQTT, OTA, allocation failure, fragmentation, PSRAM, NVS and GPS
+UBX.
 The #397 cover targets run real settings migration and WiFi fast-connect paths
 plus the PSRAM memtest debug/release split. The #398 cover targets run the
 MQTT start and HA discovery gates at below/at/above values, 1,536-byte

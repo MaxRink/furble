@@ -301,10 +301,10 @@ submenu renders; see the
 
 The GPS switch is the master control. When it is on, the receiver configuration
 rows appear: GPS Baud (Auto, 9600, or 115200), Update rate, Sentences,
-Constellation, Power saving, Assisted start, Platform, Fix Hold, Extrapolate,
-and the three live pages GPS Data, Raw NMEA, and Satellites. When GPS is off,
-only the switch is shown. Extrapolate is greyed out until Fix Hold is set,
-because it has nothing to project without a held fix.
+Constellation, Power saving, Assisted start, Motion Adaptive, Fix Hold,
+Extrapolate, Platform, and the three live pages GPS Data, Raw NMEA, and
+Satellites. When GPS is off, only the switch is shown. Extrapolate is greyed
+out until Fix Hold is set, because it has nothing to project without a held fix.
 
 With GPS on the list runs past the screen. Scrolling down shows the lower rows:
 
