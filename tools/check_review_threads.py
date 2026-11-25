@@ -11,12 +11,25 @@ any check that is still running or did not pass. GitHub Actions was disabled
 on the fork for three weeks and about thirty PRs merged with no CI; a head
 with zero checks is now a hard failure, not a quiet pass.
 
+A head with no checks still passes with --allow-no-checks REASON, but only when
+no pull-request workflow would have run on the changed paths. That decision is
+made from the workflow files at the pull request's base commit, read through
+the contents API at baseRefOid, because a checkout can be stale against that
+commit and a PR's own copy of a workflow is not evidence of what CI should have
+run. covering_workflows() also has a mode-distinct local path: with no workflow
+texts it reads .github/workflows from the checkout on disk. That path is a
+test-only fallback. --pr is mandatory, so the gate never reaches it, and it
+never decides a pull request. A missing base oid, an API error, an unfetchable
+or unparseable base workflow, and a workflow whose text the API truncates are
+all failures, never a pass.
+
 Usage:
   python3 tools/check_review_threads.py --repo owner/name --pr 123
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 from pathlib import Path
 import re
@@ -86,6 +99,23 @@ query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
 PASSING_CONCLUSIONS = {"SUCCESS", "NEUTRAL", "SKIPPED"}
 
 
+BASE_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      baseRefOid
+    }
+  }
+}
+"""
+
+WORKFLOWS_PATH = ".github/workflows"
+
+# The entry types the contents API returns. Anything else fails closed, so a
+# workflow file cannot hide behind an unknown type.
+ENTRY_TYPES = {"file", "dir", "symlink", "submodule"}
+
+
 class ReviewQueryError(RuntimeError):
     """An API or response-shape failure. Never treated as a clean result."""
 
@@ -113,6 +143,9 @@ def graphql(query: str, owner: str, name: str, number: int,
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as error:
         raise ReviewQueryError(f"gh returned invalid JSON: {error}") from error
+    if not isinstance(payload, dict):
+        raise ReviewQueryError(
+            f"gh returned {type(payload).__name__}, not a JSON object")
     if payload.get("errors"):
         raise ReviewQueryError(f"GraphQL errors: {payload['errors']!r}")
     return payload
@@ -142,6 +175,105 @@ def run_graphql(owner: str, name: str, number: int) -> list[dict]:
 
 
 WORKFLOW_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+def api_json(path: str, what: str) -> object:
+    """Read one REST path through gh and fail closed on any error."""
+    command = ["gh", "api", path]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except OSError as error:
+        raise ReviewQueryError(f"could not run gh api for {what}: {error}") from error
+    if result.returncode != 0:
+        raise ReviewQueryError(
+            f"gh api {what} failed with exit {result.returncode}: "
+            f"{result.stderr.strip() or result.stdout.strip()}")
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ReviewQueryError(f"gh api {what} returned invalid JSON: {error}") from error
+
+
+def run_base_ref_oid(owner: str, name: str, number: int) -> str:
+    """Return the base commit oid the pull request targets, or fail closed."""
+    payload = graphql(BASE_QUERY, owner, name, number, None)
+    try:
+        oid = payload["data"]["repository"]["pullRequest"]["baseRefOid"]
+    except (KeyError, TypeError) as error:
+        raise ReviewQueryError(
+            f"GraphQL response is missing baseRefOid: {error}") from error
+    if not isinstance(oid, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", oid):
+        raise ReviewQueryError(f"pull request baseRefOid is missing or malformed: {oid!r}")
+    return oid
+
+
+def fetch_workflows(owner: str, name: str, ref: str) -> dict[str, str]:
+    """Return every workflow text as it exists at one commit.
+
+    The listing and each file are read through the contents API at `ref`, so
+    the filters belong to that commit and never to a branch or a checkout. This
+    is the gate's only network seam and the unit tests stub it. An API error, a
+    missing entry and a text the API truncates all raise ReviewQueryError.
+    """
+    shorter = ref[:12]
+    listing = api_json(f"repos/{owner}/{name}/contents/{WORKFLOWS_PATH}?ref={ref}",
+                       f"the workflow directory at {shorter}")
+    if not isinstance(listing, list):
+        raise ReviewQueryError(
+            f"contents API did not return a workflow directory at {shorter}: {listing!r}")
+    texts: dict[str, str] = {}
+    for entry in listing:
+        if not isinstance(entry, dict):
+            raise ReviewQueryError(f"contents API returned a malformed entry at {shorter}")
+        entry_name = entry.get("name")
+        entry_type = entry.get("type")
+        # An entry with no known type could hide a workflow, so it fails closed.
+        if entry_type not in ENTRY_TYPES:
+            raise ReviewQueryError(
+                f"contents API returned type {entry_type!r} for {entry_name!r} at {shorter}")
+        if not isinstance(entry_name, str):
+            raise ReviewQueryError(
+                f"contents API returned no name for a {entry_type} entry at {shorter}")
+        if not entry_name.endswith((".yml", ".yaml")):
+            continue
+        # A workflow name that is not a file is not something GitHub runs, and
+        # guessing past it would let a filter go unread.
+        if entry_type != "file":
+            raise ReviewQueryError(
+                f"{entry_name} at {shorter} is a {entry_type}, not a workflow file")
+        path = entry.get("path")
+        if not isinstance(path, str) or not path.startswith(WORKFLOWS_PATH + "/"):
+            raise ReviewQueryError(
+                f"contents API returned path {path!r} for {entry_name} at {shorter}")
+        document = api_json(f"repos/{owner}/{name}/contents/{path}?ref={ref}",
+                            f"{entry_name} at {shorter}")
+        if not isinstance(document, dict):
+            raise ReviewQueryError(
+                f"contents API returned no file for {entry_name} at {shorter}")
+        content = document.get("content")
+        encoding = document.get("encoding")
+        # Above 1 MB the contents API sends an empty content and encoding "none".
+        if encoding != "base64" or not isinstance(content, str):
+            raise ReviewQueryError(
+                f"{entry_name} at {shorter} has no base64 text (encoding {encoding!r}), "
+                "so its path filters cannot be read")
+        try:
+            texts[entry_name] = base64.b64decode(content).decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as error:
+            raise ReviewQueryError(
+                f"could not decode {entry_name} at {shorter}: {error}") from error
+    return texts
+
+
+def read_local_workflows(workflow_dir: Path = WORKFLOW_DIR) -> dict[str, str]:
+    """Return the workflow texts in a checkout. This is the test-only fallback."""
+    texts: dict[str, str] = {}
+    for path in sorted([*workflow_dir.glob("*.yml"), *workflow_dir.glob("*.yaml")]):
+        try:
+            texts[path.name] = path.read_text(encoding="utf-8")
+        except OSError as error:
+            raise ReviewQueryError(f"could not read {path.name}: {error}") from error
+    return texts
 
 
 def run_changed_files(owner: str, name: str, number: int) -> list[str]:
@@ -194,23 +326,34 @@ def filter_matches(patterns: list[str], path: str) -> bool:
     return matched
 
 
-def covering_workflows(files: list[str], workflow_dir: Path = WORKFLOW_DIR) -> list[str]:
-    """Return the pull-request workflows whose path filters select any file."""
+def covering_workflows(files: list[str], workflow_dir: Path = WORKFLOW_DIR,
+                       workflows: dict[str, str] | None = None) -> list[str]:
+    """Return the pull-request workflows whose path filters select any file.
+
+    Two modes. With `workflows` the texts are the ones fetched at the pull
+    request base commit and they alone decide; the merge gate always uses this
+    mode. Without it the texts come from `workflow_dir` in the checkout. That
+    local mode is a test-only fallback: --pr is mandatory, so the gate cannot
+    reach it.
+    """
     try:
         import yaml
     except ImportError as error:
         raise ReviewQueryError(f"PyYAML is required to read workflow filters: {error}") from error
+    texts = read_local_workflows(workflow_dir) if workflows is None else workflows
     covering = []
-    for path in sorted([*workflow_dir.glob("*.yml"), *workflow_dir.glob("*.yaml")]):
+    for name in sorted(texts):
         try:
-            document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except (OSError, yaml.YAMLError) as error:
-            raise ReviewQueryError(f"could not read {path.name}: {error}") from error
+            document = yaml.safe_load(texts[name]) or {}
+        except yaml.YAMLError as error:
+            raise ReviewQueryError(f"could not parse {name}: {error}") from error
+        if not isinstance(document, dict):
+            raise ReviewQueryError(f"{name} is not a YAML mapping")
         trigger = document.get("on", document.get(True))
         if isinstance(trigger, str):
             trigger = {trigger: None}
         elif isinstance(trigger, list):
-            trigger = {name: None for name in trigger}
+            trigger = {trigger_name: None for trigger_name in trigger}
         if not isinstance(trigger, dict) or "pull_request" not in trigger:
             continue
         config = trigger["pull_request"] or {}
@@ -221,7 +364,7 @@ def covering_workflows(files: list[str], workflow_dir: Path = WORKFLOW_DIR) -> l
         else:
             runs = bool(files)
         if runs:
-            covering.append(path.name)
+            covering.append(name)
     return covering
 
 
@@ -306,7 +449,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="pull request number")
     parser.add_argument("--allow-no-checks", metavar="REASON", default="",
                         help="accept a head with no check runs, for a PR whose "
-                             "paths no workflow covers; the reason is printed")
+                             "paths no workflow covers at its base commit; the "
+                             "reason is printed")
     args = parser.parse_args(argv)
 
     if "/" not in args.repo or args.repo.count("/") != 1:
@@ -336,34 +480,26 @@ def main(argv: list[str] | None = None) -> int:
         if reason:
             # A PR that only touches paths no pull-request workflow filters on
             # (web-installer/**, say) legitimately has no checks. The reason is
-            # not trusted: the override holds only if no workflow's filter
-            # selects a changed file, so an Actions outage still fails.
+            # not trusted: the override holds only if no workflow's filter at
+            # the base commit selects a changed file, so an Actions outage
+            # still fails. The filters come from the API at baseRefOid, because
+            # the checkout can be stale against that commit and a PR edits only
+            # its own branch copy of a workflow, never its base.
             try:
+                base = run_base_ref_oid(owner, name, args.pr)
+                workflows = fetch_workflows(owner, name, base)
                 changed = run_changed_files(owner, name, args.pr)
-            except ReviewQueryError as error:
-                print(f"review-thread check failed closed: {error}", file=sys.stderr)
-                return 2
-            # The filters are read from the local checkout, normally the PR's
-            # own tree. A PR that edits a workflow could rewrite the very
-            # filters that decide this, so it never qualifies.
-            edited = [path for path in changed if path.startswith(".github/workflows/")]
-            if edited:
-                print(f"--allow-no-checks refused: the PR changes {', '.join(edited)}, so its "
-                      "own workflow filters cannot decide whether a check should have run.",
-                      file=sys.stderr)
-                return 1
-            try:
-                covering = covering_workflows(changed)
+                covering = covering_workflows(changed, workflows=workflows)
             except ReviewQueryError as error:
                 print(f"review-thread check failed closed: {error}", file=sys.stderr)
                 return 2
             if covering:
                 print(f"--allow-no-checks refused: {', '.join(covering)} should have run "
-                      f"on head {head[:12]}, so a missing check is an Actions failure.",
-                      file=sys.stderr)
+                      f"on head {head[:12]} against base {base[:12]}, so a missing check "
+                      "is an Actions failure.", file=sys.stderr)
                 return 1
-            print(f"checks: none on head {head[:12]}, and no workflow covers the "
-                  f"changed paths; accepted: {reason}")
+            print(f"checks: none on head {head[:12]}, and no workflow at base {base[:12]} "
+                  f"covers the changed paths; accepted: {reason}")
             return status
         print(f"no CI check ran on head {head[:12]} of {args.repo}#{args.pr}. "
               "Confirm GitHub Actions is enabled and rerun the workflows, or pass "

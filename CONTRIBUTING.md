@@ -198,6 +198,16 @@ API errors, so a missing token or network is never treated as a clean result.
 `.github/workflows/ci-checker-requirements.txt`
 (`python3 -m pip install -r .github/workflows/ci-checker-requirements.txt`);
 without it the override fails closed.
+The filters come from the pull request's base commit, named by `baseRefOid` in
+the pull request payload and read through
+`gh api repos/{owner}/{name}/contents/.github/workflows?ref=<oid>`. They never
+come from your checkout, because a clone can be stale against the base and a
+pull request can edit only its own copy of a workflow. The gate fails closed,
+with exit 2, when the base oid is missing, when the API errors, and when a
+workflow at that commit cannot be fetched or parsed, so a broken base is never
+a pass. The checkout-reading local mode is a test-only fallback: `--pr` is
+mandatory, so the gate never reaches it. The defect and its evidence are in
+[plans/331-merge-gate-base.md](plans/331-merge-gate-base.md).
 It also fails when the pull request head has no check runs at all, or any
 check is still running or did not pass. Actions was once disabled on the
 fork for three weeks, and pull requests merged with no CI; a head without

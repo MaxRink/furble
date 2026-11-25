@@ -208,6 +208,11 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   reads the head commit's check rollup. It fails when no check ran, when a
   check is still running, and when any check ended in anything but success,
   neutral or skipped. Run against #439 it reports that no CI ran on its head.
+- A gate that judges a pull request must read its evidence at the base commit,
+  not from the checkout. The merge gate's path-filter check read the working
+  tree, so an out-of-date clone decided whether a workflow should have run and
+  accepted heads that the base filters cover (#464, plan 331). Read such inputs
+  through the API at `baseRefOid` and fail closed when they cannot be read.
 - A green local gate set is not CI. `pre_review.py` does not run the
   sanitizers or the Linux simulator, so a branch can pass it and still break
   both. Never merge on local evidence alone; wait for the checks.
