@@ -281,8 +281,8 @@ per connection, so build the rows when the page is opened, not in the timer:
 The timer runs only while the page is visible. That is the whole point of the
 GPS Data pattern and it is why this costs nothing when the page is closed.
 
-Guard the rebuild with `UI::m_Mutex` (`src/FurbleUI.cpp:373`) the same way
-`updateItems` is guarded from the scan callback at `src/FurbleUI.cpp:9638-9645`.
+Guard the rebuild with `UI::m_Mutex` (`src/FurbleUI.cpp:384`) the same way
+`updateItems` is guarded from the scan callback at `src/FurbleUI.cpp:943-945`.
 `getTargets()` returns a reference to `m_Targets`, which `Control::disconnect`
 clears at `src/FurbleControl.cpp:242` under `m_Mutex`. Do not hold that
 reference across a timer tick. Re-fetch it each tick and re-check the size

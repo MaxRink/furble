@@ -35,14 +35,14 @@ M5Unified line numbers below are the evidence.
 ### The Core: Port A is the internal I2C bus
 
 M5Unified's `board_M5Stack` row gives `GPIO_NUM_22,GPIO_NUM_21` for both the
-internal and the external column pair (`src/M5Unified.cpp:139`), so `Ex_I2C`
+internal and the external column pair (`M5Unified.cpp:139`), so `Ex_I2C`
 is the same bus as `In_I2C`; `_setup_pinmap`'s caller even keeps one port when
-the two pairs are equal (`src/M5Unified.cpp:1868-1871`). The IP5306 (0x75) and
+the two pairs are equal (`M5Unified.cpp:1868-1871`). The IP5306 (0x75) and
 the MPU6886 (0x68) sit on that bus. `GPS::init()` runs on this board, so
 `uart_set_pin(UART_NUM_2, 21, 22, ...)` re-routed both pads and every
 `M5.Power.getBatteryLevel()` and IMU read failed for the rest of the boot.
 `UI::addGPSMenu()` exposes the GPS setting with no board gate
-(`src/FurbleUI.cpp:9707-9710`), so nothing prevented it.
+(`src/FurbleUI.cpp:9720-9833`), so nothing prevented it.
 
 There is no UART pair on Port A on the Core: the port is the bus. The row
 therefore names `GpsPinSource::NONE`, and the GPS module installs no driver.
@@ -50,7 +50,7 @@ therefore names `GpsPinSource::NONE`, and the GPS module installs no driver.
 ### The Waveshare ESP32-S3-ETH: Port A is the W5500 bus
 
 The Waveshare image reports `board_M5StampS3`, the only image that does, so
-M5Unified resolves `GPIO_NUM_15,GPIO_NUM_13` (`src/M5Unified.cpp:93`).
+M5Unified resolves `GPIO_NUM_15,GPIO_NUM_13` (`M5Unified.cpp:93`).
 `ETH_SPI_SCLK_GPIO = 13`, `MOSI = 11`, `MISO = 12`, `CS = 14`,
 `INT = 10`, `RST = 9` (`src/FurbleEthernet.cpp:131-136`, `sclk` applied at
 `:153`). `GPS::init()` runs on this board too (`src/main.cpp:528`, the
@@ -68,7 +68,7 @@ bare StampS3 image fails closed here until it names its own source.
 ### Does the Plus2 share the Core's problem? No
 
 The Plus2 has no row in the ESP32 `_pin_table_i2c_ex_in` block either, so it
-resolves the `board_unknown` row (`src/M5Unified.cpp:147`): internal 22/21,
+resolves the `board_unknown` row (`M5Unified.cpp:147`): internal 22/21,
 Port A 33/32. The pairs differ, so the Port A pads are not the internal bus,
 and the row keeps `BOARD_SUPPORT`. The StickC and StickC Plus land on the same
 row for the same reason. The Core2 and the Tough resolve 33/32 too, which is
@@ -128,9 +128,9 @@ file.
 
 Pinned version from `.pio/libdeps/m5stick-s3/M5Unified/library.json` (line 19,
 `"version": "0.2.20"`). `port_a_pin1` and `port_a_pin2` are aliases of
-`ex_i2c_scl` and `ex_i2c_sda` (`src/M5Unified.hpp:30-31`), the third and fourth
-columns of `_pin_table_i2c_ex_in` (`src/M5Unified.cpp:86`). `_setup_pinmap()`
-(`src/M5Unified.cpp:450`) walks that table to the row for the detected board,
+`ex_i2c_scl` and `ex_i2c_sda` (`M5Unified.hpp:30-31`), the third and fourth
+columns of `_pin_table_i2c_ex_in` (`M5Unified.cpp:86`). `_setup_pinmap()`
+(`M5Unified.cpp:450`) walks that table to the row for the detected board,
 or to the `board_unknown` row at its end, and copies the four pin bytes in
 order.
 
@@ -155,7 +155,7 @@ reached by any shipped image. The row text:
 
 The board comes from `M5GFX::autodetect()`, which a single-board image pins
 with `M5GFX_BOARD` (`patches/m5gfx_board.patch`), and `_check_boardtype()`
-(`src/M5Unified.cpp:1433`) only replaces it when it is `board_unknown`. So the
+(`M5Unified.cpp:1433`) only replaces it when it is `board_unknown`. So the
 four pinned images report the board in the table above, and the two autodetect
 images (StickC Plus/Plus2, Core2/Tough) report the same `board_unknown` row
 whichever of their boards is fitted. `m5stack-core2` and `m5stick-c-plus` are

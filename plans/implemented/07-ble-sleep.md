@@ -76,7 +76,7 @@ behavior on boards where light sleep would otherwise engage.
 ## Menu placement
 
 `Settings > Power > Sleep while connected`. The Power submenu is created by PR01.
-Use `UI::addSettingItem()` (`src/FurbleUI.cpp:2878-3111`), which already renders a bool
+Use `UI::addSettingItem()` (`src/FurbleUI.cpp:2889-3122`), which already renders a bool
 setting as a labelled switch.
 
 Hide the item at runtime where it cannot work. Use `M5.getBoard()` for the check,

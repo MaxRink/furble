@@ -116,7 +116,7 @@ Do not copy `addSpinnerPage`. It is 120 lines of per board layout work at
 One `lv_timer` in one shot form. On start:
 
 1. `shutterLock(Control::getInstance())`, which sends `CMD_SHUTTER_PRESS` and
-   sets `m_ShutterLock` (`src/FurbleUI.cpp:2148`).
+   sets `m_ShutterLock` (`src/FurbleUI.cpp:2159-2159`).
 2. Record the end time as `tick() + duration_ms` using
    `SpinValue::toMilliseconds()` and `UI::tick()` (`src/FurbleUI.cpp:380`).
 3. Start a 333 ms refresh timer that renders the remaining time with

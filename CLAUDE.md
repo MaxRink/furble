@@ -442,7 +442,7 @@ check.
   (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`,
   `src/lgfx/v1/LGFXBase.hpp:1436-1437`), so both 120 ms waits are furble's:
   `UI::sleepDisplay()` refuses a sleep within 120 ms of the last wake
-  (`src/FurbleUI.cpp:1843-1845`) and `UI::wakeDisplay()` waits the same interval
+  (`src/FurbleUI.cpp:1847-1891`) and `UI::wakeDisplay()` waits the same interval
   before SLPOUT (`src/FurbleUI.cpp:1894-1897`). Together they satisfy all four
   panels. The 5 ms needs no separate delay: after SLPIN the next panel command
   is the SLPOUT that the wake gate holds back 120 ms, and after SLPOUT the wake
