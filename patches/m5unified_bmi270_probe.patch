@@ -1,0 +1,25 @@
+--- a/src/utility/IMU_Class.cpp
++++ b/src/utility/IMU_Class.cpp
+@@ -14,1 +14,7 @@
+-#include "imu/MPU6886_Class.hpp"
++#if !defined ( FURBLE_IMU_BMI270 )
++// furble: the probe and its 8 KiB blob only exist on a board that
++// carries the part. See platformio.ini.
++#define FURBLE_IMU_BMI270 1
++#endif
++
++#include "imu/MPU6886_Class.hpp"
+@@ -16,1 +22,3 @@
+-#include "imu/BMI270_Class.hpp"
++#if FURBLE_IMU_BMI270
++#include "imu/BMI270_Class.hpp"
++#endif
+@@ -74,1 +82,2 @@
+-    if (_imu == imu_t::imu_none)
++#if FURBLE_IMU_BMI270
++    if (_imu == imu_t::imu_none)
+@@ -122,1 +131,3 @@
+-    if (_imu == imu_t::imu_none)
++#endif
++
++    if (_imu == imu_t::imu_none)

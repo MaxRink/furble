@@ -250,7 +250,7 @@ implemented.
 | [511-review-feedback.md](511-review-feedback.md) | Review-feedback record for PR 511: the re-derived 86 finding count at the merge base, the gate's real detection envelope, the symbol-rule sample and twelve churn spot checks, plus the five stale citations reading found in the files the PR touched |
 | [344-review-feedback.md](344-review-feedback.md) | Review-feedback record for PR 483: the gate's real detection envelope, node assertions, locale restore, exported test activity, resolved Compose UI test versions, uncacheable regeneration and the platform jar download |
 | [474-companion-coverage.md](474-companion-coverage.md) | Companion coverage audit: the layer matrix both apps are documented against, five more Android baselines, visible snapshot results in CI, the golden-corpus contract test and the trigger fixture defect it found |
-| [347-core-debug-flash-headroom.md](347-core-debug-flash-headroom.md) | Core dual-OTA debug headroom: compile furble at `ESP_LOG_INFO` on `m5stack-core-debug`, 431 bytes of slot slack to 25,807, and why the other debug envs keep VERBOSE |
+| [347-core-debug-flash-headroom.md](347-core-debug-flash-headroom.md) | Core dual-OTA debug headroom: keep `ESP_LOG_VERBOSE` on the lane by compiling out the 8 KiB BMI270 init blob the Core can never probe, the image-wide `ESP_LOG_INFO` cap #518 shipped and why it was reverted, and the measured candidates that recovered nothing |
 | [475-review-feedback.md](475-review-feedback.md) | Review-feedback record for PR 494: the full-queue bypass, the unbounded automatic retry, the two false user-visible claims, the citation drift, the boundary count and the reachable board row |
 
 ## Network, companion, and simulator follow-ups

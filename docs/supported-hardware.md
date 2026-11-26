@@ -46,8 +46,9 @@ USB-UART-only fallback with one factory app partition. It is not a supported
 release environment, does not provide wireless updates or rollback, and is not
 included in the web installer. Normal CI builds two mandatory Core debug
 profiles: this one and the dual-OTA `m5stack-core-debug`, which fits its OTA
-slot again after the plan 314 flash slimming and compiles furble at
-`ESP_LOG_INFO` to keep it (plans/347).
+slot again after the plan 314 flash slimming and keeps the full
+`ESP_LOG_VERBOSE` log maximum by compiling out the BMI270 IMU driver that the
+Core, whose part is an MPU6886 or MPU9250, can never probe (plans/347).
 
 Build a board with its environment name:
 

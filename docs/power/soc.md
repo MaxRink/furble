@@ -880,9 +880,11 @@ This is a documentation and build consistency item, not a separate power lever.
   `log * info` can raise the level at runtime.
 - **Current behavior:** Default INFO and maximum INFO
   (`sdkconfig.m5stick-s3:2582-2594`, `sdkconfig.m5stick-c:2152-2157`). Every
-  `ESP_LOGI` prints. The debug environments compile verbose local levels, but
-  the runtime default is still INFO (`platformio.ini:88`, `102`, `116`, `133`,
-  `145`, `157`).
+  `ESP_LOGI` prints. The debug environments pass
+  `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, which raises the compiled maximum of
+  every translation unit in the image rather than furble's alone, but the
+  runtime default is still INFO (`platformio.ini:117`, `134`, `157`, `183`,
+  `200`, `222`).
 - **Evidence:** inferred (kconfig). IDF says the default level limits what is compiled,
   and the maximum level is the highest that can be selected at runtime
   (IDF `log/Kconfig.level:1-77`). Setting default WARN and maximum INFO is the

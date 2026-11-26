@@ -8,117 +8,175 @@ profile in the discover matrix. It is a dual-OTA profile on a 4 MB part, so
 `firmware.bin` must fit the 1700K app slot of `partitions_two_ota_large.csv`,
 1,740,800 bytes.
 
-On master `7caf0468` it measures 1,740,369 bytes: 431 bytes of headroom. A
-firmware change of a few hundred bytes turns the lane red, and with the lane
-mandatory every firmware PR is then blocked until someone finds the bytes
-again. PR #493 (EXT_5V rail ownership) needed 848 and could not land.
+The lane fits on master as #518 left it, because #518 took 24,832 bytes out of
+it. Before #518 it was 535 bytes under the slot, and PR #493 (EXT_5V rail
+ownership) needed 848, so that branch was over. With a mandatory lane, one
+blocked PR blocks every firmware PR behind it, which is why the lane needs
+headroom larger than the drift of a single feature.
 
 ## Cause
 
-Plan 106 group A capped the compiled log maximum for every ESP-IDF component at
-the runtime default, INFO (`CONFIG_LOG_MAXIMUM_LEVEL=3`): every DEBUG and
-VERBOSE format string in every component was compiled into `.flash.rodata`
-while never being printed. The debug envs then re-enabled full logging for
-furble's own translation units through `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`,
-which is the one place the cap does not reach. `src/`, `lib/furble/` and
-`lib/hal/` carry a large number of `ESP_LOGD` and `ESP_LOGV` sites, and
-`esp_log_level_set()` can raise the runtime level to print them, so those
-strings are live on every debug image.
+Two separate things were confused in #518, and the confusion is what this plan
+corrects.
 
-On five of the six debug envs that rodata is free: their slots are 3 MB to 6 MB
-wide or their images are far below the slot. `m5stack-core-debug` is the
-exception. The 4 MB part keeps two 1700K OTA slots, the profile already merges
-`build_type = debug` with `-Os -g2 -ggdb2`, and it is the one debug env that
-cannot afford the stack protector's 24 KB (plan 314, PR 13). Its per-TU VERBOSE
-strings are the remaining discretionary weight.
+1. **The lane was not over the slot.** CI measured 1,740,265 bytes with 535
+   bytes of slack on the #518 base, and #493 is what needed 848. There was no
+   emergency to fix, only headroom to buy.
+2. **The bytes #518 bought were the image's diagnostics, not waste.**
+   `-DLOG_LOCAL_LEVEL=...` is a compiler flag in `build_flags`, so it sets the
+   compiled log maximum of *every* translation unit in the image, not just
+   furble's. It overrides the image-wide `CONFIG_LOG_MAXIMUM_LEVEL=3` cap that
+   plan 106 group A put in every sdkconfig, so at `ESP_LOG_VERBOSE` the Core
+   image carries the DEBUG and VERBOSE format strings of `src/`, `lib/furble/`,
+   `lib/hal/`, LVGL, M5GFX, M5Unified, lwIP, net80211, NimBLE and every other
+   component that logs. Two `esp_hw_support` literals that only ever compile at
+   DEBUG and VERBOSE, "APLL will working at" and "device registered on bus", are
+   in the built Core debug image while `sdkconfig.m5stack-core:1720` caps the
+   maximum level at 3. The #518 plan text said the cap reached "furble's own
+   translation units"; it did not, and it also silently reached
+   `m5stack-core-usb-debug`, which inherits the profile and has a 4,063,232-byte
+   factory slot with about 2.3 MB free.
+
+The waste this plan removes instead is real dead weight: `m5::bmi270_config_file`
+is an 8,192-byte Bosch BMI270 initialisation blob with the driver that uploads
+it, and M5Unified's IMU probe references the array, so `--gc-sections` cannot
+drop it. The Core's IMU is an MPU6886 or MPU9250 and the image is pinned to
+`board_M5Stack` by `M5GFX_BOARD`, so that probe can never succeed there.
 
 ## Change
 
-`[env:m5stack-core-debug]` compiles furble at `ESP_LOG_INFO` instead of
-`ESP_LOG_VERBOSE`; `platformio.ini` records why. Nothing else in the profile
-changes: `-Os -g2 -ggdb2`, `FURBLE_CONSOLE`, `FURBLE_TASK_WDT`,
-`FURBLE_DEBUG_BUILD`, `sdkconfig.debug` (heap tracing and the end-of-stack
-watchpoint), the partition table, the console commands and the stack and size
+1. `patches/m5unified_bmi270_blob.patch` and
+   `patches/m5unified_bmi270_probe.patch` guard the M5Unified BMI270 driver and
+   the probe that calls it behind `FURBLE_IMU_BMI270`, which defaults to 1 so a
+   tree without the define behaves exactly as upstream and a board that carries
+   the part cannot lose it by omission. `patches/m5unified_bmi270.py` applies
+   both from `post:patches/`, next to the M5GFX pin.
+2. `platformio.ini` passes `-DFURBLE_IMU_BMI270=0` on `m5stack-core`, which the
+   two Core debug profiles inherit with the rest of the flag list, and
+   `-DFURBLE_IMU_BMI270=1` explicitly on `m5stack-core2` and `m5stick-s3`.
+3. `[env:m5stack-core-debug]` compiles at `ESP_LOG_VERBOSE` again, the same
+   level as the other five debug envs, so `m5stack-core-usb-debug` returns to
+   VERBOSE with it.
+
+Nothing else moves: `-Os -g2 -ggdb2`, `FURBLE_CONSOLE`, `FURBLE_TASK_WDT`,
+`FURBLE_DEBUG_BUILD`, `sdkconfig.debug`, the partition table, the console
+commands, every assertion, watchdog and panic path, and the stack and size
 budget steps all stay as they are.
 
-Measured with the pinned toolchain (`xtensa-esp-elf 14.2.0+20251107`),
-`FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stack-core-debug`.
+## The INFO cap this plan first shipped, and why it was reverted
 
-Back to back on base `7caf0468`, so only the flag differs:
+#518 merged `-DLOG_LOCAL_LEVEL=ESP_LOG_INFO` into this profile and described it
+as fitting the slot. Two builds of the same tree that differ only in that flag
+measure the trade: 1,740,528 bytes at `ESP_LOG_VERBOSE` and 1,715,696 at
+`ESP_LOG_INFO`, 24,832 bytes on the #518 base. That is not furble's own
+logging: `src/`, `lib/furble/` and `lib/hal/` hold 37 `ESP_LOGD` and `ESP_LOGV`
+sites in total, which cannot account for 24,832 bytes, and the rest is the
+DEBUG and VERBOSE strings of ESP-IDF, LVGL, M5GFX and M5Unified. The lane
+exists for field diagnostics, so selling its log maximum
+for bytes is the one trade it cannot make, and the console `log <tag> debug`
+path plus the crash record's retained tail both lost lines to it. Rejected: the
+cap is reverted, and the 8 KiB BMI270 blob pays for the restoration instead.
 
-| Tree | PlatformIO program size | Slack to 1,740,800 |
+## Candidates measured
+
+Every row is a comparison of two built images from this tree, except where the
+row says what the measurement was, and none of them is an estimate. Base
+`81139818`, `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e <env>`.
+
+| Candidate | What was measured | Bytes |
+| :--- | :--- | ---: |
+| BMI270 blob and probe | `m5stack-core-debug` at `ESP_LOG_VERBOSE`, `-DFURBLE_IMU_BMI270=0` against the same tree at `=1`: 1,731,648 against 1,740,480. `m5::bmi270_config_file` (8,192 bytes) and every `m5::BMI270_Class` symbol are absent from the guarded ELF | 8,832 |
+| Duplicate string literals | the built `.flash.rodata` holds 76 duplicated printable runs, 2,793 bytes, and every copy is inside `libpp.a(lmac.o)`, `libnet80211.a`, `libspi_flash.a(esp_flash_api.o)` or another ESP-IDF or precompiled object. This repo's TUs emit `.rodata.str1.1`, which ld merges image-wide, so a dedup change here recovers **0** | 0 |
+| Repeated format strings | the largest repeat is `%s mode switch cause sta destroyed` 15 times, in `libnet80211.a`; `%s %s %u` 35 times, in `libpp.a(lmac.o)`. Both are precompiled vendor objects, and shortening a format string is not possible in this repo | 0 |
+| Per-file log tags | 9 TUs declare a literal `LOG_TAG`, all 9 distinct, 57 bytes of literals in total, and ld already merges the identical ones. Sharing them recovers **0** and would cost every console `log <tag>` filter its meaning | 0 |
+| printf-heavy cold paths | the newlib formatter is already linked for every caller: `_svfprintf_r` 11,210 bytes, `_vfprintf_r` 11,429 and `__ssvfiscanf_r` 7,505, all referenced from the console and OTA and MQTT paths. Removing one cold `printf`-shaped call site leaves the formatter linked, so it recovers **0** | 0 |
+| Tables that could be const or moved to flash | every font and icon table is already in `.flash.rodata` (`glyph_bitmap` 32,484 + 20,639 + 11,090 + 6,671 + 4,549, `kern_class_values` 4 x 2,989, `icon_camera_map` 2,875). The whole app layer holds 1,132 bytes of `.data` across all `src/*.o`, and moving it to flash would not shrink the image because the initialiser still ships | 0 |
+| Dead code kept alive by a symbol reference | the BMI270 row is this class of waste; no other candidate of that size exists in the symbol table, whose next largest non-font data objects are 2,048 bytes (`GPS::getInstance()::instance`, `vflash_mem`) and are live | 0 |
+
+## Verified figures
+
+| Tree | `firmware.bin` | Slack to 1,740,800 |
 | :--- | ---: | ---: |
-| master, `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE` | 1,740,369 | 431 |
-| this change, `-DLOG_LOCAL_LEVEL=ESP_LOG_INFO` | 1,714,977 | 25,823 |
+| base `81139818`, merged `ESP_LOG_INFO`, no guard | 1,714,848 | 25,952 |
+| `ESP_LOG_VERBOSE`, no guard | 1,740,480 | 320 |
+| `ESP_LOG_VERBOSE`, BMI270 guard, this PR | 1,731,648 | 9,152 |
 
-The change itself is 25,392 bytes of program size. On the rebased base
-`88e33738` the gate that decides CI reports:
+Restoring the log maximum alone costs 25,632 bytes on this base and leaves 320,
+which is thinner than the 431 bytes #518 was written to escape: the guard is
+what turns the restoration into headroom.
 
-```
-PASS m5stack-core-debug: flash 1,715,664/1,740,800, dram 55,948/57,344, iram 118,496/119,808
-```
+The same two objects are the only difference on the other two Core profiles, so
+the same define measures the guard there:
 
-25,136 bytes of flash headroom, where master had 431 bytes of program slack and
-no flash-bin slack at all. PlatformIO reports the summed program segments at
-link time while `tools/check_size_budget.py` measures `firmware.bin`, which is a
-few hundred bytes larger because it carries the segment headers and padding, so
-the two figures are not interchangeable: the lane had 431 bytes by one measure
-and was already at or past the wall by the other, which is why a firmware PR of
-a few hundred bytes turned it red.
+| Env | before the guard | with the guard | Guard |
+| :--- | ---: | ---: | ---: |
+| `m5stack-core-debug` (VERBOSE) | 1,740,480 | 1,731,648 | 8,832 |
+| `m5stack-core` (INFO, release) | 1,627,648 | 1,618,496 | 9,152 |
+| `m5stack-core-usb-debug` (VERBOSE) | 1,765,888 | 1,756,768 | 9,120 |
 
-Two clean builds of one tree differ by tens of bytes because ESP-IDF archive
-order moves longcall relaxation (plan 106 review, finding 3), so these are one
-build each and the headroom, not a byte-exact delta, is the claim.
+`m5stick-s3` (1,862,496) and `m5stack-core2` (1,912,976) pass
+`-DFURBLE_IMU_BMI270=1` and the macro already defaulted to 1, so they have one
+configuration rather than two: their images are the same size as on master,
+`m5::bmi270_config_file` is still linked at 8,192 bytes, and the disassembly
+still calls `m5::BMI270_Class::begin` from the IMU probe.
+
+Two clean builds of one tree differ by a few hundred bytes because ESP-IDF
+archive order moves longcall relaxation (plan 106 review, finding 3), so each
+row is one build and the headroom, not a byte-exact delta, is the claim. A
+second clean build of the guarded tree measured 1,731,344 bytes, 9,456 bytes of
+headroom, and the two are the same tree.
 
 ## Cost
 
-On this one image, `ESP_LOGD` and `ESP_LOGV` calls in furble's own translation
-units are compiled out, so `log <tag> <level>` in the console can no longer
-raise them: the console still lists and sets levels, and every furble
-`ESP_LOGI` and `ESP_LOGW` line, which is what the banner, battery, rail,
-connection and error reporting use, is unchanged. The other five debug envs
-keep `ESP_LOG_VERBOSE`, and the release images never had the strings at all
-because the sdkconfig cap already dropped them.
+Only the StickS3 carries the part. It names the macro at 1, Core2 names it at 1
+as well, and the default is 1 anyway, so the driver stays wherever it might be
+needed and only the Core family opts out. What the Core loses is a probe that
+cannot
+succeed on hardware it is pinned to; `M5Unified` still probes the MPU6886,
+MPU9250, SH200Q, BMM150 and AK8963 the Core and Core2 can have, and
+`Furble::IMU` still creates its BMI270 backend only where `M5Unified` reports
+one. Nothing in `src/` reads `M5.Imu` through BMI270-specific types.
 
-This is the same trade plan 106 group A accepted for every component when it
-capped `CONFIG_LOG_MAXIMUM_LEVEL`, and plan 314 accepted when it dropped the
-stack protector from this profile rather than from the others. A debug image on
-a 4 MB part cannot hold everything the larger parts can.
+The Core debug profiles keep the full log maximum, so the console `log <tag>
+debug` path and the crash record's retained tail behave exactly as they do on
+the other five debug envs, which is the point of this PR.
 
 ## Alternatives rejected
 
-- **newlib nano formatting** (plan 106 item 3) frees an estimated 20 to 40 KB on
-  every image, but it changes float and width formatting for GPS coordinates,
-  battery percent, timers and version strings, and plan 106 requires a sim and
-  hardware verification pass before it can land. Too large for the fix this
-  lane needs, and unrelated to the PR it unblocks.
-- **Feature gating** (plan 106 group C) frees much more, 66 KB for `FURBLE_SD`
-  alone, but each gate is a user-visible capability change on the Core and
-  needs its own PR, UI degradation work and docs.
+- **Keeping the INFO cap on the USB profile.** Its factory slot is 4,063,232
+  bytes with about 2.3 MB free; there was no byte pressure to justify it, and
+  the profile inherits its flags from the dual-OTA one.
+- **newlib nano formatting** (plan 106 item 3) frees 20 to 40 KB on every image
+  but changes float and width formatting for GPS coordinates, battery percent,
+  timers and version strings, and needs a sim and hardware pass first.
+- **Feature gating** (plan 106 group C) frees more, 66 KB for `FURBLE_SD`
+  alone, but each gate is a user-visible capability change on the Core.
 - **Raising the slot.** `partitions_two_ota_large.csv` is ESP-IDF's 1700K
   two-OTA table, so the app partition cannot grow while keeping two OTA slots.
-  The single-factory `partitions_single_factory_4m.csv` would fit, but the
-  dual-OTA profile is the one that exercises update and rollback, which is why
-  `m5stack-core-usb-debug` carries the factory layout and this profile does
-  not.
-- **Dropping an assertion or the task watchdog** would trade behaviour for
-  bytes, and both are diagnostic value the lane exists for.
+- **Dropping an assertion, the task watchdog or a log level** trades the
+  behaviour the lane exists for.
 
 ## Gates
 
 | Gate | Result |
 | :--- | :--- |
-| `FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stack-core-debug` | SUCCESS, program size 1,714,977 of 1,740,800 bytes at `7caf0468`, `firmware.bin` 1,715,664 at the rebased `88e33738` |
-| `python3 tools/stack_budget.py --env m5stack-core-debug` | every task PASS (`main` 7888, `control` 3568, `gps` 3664, `sd` 4704), no new recursion or dynamic bound |
-| `python3 tools/check_size_budget.py --env m5stack-core-debug` | `PASS m5stack-core-debug: flash 1,715,664/1,740,800, dram 55,948/57,344, iram 118,496/119,808` |
-| `python3 tools/pre_review.py --base origin/master` | `PASS: 10 gates` |
+| `pio run -e m5stack-core-debug` | SUCCESS, `firmware.bin` 1,731,648 of 1,740,800 bytes, `ESP_LOG_VERBOSE` |
+| `pio run` on the other four | SUCCESS: `m5stack-core` 1,618,496, `m5stack-core-usb-debug` 1,756,784, `m5stick-s3` 1,862,496, `m5stack-core2` 1,912,976 |
+| `tools/check_size_budget.py --env <each>` | `PASS m5stack-core-debug: flash 1,731,648/1,740,800, dram 56,212/57,344, iram 119,036/119,808`; `PASS m5stack-core: flash 1,618,496/1,740,800, dram 55,148/56,320, iram 115,668/116,736`; `PASS m5stack-core-usb-debug: flash 1,756,784/4,063,232, dram 56,268/57,344, iram 119,756/120,832`; `PASS m5stick-s3: flash 1,862,496/3,145,728, dram 47,496/48,128, iram 114,688/115,712`; `PASS m5stack-core2: flash 1,912,976/6,291,456, dram 56,768/57,344, iram 121,036/121,856` |
+| `tools/stack_budget.py --env <each>` | PASS for the same five envs, every task under its bound, no new recursion or dynamic bound |
+| BMI270 still linked on the boards that have it | `m5::bmi270_config_file` (8,192 bytes) and a `call8` to `m5::BMI270_Class::begin` from the IMU probe are in the `m5stick-s3` and `m5stack-core2` ELFs; the three Core ELFs have no `bmi270` symbol at all |
+| `tools/pre_review.py --base origin/master` | `PASS: 13 gates` |
 | `sh sim/scripts/check-doc-tokens.sh` | `sim documentation tokens are present` |
-| `python3 -m unittest tests.test_check_ci_workflows tests.test_check_static_analysis tests.test_build_inventory` | pass; the profile is still discovered as a mandatory Core debug env |
-| PlatformIO CI on this PR | `build (m5stack-core-debug)` and every other firmware job pass |
+| `tools/check_doc_citations.py` | `0 errors of 2757 citations in 147 files` |
+| host suite | `python -m unittest discover -s tests` 633 tests OK, and the `tests/host` CMake harness passes |
+| `python3 tools/check_m5gfx_pinning.py`, `tools/check_ci_workflows.py` | both pass; the profile is still discovered as a mandatory Core debug env |
 
 ## Follow-ups
 
-The lane has 25 KB of headroom after this instead of 431 bytes, which is the
-point. Plan 106 item 3 (newlib nano) is the next structural saving if the
-firmware needs more than that, and item 7 (`FURBLE_SD`) is the largest single
-gate.
+The lane has 9 KB of headroom instead of 431 bytes. Plan 106 item 3 (newlib
+nano) is the next structural saving, and item 7 (`FURBLE_SD`) the largest
+single gate. The StickC and StickC Plus profiles inherit the default
+`FURBLE_IMU_BMI270=1`, so neither image changes here. Their parts are MPU6886
+and SH200Q per `docs/components/README.md`, which suggests the same 8 KiB is
+dead weight there too, but their part inventory needs checking against each
+variant before a lane opts out.
