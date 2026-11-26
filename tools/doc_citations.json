@@ -21,6 +21,10 @@
       "reason": "ESP-IDF component cited without its components/ prefix."
     },
     {
+      "prefix": "examples/arduino-v2/",
+      "reason": "Waveshare ESP32-S3-Touch-AMOLED-1.8 vendor repository, read at commit 01fd320 and not tracked. Cited by its repository-relative path from plan 360."
+    },
+    {
       "prefix": "esptool/",
       "reason": "esptool, installed as a Python package by the flash helpers and not tracked."
     },
