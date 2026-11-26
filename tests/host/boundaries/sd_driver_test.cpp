@@ -178,26 +178,6 @@ bool waitForFile(const std::string &path, uint32_t timeout_ms = 5000) {
   return fileIsComplete(path);
 }
 
-// The first point of an open track file, without waiting for its closers: the
-// track a released writer drains into is still open when the queue empties.
-bool fileHasPoint(const std::string &path) {
-  std::ifstream file(path);
-  const std::string contents((std::istreambuf_iterator<char>(file)),
-                             std::istreambuf_iterator<char>());
-  return contents.find("<trkpt") != std::string::npos;
-}
-
-bool waitForExistingFile(const std::string &path, uint32_t timeout_ms = 5000) {
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (fileHasPoint(path)) {
-      return true;
-    }
-    sleepMs(10);
-  }
-  return fileHasPoint(path);
-}
-
 bool waitForUnmountEntered(uint32_t timeout_ms = 5000) {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
   while (std::chrono::steady_clock::now() < deadline) {
