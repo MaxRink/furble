@@ -21,7 +21,7 @@ The short version, ranked by the size of the prize and not by readiness:
 3. The display `APB_FREQ_MAX` lock is held on every board while the panel is on.
    On the three AXP192 backlight boards it is not needed for the backlight and
    may cost 5 to 25 mA while the screen is on (inferred).
-4. The M5Stack Core cannot use any load below 45 mA for 32 s because the IP5306
+4. The M5Stack Core cannot use any load below 45 mA for 64 s because the IP5306
    boost cuts off. Holding the boost on could turn a 43 to 81 mA screen-off
    state into a few mA (inferred, floor unknown).
 5. GPS always-on costs 23 to 31.6 mA while enabled. The current 15 s duty clamp
@@ -110,7 +110,7 @@ as separate boards when a rail is involved.
 | `m5stick-c` | M5StickC | ESP32 | AXP192, 100 mA charge, 4.2 V | Voltage, current, charge state | DCDC1 3.35 V MCU, LDO2 backlight, LDO3 3.0 V LCD, EXTEN Grove 5 V, ST7735S, IR on G9, LED on G10, no SD | Light sleep 0.8 mA plus AXP192, deep sleep 10 uA plus AXP192, off 27 uA, no PMIC timed wake |
 | `m5stick-c-plus` | M5StickC Plus and Plus2 | ESP32 | Plus: AXP192, 100 mA. Plus2: no PMIC, external charger | Plus: voltage, current, charge. Plus2: ADC voltage only | Plus: LDO2 backlight, LDO3 LCD, EXTEN. Plus2: PWM backlight G27, HOLD G4, battery divider G38, LED and IR G19, ST7789V, no SD | Plus as above. Plus2 light 0.8 mA plus divider, deep 10 uA plus divider, power off through HOLD |
 | `m5stick-s3` | M5StickS3 | ESP32-S3-PICO-1-N8R8, 8 MB quad flash and 8 MB octal PSRAM, so SPICS1 and GPIO33 to GPIO37 are PSRAM pins | M5PM1, charger on by default, profile not documented | Voltage and charge state on PM1 GPIO0, no current | 3.3 V DCDC and LDO, 5 V boost for Grove and EXT_5V and IR, L3B on PM1 GPIO2, ST7789P3 backlight G38, BMI270, ES8311 and AW8737, IR TX G46 and RX G42, no SD, USB Serial/JTAG | Light sleep 240 uA plus 140 uA PSRAM plus PM1, deep sleep 7 uA plus PM1, off 14.02 uA, L1 52.47 uA, L2 102.40 uA, PM1 timer wake |
-| `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD; IMU on the Gray variant, part not recorded in this tree | Light sleep only with boost keep-on, below 45 mA for 32 s cuts the boost, no immediate PMIC off, deep sleep only with keep-on |
+| `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD; IMU on the Gray variant, part not recorded in this tree | Light sleep only with boost keep-on, below 45 mA for 64 s cuts the boost, no immediate PMIC off, deep sleep only with keep-on |
 | `m5stack-core2` | Core2 and M5Tough (untested) | ESP32 | AXP192, 390 mA charge on Core2 | Voltage, current, charge state | DCDC3 backlight, LDO2 3.3 V LCD and SD, LDO3 vibration on Core2 and backlight on Tough, LDOIO0 Grove 5 V, ILI9342C, FT6336U touch, MPU6886, NS4168, SD, BM8563 | Light sleep 0.8 mA plus AXP192 plus touch, deep sleep 10 uA plus AXP192, off 27 uA, touch wake on G39 |
 | `waveshare-s3-eth` | Waveshare ESP32-S3-ETH | ESP32-S3R8, 8 MB octal PSRAM on GPIO33 to GPIO37 | None, no battery | None | USB-C 5 V or PoE HAT, W5500 on SPI, WS2812 on G21, microSD in 1-line mode and unused by furble, no display or IMU; GPS only through the Pico header | Tickless idle off, so no automatic light sleep; DFS is left on; mains powered |
 | `esp32-s3-headless` | ESP32-S3-DevKitC-1 | ESP32-S3, 8 MB PSRAM in sdkconfig | None, no battery | None | USB or 5 V, USB Serial/JTAG, no display, PMIC, or RTC | Tickless idle on, light sleep 240 uA plus PSRAM, mains or development |
@@ -162,13 +162,13 @@ RL-11, LK-01, PL-01, PL-02, PL-04, PL-05, PL-06, PL-07, PL-08, NB-03. This is
 the only board on the bench.
 
 **M5Stack Core (`m5stack-core`).** The IP5306 is the defining constraint. Its
-boost cuts off after 32 s of continuous load below 45 mA. The firmware enables
-the boost and the charger at boot, sets the light-load timeout to 32 s, and
+boost cuts off after 64 s of continuous load below 45 mA. The firmware enables
+the boost and the charger at boot, sets the light-load timeout to 64 s, and
 never sets the "boost normally open" bit. Automatic light sleep therefore ends
 in a power cut, not a low-current state. The manual "Off" path clears the
 keep-on bit and enters ESP deep sleep. If the load then falls below 45 mA, the
-IP5306 removes the boost after its 32 s low-load timeout. It is not an immediate
-PMIC off, and the 32 s window is not controlled by furble. The four-level gauge
+IP5306 removes the boost after its 64 s low-load timeout. It is not an immediate
+PMIC off, and the 64 s window is not controlled by furble. The four-level gauge
 cannot support a fine-grained percentage policy. The Gray variant may carry an
 IMU; the part
 is not recorded in this tree, so RL-11 covers the StickS3 BMI270 and the
@@ -230,12 +230,17 @@ plan estimate, not a datasheet line; the block sum with DCDC1, LDO2, LDO3, and
 LDOIO0 enabled is about 316 uA before any load.
 
 **IP5306 (Core).** M5Unified writes `0x00 = 0b00110001`, `0x01 = 0b00011101`,
-`0x02 = 0b01101100` (the light-load time field, encoding per the M5Unified
-comment), `0x20 = 0x00`, `0x21 = 0x09`, `0x22 = 0x02` (4.2 V plus 28 mV boost),
-`0x23 = 0xAE`, `0x24 = 0b11000001` (150 mA charge). Bit 1 of `0x00`, the "boost
-normally open" bit, stays clear. The datasheet specifies 50 uA standby, 100 uA
-input quiescent, and a 32 s cutoff below 45 mA. The board has no current gauge,
-only the four-level fuel display.
+`0x02 = 0b01101100`, `0x20 = 0x00`, `0x21 = 0x09`, `0x22 = 0x02` (4.2 V plus
+28 mV boost), `0x23 = 0xAE`, `0x24 = 0b11000001` (150 mA charge). Bit 1 of
+`0x00`, the "boost normally open" bit, stays clear. In `0x02` the M5Unified
+bitfield comment places the light-load shutdown time in bits 3:2, with `00` 8 s,
+`01` 32 s, `10` 16 s and `11` 64 s; `0x6C` has bits 3:2 = `11`, so the shipping
+firmware cuts the boost after 64 s below 45 mA, not the 32 s power-on default.
+No furble code writes `0x02` afterwards, and the manual off path only clears the
+keep-on bit in `0x00`. The datasheet specifies 50 uA standby, 100 uA input
+quiescent, and a 32 s cutoff below 45 mA, which is the value that field selects
+before M5Unified rewrites it. The board has no current gauge, only the
+four-level fuel display.
 
 **M5PM1 (StickS3).** The PM1 manual gives `PWR_CFG` default `0x17`: LED enable
 on, 5 V boost off, 3.3 V LDO on, 3.3 V DCDC on, charge on (M5PM1 Chip User
@@ -374,7 +379,7 @@ input-current question, not a battery question.
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | StickC, Plus | 14.1 mA modem sleep, internal RC RTC clock | 0.8 mA ESP32 plus AXP192 blocks | 10 uA ESP32 plus AXP192 operating | 27 uA | PWR button, ESP timer in deep sleep |
 | Plus2 | 14.1 mA modem sleep | 0.8 mA plus divider | 10 uA plus divider | HOLD low | PWR button, ESP timer, HOLD |
-| Core | 14.1 mA modem sleep | Only with IP5306 keep-on | Only with keep-on | ESP deep sleep then 32 s boost cutoff | PWR button, ESP timer with keep-on |
+| Core | 14.1 mA modem sleep | Only with IP5306 keep-on | Only with keep-on | ESP deep sleep then 64 s boost cutoff | PWR button, ESP timer with keep-on |
 | Core2 | 14.1 mA modem sleep | 0.8 mA plus AXP192 plus touch | 10 uA plus AXP192 | 27 uA | Touch G39, PWR button, ESP timer |
 | StickS3 | About 3.3 mA reported measured-local for the current parameters | 240 uA plus 140 uA PSRAM plus PM1 | 7 uA plus PM1 | 14.02 uA | PM1 timer, PM1 GPIO4 IMU, buttons |
 | Waveshare | Modem sleep configured, no battery | Disabled by tickless off | Not used | None | Mains only |
@@ -530,13 +535,14 @@ Estimates are not measurements unless the label says `measured-local`.
   existing M5Unified `lightSleep()` and `deepSleep()` calls do this; automatic
   `esp_pm` light sleep does not.
 - Current behavior: M5Unified writes `0x00 = 0b00110001` and `0x02 = 0b01101100`.
-  Bit 1 stays clear and the light-load timeout is 32 s at 45 mA. A screen-off
+  Bit 1 stays clear and the light-load timeout is 64 s at 45 mA. A screen-off
   Core falls below 45 mA and the IP5306 cuts the boost, which powers the device
   off. The Core therefore cannot use screen-off light sleep. The menu hides
   auto-off on this board, but the user can still select a screen-off mode that
   ends in a power cut.
-- Evidence: `code` (M5Unified `IP5306_Class.cpp` and `Power_Class.cpp`),
-  `datasheet` (IP5306 45 mA and 32 s).
+- Evidence: `code` (M5Unified `IP5306_Class.cpp` and `Power_Class.cpp`;
+  `0x02 = 0x6C` selects bits 3:2 = `11`, 64 s), `datasheet` (IP5306 45 mA and
+  the 32 s power-on default).
 - Estimated saving: 20 to 60 mA in the screen-off state (`inferred`). The upper
   bound is the current 43 to 81 mA model range. The floor depends on the
   IP5306 boost quiescent current, which the public datasheet does not give, so
@@ -548,8 +554,9 @@ Estimates are not measurements unless the label says `measured-local`.
 - Required test: 30 minutes screen off on battery with keep-on, confirm no
   power cut; measure pack current and board temperature; verify long-press off
   and the low-battery cutoff; repeat with keep-on cleared.
-- Citation: IP5306 datasheet V1.01 (45 mA, 32 s, 50 uA standby, 100 uA input
-  quiescent); M5Unified 0.2.20 `IP5306_Class.cpp` and `Power_Class.cpp`.
+- Citation: IP5306 datasheet V1.01 (45 mA threshold, 32 s at the power-on
+  default, 50 uA standby, 100 uA input quiescent); M5Unified 0.2.20
+  `IP5306_Class.cpp` and `Power_Class.cpp` (`0x02 = 0x6C`, 64 s).
 
 #### PM-07 All battery boards: auto-off default
 
@@ -558,7 +565,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Current behavior: `AUTO_OFF` defaults to 0 (never). The mechanism is
   implemented and defaults off. A forgotten device runs at the menu or
   connected current until the cell is flat. The Core is excluded because its
-  off path is an ESP deep sleep followed by the IP5306 32 s boost cutoff, not an
+  off path is an ESP deep sleep followed by the IP5306 64 s boost cutoff, not an
   immediate PMIC off.
 - Evidence: `code` (`src/FurbleSettings.cpp` defaults, plan 13), `model`.
 - Estimated saving: the whole idle current, 25.5 to 84.5 mA, whenever the user
@@ -599,7 +606,7 @@ Estimates are not measurements unless the label says `measured-local`.
 #### PM-09 Core: ESP deep sleep with boost keep-on
 
 - Change: for long interval gaps, use ESP32 deep sleep with a timer wake and
-  the IP5306 boost held on, instead of staying awake or relying on the 32 s
+  the IP5306 boost held on, instead of staying awake or relying on the 64 s
   cutoff.
 - Current behavior: no deep sleep code. Plan 19 excludes the Core because its
   PMIC cannot self wake from a power-off state. That is true for PMIC power
@@ -824,9 +831,9 @@ Estimates are not measurements unless the label says `measured-local`.
 - Change: none. The event outputs are already bracketed.
 - Current behavior: the speaker is opened only for a tone and ended after the
   pattern; the Core2 amp enable is low at boot; the vibration motor is at 0 V
-  except for an event; the IR driver holds its own APB lock only for the
-  transmit window and disables the RMT channel after; the status LED is only
-  driven for a feedback event.
+  except for an event; the IR channel holds `ESP_PM_CPU_FREQ_MAX`, not an APB
+  lock, only for the transmit window, and it is disabled after; the status LED
+  is only driven for a feedback event.
 - Evidence: `code` (`src/FurbleFeedback.cpp`, `src/FurbleIR.cpp`),
   `datasheet` (NS4168 13 mA quiescent, 1 uA shutdown).
 - Estimated saving: 0. The remaining cost is the event itself, which is user
@@ -1104,8 +1111,9 @@ Estimates are not measurements unless the label says `measured-local`.
 - Estimated saving: 0.5 to 4 mA with the screen off (`inferred`). If a wake
   costs 0.2 to 0.5 ms at 40 mA, 200 wakes per second cost 1.6 to 4 mA before
   any useful work. This is exactly the term the 3.61 mA what-if does not model.
-- Risk: medium. Input latency, the 120 ms display dwell, the connect timer
-  cadence, and the watchdog feed margin must all be rechecked.
+- Risk: medium. Input latency, the 120 ms display dwell (both directions on
+  the ILI9342C boards), the connect timer cadence, and the watchdog feed margin
+  must all be rechecked.
 - Effort: small to medium.
 - Required test: screen-off idle 30 minutes at 5, 20, and 50 ms; measure
   current, wake count from the profiler, button latency, and watchdog margin.
@@ -1260,7 +1268,8 @@ Estimates are not measurements unless the label says `measured-local`.
   65 mA, 100M transmitting 132 mA, 10M transmitting 79 mA, power down 13 mA
   (5.4 p. 60). A full PHY power-down could therefore remove about 52 mA of
   un-link current, but that is chip current on a mains board, it drops the
-  link, and no board-level measurement exists.
+  link, and no board-level measurement exists. No local measurement exists, so
+  NB-02 stays a gate rather than a saving.
 - Risk: medium. Powering the PHY down can drop the link and delay recovery.
 - Effort: medium.
 - Required test: 5 V input current with link up, link down, and PHY powered
@@ -1408,7 +1417,7 @@ given so the next reader does not reopen them without new facts.
 
 | ID | Change | Current behavior and why rejected | Estimated saving | Risk, effort, test | Evidence |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| PM-12 | Add an immediate software power off to the Core | The IP5306 has no documented off command; the existing path deep-sleeps and relies on the 32 s low-load cutoff if the residual load is below 45 mA. An immediate off would need a hardware change or a different PMIC | 0 | n/a (rejected) | `code`, IP5306 V1.01 |
+| PM-12 | Add an immediate software power off to the Core | The IP5306 has no documented off command; the existing path deep-sleeps and relies on the 64 s low-load cutoff if the residual load is below 45 mA. An immediate off would need a hardware change or a different PMIC | 0 | n/a (rejected) | `code`, IP5306 V1.01 |
 | PM-13 | Feed the PM1 watchdog every 5 s instead of every 1 s | Saves only a few microamps; the 45 s timeout already has a 45x margin and the feed shares the button-poll bus | 0 | n/a (rejected) | `code`, M5PM1 `WDT_CNT` |
 | PM-14 | Change the AXP192 or IP5306 charge current for runtime | Charge current does not affect discharge runtime; it only changes charge time and heat | 0 | n/a (rejected) | `code`, datasheets |
 | PM-15 | Use the AXP192 coulomb counter for a better gauge | Accuracy only, no energy saving | 0 | n/a (rejected) | `code`, AXP192 datasheet |
@@ -1425,7 +1434,7 @@ given so the next reader does not reopen them without new facts.
 | LK-04 | Disable internal pulls during sleep now | Deep sleep is unused; the change can float a wake pin | 0 | n/a (rejected) | `code`, sdkconfig |
 | PL-09 | Change TX power or add 2M PHY as a power project | The average saving is below 0.5 mA; the connected floor dominates | 0 | n/a (rejected) | `code`, `model` |
 | PL-10 | Remove the charging `NO_LIGHT_SLEEP` lock | External power, no battery runtime; the lock's origin is undocumented | 0 | n/a (rejected) | `code` |
-| NB-02 | Power down the W5500 PHY | No battery; the link is the node's job | 0 | n/a (rejected) | `code`, `unverified` datasheet detail |
+| NB-02 | Power down the W5500 PHY | No battery; the link is the node's job | 0 | n/a (rejected) | `code`, W5500 datasheet v1.1.0 |
 | NB-03 | Disable USB Serial/JTAG in release | It is the only flashing and console path on the StickS3 | 0 | n/a (rejected) | `code`, sdkconfig |
 | NB-04 | Optimize the Core USB debug profile | Developer rescue profile, UART console defeats light sleep by design | 0 | n/a (rejected) | `code` |
 
@@ -1448,7 +1457,7 @@ Use one electrical boundary per claim and state it in the report.
   and invalid for comparing against the battery boundary.
 - For the StickS3, the battery boundary is the only one that can show the
   3.3 mA floor, because USB Serial/JTAG holds `NO_LIGHT_SLEEP` while attached.
-- For the Core, a run shorter than 32 s can end in an IP5306 cutoff. Use at
+- For the Core, a run shorter than 64 s can end in an IP5306 cutoff. Use at
   least 2 minutes per state and verify the device is alive at the end.
 
 Record the analyzer model, firmware, range, sample rate, supply voltage, cable,
@@ -1512,8 +1521,8 @@ This is the part the existing plan 111 protocol does not resolve.
    M5PM1: clear `PWR_CFG` bit 0. Re-enable it after the run. Record the
    register value before and after.
 3. Reach the state and let it settle for at least 60 s. For a display state,
-   wait through the 120 ms SLPIN and SLPOUT dwell and confirm the panel is in
-   the intended state.
+   wait through the 120 ms panel dwell in each direction the panel requires,
+   then confirm the panel is in the intended state.
 4. Capture at least 10 minutes per state, three repeats, with the analyzer and
    the state marker aligned. Reject a run that changes state, reconnects,
    charges, or receives a touch it did not intend.
@@ -1578,8 +1587,8 @@ not-reopened row as a new verification.
 | AXP192 | same | `REG 83H` ADC enable 2: bit 7 internal temperature. Default `0x80`. | Opened. |
 | AXP192 | same | `REG 84H` ADC sample rate, default `0x32` (25 Hz); M5Unified writes the same; `REG 12H` rail enables; `REG 28H` LDO2 and LDO3 voltage; `REG 27H` DCDC3; `REG 33H` charge enable, 4.2 V, current. | Opened. |
 | AXP192 | same | Off mode 27 uA at BAT 3.8 V; suspend 86 uA; DCDC1 26 uA no load; DCDC2 and DCDC3 20 uA each; LDO2 and LDO3 100 uA each; LDOIO0 90 uA. | Opened. |
-| IP5306 | Injoinic IP5306 datasheet V1.01 | Automatic load detection below 45 mA for 32 s; standby 50 uA; input quiescent 100 uA. | Opened. The public datasheet does not tabulate the register map. |
-| IP5306 | M5Unified 0.2.20 `IP5306_Class.cpp` | `REG_SYS_CTL0` `0x00` bit 1 boost normally open; `REG_SYS_CTL2` `0x02` light-load time field as decoded by the M5Unified comment; `REG_CHG_DIG_CTL0` `0x24` charge current. Board init `0x00 = 0x31`, `0x02 = 0x6C`. | Opened as vendor code, not a datasheet. |
+| IP5306 | Injoinic IP5306 datasheet V1.01 | Automatic load detection below 45 mA; 32 s at the power-on default of `SYS_CTL2` bits 3:2 = `01`; standby 50 uA; input quiescent 100 uA. | Opened. The public datasheet does not tabulate the register map. |
+| IP5306 | M5Unified 0.2.20 `Power_Class.cpp` (register writes and bitfield comments) and `IP5306_Class.cpp` (register constants and the keep-on setter) | `REG_SYS_CTL0` `0x00` bit 1 boost normally open; `REG_SYS_CTL2` `0x02` light-load time field, board init `0x02 = 0x6C` = bits 3:2 `11` = 64 s per the M5Unified bitfield comment; `REG_CHG_DIG_CTL0` `0x24` charge current. | Opened as vendor code, not a datasheet. |
 | M5PM1 | M5Stack M5PM1 Chip User Manual V1.9 | `PWR_CFG` `0x06`: bit 4 LED, bit 3 5 V boost, bit 2 3.3 V LDO, bit 1 3.3 V DCDC, bit 0 charge. Default `0x17`. | Opened. Page 13. |
 | M5PM1 | same | `I2C_CFG` `0x09`: `SLP_TO` bits 3:0, 0 disables idle sleep. The first transaction after a wake fails. | Opened. Page 15. |
 | M5PM1 | same | Section 6: `SLEEP[3:0]` sets the idle sleep time, 0 disables. Idle sleep is invalid while PWM is enabled and while entering Download mode. | Opened. Pages 27 and 28. |
@@ -1605,15 +1614,17 @@ not-reopened row as a new verification.
 | AT6558 | CASIC AT6558 datasheet, used as the AT6668 proxy | Tracking 23 mA typical BD plus GPS; standby below 10 uA; VBAT 10 uA typical. | Not reopened here. Repo model, datasheet-tagged. |
 | ATGM336H | ATGM336H module manual | Module current below 25 mA typical, 100 mA peak excluding antenna; VBAT 10 uA. | Not reopened here. Repo model, datasheet-tagged. |
 | NS4168 | NS4168 datasheet | Quiescent 13 mA at 5 V; shutdown 1 uA. | Not reopened here. Repo model, datasheet-tagged. |
-| W5500 | WIZnet W5500 datasheet v1.0.6 | PHY power-down mode exists; the exact current is not quoted here because the datasheet copy was not opened. | Not reopened. |
+| W5500 | WIZnet W5500 datasheet v1.1.0, dated 17DEC2022 | `RSTn` low at least 500 us, `TPL` up to 1 ms from release to internal PLOCK; `IDD1` 132 mA; `IDD2` 13 mA in PHY power-down; link currents 128, 75 and 65 mA. | Opened for this change. Not a local measurement, and no post-release `TPL` wait is implemented. |
 
 Note on revisions. The AXP192 copy fetched for this note carries no revision
 string. Its cover says "X-Powers, 2010"; the PDF metadata dates it 2011-08-08
 and the copy is 53 pages. Use those identifiers, not a revision number. The
-IP5306 copy is V1.01. The M5PM1 copy is V1.9. The ESP32-S3 copy is v2.2. If a
-future review needs a register claim from the not-reopened rows, open the exact
-revision first; do not copy a number from this table as if it were
-re-verified.
+IP5306 copy is V1.01. The M5PM1 copy is V1.9. The ESP32-S3 copy is v2.2. The
+W5500 copy is v1.1.0, dated 17DEC2022; it replaces the v1.0.6 URL this note
+carried, which now returns HTTP 404, and the v1.1.0 history on pages 66 to 67
+changes only the RPU minimum and the package text. If a future review needs a
+register claim from the not-reopened rows, open the exact revision first; do
+not copy a number from this table as if it were re-verified.
 
 ## 8. Model corrections and open questions
 

@@ -1214,6 +1214,25 @@ add_executable(sim_action_parser_test sim_action_parser_test.cpp
 target_include_directories(sim_action_parser_test PRIVATE ${FURBLE_ROOT}/sim)
 target_compile_options(sim_action_parser_test PRIVATE -Wall -Wextra -Werror)
 
+# The heap_caps shim's charge, caps filtering, zeroing and realloc copy, plus
+# heap_caps_get_info against the per-caps queries. sim/heap_count.cpp is linked
+# so the charge runs through the simulator's device counter, not a fallback.
+# The board policy is compiled in because every furble sdkconfig sets it, so
+# the failing cases abort and the test asserts the panic exit status.
+add_executable(sim_heap_caps_shim_test
+               sim_heap_caps_shim_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp
+               ${FURBLE_ROOT}/sim/heap_count.cpp
+               ${FURBLE_ROOT}/sim/heap_model.cpp)
+target_include_directories(sim_heap_caps_shim_test BEFORE PRIVATE
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/sim/shim)
+target_compile_definitions(sim_heap_caps_shim_test PRIVATE
+                           CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS=1)
+target_compile_options(sim_heap_caps_shim_test PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+add_test(NAME sim-heap-caps-shim COMMAND sim_heap_caps_shim_test)
+
 add_executable(sim_scheduler_test
                sim_scheduler_test.cpp
                ${FURBLE_ROOT}/sim/clock.cpp
@@ -1712,6 +1731,74 @@ target_compile_options(control_connecting_snapshot_test PRIVATE
 target_link_options(control_connecting_snapshot_test PRIVATE -fsanitize=thread)
 target_link_libraries(control_connecting_snapshot_test PRIVATE Threads::Threads)
 endif()
+
+
+# Thread-sanitizer regression for the Control GPS fan-out. Control::updateGPS()
+# runs on the UI loop's 1 Hz GPS service, not on GPS::task(), and used to walk
+# m_Targets with no lock, while addActive() reallocated that vector and
+# disconnect() emptied it under m_Mutex. The probe loops a GPS fix against
+# addActive()/disconnect(), and TSan reports the vector mutation until the walk
+# takes the lock.
+#
+# Separate target because -fsanitize=thread has to apply to the production
+# sources it links and cannot share a build tree with the ASan/UBSan suite. The
+# plain twin below runs the same probe there.
+if(NOT FURBLE_COVERAGE)
+add_executable(control_gps_race_test
+               control_gps_race_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/FauxNY.cpp)
+target_include_directories(control_gps_race_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_options(control_gps_race_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -fsanitize=thread -fno-omit-frame-pointer -g
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_options(control_gps_race_test PRIVATE -fsanitize=thread)
+target_link_libraries(control_gps_race_test PRIVATE Threads::Threads)
+endif()
+
+# The same GPS fan-out probe without the thread sanitizer, so the regression
+# also runs in the plain host build and under ASan/UBSan
+# (tools/run_sanitized_host_tests.sh), which cannot combine with TSan.
+add_executable(control_gps_race_plain_test
+               control_gps_race_test.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${FURBLE_ROOT}/lib/furble/BtDebugJournal.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/FauxNY.cpp)
+target_include_directories(control_gps_race_plain_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_options(control_gps_race_plain_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(control_gps_race_plain_test PRIVATE Threads::Threads)
 
 # Deterministic interleaving proof for the STATE_DISCONNECTING republish
 # guard (plan 157). Compiles the production Control with FURBLE_TEST_SYNC so
@@ -2453,7 +2540,18 @@ if(BUILD_TESTING)
   add_test(NAME control-zombie-cancel COMMAND control_zombie_cancel_test)
   set_tests_properties(control-zombie-cancel PROPERTIES TIMEOUT 60)
 
+  # GPS fan-out against the target-set mutations. The plain twin runs in the
+  # normal host suite and under ASan/UBSan; the sanitizer entry below adds the
+  # thread-sanitizer proof that the walk is locked.
+  add_test(NAME control-gps-race-plain COMMAND control_gps_race_plain_test)
+  set_tests_properties(control-gps-race-plain PROPERTIES TIMEOUT 120)
+
   if(NOT FURBLE_COVERAGE)
+    add_test(NAME control-gps-race
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
+                     $<TARGET_FILE:control_gps_race_test>
+                     "control-gps-race: PASS")
+    set_tests_properties(control-gps-race PROPERTIES TIMEOUT 180)
     add_test(NAME control-connect-camera-race
              COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
                      $<TARGET_FILE:control_connect_camera_race_test>)

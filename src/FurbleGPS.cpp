@@ -1603,7 +1603,8 @@ void GPS::configure(void) {
     const std::array<uint8_t, 8> rates = {1, 0, 0, 0, 1, 0, 0, 0};
     for (size_t i = 0; i < messages.size(); i++) {
       const std::vector<uint8_t> payload = {0x4E, messages[i], rates[i], 0};
-      enqueueConfig(CFG_CLASS, CFG_MSG_ID, payload, "PCAS03,1,0,0,0,1,0,0,0");
+      enqueueConfig(CFG_CLASS, CFG_MSG_ID, payload,
+                    Casic::sentenceCommand(Casic::SentenceSet::PRUNE));
     }
   }
 
@@ -3094,13 +3095,13 @@ void GPS::setSatelliteCapture(bool capture) {
 
   if (capture) {
     // temporarily add GSA and GSV so the page has data to render
-    sendCommand("PCAS03,1,0,1,1,1,0,0,0");
+    sendCommand(Casic::sentenceCommand(Casic::SentenceSet::SATELLITE));
   } else if (Settings::load<Settings::GPS_NMEA>()) {
     // restore the user's pruned set
-    sendCommand("PCAS03,1,0,0,0,1,0,0,0");
+    sendCommand(Casic::sentenceCommand(Casic::SentenceSet::PRUNE));
   } else {
     // restore the default full set
-    sendCommand("PCAS03,1,1,1,1,1,1,1,1");
+    sendCommand(Casic::sentenceCommand(Casic::SentenceSet::STANDARD));
   }
 }
 

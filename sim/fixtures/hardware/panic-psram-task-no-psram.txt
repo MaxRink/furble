@@ -1,0 +1,15 @@
+# PSRAM task stacks on a board whose PSRAM is absent. Expected: SIM PANIC, exit 3.
+#
+# `task_stack_region psram` is a configuration fault when the board has no
+# PSRAM: xTaskCreateWithCaps asks heap_caps_malloc for a SPIRAM stack, the
+# allocation fails, and CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS aborts the
+# device. The model used to log SIM FAIL and return pdFAIL there, so a firmware
+# fallback passed for a configuration the hardware cannot run. The first task
+# created after the seed is the Control task at 8 KiB.
+#
+# sim/scripts/run-panic-fixtures.sh runs this and checks that the next boot
+# reports the panic record.
+seed psram_mode absent
+seed task_stack_region psram
+wait 100
+exit

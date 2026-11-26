@@ -1,0 +1,38 @@
+# The in-session Disconnect page, the last connected-session page the certified
+# suite never asserted. connstate-page-sweep covers the menu pages a user sits
+# on during a live session, but not the dedicated Disconnect page itself, so the
+# one page whose whole purpose is ending the session had no end-to-end proof.
+#
+# It is a connected-session sub-page, built under the connected menu at
+# src/FurbleUI.cpp:9219 and only reachable once a link is up, so
+# the scenario seeds a virtual FauxNY camera, connects for real, and waits for
+# Control to report an active link before loading the page. The page route is
+# "action page remote_disconnect": it has no nav map entry because the button
+# lives on the connected page and is not a settings-menu item.
+#
+# The page must not be a navigation dead end. Back has to be visible, and the
+# link must still be up while the page is showing, because landing here is what
+# a user does immediately before pressing Disconnect.
+seed fauxny true
+wait 400
+
+action connect
+wait 3200
+assert-eventually-virtual 8000 control.state active
+assert-eventually-virtual 3000 ui.connected yes
+
+action page remote_disconnect
+wait 300
+assert ui.page remote_disconnect
+assert ui.back visible
+assert control.state active
+assert ui.link_alert no
+print ui.overflow
+
+# Back must return to the connected page with the session intact.
+back
+wait 300
+assert ui.page connected
+assert control.state active
+
+exit

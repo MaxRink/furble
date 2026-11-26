@@ -95,6 +95,18 @@ CLAUDE.md whose directory it touches.
 - The Apple workflow packages the unsigned macOS Debug app only after its tests
   pass. The uploaded artifact includes a checksum and source/Xcode provenance;
   it is for companion testing, not signing or release distribution.
+- `companion/apple` keeps one UI snapshot in the existing `swift test` target:
+  the shipped Status section body (`CompanionStatusView`) rendered through
+  `ImageRenderer` and compared to
+  `companion/apple/Tests/Snapshots/CompanionStatusView.1x.png`. It is macOS
+  only, because the iOS bundle compiles it out. Regenerate after an intended
+  visual change with `FURBLE_APPLE_SNAPSHOT_UPDATE=1 swift test --filter
+  CompanionStatusViewSnapshotTests`, review the PNG, and commit it. The flag
+  refuses to run when `CI` is set. A passing run prints the baseline path and
+  the measured pixel deltas, so the CI log states the comparison it made.
+  `CompanionStatusListRowTests` covers the `List` flattening the pixels cannot:
+  it counts the rows SwiftUI builds for the same section. See
+  `plans/343-apple-ui-snapshot.md`.
 - Release tags beginning with `companion-test-` are reserved for companion
   testing and skip the firmware release workflow; other release tags are
   unchanged. Release and Pages matrices omit the Core single-factory debug
@@ -346,21 +358,54 @@ check.
 ## Hardware traps (hard-won, do not relearn)
 
 - DFS clock family: with BT modem sleep enabled, esp_pm DFS actually engages,
-  and any peripheral clocked from APB breaks subtly. The GPS UART needs
-  `UART_SCLK_XTAL` on the S3, which has three UART clock sources, APB_CLK,
-  RC_FAST_CLK and XTAL_CLK, selected by `UART_SCLK_SEL` (ESP32-S3 TRM v1.8,
-  26.3 and 26.4.1 p. 926, field values p. 961). The ESP32 has only APB_CLK and
-  REF_TICK, and REF_TICK is derived from APB_CLK with a per-source divider
-  (ESP32 TRM v5.9, 19.3.2 p. 312 and 7.2.4.2 with Table 7.2-5 p. 169), so
-  `UART_SCLK_REF_TICK` is not an escape from the clock family there; ESP-IDF
-  reprograms that divider on every CPU clock source change
-  (`components/esp_hw_support/port/esp32/rtc_clk.c`). The LEDC backlight PWM
-  flickers unless the display holds `ESP_PM_APB_FREQ_MAX` while the backlight is
-  on. RMT is safe: it holds its own APB power lock. When touching power
-  management, audit every peripheral clock source.
+  and any peripheral clocked from APB breaks subtly. The GPS UART takes
+  `UART_SCLK_XTAL` on the S3, which has no REF_TICK source, and
+  `UART_SCLK_REF_TICK` on the classic ESP32, which has REF_TICK at a fixed
+  1 MHz and no XTAL UART source
+  (`components/soc/esp32s3/include/soc/clk_tree_defs.h:264`,
+  `components/soc/esp32/include/soc/clk_tree_defs.h:231`). The S3 selects one
+  of three UART Core sources, APB_CLK, RC_FAST_CLK and XTAL_CLK, through
+  `UART_SCLK_SEL` (ESP32-S3 TRM v1.8, 26.3 and 26.4.1 p. 926, field values
+  p. 961). The ESP32 has only APB_CLK and REF_TICK, and REF_TICK is derived
+  from APB_CLK with a per-source divider (ESP32 TRM v5.9, 19.3.2 p. 312 and
+  7.2.4.2 with Table 7.2-5 p. 169), so `UART_SCLK_REF_TICK` is not an escape
+  from the clock family there; ESP-IDF reprograms that divider on every CPU
+  clock source change
+  (`components/esp_hw_support/port/esp32/rtc_clk.c`, `clk_ll_ref_tick_set_divider`
+  for the XTAL, RC_FAST and PLL sources). The display holds
+  `ESP_PM_APB_FREQ_MAX` while the backlight is on because the LEDC divisor is
+  fixed at config time; visible flicker without the lock is unmeasured. RMT is
+  safe on two furble facts, not on a driver APB lock: the driver takes
+  `ESP_PM_CPU_FREQ_MAX` without DMA and `ESP_PM_NO_LIGHT_SLEEP` with it, never
+  `ESP_PM_APB_FREQ_MAX` (`components/esp_driver_rmt/src/rmt_common.c:230`).
+  `src/FurbleIR.cpp` never sets `with_dma`, and furble raises the PM CPU
+  maximum itself, 160 MHz by default
+  (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:84`), where APB is
+  80 MHz. The sdkconfig boot default is not what pins it. Setting `with_dma` on
+  the S3 would swap that lock for `ESP_PM_NO_LIGHT_SLEEP` and let the 38 kHz
+  carrier drift. When touching power management, audit every peripheral clock
+  source.
 - Display sleep: the display releases `ESP_PM_APB_FREQ_MAX` while the panel
-  sleeps and must reacquire it before `M5.Display.wakeup()`. ST7789/ILI934x
-  need a 120 ms dwell between SLPIN and SLPOUT; M5GFX does not enforce it.
+  sleeps and must reacquire it before `M5.Display.wakeup()`
+  (`src/FurbleUI.cpp:1879`, `src/FurbleUI.cpp:1900`). The dwell rule is per
+  panel. ILI9342C needs 120 ms in both directions, Sleep Out to the next Sleep
+  In and Sleep In to the next Sleep Out (V101 sections 8.2.11 and 8.2.12,
+  pages 100 and 101), and the ILI9341 copy carries the same pair. ST7789V
+  sections 9.1.11 and 9.1.12 and ST7796S V1.0 sections 9.2.12 and 9.2.13 need
+  120 ms from Sleep Out to the next Sleep In only, plus 5 ms after SLPIN and
+  after SLPOUT before any other command. ILI9342C is the panel on
+  `m5stack-core`, `m5stack-core2` and `m5stack-core-usb-debug`, so the reverse
+  wait is required on three of the six display boards and the code keeps it.
+  M5GFX 0.2.27 sends the bare command and no delay
+  (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`,
+  `src/lgfx/v1/LGFXBase.hpp:1436-1437`), so both 120 ms waits are furble's:
+  `UI::sleepDisplay()` refuses a sleep within 120 ms of the last wake
+  (`src/FurbleUI.cpp:1843-1845`) and `UI::wakeDisplay()` waits the same interval
+  before SLPOUT (`src/FurbleUI.cpp:1894-1897`). Together they satisfy all four
+  panels. The 5 ms needs no separate delay: after SLPIN the next panel command
+  is the SLPOUT that the wake gate holds back 120 ms, and after SLPOUT the wake
+  path writes only the brightness, which is the backlight, not a panel command
+  (`src/FurbleUI.cpp:1901`, `:1905`).
 - Never hold the Control mutex across a delay. The reconnect cancel deadlock
   bricked the device (buttons and USB dead) because furble disables all M5PM1
   power button gestures at boot. A retained `DL_LOCK` is cleared only by true
@@ -377,11 +422,18 @@ check.
 - S3 native USB Serial/JTAG resets the chip on each host port open: the host
   sets RTS 1 with DTR 0 (ESP32-S3 TRM v1.8, Table 33.3-2 p. 1248), and SRST
   resets the digital system but not the USB Serial/JTAG controller, so the port
-  survives (33.3.5 p. 1249). Use that port-open as the safe state transition,
-  never a disconnect then reconnect. The module needs the PLL and APB_CLK at
+  survives (33.3.5 p. 1249). The module needs the PLL and APB_CLK at
   40 MHz or more, is gated in light sleep and is powered down in deep sleep
-  (33.4.2 p. 1253). esptool prints a post-write reset that reads `FAILED` on
-  the S3: it is benign.
+  (33.4.2 p. 1253). Use that port-open as the safe state transition, never a
+  disconnect then reconnect. esptool 4.11.0 prints `FAILED` only from the flash
+  verify check (`esptool/cmds.py:1382`, `:1389`), so a `FAILED` line means the
+  image did not verify. The reset phase prints `Hard resetting via RTS pin...`
+  (`esptool/loader.py:1711`). On the USB Serial/JTAG part the port is gone by
+  then, so the RTS change raises a port error. A macOS bench run saw errno 6,
+  ENXIO; other hosts report their own code. `esptool/reset.py:51` ignores only
+  ENOTTY and EINVAL, so the error is retried and then re-raised (`:43-62`). The
+  hash has verified by then, so the traceback is benign even though the upload
+  command exits non-zero.
 - GPS unit v1.1 (AT6668): no backup supply, so a rail cut costs a ~108 s cold
   start. `$PCAS12` timed standby works. `$PCAS02` only accepts 100-1000 ms.
   Sub-second rates need `$PCAS03` sentence pruning first.
@@ -391,7 +443,12 @@ check.
   cache covers them. `CONFIG_LV_USE_REFR_DEBUG` plus the console-gated
   invalidation logger are the diagnosis tools.
 - PSRAM (S3 and Core2): `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations to
-  PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`.
+  PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`
+  (`src/FurbleUI.cpp:581-583`). That is a source requirement. The panel
+  corruption a wrong caps set would cause is unmeasured, and on the S3
+  `SOC_PSRAM_DMA_CAPABLE=1`
+  (`components/soc/esp32s3/include/soc/soc_caps.h:57`), so PSRAM is not
+  categorically unusable for DMA there.
 - LVGL: wide panels need two draw buffers because `displayFlush()` reports the
   flush complete as soon as M5GFX queues the SPI DMA. Narrow panels use one
   buffer and must call `M5.Display.waitDMA()` before `lv_disp_flush_ready()`.

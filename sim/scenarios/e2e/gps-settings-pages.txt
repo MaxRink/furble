@@ -1,0 +1,123 @@
+# The eight receiver settings pages the certified suite never asserted: Rate,
+# Sentences, Constellation, Power, Assist, Hold, Baud and Platform. All eight are
+# built under the GPS page (src/FurbleUI.cpp:9703-9816) and pushed onto
+# m_Status.gpsWidgets, so showGPSWidgets hides every one of them while GPS is
+# disabled (src/FurbleUI.cpp:9665-9673). The scenario therefore seeds gps true,
+# which is the same gate page-matrix opens, and every route below is the real
+# menu click from the GPS page.
+#
+# The pages are one-roller option menus (addOptionMenu, src/FurbleUI.cpp:9984-
+# 10012) and the roller is in the input group. Rate, Sentences, Constellation,
+# Assist, Baud and Platform hold that single roller and fit. Power stacks several
+# rollers and scrolls, so it is checked at both scroll ends and its fit is
+# printed rather than asserted. Hold carries the receiver hold list that bughunt
+# measures per panel in gps-hold-rows-*.txt, so this file asserts the route and
+# leaves the row geometry to those sweeps.
+#
+# ui.focus_on_page is stable on every page entered straight from the GPS page,
+# and asserted on gps_rate, the one page this walk enters that way. A sibling
+# entry can strand it: gps_baud reads no entered from gps_rate, from gps_assist
+# or from gps_hold (plans/338-e2e-page-coverage.md records the finding). A hard
+# assert on every page would fail on the stranded ones.
+#
+# Of the eight, only Sentences has a setting the harness can read back without
+# pressing the roller: gps_nmea is in the readable setting table
+# (sim/driver.cpp:1166-1213) while GPS_RATE, GPS_BAUD, GPS_HOLD and the rest are
+# not, and an unknown name there exits 2 instead of asserting. Sentences is
+# therefore seeded and read back, and the other seven are asserted on route, back
+# button and layout rather than on a value no query exposes.
+seed gps true
+seed gps_nmea true
+seed gps_rate 1
+wait 600
+
+home
+wait 200
+assert ui.page main
+
+action nav settings
+wait 200
+assert ui.page settings
+action nav gps
+wait 200
+assert ui.page gps
+
+# --- Rate ------------------------------------------------------------------
+action nav gps_rate
+wait 200
+assert ui.page gps_rate
+assert ui.back visible
+assert ui.focus_on_page yes
+assert ui.overflow no
+assert ui.label_overlaps 0
+
+# --- Sentences -------------------------------------------------------------
+action nav gps_sentences
+wait 200
+assert ui.page gps_sentences
+assert ui.back visible
+print ui.focus_on_page
+assert ui.overflow no
+assert setting.gps_nmea 1
+
+# --- Constellation ---------------------------------------------------------
+action nav gps_constellation
+wait 200
+assert ui.page gps_constellation
+assert ui.back visible
+print ui.focus_on_page
+assert ui.overflow no
+
+# --- Power -----------------------------------------------------------------
+action nav gps_power
+wait 200
+assert ui.page gps_power
+assert ui.back visible
+print ui.focus_on_page
+print ui.overflow
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+
+# --- Assist ----------------------------------------------------------------
+action nav gps_assist
+wait 200
+assert ui.page gps_assist
+assert ui.back visible
+print ui.focus_on_page
+assert ui.overflow no
+
+# --- Baud ------------------------------------------------------------------
+action nav gps_baud
+wait 200
+assert ui.page gps_baud
+assert ui.back visible
+print ui.focus_on_page
+assert ui.overflow no
+
+# --- Platform --------------------------------------------------------------
+action nav gps_platform
+wait 200
+assert ui.page gps_platform
+assert ui.back visible
+print ui.focus_on_page
+assert ui.overflow no
+
+# --- Hold ------------------------------------------------------------------
+# Hold is visited last on purpose. Entered from gps_platform, its predecessor in
+# this walk, the entry leaves the encoder focus on the platform option entry:
+# ui.focus reads ok while ui.focus_on_page reads no, and a following action
+# select reloads gps_platform instead of touching the hold list. That behaviour
+# is recorded in plans/338-e2e-page-coverage.md and is not asserted here,
+# because this file covers the route, not the focus contract.
+action nav gps_hold
+wait 200
+assert ui.page gps_hold
+assert ui.back visible
+print ui.focus_on_page
+print ui.overflow
+
+exit

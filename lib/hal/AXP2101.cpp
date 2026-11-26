@@ -25,10 +25,13 @@ constexpr uint8_t STATUS1_BATTERY_PRESENT = 1U << 3;
 constexpr uint8_t MODULE_GAUGE = 1U << 3;
 constexpr uint8_t MODULE_BACKUP_CHARGE = 1U << 2;
 constexpr uint8_t COMMON_SOFT_OFF = 1U << 0;
-constexpr uint8_t IRQ1_SHORT = 1U << 3;
-constexpr uint8_t IRQ1_LONG = 1U << 2;
-constexpr uint8_t IRQ1_FALLING = 1U << 1;
+// REG 41 and REG 49 use one bit assignment for the power key: bit 3 short
+// press, bit 2 long press, bit 1 falling edge, bit 0 rising edge (sections
+// 6.13.2.41 and 6.13.2.44). One mask enables and decodes the same four events.
 constexpr uint8_t IRQ1_RISING = 1U << 0;
+constexpr uint8_t IRQ1_FALLING = 1U << 1;
+constexpr uint8_t IRQ1_LONG = 1U << 2;
+constexpr uint8_t IRQ1_SHORT = 1U << 3;
 constexpr uint8_t IRQ1_KEY_MASK = IRQ1_SHORT | IRQ1_LONG | IRQ1_FALLING | IRQ1_RISING;
 
 struct RailBit {
@@ -177,8 +180,11 @@ bool AXP2101::setBackupCharge(bool enable, uint16_t millivolts) {
 }
 
 bool AXP2101::enablePowerKeyIrq(bool enable) {
-  const uint8_t bits = IRQ1_SHORT | IRQ1_LONG;
-  return m_Bus.update8(REG_IRQ_EN1, bits, enable ? bits : 0);
+  // Every key bit the driver decodes, edges included: section 6.12.1 sets a
+  // status bit only when its enable bit is set, and section 6.13.2.41 leaves
+  // bits 1:0 at 0, so an enable of bits 3:2 alone makes PowerKey::falling and
+  // PowerKey::rising undeliverable. See the header for the interrupt cost.
+  return m_Bus.update8(REG_IRQ_EN1, IRQ1_KEY_MASK, enable ? IRQ1_KEY_MASK : 0);
 }
 
 bool AXP2101::readPowerKey(PowerKey &key) {

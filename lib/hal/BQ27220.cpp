@@ -1,5 +1,7 @@
 #include "BQ27220.h"
 
+#include <cstddef>
+
 namespace Furble {
 namespace HAL {
 
@@ -13,6 +15,13 @@ constexpr uint8_t CMD_STATE_OF_CHARGE = 0x2C;
 // BatteryStatus() low byte, Table 2-6.
 constexpr uint16_t STATUS_DSG = 1U << 0;
 constexpr uint16_t STATUS_BATTPRES = 1U << 3;
+
+// The five packets read() issues, in order. A table so the pacing loop below
+// has one place to guard: section 5.3 requires the gap between every pair of
+// packets, not only between the first two.
+constexpr uint8_t READING_COMMANDS[] = {CMD_VOLTAGE, CMD_BATTERY_STATUS, CMD_CURRENT,
+                                        CMD_TIME_TO_EMPTY, CMD_STATE_OF_CHARGE};
+constexpr size_t READING_COMMAND_COUNT = sizeof(READING_COMMANDS) / sizeof(READING_COMMANDS[0]);
 }  // namespace
 
 bool BQ27220::word(uint8_t command, uint16_t &value) {
@@ -25,22 +34,28 @@ bool BQ27220::word(uint8_t command, uint16_t &value) {
 }
 
 bool BQ27220::read(Reading &reading) {
-  uint16_t voltage = 0;
-  uint16_t status = 0;
-  uint16_t current = 0;
-  uint16_t tte = 0;
-  uint16_t soc = 0;
-  if (!word(CMD_VOLTAGE, voltage) || !word(CMD_BATTERY_STATUS, status)
-      || !word(CMD_CURRENT, current) || !word(CMD_TIME_TO_EMPTY, tte)
-      || !word(CMD_STATE_OF_CHARGE, soc)) {
-    return false;
+  uint16_t words[READING_COMMAND_COUNT] = {};
+  for (size_t i = 0; i < READING_COMMAND_COUNT; i++) {
+    if (i != 0) {
+      // Section 5.3: keep the bus idle 66 us between packets. Asked for before
+      // every packet after the first, so the stop condition of the previous
+      // packet starts the window.
+      m_Bus.delayUs(PACKET_GAP_US);
+    }
+    if (!word(READING_COMMANDS[i], words[i])) {
+      return false;
+    }
   }
-  reading.voltageMv = voltage;
-  reading.currentMa = static_cast<int16_t>(current);
-  reading.percent = static_cast<uint8_t>((soc > 100) ? 100 : soc);
-  reading.timeToEmptyMin = tte;
-  reading.present = (status & STATUS_BATTPRES) != 0;
-  reading.discharging = (status & STATUS_DSG) != 0;
+
+  Reading result = {};
+  result.voltageMv = words[0];
+  result.present = (words[1] & STATUS_BATTPRES) != 0;
+  result.discharging = (words[1] & STATUS_DSG) != 0;
+  result.currentMa = static_cast<int16_t>(words[2]);
+  result.timeToEmptyMin = words[3];
+  const uint16_t soc = words[4];
+  result.percent = static_cast<uint8_t>((soc > 100) ? 100 : soc);
+  reading = result;
   return true;
 }
 

@@ -110,10 +110,15 @@ the git history. They are no longer ownership rows.
 | [325-peer-subscription-race.md](325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
 | [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
 | [326-docs-accuracy.md](326-docs-accuracy.md) | Documentation accuracy refresh: stale plan status, wiki screenshot claims and gate numbers |
+| [332-gnss-vendor-audit.md](332-gnss-vendor-audit.md) | GNSS configuration audit against the CASIC V6.3.2 and V4.2.0.3, AT6668 and u-blox M10 documents: `$PCAS03` field count, `$PCAS04` encoding, B1C rejections and write order |
 | [326-review-feedback.md](326-review-feedback.md) | Review-feedback record for the documentation accuracy refresh |
+| [327-control-gps-race.md](327-control-gps-race.md) | Locked `Control::m_Targets` walk for the GPS fan-out and the control task's `STATE_ACTIVE` liveness check |
 | [328-reference-docs-audit.md](328-reference-docs-audit.md) | Reference documentation audit: settings and console claims re-verified against the code, with the fixes and the claims that did not hold |
+| [342-wifi-lost-ip.md](342-wifi-lost-ip.md) | Lost DHCP lease: `IP_EVENT_STA_LOST_IP` clears the WiFi cache, and the WebUI gate and status page read the live station address |
+| [342-review-feedback.md](342-review-feedback.md) | Review-feedback record for the lost-lease fix: doc paragraph, deliberate-stop gate test, and five recorded follow-ups |
 | [332-vendor-document-verification.md](332-vendor-document-verification.md) | Vendor document verification: ESP32 and ESP32-S3 TRMs, S3 and PICO-1 datasheets, SX1262 Rev 2.2, W5500 1.1.0, M5PM1 V1.9 and the FCC grants, with revision, page and hash for every fact |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
+| [337-sim-mem-shims.md](337-sim-mem-shims.md) | Simulator heap_caps calloc, realloc and get_info shims, and the PSRAM task-stack abort |
 | [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |
 
 ## Phase 4: sensors
@@ -165,6 +170,7 @@ the git history. They are no longer ownership rows.
 | [287-mcu-portability-and-bundle-hardware.md](287-mcu-portability-and-bundle-hardware.md) | Whole-stack MCU portability, battery model, GPS quality, and buyable BLE plus GNSS hardware |
 | [322-hardware-abstraction.md](322-hardware-abstraction.md) | Hardware abstraction for the next boards: dependency audit, pure chip drivers, board profile and power backend |
 | [322-review-feedback.md](322-review-feedback.md) | Review-feedback record for the plan 322 hardware abstraction branches |
+| [473-review-feedback.md](473-review-feedback.md) | Review-feedback record for the #473 hardware-trap corrections and the per-panel display dwell rule |
 
 ## Next hardware
 
@@ -193,6 +199,8 @@ implemented.
 | [123-host-task-lifecycle.md](implemented/123-host-task-lifecycle.md) | Join real-Control harness tasks before host static destruction |
 | [126-settings-handle-concurrency.md](implemented/126-settings-handle-concurrency.md) | Use operation-local Preferences handles so concurrent settings calls cannot replace or close each other's NVS handle |
 | [301-sim-ui-buttons.md](implemented/301-sim-ui-buttons.md) | Interactive on-screen A/B/C or A/B/PWR buttons in a top-view control window that drives the same emulated GPIOs as the keyboard, without covering the panel or its overlays |
+| [334-sim-hardware-alignment.md](334-sim-hardware-alignment.md) | Simulator and production alignment with verified vendor rules: W5500 RESETn 500 us, the IP5306 64 s cutoff, and the panel dwell the simulator cannot model |
+| [334-review-feedback.md](334-review-feedback.md) | Review-feedback record for PR 482: the README and L01 cutoff values, the opened W5500 datasheet revision, and the boundary test hardening |
 
 ## Tooling and web installer
 
@@ -225,6 +233,8 @@ implemented.
 | [118-sim-ethernet-coverage.md](implemented/118-sim-ethernet-coverage.md) | Host Ethernet netif coverage for the transport-neutral MQTT seam |
 | [119-companion-gatt-sim.md](implemented/119-companion-gatt-sim.md) | Companion GATT host coverage, implemented by the companion harness |
 | [121-sim-usage-fault-docs.md](implemented/121-sim-usage-fault-docs.md) | Simulator usage and fault-injection reference, implemented |
+| [343-apple-ui-snapshot.md](343-apple-ui-snapshot.md) | First Apple UI snapshot: the shipped Status section body compared to a committed 1x baseline in the existing `swift test` target |
+| [343-review-feedback.md](343-review-feedback.md) | Review-feedback record for PR 480: baseline provenance on the `macos-15` image, the comparison the CI job reports, and the List row-flattening test |
 
 ## Optimization program
 
@@ -272,6 +282,7 @@ implemented.
 | [297-gps-improvement-roadmap.md](297-gps-improvement-roadmap.md) | GPS power/accuracy findings, the implemented fixes, and the ranked remaining GPS work with bench gates |
 | [298-pre-review-gate.md](implemented/298-pre-review-gate.md) | Pre-review scanners for diff hygiene, settings contracts, C++ safety, and a sanitized host subset, wired into pull-request CI |
 | [178-sim-startup-settings-order.md](implemented/178-sim-startup-settings-order.md) | Apply simulator settings before platform construction while preserving panel, environment, watchdog, and profiler boundaries |
+| [338-e2e-page-coverage.md](338-e2e-page-coverage.md) | End-to-end scenarios for the 23 UI pages the certified suite never asserted |
 
 ## Additional plan documents
 

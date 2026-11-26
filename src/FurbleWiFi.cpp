@@ -984,6 +984,29 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
     return;
   }
 
+  // A DHCP lease loss or a stopped client leaves the station associated with
+  // no address, and esp-netif resets the address to 0 before it posts this
+  // event. Drop the cached answer here and let the worker run the queued
+  // storage: a queued NTP start declines while g_GotIp is clear. This path
+  // stays allocation-free and non-blocking, like the rest of the handler.
+  if ((eventBase == IP_EVENT) && (eventId == IP_EVENT_STA_LOST_IP)) {
+    bool lost = false;
+    {
+      std::lock_guard<std::mutex> lock(g_StateMutex);
+      // A deliberate stop already cleared the cache; that is not a lease loss.
+      if (g_ConnectRequested) {
+        g_GotIp = false;
+        g_Ip.clear();
+        lost = true;
+      }
+    }
+    if (lost) {
+      ESP_LOGW(LOG_TAG, "WiFi lost its IP address, waiting for DHCP");
+      notify(NOTIFY_EVENT);
+    }
+    return;
+  }
+
   if ((eventBase == IP_EVENT) && (eventId == IP_EVENT_STA_GOT_IP)) {
     uint32_t generation = 0;
     {
@@ -1076,6 +1099,10 @@ void WiFi::ensureStarted(void) {
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &eventHandler, nullptr));
   ESP_ERROR_CHECK(
       esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &eventHandler, nullptr));
+  // Without this registration a lost lease left the cached address in place
+  // until the next disconnect, and the WebUI kept serving on a dead address.
+  ESP_ERROR_CHECK(
+      esp_event_handler_register(IP_EVENT, IP_EVENT_STA_LOST_IP, &eventHandler, nullptr));
 
   loadRememberedAccessPoint();
   BaseType_t result = xTaskCreate(wifiTask, "wifi", TASK_STACK, nullptr, 2, &g_Task);
@@ -1234,6 +1261,23 @@ WiFi::status_t WiFi::getStatus(void) {
   }
 
   return status;
+}
+
+bool WiFi::hasAssignedAddress(void) {
+  // Ask esp-netif rather than the cache: this is the same live question
+  // MQTT::networkReady() asks of every netif, and it stays false while a lease
+  // is lost even before the event handler runs.
+  esp_netif_t *netif = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(g_InitMutex);
+    netif = g_StaNetif;
+  }
+  if ((netif == nullptr) || !esp_netif_is_netif_up(netif)) {
+    return false;
+  }
+
+  esp_netif_ip_info_t info = {};
+  return (esp_netif_get_ip_info(netif, &info) == ESP_OK) && (info.ip.addr != 0);
 }
 
 #if defined(FURBLE_WIFI_HOST_TEST)

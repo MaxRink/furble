@@ -20,7 +20,11 @@ namespace {
 
 constexpr uint32_t RMT_RESOLUTION_HZ = 1000000;
 
-/** Give up on a stalled transmission instead of holding the APB lock forever. */
+/**
+ * The driver's PM lock is ESP_PM_CPU_FREQ_MAX for this non-DMA channel, not an
+ * APB lock (esp_driver_rmt/src/rmt_common.c:230). Give up on a stalled
+ * transmission instead of holding that power lock forever.
+ */
 constexpr int RMT_TX_TIMEOUT_MS = 1000;
 
 /** `perf tasks` left 3,420 bytes free on the StickS3, about 676 used. */
@@ -284,8 +288,9 @@ void IR::transmitSymbols(uint32_t carrier_hz,
   err = rmt_transmit(m_Channel, m_Encoder, symbols, symbol_count * sizeof(rmt_symbol_word_t),
                      &transmit_config);
   if (err == ESP_OK) {
-    // A bounded wait, then disable regardless. The driver holds its APB lock
-    // between enable and disable, so a hardware stall must not pin it forever.
+    // A bounded wait, then disable regardless. The driver holds a
+    // CPU-frequency lock between enable and disable (rmt_common.c:230), so a
+    // hardware stall must not pin it forever.
     err = rmt_tx_wait_all_done(m_Channel, RMT_TX_TIMEOUT_MS);
   }
 

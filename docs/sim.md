@@ -532,7 +532,10 @@ the hook registered with `heap_caps_register_failed_alloc_callback`, prints
 therefore cannot assert anything after an allocation fails.
 `sim/scripts/run-panic-fixtures.sh` runs the allocation fixtures under
 `sim/fixtures/hardware/panic-*.txt`, requires status 3 and checks that the
-next boot reports the panic record.
+next boot reports the panic record. `panic-psram-task-no-psram.txt` is the
+`task_stack_region psram` case on a board with no PSRAM: the stack request
+cannot be served from the pool the build asked for, so it fails like any other
+allocation the model cannot satisfy.
 
 One UI timer period after the production `UI_FIRST_FRAME` boot mark, once no
 LVGL animation runs, the simulator charges every device allocation to the
@@ -1335,7 +1338,14 @@ bytes the tier 2 ephemeris cache occupies in NVS, and `gps.monhw` reports the
 decoded MON-HW snapshot as `noise/agc/antenna/jam` or `none`. On the UART side
 `uart.baud` is the rate the driver has the port set to, `uart.eph_replay`
 counts the assistance frames replayed back at the receiver, and
-`uart.monhw_polls` counts MON-HW polls.
+`uart.monhw_polls` counts MON-HW polls. `uart.pcas03` holds the last `$PCAS03`
+sentence the driver sent, without its line ending, or an empty string. The
+sentence prune reaches the port only as the fallback for a CFG-MSG write the
+receiver did not acknowledge, and the fake CASIC receiver acknowledges every
+CFG-MSG frame, so `uart.pcas03` stays empty until a scenario seeds
+`gps_uart_mode nack`. `uart.last` cannot stand in for it, because the prune's
+own binary frames follow the fallback. `gps-nmea-prune-fallback` asserts the
+body this way.
 
 Four seeds configure the modelled receiver before boot. `gps_baud` selects the
 `GPS_BAUD` setting (`auto`, `0`, `9600` or `115200`). `gps_receiver` selects

@@ -2,7 +2,10 @@
 
 Status: research and decision. This plan adds no board, firmware target,
 driver or support claim. No hardware was bought or measured for it. Sources
-were read on 2026-11-13 against master `e66e8807`.
+were read on 2026-11-13 against master `e66e8807`. The T-Beam Supreme facts
+were re-read on 2026-11-25 against the LilyGO documents at their own revisions,
+and three of them changed. The corrected values are in the tables below and the
+`Verification pass (2026-11-25)` section records each change with its source.
 
 Tags on every external claim: [vendor] a vendor page, data sheet or vendor
 schematic statement; [schematic] a net or part read from the vendor
@@ -41,7 +44,7 @@ E1]. The internal RC cannot be used for connections [vendor: E2].
 The StickS3 has no crystal, so it sits on the 3.3 mA floor
 ([00-hardware-experiments.md](00-hardware-experiments.md), experiment A).
 Schematic reads found a crystal on the ESP32 XTAL_32K pins only on these
-boards [schematic]: LilyGO T-Beam Supreme [L13], T-Watch Ultra and T-LoRa
+boards [schematic]: LilyGO T-Beam Supreme [L32], T-Watch Ultra and T-LoRa
 Pager [L17]; Heltec Wireless Tracker V1.1 and V2 [H14, H19], Vision Master
 E213 and T190, and Wireless Paper [H25, H30, H32].
 
@@ -76,12 +79,20 @@ Board GNSS facts that matter here:
 
 | Board | Receiver, class | Backup | Antenna | Tag |
 | :--- | :--- | :--- | :--- | :--- |
-| T-Beam Supreme L76K | L76K, `$PCAS` | V_BCKP from AXP2101 VRTC; survives a rail cut while the 18650 is in | SMA | [schematic: L13] |
-| T-Beam Supreme M10S | MAX-M10S, UBX | same board and VRTC net as the L76K trim | SMA | [vendor: L14, L26]; same net [inferred] |
+| T-Beam Supreme L76K | L76K, `$PCAS`, WAKE_UP on GPIO7 | V_BCKP (module pin 6) on AXP2101 VRTC; survives a rail cut while the 18650 is in | SMA | [schematic: L32, sheet Radio and GNSS rev V3.0] |
+| T-Beam Supreme M10S | MAX-M10S, UBX, no documented enable | not documented: there is no M10S schematic. The MAX-M10S pin 6 is V_BCKP and pin 7 is V_IO | SMA | [vendor: L14, L26]; VRTC path [inferred] |
 | T-Watch Ultra | MIA-M10Q, UBX | V_BCKP from AXP2101 VRTC | internal | [schematic: L17] |
 | T-LoRa Pager | MIA-M10Q, UBX, 38400 baud, GPS_EN via XL9555 | VRTC backup | internal | [schematic: L17] |
 | T-Deck Plus | L76K or MIA-M10Q | V_BCKP on a VRTC net, source untraced | internal | [schematic: L6; vendor: L26] |
 | Cardputer Adv + Cap LoRa-1262 | AT6668, `$PCAS` | not found | Cap | [vendor: M46] |
+
+On the L76K trim the SoC nets are GPIO6 PPS, GPIO7 WAKE_UP, GPIO8 GPS_TX and
+GPIO9 GPS_RX [schematic: L32, sheet ESP32S3 rev V3.0], and the module's 1PPS
+output reaches GPIO6 through a series 1N4148 [schematic: L32, sheet Radio and
+GNSS rev V3.0], so a pulse arrives a diode drop below its source level. Only
+V_BCKP is common to both trims: it is module pin 6 on the L76K footprint and on
+the MAX-M10S [vendor: U1 table 10]. Everything else in the M10S row is
+undocumented, including what supplies V_IO.
 
 ## Scoring
 
@@ -120,11 +131,14 @@ GPS backup and the effort weigh more than a perfect form factor.
 
 1. **LilyGO T-Beam Supreme M10S first (50.04 USD plus an 18650)** [vendor:
    L26]. It has every hardware lever at once: the 32 kHz crystal on XTAL_32K
-   [schematic: L13], an 18650 holder, the AXP2101 with battery percentage,
-   the MAX-M10S with V_BCKP backup, and SMA for an active antenna. It is a
-   bench board: one-button OLED input and no case. It is the board that
-   proves the 230 uA floor and the M10 driver before either goes into a
-   pocket device.
+   [schematic: L32, sheet ESP32S3 rev V3.0], an 18650 holder, the AXP2101 with
+   battery percentage, the MAX-M10S with a backup path the documents do not
+   show, and SMA for an active antenna. It is a bench board: one-button OLED
+   input and no case. It is the board that proves the 230 uA floor and the M10
+   driver before either goes into a pocket device. Its open risk is
+   documentation: the L76K trim has sheets for the GNSS wiring and the M10S
+   trim has none, so V_IO, the backup path and the GPIO7 line are measured
+   before they are relied on (bench item 6).
 2. **T-Watch Ultra (90.34 USD) or T-LoRa Pager (87.35 USD) as the pocket
    form factor** [vendor: L26]. Both have the crystal and an M10 receiver with
    VRTC backup [schematic: L17]. The Ultra has a 2.06 inch CO5300 AMOLED and
@@ -213,7 +227,9 @@ commit and meter in the result.
    and 5 mA at VCC [vendor: U1].
 3. Warm start after a rail cut. Get a fix, cut the GPS main rail with the
    18650 in place so V_BCKP stays up, restore it, time the fix. Repeat with
-   the cell removed. Compare to the 108 s StickS3 cold start.
+   the cell removed. Compare to the 108 s StickS3 cold start. The L76K trim
+   backs V_BCKP from VRTC [schematic: L32]; the M10S trim has no schematic,
+   so its backup path is unknown until this item measures it.
 4. The T-Beam off-current outlier. Measure the board in the AXP2101 off state
    on our unit and compare to the 0.1 mA and 13.2 mA reports [measured:
    user, L15].
@@ -221,6 +237,12 @@ commit and meter in the result.
    with the radio left as reset leaves it, then with it put to sleep at boot,
    and keep the lower state [inferred: an unconfigured radio may idle above
    its sleep current].
+6. M10S pin 7 and V_IO. On the M10S unit, find what supplies the module's
+   V_IO and what GPIO7 meets. The MAX-M10S pin 7 is V_IO and pin 5 is EXTINT
+   [vendor: U1 table 10]; the L76K footprint leaves pin 7 RESERVED and drives
+   WAKE_UP on pin 5 [schematic: L32]. If the two trims share a footprint,
+   V_IO sits on the pad the L76K leaves reserved and GPIO7 meets EXTINT rather
+   than an enable. Check the UART first: without V_IO there is no IO.
 
 ## Nordic track
 
@@ -237,13 +259,41 @@ of plan 127 [vendor: N44]. See plans 127 and 287.
 
 ## Open items
 
-- Bench items 1 to 5 above.
+- Bench items 1 to 6 above.
 - Trace what feeds VRTC on the T-Deck Plus.
 - Confirm the Pager cell size.
 - Confirm on our T-Beam M10S unit that V_BCKP comes from the AXP2101 VRTC as
-  on the L76K trim.
+  on the L76K trim, and what supplies the module's V_IO (pin 7). There is no
+  M10S schematic.
+- Whether BAT1, the PCF8563 backup cell, is populated on our unit. The RTC is
+  battery backed either way; the cell has to be fitted for it to matter.
+- Which RTC part is fitted. The wiki feature list says PCF85063ATL, its I2C
+  address table and both schematics say PCF8563, and both answer at 0x51, so a
+  bus scan does not settle it. The two parts do not share a register map, so
+  check the package marking before `m5::RTC8563_Class` is trusted.
 
-## Sources (accessed 2026-11-13)
+## Verification pass (2026-11-25)
+
+Read the LilyGO schematic PDFs at their own title-block revisions, the T-Beam
+Supreme wiki page and the vendor factory example, then checked each claim in
+this plan against them. Items that change this plan's text are below. Items 1,
+2, 4, 6, 7 and 8 of the same pass change only plan 322's steps and tables and
+are recorded in
+[322-hardware-abstraction.md](322-hardware-abstraction.md)'s verification pass
+with their sources.
+
+| # | Correction | Source |
+| ---: | :--- | :--- |
+| 3 | The PCF8563 is battery backed, so plan 322's `rtcBatteryBacked` becomes true. Both Supremo revisions feed VDD from VDD3V3 through a 1N4148 and a 1K series resistor, and from BAT1. Whether BAT1 is populated is the only open part. The 32 kHz crystal on XTAL_32K belongs to the SoC, not the RTC; the RTC block has its own crystal. | [schematic: L31, RTC block; L30, RTC block; L32, sheet ESP32S3 rev V3.0] |
+| 5 | GPIO7 is a WAKE_UP line for the L76K trim only. The ESP32S3 sheet maps GPIO7 to GPS_WAKEUP and the Radio and GNSS sheet drives the L76K's WAKE_UP input with it, and the wiki marks the row L76K only. The MAX-M10S has no enable input, its pin 5 is EXTINT and its pin 7 is V_IO, and there is no M10S schematic. The enable claim is UNVERIFIED for that trim and the M10S row above now says so. | [schematic: L32, sheets ESP32S3 and Radio and GNSS rev V3.0; vendor: L14 Pin Mapping; vendor: U1 table 10] |
+| 5a | The one GPS net the two trims share is V_BCKP on module pin 6, fed by VRTC on the L76K sheet. The VRTC claim for the M10S trim stays inferred, because the trim has no schematic. | [schematic: L32, sheet Radio and GNSS rev V3.0; vendor: U1 table 10] |
+| 9 | The 8 MB PSRAM is quad (QSPI), so GPIO33 to GPIO37 stay usable: the IMU takes 33 and 34 and the peripheral SPI 35, 36 and 37. No number in this plan changes, but the octal-PSRAM risk is off the IMU and display rows. | [vendor: L14 Product Parameters and Pin Mapping] |
+
+Two facts the documents do not settle are carried in Open items rather than
+guessed: whether BAT1 is fitted, and which RTC part is fitted (PCF8563 or
+PCF85063ATL).
+
+## Sources (accessed 2026-11-13; L14 sections and L30 to L33 read again 2026-11-25)
 
 - E1 https://github.com/espressif/esp-idf/blob/master/examples/bluetooth/nimble/power_save/README.md
 - E2 https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/low-power-mode/low-power-mode-ble.html
@@ -260,7 +310,10 @@ of plan 127 [vendor: N44]. See plans 127 and 287.
 - L6 https://github.com/Xinyuan-LilyGO/T-Deck/tree/HEAD/schematic
 - L10 https://github.com/Xinyuan-LilyGO/T-Deck-Pro
 - L13 https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/tree/HEAD/schematic/T-Beam-S3-Supreme
-- L14 https://wiki.lilygo.cc/products/t-beam-series/t-beam-supreme/
+- L14 https://wiki.lilygo.cc/products/t-beam-series/t-beam-supreme/ , page state
+  for hardware revision V3.0 (its Version History lists T-Beam-Supreme V3.0 as
+  the initial release). Sections read on 2026-11-25: Key Features, Product
+  Parameters, I2C Device Addresses, AXP2101 Power Channels, Pin Mapping.
 - L15 https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/issues/301
 - L16 https://github.com/meshtastic/firmware/issues/10487
 - L17 https://github.com/Xinyuan-LilyGO/LilyGoLib/tree/master/schematic
@@ -270,6 +323,19 @@ of plan 127 [vendor: N44]. See plans 127 and 287.
   https://lilygo.cc/products/t-lora-pager.json and
   https://lilygo.cc/products/t-deck-plus-1.json (re-read 2026-11-13)
 - L28 https://www.cnx-software.com/2026/04/20/lilygo-t-watch-ultra-an-ip65-rated-esp32-s3-smartwatch-with-2-01-inch-amoled-lora-and-gnss/
+- L30 https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/schematic/T-Beam-S3-Supreme/T-Beam-S3-Supreme-V3.0.pdf
+  , title block revision V3.0, blocks OLED Display, RTC, Bottom
+- L31 https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/schematic/T-Beam-S3-Supreme/T-Beam-S3-Supreme-V3.1.pdf
+  , title block revision V3.1, blocks OLED Display, Sensor, RTC, Bottom
+- L32 https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/schematic/T-Beam-S3-Supreme/T-Beam-S3-Core.pdf
+  , three sheets each at title block revision V3.0: Power
+  (motherboard-axp2101), ESP32S3 (motherboard-esp32s3), Radio and GNSS
+  (motherboard-radio-gnss)
+- L33 https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/examples/Factory/LoRaBoards.cpp
+  and
+  https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/examples/Factory/utilities.h
+  , vendor factory example: AXP2101 rail init and VBACKUP state, I2C scan with
+  the display and magnetometer addresses, GPS pin definitions
 - H14 https://resource.heltec.cn/download/Wireless_Tracker/Wireless_Tacker1.1/HTIT-Tracker_V0.5.pdf
 - H19 https://resource.heltec.cn/download/Wireless_Tracker_V2/Schematic/HTIT-Tracker-FEM_V2.3.pdf
 - H25 https://resource.heltec.cn/download/HT-VME213/HT-VME213_Schematic_Diagram_V1.0.pdf

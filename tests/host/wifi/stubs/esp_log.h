@@ -1,9 +1,13 @@
 #pragma once
+// The host tests drive the production handlers, so a silent stub hides log-only
+// behaviour. Warnings are counted so a test can pin that a path stays quiet.
+inline int esp_log_warn_count = 0;
 #define ESP_LOGE(...) \
   do {                \
   } while (false)
-#define ESP_LOGW(...) \
-  do {                \
+#define ESP_LOGW(...)        \
+  do {                       \
+    esp_log_warn_count += 1; \
   } while (false)
 #define ESP_LOGI(...) \
   do {                \

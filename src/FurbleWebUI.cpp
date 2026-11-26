@@ -486,8 +486,10 @@ void WebUI::hostServiceTimerEvents(void) {
 #endif
 
 bool WebUI::networkReady(void) const {
-  const WiFi::status_t status = WiFi::getStatus();
-  if (status.connected && !status.ip.empty()) {
+  // Ask for the live station address, as MQTT does, instead of the cached WiFi
+  // snapshot. The snapshot keeps the last address after a DHCP lease loss, so
+  // trusting it kept the server running on a dead address.
+  if (WiFi::hasAssignedAddress()) {
     return true;
   }
 #if defined(FURBLE_ETHERNET)
@@ -1142,9 +1144,12 @@ std::string WebUI::buildStatusJSON(void) const {
   cJSON_AddNumberToObject(batteryJSON, "current", battery.current);
   cJSON_AddBoolToObject(batteryJSON, "charging", battery.charging);
   const WiFi::status_t wifi = WiFi::getStatus();
-  bool connected = wifi.connected;
+  // Report the same live answer as the readiness gate. The cached snapshot
+  // keeps the last address after a lease loss, so reporting it showed a dead
+  // address as connected in the status page.
+  bool connected = WiFi::hasAssignedAddress();
   bool wireless = connected;
-  std::string ip = wifi.ip;
+  std::string ip = connected ? wifi.ip : std::string();
 #if defined(FURBLE_ETHERNET)
   if (!connected && Ethernet::isConnected()) {
     connected = true;
