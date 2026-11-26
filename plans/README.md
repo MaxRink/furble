@@ -258,6 +258,7 @@ implemented.
 | [125-esp-optimization-program.md](125-esp-optimization-program.md) | Measurement-first ESP-IDF, radio, power, memory, UI, dependency, security, and release optimization program |
 | [127-nordic-port-baseline.md](127-nordic-port-baseline.md) | Simulator-gated portability boundary and Nordic silicon port baseline |
 | [127-review-feedback.md](127-review-feedback.md) | Review-feedback record for the plan 127 port stack |
+| [362-nrf-ble-only-port.md](362-nrf-ble-only-port.md) | nRF port for a BLE-only variant: the measured portability boundary, the nRF board and toolchain survey, the flash and RAM arithmetic, and a documented no until the five seam extraction lands |
 | [143-pm1-watchdog-window.md](implemented/143-pm1-watchdog-window.md) | Safe 45 second M5PM1 watchdog window for OTA health validation |
 | [144-upload-partition-offset.md](implemented/144-upload-partition-offset.md) | Keep PlatformIO no-build uploads aligned with OTA application partitions |
 | [145-connect-context-initializer.md](implemented/145-connect-context-initializer.md) | Explicit initialization for the LVGL connection context |
