@@ -13,6 +13,12 @@
  * significant byte at the lower command code (section 2.1, Table 2-1). The
  * 7-bit address is fixed at 0x55 (section 5.1). Read-only use needs no unseal
  * and no data memory access, so this driver never writes the gauge.
+ *
+ * Bus pacing (section 5.3, "I2C command waiting time"): after a packet the
+ * gauge needs 66 us of bus-free time before the next one, so read() asks the
+ * bus for that gap between its five packets through RegisterBus::delayUs().
+ * The firmware adapter must override that hook; its default is a no-op and
+ * the gauge then fails silently, answering with stale or corrupt data.
  */
 
 namespace Furble {
@@ -25,6 +31,20 @@ class BQ27220 {
   /** TimeToEmpty() value meaning the battery is not discharging (2.11). */
   static constexpr uint16_t NO_ESTIMATE = 0xFFFF;
 
+  /** Section 5.3: 66 us of bus-free time between standard-command packets. */
+  static constexpr uint32_t PACKET_GAP_US = 66;
+
+  /**
+   * Section 5.3: poll no faster than twice per second.
+   *
+   * The gauge refreshes the standard-command data once a second, so a faster
+   * poll returns the same sample and spends bus time for nothing. read() does
+   * not enforce this: it cannot tell a caller's timer from a busy loop, and
+   * blocking for the interval inside a battery read would stall the UI. The
+   * caller owns the interval, and this constant states it.
+   */
+  static constexpr uint32_t MIN_POLL_INTERVAL_MS = 500;
+
   struct Reading {
     uint16_t voltageMv;       // Voltage(), 0x08, section 2.6
     int16_t currentMa;        // Current(), 0x0C, section 2.8, negative when discharging
@@ -36,7 +56,18 @@ class BQ27220 {
 
   explicit BQ27220(RegisterBus &bus) : m_Bus(bus) {}
 
-  /** Read every field. Returns false if any transfer fails. */
+  /**
+   * Read every field: five standard-command packets with the 66 us bus-free
+   * gap of section 5.3 between them, so one call keeps the bus about 264 us.
+   *
+   * Returns false if any transfer fails, in which case `reading` is left
+   * untouched.
+   *
+   * Rate limit: call this at most twice per second (section 5.3, see
+   * MIN_POLL_INTERVAL_MS). One call reads each of the five commands once, so
+   * a 2 Hz poll reads every command at the gauge's own 1 Hz refresh rate and
+   * stays inside the limit.
+   */
   bool read(Reading &reading);
 
  private:

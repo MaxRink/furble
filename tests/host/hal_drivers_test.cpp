@@ -4,15 +4,20 @@
 // datasheet cited in the driver header, not from the driver, so a typo in a
 // driver constant fails here:
 //
-//   AXP2101  X-Powers AXP2101 datasheet revision 1.0, section 6.13.2
-//   BQ27220  TI SLUUBD4A, sections 2.1 to 2.21 and Table 2-6
+//   AXP2101  X-Powers AXP2101 datasheet revision 1.0, sections 6.12.1 and
+//            6.13.2
+//   BQ27220  TI SLUUBD4A, revised November 2022, sections 2.1 to 2.21, 5.3 and
+//            Tables 2-1 and 2-6
 //   XL9555   XINLUDA XL9535/XL9555 datasheet Rev 2.3, section 9.2
-//   SX1262   Semtech DS.SX1261-2.W.APP Rev 2.2, sections 8.1, 9.3, 13.1.1
+//   SX1262   Semtech DS.SX1261-2.W.APP Rev 2.2, sections 8.1, 9.3, 13.1.1 and
+//            Table 8-2
 
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "AXP2101.h"
@@ -29,27 +34,79 @@ using Furble::HAL::XL9555;
 namespace {
 
 int g_Failures = 0;
+int g_Checks = 0;
 
 void check(bool condition, const std::string &message) {
+  g_Checks++;
   if (!condition) {
     std::cerr << "FAIL: " << message << '\n';
     g_Failures++;
   }
 }
 
-/** Register file with a write log. Multi-byte reads walk up the addresses. */
+/**
+ * How a part maps the bytes of one transfer onto its register file.
+ *
+ * The fake honours each part's own addressing rule instead of walking up the
+ * register file, because a linear walk answers bytes the silicon cannot:
+ *
+ * LINEAR     the next register holds the next byte. The AXP2101 reads REG 34
+ *            and 35 as one 16-bit value (section 6.13.2.30).
+ * WORD       one standard command is a 16-bit word whose code is even, and the
+ *            command pointer stays inside that word (BQ27220 section 2.1,
+ *            Table 2-1).
+ * PORT_PAIR  the address pointer walks a 16-bit port pair and wraps back
+ *            inside it (XL9555 section 9.2.1, Table 6), so 0x03 then 0x02, not
+ *            0x03 then 0x04.
+ */
+enum class AddressMode {
+  LINEAR,
+  WORD,
+  PORT_PAIR,
+};
+
+/** Two hex digits, so an event names a register the way the test reads it. */
+std::string hex(uint8_t value) {
+  constexpr char DIGITS[] = "0123456789ABCDEF";
+  std::string out;
+  out.push_back(DIGITS[value >> 4]);
+  out.push_back(DIGITS[value & 0x0FU]);
+  return out;
+}
+
+/**
+ * Register file with one interleaved event log.
+ *
+ * `events` records every transfer and every pacing wait in the order the driver
+ * issued them, as FakeRadio does: "read 08 2", "delay 66", "read 0A 2". A case
+ * can then assert where a wait sits, not only that one happened. Separate read
+ * and delay logs cannot: a driver that spends all four gaps before the first
+ * packet, or drops the gap before the last, fills them the same way as a
+ * correct one.
+ *
+ * `writes` stays as a total for the cases that only ask whether anything was
+ * written. `misuses` collects every transfer the part's addressing rule cannot
+ * serve, such as an odd BQ27220 command code or a read that would have to leave
+ * a 16-bit pair; a passing case asserts it stays empty.
+ */
 class FakeBus final: public RegisterBus {
  public:
+  explicit FakeBus(AddressMode mode = AddressMode::LINEAR) : m_Mode(mode) {}
+
   std::map<uint8_t, uint8_t> regs;
   std::vector<std::pair<uint8_t, uint8_t>> writes;
+  std::vector<std::string> events;
+  std::vector<std::string> misuses;
   bool fail = false;
 
   bool read(uint8_t reg, uint8_t *data, size_t length) override {
     if (fail) {
       return false;
     }
+    note(reg, length);
+    events.push_back("read " + hex(reg) + ' ' + std::to_string(length));
     for (size_t i = 0; i < length; i++) {
-      data[i] = regs[static_cast<uint8_t>(reg + i)];
+      data[i] = regs[address(reg, i)];
     }
     return true;
   }
@@ -58,18 +115,122 @@ class FakeBus final: public RegisterBus {
     if (fail) {
       return false;
     }
+    note(reg, length);
+    events.push_back("write " + hex(reg) + ' ' + std::to_string(length));
     for (size_t i = 0; i < length; i++) {
-      const auto r = static_cast<uint8_t>(reg + i);
+      const uint8_t r = address(reg, i);
       regs[r] = data[i];
       writes.emplace_back(r, data[i]);
     }
     return true;
   }
+
+  void delayUs(uint32_t us) override { events.push_back("delay " + std::to_string(us)); }
+
+ private:
+  /** Register that holds byte `i` of a transfer started at `reg`. */
+  uint8_t address(uint8_t reg, size_t i) const {
+    switch (m_Mode) {
+      case AddressMode::WORD:
+        return static_cast<uint8_t>((reg & 0xFEU) + (i % 2));
+      case AddressMode::PORT_PAIR:
+        return static_cast<uint8_t>((i % 2) == 0 ? reg : (reg ^ 0x01U));
+      case AddressMode::LINEAR:
+      default:
+        return static_cast<uint8_t>(reg + i);
+    }
+  }
+
+  void note(uint8_t reg, size_t length) {
+    if (m_Mode == AddressMode::WORD) {
+      if ((reg & 0x01U) != 0) {
+        misuses.push_back("odd standard command code " + std::to_string(reg));
+      }
+      if (length > 2) {
+        misuses.push_back("standard command read wider than its word");
+      }
+    } else if ((m_Mode == AddressMode::PORT_PAIR) && (length > 2)) {
+      misuses.push_back("XL9555 transfer wider than one port pair");
+    }
+  }
+
+  const AddressMode m_Mode;
 };
+
+/** The log with each delay's length dropped, so only the placement shows. */
+std::vector<std::string> eventKinds(const std::vector<std::string> &events) {
+  std::vector<std::string> kinds;
+  for (const auto &event : events) {
+    kinds.push_back(event.rfind("delay ", 0) == 0 ? "delay" : event);
+  }
+  return kinds;
+}
+
+/** The read events of a log, in the order the driver issued them. */
+std::vector<std::string> readEvents(const std::vector<std::string> &events) {
+  std::vector<std::string> reads;
+  for (const auto &event : events) {
+    if (event.rfind("read ", 0) == 0) {
+      reads.push_back(event);
+    }
+  }
+  return reads;
+}
+
+/**
+ * Protected mask for DCDC1. Rail order puts DCDC1 first and its enable is REG
+ * 80 bit 0 (section 6.13.2.68), so the mask names it with bit 0 of the
+ * uint16_t rather than with a register bit.
+ */
+constexpr uint16_t PROTECTED_DCDC1 = 0x0001;
+
+bool sameKey(const AXP2101::PowerKey &a, const AXP2101::PowerKey &b) {
+  return (a.shortPress == b.shortPress) && (a.longPress == b.longPress) && (a.falling == b.falling)
+         && (a.rising == b.rising);
+}
+
+/** Datasheet register pairs map onto the fake's own addressing rule. */
+void testBusModel(void) {
+  // BQ27220 section 2.1: a standard command is a two-byte word, least
+  // significant byte first, and Table 2-1 lists it at an even command code. A
+  // third byte re-reads the word instead of moving to the next command.
+  FakeBus word(AddressMode::WORD);
+  word.regs[0x08] = 0x68;
+  word.regs[0x09] = 0x10;
+  word.regs[0x0A] = 0x09;
+  word.regs[0x0B] = 0x00;
+  uint8_t data[4] = {};
+  check(word.read(0x08, data, 3) && data[0] == 0x68 && data[1] == 0x10 && data[2] == 0x68,
+        "fake bus wraps inside a BQ27220 command word");
+  check(word.misuses.size() == 1, "fake bus flags a read wider than one command word");
+  word.regs[0x16] = 0x16;
+  word.regs[0x17] = 0x17;
+  word.regs[0x18] = 0xAA;
+  check(word.read(0x17, data, 2) && data[0] == 0x16 && data[1] == 0x17,
+        "fake bus does not walk an odd command code into the next command");
+  check(word.misuses.size() == 2, "fake bus flags an odd BQ27220 command code");
+
+  // XL9555 section 9.2.1: the pointer wraps inside the register pair, so a
+  // two-byte read from 0x03 answers both output ports.
+  FakeBus port(AddressMode::PORT_PAIR);
+  port.regs[0x02] = 0xA5;
+  port.regs[0x03] = 0x5A;
+  port.regs[0x04] = 0xEE;  // polarity port 0, never part of the output pair
+  check(port.read(0x03, data, 2) && data[0] == 0x5A && data[1] == 0xA5,
+        "fake bus wraps the XL9555 output pair");
+  check(port.misuses.empty(), "fake bus serves the XL9555 pair without a misuse");
+
+  // AXP2101 section 6.13.2.30: REG 34 and 35 are one 16-bit value.
+  FakeBus linear;
+  linear.regs[0x34] = 0x10;
+  linear.regs[0x35] = 0x68;
+  check(linear.read(0x34, data, 2) && data[0] == 0x10 && data[1] == 0x68,
+        "fake bus walks the AXP2101 VBAT word linearly");
+}
 
 void testAxp2101(void) {
   FakeBus bus;
-  AXP2101 pmic(bus, AXP2101::railBit(AXP2101::Rail::DCDC1));
+  AXP2101 pmic(bus, PROTECTED_DCDC1);
 
   bus.regs[0x03] = 0x4A;
   check(pmic.probe(), "axp2101 probe accepts 0x4A");
@@ -144,7 +305,9 @@ void testAxp2101(void) {
           "axp2101 rail off keeps neighbours " + std::to_string(c.bit));
   }
 
-  // A protected rail is never switched off, and nothing is written.
+  // A protected rail is never switched off, and nothing is written. DCDC1 is
+  // the first rail the mask can name and its enable is REG 80 bit 0
+  // (section 6.13.2.68).
   bus.regs[0x80] = 0x01;
   bus.writes.clear();
   check(!pmic.setRail(AXP2101::Rail::DCDC1, false) && bus.writes.empty() && bus.regs[0x80] == 0x01,
@@ -169,22 +332,73 @@ void testAxp2101(void) {
   check(pmic.setBackupCharge(false) && bus.regs[0x18] == 0x0A, "axp2101 backup charge off");
   check(!pmic.setBackupCharge(true, 3400), "axp2101 backup above 3.3 V refused");
 
-  // Power key: REG 41 bits 3:2 enable, REG 49 bits 3:0 status, write 1 to clear.
+  // Power key: REG 41 bits 3:0 enable the four events REG 49 bits 3:0 latch
+  // (sections 6.13.2.41 and 6.13.2.44). Section 6.13.2.41 leaves bits 1:0 at
+  // 0 and section 6.12.1 sets a status bit only when its enable bit is set, so
+  // an enable of bits 3:2 alone would leave the two edge events unreachable.
+  constexpr uint8_t KEY_EVENTS = 0x0F;
   bus.regs[0x41] = 0xF0;
-  check(pmic.enablePowerKeyIrq(true) && bus.regs[0x41] == 0xFC, "axp2101 pek irq enable");
+  check(pmic.enablePowerKeyIrq(true) && bus.regs[0x41] == 0xFF,
+        "axp2101 pek irq enables all four key bits");
+  check(pmic.enablePowerKeyIrq(false) && bus.regs[0x41] == 0xF0,
+        "axp2101 pek irq off clears only the key bits");
+
+  struct KeyBit {
+    uint8_t bit;
+    bool AXP2101::PowerKey::*field;
+    const char *name;
+  };
+  const KeyBit keyBits[] = {
+      {0x01, &AXP2101::PowerKey::rising,     "rising edge" },
+      {0x02, &AXP2101::PowerKey::falling,    "falling edge"},
+      {0x04, &AXP2101::PowerKey::longPress,  "long press"  },
+      {0x08, &AXP2101::PowerKey::shortPress, "short press" },
+  };
+
+  // The enable mask and the decoded bits must agree, or the API offers an
+  // event the part never latches.
+  check(pmic.enablePowerKeyIrq(true), "axp2101 pek irq enabled for the decode cases");
+  uint8_t enabledMask = 0;
+  for (const auto &c : keyBits) {
+    enabledMask = static_cast<uint8_t>(enabledMask | c.bit);
+  }
+  check((bus.regs[0x41] & KEY_EVENTS) == enabledMask, "axp2101 enables every bit it decodes");
+  check((bus.regs[0x41] & 0xF0) == 0xF0, "axp2101 leaves the other REG 41 bits alone");
+
+  for (const auto &c : keyBits) {
+    // Bit 7 of REG 49 is another event, not a power key one.
+    bus.regs[0x49] = static_cast<uint8_t>(0x80 | c.bit);
+    bus.writes.clear();
+    AXP2101::PowerKey key = {};
+    AXP2101::PowerKey expected = {};
+    expected.*c.field = true;
+    check(pmic.readPowerKey(key) && sameKey(key, expected),
+          std::string("axp2101 decodes ") + c.name);
+    check(bus.writes.size() == 1 && bus.writes[0] == std::pair<uint8_t, uint8_t>(0x49, c.bit),
+          std::string("axp2101 clears only the ") + c.name + " bit");
+  }
+
   bus.regs[0x49] = 0x80 | 0x08 | 0x02;
   bus.writes.clear();
   AXP2101::PowerKey key = {};
   check(pmic.readPowerKey(key) && key.shortPress && !key.longPress && key.falling && !key.rising,
         "axp2101 pek decode");
-  check(bus.writes.size() == 1 && bus.writes[0].first == 0x49 && bus.writes[0].second == 0x0A,
+  check(bus.writes.size() == 1 && bus.writes[0] == std::pair<uint8_t, uint8_t>(0x49, 0x0A),
         "axp2101 pek clears only key bits");
   bus.regs[0x49] = 0x80;
   bus.writes.clear();
   check(pmic.readPowerKey(key) && bus.writes.empty(), "axp2101 pek idle writes nothing");
 
+  // Section 6.13.2.7: soft power off is REG 10 bit 0 and nothing else. The key
+  // latches are not drained here (see powerOff() in the header), so the press
+  // that powers the device off stays in REG 49 for the next boot to read.
   bus.regs[0x10] = 0x30;
+  bus.regs[0x49] = 0x0B;
+  bus.writes.clear();
   check(pmic.powerOff() && bus.regs[0x10] == 0x31, "axp2101 soft power off REG 10 bit 0");
+  check(bus.regs[0x49] == 0x0B && bus.writes.size() == 1
+            && bus.writes[0] == std::pair<uint8_t, uint8_t>(0x10, 0x31),
+        "axp2101 power off does not drain the key latches");
 
   bus.fail = true;
   check(!pmic.batteryVoltage(mv) && !pmic.setRail(AXP2101::Rail::ALDO2, true),
@@ -192,9 +406,9 @@ void testAxp2101(void) {
 }
 
 void testBq27220(void) {
-  FakeBus bus;
+  FakeBus bus(AddressMode::WORD);
   BQ27220 gauge(bus);
-  // Words are little endian at the command code pair.
+  // Words are little endian at the command code pair, Table 2-1.
   bus.regs[0x08] = 0x68;  // 4200 mV
   bus.regs[0x09] = 0x10;
   bus.regs[0x0A] = 0x09;  // BATTPRES | DSG
@@ -214,19 +428,52 @@ void testBq27220(void) {
   check(r.timeToEmptyMin == 300, "bq27220 tte 0x16");
   check(r.present && r.discharging, "bq27220 status BATTPRES and DSG");
   check(bus.writes.empty(), "bq27220 never writes the gauge");
+  check(bus.misuses.empty(), "bq27220 stays inside one command word per packet");
+
+  // The five standard commands of Table 2-1, each a two-byte word.
+  const std::vector<std::string> packets = {"read 08 2", "read 0A 2", "read 0C 2", "read 16 2",
+                                            "read 2C 2"};
+  check(readEvents(bus.events) == packets, "bq27220 reads the five standard commands once each");
+
+  // Section 5.3: 66 us of bus-free time between packets, so the log has to
+  // alternate packet and gap, read then delay then read. One interleaved log is
+  // what separates "before each packet" from "somewhere in the read": four gaps
+  // ahead of the first packet, and a missing gap before the last, both fill
+  // separate read and delay logs exactly as a correct driver does.
+  const std::vector<std::string> paced = {"read 08 2", "delay",     "read 0A 2",
+                                          "delay",     "read 0C 2", "delay",
+                                          "read 16 2", "delay",     "read 2C 2"};
+  check(eventKinds(bus.events) == paced,
+        "bq27220 leaves a gap before every packet after the first");
+
+  // Four waits for five packets, each at least the document's 66 us.
+  size_t gaps = 0;
+  for (const auto &event : bus.events) {
+    if (event.rfind("delay ", 0) == 0) {
+      gaps++;
+      check(std::stoul(event.substr(6)) >= 66, "bq27220 leaves the bus free at least 66 us");
+    }
+  }
+  check(gaps == 4, "bq27220 waits between packets only");
+  // Section 5.3 also caps the poll rate at twice a second, which the driver
+  // states rather than enforces.
+  check(BQ27220::MIN_POLL_INTERVAL_MS >= 500, "bq27220 poll interval honours the 2 Hz cap");
 
   bus.regs[0x0A] = 0x00;
   bus.regs[0x16] = 0xFF;
   bus.regs[0x17] = 0xFF;
-  check(gauge.read(r) && !r.present && !r.discharging && r.timeToEmptyMin == BQ27220::NO_ESTIMATE,
+  // Section 2.11: 0xFFFF means the gauge has no time-to-empty estimate.
+  check(gauge.read(r) && !r.present && !r.discharging && r.timeToEmptyMin == 0xFFFF,
         "bq27220 no battery, no estimate");
 
+  BQ27220::Reading kept = {4200, -200, 64, 300, true, true};
   bus.fail = true;
-  check(!gauge.read(r), "bq27220 bus error is reported");
+  check(!gauge.read(kept) && kept.voltageMv == 4200 && kept.percent == 64,
+        "bq27220 leaves the reading untouched on a bus error");
 }
 
 void testXl9555(void) {
-  FakeBus bus;
+  FakeBus bus(AddressMode::PORT_PAIR);
   XL9555 io(bus);
   // Power-on defaults: output 0xFF, config 0xFF (Table 6).
   bus.regs[0x02] = 0xFF;
@@ -247,12 +494,14 @@ void testXl9555(void) {
   check(io.read(5, level) && !level, "xl9555 read port 0 pin 5");
   check(!io.read(16, level) && !io.setOutput(16, true) && !io.setInput(16),
         "xl9555 pin 16 refused");
+  check(bus.misuses.empty(), "xl9555 accesses stay inside one register pair");
 }
 
 class FakeRadio final: public SX1262::Port {
  public:
   std::vector<std::string> events;
-  uint32_t busyPolls = 3;  // polls before BUSY drops after reset
+  uint32_t busyPolls = 3;          // polls with BUSY high before it drops after reset
+  uint32_t sleepConfirmPolls = 0;  // polls with BUSY still low after SetSleep
   bool asleep = false;
   bool honourSleep = true;
   bool spiOk = true;
@@ -264,6 +513,10 @@ class FakeRadio final: public SX1262::Port {
   }
   bool busy(void) override {
     if (asleep) {
+      if (sleepConfirmPolls > 0) {
+        sleepConfirmPolls--;
+        return false;
+      }
       return true;
     }
     if (busyPolls > 0) {
@@ -285,18 +538,62 @@ class FakeRadio final: public SX1262::Port {
   }
   void delayUs(uint32_t us) override {
     delayed += us;
-    if (events.empty() || events.back().rfind("delay", 0) != 0) {
-      events.push_back("delay");
-    }
+    events.push_back("delay " + std::to_string(us));
   }
 };
 
+uint32_t delayAfter(const std::vector<std::string> &events, const std::string &marker) {
+  for (size_t i = 0; i + 1 < events.size(); i++) {
+    if ((events[i] == marker) && (events[i + 1].rfind("delay ", 0) == 0)) {
+      return static_cast<uint32_t>(std::stoul(events[i + 1].substr(6)));
+    }
+  }
+  return 0;
+}
+
+/**
+ * The board's power-off path allows 20 ms between rail decisions, so the whole
+ * sleep sequence must end inside that. Neither Table 8-2 nor section 13.1.1
+ * bounds the standby-to-sleep time, so this is the only stated limit.
+ */
+constexpr uint32_t SLEEP_SEQUENCE_BUDGET_US = 20'000;
+
+/**
+ * The bound SX1262.h states for the whole sequence: 200 us of reset, 10,000 us
+ * waiting for the post-reset calibration, 500 us of no-SPI settle and 5,000 us
+ * confirming sleep, so 15,700 us at worst.
+ *
+ * The 500 us is section 13.1.1's figure and the 200 us reset pulse is twice
+ * section 8.1's 100 us minimum; the 10 ms ready budget covers Table 8-2's 3.5 ms
+ * cold start with room, and only the 5,000 us sleep-confirm budget has no
+ * tabulated value behind it. The header's total is the contract a board budgets
+ * its power-off path against. Summing the header's own constants against that
+ * total keeps the paragraph honest: with no such check a 9,000 us confirm budget
+ * or a 14,000 us ready budget passes every other case here and quietly
+ * contradicts the document.
+ */
+constexpr uint32_t DOCUMENTED_SLEEP_BOUND_US = 15'700;
+constexpr uint32_t HEADER_SLEEP_BOUND_US = SX1262::RESET_PULSE_US + SX1262::READY_BUDGET_US
+                                           + SX1262::SLEEP_SETTLE_US
+                                           + SX1262::SLEEP_CONFIRM_BUDGET_US;
+
 void testSx1262(void) {
+  // The four budgets the header's steps name, then their sum against the total
+  // it states.
+  check(SX1262::RESET_PULSE_US == 200 && SX1262::READY_BUDGET_US == 10'000
+            && SX1262::SLEEP_SETTLE_US == 500 && SX1262::SLEEP_CONFIRM_BUDGET_US == 5'000,
+        "sx1262 budgets are the numbers the header states");
+  check(HEADER_SLEEP_BOUND_US == DOCUMENTED_SLEEP_BOUND_US,
+        "sx1262 header total bound is the documented 15,700 us");
+
   FakeRadio radio;
   check(SX1262::sleep(radio), "sx1262 sleep succeeds");
-  check(radio.events.size() >= 4 && radio.events[0] == "reset-low" && radio.events[1] == "delay"
-            && radio.events[2] == "reset-high",
+  check(radio.events.size() >= 4 && radio.events[0] == "reset-low"
+            && radio.events[1].rfind("delay ", 0) == 0 && radio.events[2] == "reset-high",
         "sx1262 reset pulse first");
+  // Section 8.1 needs typically 100 us of NRESET, so a zero-width pulse would
+  // leave the part in whatever state the previous owner left it.
+  check(delayAfter(radio.events, "reset-low") >= 100, "sx1262 reset pulse is at least 100 us");
   // SetSleep is opcode 0x84 with sleepConfig 0x00 (cold start, RTC off).
   int spi = 0;
   for (const auto &e : radio.events) {
@@ -306,7 +603,17 @@ void testSx1262(void) {
     }
   }
   check(spi == 1, "sx1262 exactly one SPI command");
-  check(radio.delayed >= 100 + 500, "sx1262 reset pulse and 500 us settle observed");
+  // Section 13.1.1: the chip must not see SPI for 500 us after SetSleep.
+  check(delayAfter(radio.events, "spi 132 0") >= 500, "sx1262 keeps SPI off for 500 us");
+  check(radio.delayed <= SLEEP_SEQUENCE_BUDGET_US, "sx1262 sequence inside the stated bound");
+
+  // Table 8-2 tabulates no standby-to-sleep time, so BUSY may arrive late; a
+  // part that asserts it after the settle window is healthy.
+  FakeRadio late;
+  late.busyPolls = 0;
+  late.sleepConfirmPolls = 10;  // BUSY stays low for 1 ms after SetSleep
+  check(SX1262::sleep(late), "sx1262 sleep tolerates a late BUSY");
+  check(late.delayed <= SLEEP_SEQUENCE_BUDGET_US, "sx1262 late BUSY stays inside the bound");
 
   FakeRadio stuck;
   stuck.busyPolls = 1000000;
@@ -314,13 +621,20 @@ void testSx1262(void) {
   for (const auto &e : stuck.events) {
     check(e.rfind("spi", 0) != 0, "sx1262 no command while BUSY is high");
   }
-  // Section 8.1 needs typically 100 us of reset and Table 8-2 gives 3,500 us
-  // for a cold start; the wait must stay within a few times that, not hang.
-  check(stuck.delayed <= 10'200, "sx1262 ready wait is bounded by about 10 ms");
+  // A stuck BUSY spends the reset pulse plus the whole ready budget and returns
+  // before SetSleep, so 10,200 us is its real cost. The bound here is the
+  // documented total on purpose: the first version restated the driver's own
+  // constants, and the four cold starts plus reset bound that replaced them
+  // (14,200 us from Table 8-2) was looser than the path it guarded, so a
+  // 14,000 us ready budget fitted it. The two checks above are what hold the
+  // header at 15,700 us; this case proves the wait stops inside it.
+  check(stuck.delayed <= DOCUMENTED_SLEEP_BOUND_US,
+        "sx1262 stuck BUSY stays inside the documented total");
 
   FakeRadio ignored;
   ignored.honourSleep = false;
   check(!SX1262::sleep(ignored), "sx1262 BUSY low after SetSleep fails");
+  check(ignored.delayed <= SLEEP_SEQUENCE_BUDGET_US, "sx1262 confirms BUSY high inside the bound");
 
   FakeRadio broken;
   broken.spiOk = false;
@@ -330,12 +644,13 @@ void testSx1262(void) {
 }  // namespace
 
 int main() {
+  testBusModel();
   testAxp2101();
   testBq27220();
   testXl9555();
   testSx1262();
   if (g_Failures == 0) {
-    std::cout << "hal-drivers: PASS\n";
+    std::cout << "hal-drivers: PASS (" << g_Checks << " checks)\n";
     return 0;
   }
   return 1;
