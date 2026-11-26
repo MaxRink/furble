@@ -73,7 +73,7 @@ The class decides whether furble's existing GPS code and power work apply.
 | Class | Receivers | furble work |
 | :--- | :--- | :--- |
 | `$PCAS` | Quectel L76K, AT6668, ATGM336H | Existing code. Probe with `$PCAS06`. Plans 14, 15, 19 and 32 apply. |
-| UBX | u-blox MIA-M10Q, MAX-M10S, NEO-M10S, ZOE-M8Q | New driver. NMEA parsing still works, but the configuration and standby commands do not. |
+| UBX | u-blox MIA-M10Q, MAX-M10S, NEO-M10S, ZOE-M8Q | Implemented in `511c11d3` (#459): MON-VER detection, CFG-VALSET, NAV-PVT and NAV-SAT, RXM-PMREQ standby, UPD-SOS save on shutdown. Simulator verified only; no M10 hardware tested. |
 | `$CFG` | Unicore UC6580 | New driver. Different sentence set and 115200 baud. |
 | `$PAIR` | Airoha AG3352, Quectel LC76G | New driver. The LC76G also has Quectel `$PQTM` commands [46]. |
 | Other | MediaTek AG3335, LR1110 scan, unnamed modules | Treat as a new driver until proven otherwise. The LR1110 needs a position solver, not just a driver. Probe on hardware before promising reuse. |
@@ -90,8 +90,8 @@ Assistance and backup power decide how long it takes.
 
 | Receiver | Bands | Sensitivity | TTFF | Current | Backup or standby | Assistance | furble class | Verdict |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| AT6668, M5 Unit GPS v1.1 | L1 | -162 dBm tracking, -148 dBm cold | cold about 108 s without backup in the field reports | 31.64 mA at 5 V | no backup rail; firmware can send `$PCAS12` timed standby | CASIC aiding and ephemeris cache when `GPS_ASSIST` is on | `$PCAS` | The current baseline. Fine outdoors, weak indoors, slow after a rail cut. The lack of a backup rail is the hardware gap, not a lack of standby or assistance support. |
-| Quectel L76K | L1 | -162 dBm tracking, -148 dBm cold | 30 s cold, 5.5 s hot | 41 mA tracking, 360 uA standby | standby rail | vendor AGPS | `$PCAS` | Same sensitivity as the AT6668, but real standby and a rail switch. The ThinkNode M5 v1.0, the ThinkNode M4, and the T-Beam and T-Deck Plus L76K trims use it. |
+| AT6668, M5 Unit GPS v1.1 | L1 | -162 dBm tracking, -148 dBm cold | 23 s cold as published; 107.7 s is furble's measured re-fix after a 60 s rail cut | 31.64 mA at 5 V | no backup supply fitted; VBAT exists on the chip and module, and whether the unit wires it is UNVERIFIED; firmware can send `$PCAS12` timed standby | CASIC aiding and ephemeris cache when `GPS_ASSIST` is on | `$PCAS` | The current baseline. Fine outdoors, weak indoors, slow after a rail cut. The lack of a backup supply is the hardware gap, not a lack of standby or assistance support. |
+| Quectel L76K | L1 | -162 dBm tracking, -148 dBm cold | 30 s cold, 2 s hot; the 5.5 s figure is cold with AGNSS | 29 mA tracking, 20 uA standby, 8 uA backup (Quectel); Seeed's page gives 41 mA and 360 uA [41] | standby rail, V_BCKP | vendor AGPS | `$PCAS` | Same sensitivity as the AT6668, but real standby and a rail switch. The ThinkNode M5 v1.0, the ThinkNode M4, and the T-Beam and T-Deck Plus L76K trims use it. |
 | u-blox MIA-M10Q | L1, four GNSS | -167 dBm tracking, -148 dBm cold | 27 s cold, 1 s hot, 1 s AssistNow | 25 mW, about 8 to 12 mA at 3 V | 28 to 32 uA backup, 46 uA software standby | AssistNow Online, Offline, Autonomous | UBX | The best all-round upgrade. Lower power, better sensitivity, one second hot or aided fix, real backup. |
 | u-blox MAX-M10S | L1, four GNSS | -167 dBm tracking, -148 dBm cold | 27 s cold, 1 s hot, 1 s AssistNow | 25 mW | same as M10 | AssistNow | UBX | Same silicon as the MIA-M10Q in a larger module. The T-Beam M10S trim uses it. |
 | u-blox NEO-F10N | L1 and L5 | -148 dBm cold, tracking figure in the data sheet | 28 s cold, 2 s hot | about twice an L1 receiver | backup rail | AssistNow | UBX | Better in urban multipath, not an indoor fix. Costs power. Useful only if urban accuracy is the goal. |
