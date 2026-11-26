@@ -116,9 +116,19 @@ Why not a per-body flag:
 - The GATT profile is the fact the code actually needs. A body either has the
   allow/enable pair or it does not, and firmware updates change characteristics,
   not model names.
-- The table above is conservative in the direction that matters: nothing that
-  works today changes behaviour. `BestEffort` requires the pair to be absent
-  *and* the body not to have advertised the current generation.
+- The table above is conservative where it can be, but one row is a deliberate
+  behaviour change and is stated as one rather than folded into "nothing that
+  works today changes behaviour" (that earlier wording was wrong; review finding
+  3 in `plans/359-review-feedback.md`). A body that exposes no DD30/DD31 receives
+  no location today. After this change it receives a direct DD11 write on every
+  session whose gate is `BestEffort`, which for an already-paired camera is the
+  saved-record row: the record stores no advertisement, so the generation is
+  `Unknown` and the profile decides. The first pairing of the same body can take
+  the `Strict` row instead when it advertised the current generation. The two
+  sessions therefore differ, and that difference is accepted because the
+  alternative is to persist the generation in the vendor record, whose layout is
+  validated by `sizeof` on load and cannot gain a field without a migration. It
+  is recorded as follow-up 4.
 
 `BestEffort` is honest about failure. A refused DD11 write sets `m_GeoUnsupported`
 for the session so the GPS path stops retrying, and both the too-narrow link and
@@ -256,3 +266,19 @@ covers this change.
 3. Sony's advertised model code is still not decoded. Retaining it would let the
    location gate and the 91/95-byte choice be derived from the body instead of
    from the profile, but only once the codes are documented.
+4. The generation is not persisted, so the saved-record row takes `BestEffort`
+   where the first pairing took `Strict` (see "Why not a per-body flag"). Closing
+   it needs a versioned vendor record rather than a longer `sony_t`.
+5. A retryable ATT failure is treated as a capability refusal. `updateGeoData`
+   sets `m_GeoUnsupported` on any failed DD11 write in `BestEffort`, so one
+   application error, a busy body or a single ATT timeout suppresses location for
+   the rest of the session, not just a body that refuses the packet. `gattWrite`
+   returns only a bool, so the distinction needs the ATT status. The cheap version
+   is to latch after two consecutive failures and to clear the count on a
+   successful read of DD21; the precise version needs the error code plumbed
+   through `Camera::gattWrite`. Review finding 4 records the reproduction.
+6. The image is 1,028 bytes larger, measured as the difference between the
+   `m5stack-core-debug` flash figure on this branch and on its base, and that lane
+   has no headroom on master. Size work belongs to the tree-wide Core debug
+   recovery, not to a partial trim of this feature, so the branch stays whole and
+   waits for that recovery. Review finding 6 records the arithmetic.
