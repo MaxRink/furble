@@ -365,7 +365,16 @@ check.
   `UART_SCLK_REF_TICK` on the classic ESP32, which has REF_TICK at a fixed
   1 MHz and no XTAL UART source
   (`components/soc/esp32s3/include/soc/clk_tree_defs.h:264`,
-  `components/soc/esp32/include/soc/clk_tree_defs.h:231`). The display holds
+  `components/soc/esp32/include/soc/clk_tree_defs.h:231`). The S3 selects one
+  of three UART Core sources, APB_CLK, RC_FAST_CLK and XTAL_CLK, through
+  `UART_SCLK_SEL` (ESP32-S3 TRM v1.8, 26.3 and 26.4.1 p. 926, field values
+  p. 961). The ESP32 has only APB_CLK and REF_TICK, and REF_TICK is derived
+  from APB_CLK with a per-source divider (ESP32 TRM v5.9, 19.3.2 p. 312 and
+  7.2.4.2 with Table 7.2-5 p. 169), so `UART_SCLK_REF_TICK` is not an escape
+  from the clock family there; ESP-IDF reprograms that divider on every CPU
+  clock source change
+  (`components/esp_hw_support/port/esp32/rtc_clk.c`, `clk_ll_ref_tick_set_divider`
+  for the XTAL, RC_FAST and PLL sources). The display holds
   `ESP_PM_APB_FREQ_MAX` while the backlight is on because the LEDC divisor is
   fixed at config time; visible flicker without the lock is unmeasured. RMT is
   safe on two furble facts, not on a driver APB lock: the driver takes
@@ -405,19 +414,28 @@ check.
   PMIC power loss, not USB unplugging or reset. Restore battery power, hold the
   side button until the green LED flashes, then reflash.
 - M5PM1 (StickS3 PMIC): the first I2C transaction after its idle sleep fails
-  and only wakes it. Always retry once. The status LED stays lit at display off
-  unless you clear it: `setLedEnLevel(false)` saves PWR_CFG bit 4.
-- S3 native USB Serial/JTAG resets the chip on each host port open. Use that
-  port-open as the safe state transition, never a disconnect then reconnect.
-  That reset is a bench observation, not a sourced claim. esptool 4.11.0 prints
-  `FAILED` only from the flash verify check (`esptool/cmds.py:1382`, `:1389`),
-  so a `FAILED` line means the image did not verify. The reset phase prints
-  `Hard resetting via RTS pin...` (`esptool/loader.py:1711`). On the USB
-  Serial/JTAG part the port is gone by then, so the RTS change raises a port
-  error. A macOS bench run saw errno 6, ENXIO; other hosts report their own
-  code. `esptool/reset.py:51` ignores only ENOTTY and EINVAL, so the error is
-  retried and then re-raised (`:43-62`). The hash has verified by then, so the
-  traceback is benign even though the upload command exits non-zero.
+  and only wakes it. Always retry once, which is what `m5pm1Access()` does
+  (`include/FurblePlatform.h`). The manual states the rule in `I2C_CFG` note 2,
+  page 15, and the M5StickS3 low-power page repeats it. Idle sleep is off in the
+  current library path (`SLP_TO = 0`) and is invalid while PWM is enabled or
+  while entering Download mode (manual, pages 27 and 28). The status LED stays
+  lit at display off unless you clear it: `setLedEnLevel(false)` saves PWR_CFG
+  bit 4.
+- S3 native USB Serial/JTAG resets the chip on each host port open: the host
+  sets RTS 1 with DTR 0 (ESP32-S3 TRM v1.8, Table 33.3-2 p. 1248), and SRST
+  resets the digital system but not the USB Serial/JTAG controller, so the port
+  survives (33.3.5 p. 1249). The module needs the PLL and APB_CLK at
+  40 MHz or more, is gated in light sleep and is powered down in deep sleep
+  (33.4.2 p. 1253). Use that port-open as the safe state transition, never a
+  disconnect then reconnect. esptool 4.11.0 prints `FAILED` only from the flash
+  verify check (`esptool/cmds.py:1382`, `:1389`), so a `FAILED` line means the
+  image did not verify. The reset phase prints `Hard resetting via RTS pin...`
+  (`esptool/loader.py:1711`). On the USB Serial/JTAG part the port is gone by
+  then, so the RTS change raises a port error. A macOS bench run saw errno 6,
+  ENXIO; other hosts report their own code. `esptool/reset.py:51` ignores only
+  ENOTTY and EINVAL, so the error is retried and then re-raised (`:43-62`). The
+  hash has verified by then, so the traceback is benign even though the upload
+  command exits non-zero.
 - GPS unit v1.1 (AT6668): no backup supply, so a rail cut costs a ~108 s cold
   start. `$PCAS12` timed standby works. `$PCAS02` only accepts 100-1000 ms.
   Sub-second rates need `$PCAS03` sentence pruning first.
@@ -479,7 +497,11 @@ check.
 - `lib/furble/`: BLE camera protocol library, one class per vendor mode.
 - `lib/blowfish/`, `lib/preferences/`: support libs used by lib/furble.
 - `lib/hal/`: pure, host-tested chip drivers (AXP2101, BQ27220, XL9555,
-  SX1262 sleep) behind a register-bus seam. See plans/322.
+  SX1262 sleep) behind a register-bus seam. See plans/322. The SX1262 timing is
+  document-only: NRESET low typically 100 us (DS.SX1261-2.W.APP Rev 2.2, 8.1
+  p. 53), BUSY 600 ns maximum from the NSS rising edge and held high through
+  20 kOhm in sleep (8.3.1 p. 55), and the switching table 8-2 p. 56 gives the
+  STBY_RC warm start at 340 us and the cold start at 3500 us.
 - `components/icons/`: generated LVGL image arrays.
 - `sim/`: host SDL simulator for the UI (shims, fakes, script driver). It
   never modifies firmware sources.

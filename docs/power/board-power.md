@@ -109,10 +109,10 @@ as separate boards when a rail is involved.
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `m5stick-c` | M5StickC | ESP32 | AXP192, 100 mA charge, 4.2 V | Voltage, current, charge state | DCDC1 3.35 V MCU, LDO2 backlight, LDO3 3.0 V LCD, EXTEN Grove 5 V, ST7735S, IR on G9, LED on G10, no SD | Light sleep 0.8 mA plus AXP192, deep sleep 10 uA plus AXP192, off 27 uA, no PMIC timed wake |
 | `m5stick-c-plus` | M5StickC Plus and Plus2 | ESP32 | Plus: AXP192, 100 mA. Plus2: no PMIC, external charger | Plus: voltage, current, charge. Plus2: ADC voltage only | Plus: LDO2 backlight, LDO3 LCD, EXTEN. Plus2: PWM backlight G27, HOLD G4, battery divider G38, LED and IR G19, ST7789V, no SD | Plus as above. Plus2 light 0.8 mA plus divider, deep 10 uA plus divider, power off through HOLD |
-| `m5stick-s3` | M5StickS3 | ESP32-S3-PICO-1-N8R8 | M5PM1, charger on by default, profile not documented | Voltage and charge state on PM1 GPIO0, no current | 3.3 V DCDC and LDO, 5 V boost for Grove and EXT_5V and IR, L3B on PM1 GPIO2, ST7789P3 backlight G38, BMI270, ES8311 and AW8737, IR TX G46 and RX G42, no SD, USB Serial/JTAG | Light sleep 240 uA plus 140 uA PSRAM plus PM1, deep sleep 7 uA plus PM1, off 14.02 uA, L1 52.47 uA, L2 102.40 uA, PM1 timer wake |
+| `m5stick-s3` | M5StickS3 | ESP32-S3-PICO-1-N8R8, 8 MB quad flash and 8 MB octal PSRAM, so SPICS1 and GPIO33 to GPIO37 are PSRAM pins | M5PM1, charger on by default, profile not documented | Voltage and charge state on PM1 GPIO0, no current | 3.3 V DCDC and LDO, 5 V boost for Grove and EXT_5V and IR, L3B on PM1 GPIO2, ST7789P3 backlight G38, BMI270, ES8311 and AW8737, IR TX G46 and RX G42, no SD, USB Serial/JTAG | Light sleep 240 uA plus 140 uA PSRAM plus PM1, deep sleep 7 uA plus PM1, off 14.02 uA, L1 52.47 uA, L2 102.40 uA, PM1 timer wake |
 | `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD; IMU on the Gray variant, part not recorded in this tree | Light sleep only with boost keep-on, below 45 mA for 64 s cuts the boost, no immediate PMIC off, deep sleep only with keep-on |
 | `m5stack-core2` | Core2 and M5Tough (untested) | ESP32 | AXP192, 390 mA charge on Core2 | Voltage, current, charge state | DCDC3 backlight, LDO2 3.3 V LCD and SD, LDO3 vibration on Core2 and backlight on Tough, LDOIO0 Grove 5 V, ILI9342C, FT6336U touch, MPU6886, NS4168, SD, BM8563 | Light sleep 0.8 mA plus AXP192 plus touch, deep sleep 10 uA plus AXP192, off 27 uA, touch wake on G39 |
-| `waveshare-s3-eth` | Waveshare ESP32-S3-ETH | ESP32-S3R8, 8 MB octal PSRAM | None, no battery | None | USB-C 5 V or PoE HAT, W5500 on SPI, WS2812 on G21, microSD in 1-line mode and unused by furble, no display or IMU; GPS only through the Pico header | Tickless idle off, so no automatic light sleep; DFS is left on; mains powered |
+| `waveshare-s3-eth` | Waveshare ESP32-S3-ETH | ESP32-S3R8, 8 MB octal PSRAM on GPIO33 to GPIO37 | None, no battery | None | USB-C 5 V or PoE HAT, W5500 on SPI, WS2812 on G21, microSD in 1-line mode and unused by furble, no display or IMU; GPS only through the Pico header | Tickless idle off, so no automatic light sleep; DFS is left on; mains powered |
 | `esp32-s3-headless` | ESP32-S3-DevKitC-1 | ESP32-S3, 8 MB PSRAM in sdkconfig | None, no battery | None | USB or 5 V, USB Serial/JTAG, no display, PMIC, or RTC | Tickless idle on, light sleep 240 uA plus PSRAM, mains or development |
 | `m5stack-core-usb-debug` | Core, developer only | ESP32 | IP5306 | Four-level | USB-UART console, single factory partition, PM profiling, LVGL sysmon and perf monitor | UART console holds `APB_FREQ_MAX`, so no light sleep; not a power target |
 
@@ -149,7 +149,15 @@ receiver. That coupling is the reason the IR feature depends on the GPS rail
 setting today. The BMI270 is read at 1 Hz for gestures and 50 Hz on the level
 page; the gyro is never used by furble. The 8 MB octal PSRAM adds about 140 uA
 to light sleep per the ESP32-S3 datasheet, which the S3 energy model does not
-charge. Opportunities: PM-01, PM-02, PM-03, PM-05, PM-07, RL-01, RL-02, RL-03,
+charge. Octal mode is also what takes pins: on this SiP, SPICS1 and GPIO33 to
+GPIO37 are connected to the Octal SPI PSRAM and are not available for other
+uses (ESP32-S3-PICO-1 Series Datasheet v1.2, Table 1-1 p. 9 and pin table
+note 4 p. 13; ESP32-S3 Series Datasheet v2.2, 2.3.5 p. 26 and Table 2-14
+with its notice, p. 31). Furble uses none of them: the IR transmitter is
+GPIO46 and the motion wake lands on GPIO13 (`src/FurbleBoard.cpp` StickS3
+row), and the GPS UART takes the Port A pins
+(`M5.getPin(m5::port_a_pin1)` and `port_a_pin2`, `src/FurbleGPS.cpp:168-169`).
+Opportunities: PM-01, PM-02, PM-03, PM-05, PM-07, RL-01, RL-02, RL-03,
 RL-11, LK-01, PL-01, PL-02, PL-04, PL-05, PL-06, PL-07, PL-08, NB-03. This is
 the only board on the bench.
 
@@ -178,13 +186,16 @@ untested and uses LDO3 for the backlight, so do not apply the Core2 LDO3
 assumption to Tough.
 
 **Waveshare ESP32-S3-ETH (`waveshare-s3-eth`).** There is no battery and no
-PMIC. Every "saving" on this board is mains input current or heat, not runtime.
-`CONFIG_FREERTOS_USE_TICKLESS_IDLE` is off, so it never enters automatic light
-sleep; DFS is still enabled by the runtime `esp_pm_configure` call, so the
-"hold a fixed frequency" sentence in plan 42 is not what the build does. The
-W5500, the WS2812, and the unused microSD slot are the loads. The slot only
-matters if a card is left in it. Opportunities: NB-01, NB-02, NB-06. No hardware
-is attached.
+PMIC. Every "saving" on this board is mains input current or heat, not
+runtime. `CONFIG_FREERTOS_USE_TICKLESS_IDLE` is off, so it never enters
+automatic light sleep; DFS is still enabled by the runtime `esp_pm_configure`
+call, so the "hold a fixed frequency" sentence in plan 42 is not what the
+build does. The W5500, the WS2812, and the unused microSD slot are the loads.
+The module is the ESP32-S3R8, whose 8 MB PSRAM is octal, so GPIO33 to GPIO37
+carry DQ4 to DQ7 and DQS/DM and must not be used for anything else (Waveshare
+product page; ESP32-S3 Series Datasheet v2.2, Table 1-1 p. 13 and Table 2-14
+with its notice, p. 31). The slot only matters if a card is left in it.
+Opportunities: NB-01, NB-02, NB-06. No hardware is attached.
 
 **ESP32-S3 headless (`esp32-s3-headless`).** A development board with no
 battery, no PMIC, and no display. Tickless idle is on and the 5 ms UI loop is
@@ -232,15 +243,26 @@ before M5Unified rewrites it. The board has no current gauge, only the
 four-level fuel display.
 
 **M5PM1 (StickS3).** The PM1 manual gives `PWR_CFG` default `0x17`: LED enable
-on, 5 V boost off, 3.3 V LDO on, 3.3 V DCDC on, charge on. M5Unified writes
-`I2C_CFG = 0x00` at begin, and the M5PM1 library requests the same field with
-`SLP_TO = 0` plus the speed bit. If both writes succeed, PM1 I2C idle sleep is
-disabled. A failed write would leave the retained value, which is why plan 26
-owes a readback; the code comment that says "the first transaction after idle
-sleep fails" describes a mode that the current library path appears to disable.
-That is not a measurement, and it does not make the retry wrapper wrong.
-M5Unified also clears the PM1 watchdog count at begin. Furble later arms the
-watchdog for 45 s and feeds it every 1 s.
+on, 5 V boost off, 3.3 V LDO on, 3.3 V DCDC on, charge on (M5PM1 Chip User
+Manual V1.9, page 13). M5Unified writes `I2C_CFG = 0x00` at begin, and the
+M5PM1 library requests the same field with `SLP_TO = 0` plus the speed bit. If
+both writes succeed, PM1 I2C idle sleep is disabled, because `SLEEP[3:0]` of 0
+disables it (manual, section 6 I2C Idle Sleep, page 27, and the same field's
+note on page 15). Idle sleep is also invalid while PWM is enabled and while
+entering Download mode (page 28), so turning it on later is not a free change.
+A failed write would leave the retained value, which is why plan 26 owes a
+readback. The vendor rule behind the retry wrapper is explicit: after an
+idle-sleep wake the first I2C transaction only wakes the PMIC and fails, and
+the next transaction is the first valid one (manual, `I2C_CFG` note 2, page
+15; M5StickS3 low-power page), and a wake that does not receive a complete
+address within 300 ms puts the part back to sleep (same note). Furble does
+retry: `m5pm1Access()` runs an access twice before it counts a failure
+(`include/FurblePlatform.h:370-394`), and `wakeM5PM1()` spends a discarded
+voltage read so the retry is the real one (`src/FurblePlatform.cpp:278-283`).
+The PM1 button poll and the three `begin()` calls reach the library directly,
+so a failed button read costs one 20 ms poll, not a lost press. M5Unified also
+clears the PM1 watchdog count at begin. Furble later arms the watchdog for 45
+s and feeds it every 1 s.
 
 **Chargers.** There is no runtime charge control in furble. The AXP192 boards
 use the M5Unified charge current, 100 mA on StickC and Plus and 390 mA on
@@ -432,28 +454,33 @@ Estimates are not measurements unless the label says `measured-local`.
 
 #### PM-03 StickS3: rate-limit the PM1 button poll
 
-- Change: read `btnGetState` at 50 ms or slower, or use the M5Unified `BtnPWR`
-  state that is already updated from the same PMIC.
-- Current behavior: `Platform::update()` calls `m_M5PM1.btnGetState()` on every
-  UI loop pass. The loop delays 5 ms, so the PM1 gets 200 I2C reads per second.
-  M5Unified's own PMIC button read is throttled by
-  `BTNPWR_MIN_UPDATE_MSEC`; furble's extra read is not. The PM1 `SLP_TO` field
-  is zero in the current library path, so the PM1 is not idle-sleeping between
-  reads, but the bus traffic remains.
-- Evidence: `code` (`src/FurblePlatform.cpp:747-754`,
-  `src/FurbleUI.cpp:10174-10205`, M5Unified 0.2.20
-  `M5Unified.cpp:3411-3425`), `datasheet` (`I2C_CFG`).
-- Estimated saving: 40 to 150 uA average (`inferred`). A 100 kHz register read
-  is about 0.4 ms. At 200 reads per second that is about 8 percent bus duty. A
-  50 ms poll cuts it by four.
-- Risk: low. A 50 ms button latency is below human perception. Hold and double
-  click still work at 50 ms.
-- Effort: small.
-- Required test: 10 minutes screen off on battery, 200 Hz versus 50 Hz versus
-  20 Hz, with the analyzer. Verify single click, double click, long press, and
-  the PM1 watchdog feed.
-- Citation: M5PM1 manual V1.9 `I2C_CFG` `0x09` `SLP_TO` and the first
-  transaction note; M5Unified 0.2.20 `M5Unified.cpp`.
+- Change: implemented. `PlatformPolicy::pm1PollDue()` gates the read to one per
+  `PM1_POLL_MS` (20 ms), a tenfold cut from one read per 5 ms UI pass. The
+  suggestion here was 50 ms; 20 ms keeps the press edge at 50 Hz, which is what
+  the header argues for.
+- Current behavior: `Platform::update()` calls `m_M5PM1.btnGetState()` only when
+  `pm1PollDue()` is true, so the PM1 sees at most 50 I2C reads per second
+  instead of 200. That read calls the library directly and is not wrapped by
+  `m5pm1Access()`, so a read lost to a PM1 idle-sleep wake costs one poll, not a
+  press. M5Unified's own PMIC button read stays on its
+  `BTNPWR_MIN_UPDATE_MSEC` of 4 ms. The PM1 `SLP_TO` field is zero in the
+  current library path, so the PM1 is not idle-sleeping between reads, and the
+  manual makes idle sleep invalid while PWM is enabled and while entering
+  Download mode in any case (M5PM1 Chip User Manual V1.9, pages 27 and 28).
+- Evidence: `code` (`src/FurblePlatform.cpp:980-996`,
+  `include/FurblePlatformPolicy.h:19-24`, M5Unified 0.2.20
+  `M5Unified.cpp:3414` and `M5Unified.hpp:647`), `datasheet` (`I2C_CFG`).
+- Estimated saving: 40 to 150 uA average (`inferred`), unchanged from the
+  pre-change estimate. The measurement below is still owed.
+- Risk: low. A 20 ms sample still catches a human click, and hold and double
+  click work at 50 Hz.
+- Effort: done.
+- Required test: 10 minutes screen off on battery, 50 Hz versus 200 Hz, with
+  the analyzer. Verify single click, double click, long press, and the PM1
+  watchdog feed.
+- Citation: M5PM1 manual V1.9 `I2C_CFG` `0x09` `SLP_TO`, section 6 page 27, the
+  page 28 note, and the page 15 first-transaction note; M5Unified 0.2.20
+  `M5Unified.cpp`.
 
 #### PM-04 AXP192 boards: trim the ADC channel mask
 
@@ -788,7 +815,8 @@ Estimates are not measurements unless the label says `measured-local`.
   Core board, so the slot is never mounted. The WS2812 is not driven by furble.
   The W5500 is started at boot and stays up.
 - Evidence: `code` (`src/FurbleSD.cpp:680`, `src/FurbleEthernet.cpp`),
-  `vendor-doc` (Waveshare board page).
+  `vendor-doc` (Waveshare board page), `datasheet` (W5500 Ver 1.1.0, 5.4 p. 60
+  for the link and un-link currents).
 - Estimated saving: 0 battery runtime, because there is no battery. The WS2812
   has a quiescent current even when off, and the W5500 has a link-dependent
   current, but both are mains input current.
@@ -1232,17 +1260,25 @@ Estimates are not measurements unless the label says `measured-local`.
 - Current behavior: the W5500 is initialized and started at boot. There is no
   link-down power-down call and no explicit PHY reset or power-down in
   `Ethernet::stop()` beyond `esp_eth_stop()` and driver uninstall.
-- Evidence: `code` (`src/FurbleEthernet.cpp`), W5500 datasheet v1.1.0 sections
-  5.3 and 5.4.
-- Estimated saving: 0 battery runtime, because the board has no battery. W5500
-  datasheet v1.1.0 section 5.4 page 60 gives 128, 75 and 65 mA for the link
-  states, and section 5.3 page 59 gives `IDD2` 13 mA in PHY power-down. No
-  local measurement exists, so NB-02 stays a gate rather than a saving.
+- Evidence: `code` (`src/FurbleEthernet.cpp`), `datasheet` (W5500 Ver 1.1.0,
+  5.3 p. 59 and 5.4 p. 60).
+- Estimated saving: 0 battery runtime, because the board has no battery. The
+  datasheet has the figures: IDD1 132 mA in normal operation and IDD2 13 mA in
+  PHY power down (5.3 p. 59), and 100M link 128 mA, 10M link 75 mA, un-link
+  65 mA, 100M transmitting 132 mA, 10M transmitting 79 mA, power down 13 mA
+  (5.4 p. 60). A full PHY power-down could therefore remove about 52 mA of
+  un-link current, but that is chip current on a mains board, it drops the
+  link, and no board-level measurement exists. No local measurement exists, so
+  NB-02 stays a gate rather than a saving.
 - Risk: medium. Powering the PHY down can drop the link and delay recovery.
 - Effort: medium.
 - Required test: 5 V input current with link up, link down, and PHY powered
-  down; link recovery time after power-down.
-- Citation: WIZnet W5500 datasheet v1.1.0; `src/FurbleEthernet.cpp`;
+  down; link recovery time after power-down, against the datasheet bounds: RSTn
+  low at least 500 us (1.1 pin 37 p. 10), TRC minimum 500 us and PLL lock within
+  1 ms of release (5.5.1 and Figure 22 p. 60), regulator wake 10 us (5.5.2
+  p. 60).
+- Citation: WIZnet W5500 datasheet Ver 1.1.0, 1.1 p. 10, 5.3 p. 59, 5.4 p. 60,
+  5.5.1 and Figure 22 p. 60, 5.5.2 p. 60; `src/FurbleEthernet.cpp`;
   `plans/implemented/42-waveshare-eth-node.md`.
 
 #### NB-03 StickS3 and headless: USB Serial/JTAG current and the USJ lock
@@ -1553,14 +1589,24 @@ not-reopened row as a new verification.
 | AXP192 | same | Off mode 27 uA at BAT 3.8 V; suspend 86 uA; DCDC1 26 uA no load; DCDC2 and DCDC3 20 uA each; LDO2 and LDO3 100 uA each; LDOIO0 90 uA. | Opened. |
 | IP5306 | Injoinic IP5306 datasheet V1.01 | Automatic load detection below 45 mA; 32 s at the power-on default of `SYS_CTL2` bits 3:2 = `01`; standby 50 uA; input quiescent 100 uA. | Opened. The public datasheet does not tabulate the register map. |
 | IP5306 | M5Unified 0.2.20 `Power_Class.cpp` (register writes and bitfield comments) and `IP5306_Class.cpp` (register constants and the keep-on setter) | `REG_SYS_CTL0` `0x00` bit 1 boost normally open; `REG_SYS_CTL2` `0x02` light-load time field, board init `0x02 = 0x6C` = bits 3:2 `11` = 64 s per the M5Unified bitfield comment; `REG_CHG_DIG_CTL0` `0x24` charge current. | Opened as vendor code, not a datasheet. |
-| M5PM1 | M5Stack M5PM1 Chip User Manual V1.9 | `PWR_CFG` `0x06`: bit 4 LED, bit 3 5 V boost, bit 2 3.3 V LDO, bit 1 3.3 V DCDC, bit 0 charge. Default `0x17`. | Opened. |
-| M5PM1 | same | `I2C_CFG` `0x09`: `SLP_TO` bits 3:0, 0 disables idle sleep. The first transaction after a wake fails. | Opened. |
-| M5PM1 | same | `WDT_CNT` `0x0A` seconds, 0 disables; `WDT_KEY` `0x0B` feed `0xA5`; `SYS_CMD` `0x0C` `0xA1` power off. | Opened. |
-| M5PM1 | same | `HOLD_CFG` `0x07`: retain 5 V, LDO, and GPIO state after power off. | Opened. |
+| M5PM1 | M5Stack M5PM1 Chip User Manual V1.9 | `PWR_CFG` `0x06`: bit 4 LED, bit 3 5 V boost, bit 2 3.3 V LDO, bit 1 3.3 V DCDC, bit 0 charge. Default `0x17`. | Opened. Page 13. |
+| M5PM1 | same | `I2C_CFG` `0x09`: `SLP_TO` bits 3:0, 0 disables idle sleep. The first transaction after a wake fails. | Opened. Page 15. |
+| M5PM1 | same | Section 6: `SLEEP[3:0]` sets the idle sleep time, 0 disables. Idle sleep is invalid while PWM is enabled and while entering Download mode. | Opened. Pages 27 and 28. |
+| M5PM1 | same | Section 8: IRQ Status 1/2/3 at `0x40`/`0x41`/`0x42`, masks at `0x43`/`0x44`/`0x45` where a set bit masks. The IRQ line is released only when all three status registers are cleared. The `0x2F` note ties WAKE_SRC to IRQ Status 3 bit 1, but the manual gives WAKE_SRC as `0x05` in Table 3 and as `0x04` on page 29. | Opened. Pages 9, 28 and 29. Address inconsistent inside V1.9. |
+| M5PM1 | same | `WDT_CNT` `0x0A` seconds, 0 disables; `WDT_KEY` `0x0B` feed `0xA5`; `SYS_CMD` `0x0C` `0xA1` power off, `0xA2` restart, `0xA3` Download (`KEY` `0xA` plus `CMD`). | Opened. Page 15. The M5PM1 library 1.0.6 builds the same values from `M5PM1_SYS_CMD_KEY` `0xA0`. |
+| M5PM1 | same | `HOLD_CFG` `0x07`: retain 5 V, LDO, and GPIO state after power off. | Opened. Page 13. |
+| M5StickS3 low power page | https://docs.m5stack.com/en/arduino/m5sticks3/m5pm1, web page, no revision | After an idle-sleep wake, the first ESP32-S3 to M5PM1 communication only wakes the PMIC and fails; valid communication happens on the next transaction. | Opened. |
+| M5PaperMono page | https://docs.m5stack.com/en/arduino/papermono/m5pm1_m5ioe1, web page, no revision | L1 to L3B all source from L0 (SYS_VBUS) rather than the preceding level, so each level is independent; after power on, L1, L2 and L3A are enabled automatically. | Opened. Used for the multi-level model, not as a StickS3 statement. |
 | ESP32-S3 | Espressif ESP32-S3 Series Datasheet v2.2 | Table 5-10: light sleep 240 uA; deep sleep 7 uA with RTC memory, 8 uA with RTC peripherals; add 140 uA for 8 MB 8-line PSRAM at 3.3 V. | Opened. |
 | ESP32-S3 | same | Internal weak pull-up `R_PU` 45 kOhm typical. | Opened. |
 | ESP32-S3 | same | Table 5-8 radio peak: BLE TX 176 mA at 0 dBm, 193 mA at 9 dBm, RX 93 mA. | Opened. |
 | ESP32 | Espressif ESP32 Series Datasheet v5.3, as recorded in `tools/power-model/README.md` | Table 4-2 and 5-4: light sleep 0.8 mA, deep sleep 10 uA, BLE TX 130 mA at 0 dBm at 50 percent duty. | Not reopened here. Repo model, datasheet-tagged. |
+| ESP32 | Espressif ESP32 Technical Reference Manual v5.9, https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf | 19.3.2 p. 312: UART clock is 80 MHz APB_CLK or REF_TICK, selected by `UART_TICK_REF_ALWAYS_ON` (1 APB, 0 REF_TICK). 7.2.4.2 and Table 7.2-5 p. 169: REF_TICK is derived from APB_CLK and its divider must be reprogrammed per CPU clock source. 30.2.1 and 30.2.2 p. 728: eight channels, each TX or RX but not both, sharing one 512 x 32-bit RAM in eight 64-word blocks. | Opened for this note, 2026-11-25. |
+| ESP32-S3 | Espressif ESP32-S3 Technical Reference Manual v1.8, https://documentation.espressif.com/esp32-s3_technical_reference_manual_en.pdf | 26.3 and 26.4.1 p. 926: three UART Core sources, APB_CLK, RC_FAST_CLK and XTAL_CLK, by `UART_SCLK_SEL`; fractional divider 1 to 256. `UART_SCLK_SEL` p. 961: 1 APB, 2 RC_FAST, 3 XTAL. 37.2 p. 1415 and 37.3.2.2 p. 1417: four TX plus four RX channels sharing a 384 x 32-bit RAM in eight 48-word blocks. 33.3.2 p. 1248 and 33.3.5 p. 1249: RTS 1 with DTR 0 resets the SoC, SRST resets the digital system but not the controller. 33.4.2 p. 1253: needs the PLL and APB_CLK at 40 MHz or more, gated in light sleep, powered down in deep sleep. | Opened for this note, 2026-11-25. |
+| ESP32-S3-PICO-1 | Espressif ESP32-S3-PICO-1 Series Datasheet v1.2 | Table 1-1 p. 9: N8R2 is 8 MB quad flash plus 2 MB quad PSRAM, N8R8 is 8 MB quad flash plus 8 MB octal PSRAM. Pin table note 4 p. 13: on N8R8, SPICS1 and GPIO33 to GPIO37 belong to the octal PSRAM and are unavailable. | Opened for this note, 2026-11-25. |
+| ESP32-S3 module pins | Espressif ESP32-S3 Series Datasheet v2.2 | 2.3.5 p. 26 and Table 2-14 p. 31: GPIO33 to GPIO37 carry DQ4 to DQ7 and DQS/DM only in octal mode, and the in-package flash and PSRAM pins must not be used for anything else. | Opened for this note, 2026-11-25. |
+| SX1261/2 | Semtech SX1261/2 datasheet DS.SX1261-2.W.APP Rev 2.2, December 2024, ECO 067443. The Semtech product page link is form and login gated, so the citable copies are https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1198/DS_SX1261_2_V2-2.pdf and https://wiki.lilygo.cc/datasheet/DS_SX1261_SX1262.pdf | 8.1 p. 53: hold NRESET low typically 100 us. 8.3.1 p. 55 and Table 8-2 p. 56: NSS rising to BUSY rising 600 ns maximum, BUSY held high through 20 kOhm in sleep; switching SLEEP to STBY_RC 3500 us cold and 340 us warm, STBY_RC to STBY_XOSC 31 us, to FS 50, to RX 83, to TX 126, STBY_XOSC to FS 40, to TX 105, to RX 62, FS to RX 41, to TX 76, RX to FS 15, to TX 92. Table 8-1 t10 p. 54: NSS falling to SCK 100 us minimum when leaving sleep. Section 15 p. 109 to 111: four known limitations. | Opened for this note, 2026-11-25. Not fitted on any supported board. |
+| W5500 | WIZnet W5500 datasheet Ver 1.1.0, 17DEC2022, https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf | 1.1 pin 37 p. 10: hold RSTn low at least 500 us. 5.5.1 and Figure 22 p. 60: TRC minimum 500 us, TPL RSTn to internal PLOCK maximum 1 ms. 5.5.2 p. 60: regulator wake 10 us. 3.1 p. 29, 4.1 p. 32 and SHAR `0x0009` to `0x000E` p. 33. 5.3 p. 59: IDD1 132 mA, IDD2 13 mA in PHY power down. 5.4 p. 60: 100M link 128 mA, 10M link 75 mA, un-link 65 mA. Revision history p. 66 to 67: v1.1.0 changed only the RPU minimum and the package text. | Opened for this note, 2026-11-25. The corpus link to `W5500_ds_v1.0.6.pdf` is a 404; 1.1.0 is the cited revision. |
 | ST7789V | Sitronix ST7789V datasheet v1.3, as recorded in the repo model | Table 3: normal 6.0 mA typical and 7.5 mA max, sleep-in 15 uA typical and 30 uA max. | Not reopened here. |
 | ST7735S | Sitronix ST7735S datasheet v1.1, as recorded in the repo model | Table 3: normal 0.9 mA typical and 2.0 mA max, sleep-in 15 uA typical and 30 uA max. | Not reopened here. |
 | BMI270 | Bosch BST-BMI270-DS000-08 | `PWR_CTRL` `0x7D`, `PWR_CONF` `0x7C`, `ACC_CONF` `0x40`. Normal accel and gyro 685 uA; suspend 3.5 uA; accel low power 4 to 10 uA. | Not reopened here. Repo model, datasheet-tagged. |
@@ -1689,8 +1735,19 @@ Open questions that block a default change:
 - ATGM336H:
   https://github.com/Albresky/GPS-ATGM336H-Library/blob/master/manual/C90770_ATGM336H-5N31_2016-12-26.pdf
 - NS4168: https://www.chipsourcetek.com/Uploads/file/NS4168.pdf
-- W5500:
+- W5500, datasheet Ver 1.1.0 (the corpus v1.0.6 link is a 404, checked
+  2026-11-25):
   https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf
+- ESP32 Technical Reference Manual v5.9:
+  https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf
+- ESP32-S3 Technical Reference Manual v1.8:
+  https://documentation.espressif.com/esp32-s3_technical_reference_manual_en.pdf
+- ESP32-S3-PICO-1 Series Datasheet v1.2:
+  https://documentation.espressif.com/esp32-s3-pico-1_datasheet_en.pdf
+- SX1261/2 datasheet Rev 2.2, DS.SX1261-2.W.APP (the Semtech product page link
+  is form and login gated, so these byte-identical mirrors are cited):
+  https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1198/DS_SX1261_2_V2-2.pdf and
+  https://wiki.lilygo.cc/datasheet/DS_SX1261_SX1262.pdf
 - M5Stack StickS3: https://docs.m5stack.com/en/core/StickS3
 - M5Stack Unit GPS v1.1:
   https://docs.m5stack.com/en/unit/Unit-GPS%20v1.1

@@ -174,6 +174,15 @@ rmt_carrier_config_t carrier = { .frequency_hz = f, .duty_cycle = 0.33 };
 rmt_apply_carrier(chan, &carrier);
 ```
 
+The block size is one hardware RAM block, not a free choice. The ESP32 has
+eight channels that are each TX or RX but not both, sharing one 512 by 32-bit
+RAM split into eight 64-word blocks (ESP32 TRM v5.9, 30.2.1 and 30.2.2,
+p. 728). The S3 has four dedicated TX and four dedicated RX channels sharing
+one 384 by 32-bit RAM split into eight 48-word blocks (ESP32-S3 TRM v1.8, 37.2
+p. 1415 and 37.3.2.2 p. 1417), and only channel 3 (TX) and channel 7 (RX) have
+DMA there, which this driver does not use. `SOC_RMT_MEM_WORDS_PER_CHANNEL` is
+64 and 48 for those reasons.
+
 Each protocol is a table of `rmt_symbol_word_t` pairs in microseconds, sent with
 `rmt_new_copy_encoder()` and `rmt_transmit()`, then `rmt_tx_wait_all_done()`.
 No custom encoder is needed because every frame fits in a static symbol array.
@@ -275,9 +284,12 @@ do not interact.
   about which camera families each entry targets.
 - StickC Plus SE pin is unverified. If the probe shows no IR, hide the feature on
   that board and say so.
-- RMT channel exhaustion. The classic ESP32 has 8 RMT channels and the S3 has 4
-  TX channels. Nothing else in furble uses RMT today. If a later PR adds an
-  addressable LED driver it will also want RMT. Allocate one channel and hold it.
+- RMT channel exhaustion. The classic ESP32 has eight channels, each usable as
+  TX or RX but not both at once, and the S3 has four dedicated TX and four
+  dedicated RX channels (ESP32 TRM v5.9, 30.2.1 p. 728; ESP32-S3 TRM v1.8,
+  37.1 and 37.2 p. 1415). Nothing else in furble uses RMT today. If a later PR
+  adds an addressable LED driver it will also want RMT. Allocate one channel
+  and hold it.
 
 ## Verification
 
@@ -347,6 +359,12 @@ All links fetched and checked.
   https://docs.m5stack.com/en/core/basic
 - M5Stack Core2 product page, no IR in the pinmap:
   https://docs.m5stack.com/en/core/core2
+- ESP32 Technical Reference Manual v5.9, RMT architecture and RAM blocks
+  (30.2.1 and 30.2.2, p. 728):
+  https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf
+- ESP32-S3 Technical Reference Manual v1.8, RMT channel split and RAM blocks
+  (37.1 and 37.2 p. 1415, 37.3.2.2 p. 1417):
+  https://documentation.espressif.com/esp32-s3_technical_reference_manual_en.pdf
 - ESP-IDF v5.4.2 RMT driver, transmit channel config, carrier config, encoders
   and the power management note:
   https://docs.espressif.com/projects/esp-idf/en/v5.4.2/esp32/api-reference/peripherals/rmt.html

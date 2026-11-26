@@ -119,6 +119,7 @@ the git history. They are no longer ownership rows.
 | [342-wifi-lost-ip.md](342-wifi-lost-ip.md) | Lost DHCP lease: `IP_EVENT_STA_LOST_IP` clears the WiFi cache, and the WebUI gate and status page read the live station address |
 | [342-review-feedback.md](342-review-feedback.md) | Review-feedback record for the lost-lease fix: doc paragraph, deliberate-stop gate test, and five recorded follow-ups |
 | [339-mqtt-retry-backoff.md](339-mqtt-retry-backoff.md) | Capped exponential MQTT retry backoff and a WiFi-style failure classifier, so an outage never blocks the hub |
+| [332-vendor-document-verification.md](332-vendor-document-verification.md) | Vendor document verification: ESP32 and ESP32-S3 TRMs, S3 and PICO-1 datasheets, SX1262 Rev 2.2, W5500 1.1.0, M5PM1 V1.9 and the FCC grants, with revision, page and hash for every fact |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [337-sim-mem-shims.md](337-sim-mem-shims.md) | Simulator heap_caps calloc, realloc and get_info shims, and the PSRAM task-stack abort |
 | [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |

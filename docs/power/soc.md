@@ -106,16 +106,16 @@ prevents DFS below the APB maximum.
 |---|---|---|---|
 | LEDC backlight, StickS3 and Core | APB by default | Display holds `APB_FREQ_MAX` while the panel is on | Blocks light sleep and DFS below 80 MHz. A different LEDC source is LOCK-03. |
 | PMIC-dimmed backlight, StickC, StickC Plus, Core2 | AXP192 LDO2 or DCDC3 voltage | Display still holds `APB_FREQ_MAX` | The lock is not needed for the backlight on these boards. LOCK-03. |
-| GPS UART | `UART_SCLK_XTAL` on S3, `UART_SCLK_REF_TICK` on ESP32 | No APB dependency | Correct. Do not change. |
+| GPS UART | `UART_SCLK_XTAL` on S3, `UART_SCLK_REF_TICK` on ESP32 | No APB dependency on the S3. On the ESP32 REF_TICK is derived from APB_CLK and its divider must be reprogrammed per CPU clock source | Correct as configured, for different reasons. The S3 has a third, independent source (XTAL_CLK); the ESP32 has only APB_CLK and REF_TICK, and REF_TICK is derived from APB_CLK (ESP32 TRM v5.9, 19.3.2, p. 312 and 7.2.4.2 with Table 7.2-5, p. 169; ESP32-S3 TRM v1.8, 26.3 and 26.4.1, p. 926, `UART_SCLK_SEL` p. 961). |
 | Console UART | APB, 115200 | Always on in release | Logs only. Cost is output and CPU, not a clock gate. |
 | USB Serial/JTAG | USJ clock, enabled by the secondary console | `USJ_NO_AUTO_LS_ON_CONNECTION` while a host is attached | Blocks light sleep when USB is connected. CON-01. |
-| RMT IR | APB source. The driver locks `CPU_FREQ_MAX`, not APB, and the divisor is fixed at channel creation | `rmt_enable` to `rmt_disable` bracket | Correct. No idle hold. |
+| RMT IR | APB source. The driver locks `CPU_FREQ_MAX`, not APB, and the divisor is fixed at channel creation. Each channel takes one RAM block, 64 words on the ESP32 and 48 on the S3 | `rmt_enable` to `rmt_disable` bracket | Correct. No idle hold (ESP32 TRM v5.9, 30.2.1 and 30.2.2, p. 728; ESP32-S3 TRM v1.8, 37.2 p. 1415 and 37.3.2.2 p. 1417). |
 | I2S speaker | APB, held by the IDF I2S driver | Channel enabled only while a tone plays | Correct. The amplifier is also closed between patterns. |
-| I2C PMIC, touch, IMU | APB-derived divider, recomputed per transaction | Transactions as needed | The PM1 button read is about 200 transactions per second. OS-07. |
+| I2C PMIC, touch, IMU | APB-derived divider, recomputed per transaction | Transactions as needed | The PM1 button read is capped at 50 per second by `PlatformPolicy::pm1PollDue`. OS-07. |
 | SPI display | APB, held by the IDF SPI master during a transaction | Per flush transaction | Correct for the IDF driver. M5GFX's exact path is not verified here. |
 | SD card | SPI, only while mounted | Mount only when GPX logging is enabled | No idle cost when logging is off. |
 | SPI flash | APB and SPI | Always available | Flash power-down is rejected on S3 (PSRAM) and only worth evaluating after the loop is lengthened. SOC-10. |
-| PSRAM, S3 | SPI | Enabled at boot | Retention current in light sleep is not in the model. SOC-11. |
+| PSRAM, S3 | Octal SPI, 8 MB, GPIO33 to GPIO37 carry the upper data lines | Enabled at boot | Retention current in light sleep is not in the model. SOC-11. |
 | WiFi and Bluetooth | Modem and radio clocks | BT modem sleep is on; WiFi is off by default | The BT configuration is correct. WiFi off costs nothing at runtime. SOC-13 is WiFi-on only. |
 | ADC | Not used directly for battery | Battery comes from the PMIC | No gate to change. |
 
@@ -126,7 +126,7 @@ Approximate periodic wake sources per second, read from the code:
 | Source | Period | Owner | Count per second | Citation |
 |---|---|---|---|---|
 | UI loop | 5 ms | main task, priority 1 | 200 | `src/FurbleUI.cpp:10177-10218` |
-| PMIC button read | inside UI loop | main task, I2C | 200 | `src/FurblePlatform.cpp:747-758` |
+| PMIC button read | 20 ms | main task, I2C | 50 | `src/FurblePlatform.cpp:980-996`, `include/FurblePlatformPolicy.h:19-24` |
 | Control queue | 50 ms | control task, priority 4 | 20 | `src/FurbleControl.cpp:379-386` |
 | Target queue | 50 ms per camera | target task, priority 3 | 20 per camera, up to 180 at 9 cameras | `src/FurbleControl.cpp:100-107`, `977` |
 | GPS UART queue | 100 ms or event | GPS task, priority 3 | 10 plus UART events | `src/FurbleGPS.cpp:209-260`, `525-592` |
@@ -431,7 +431,11 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Change:** No concrete change is recommended. Establish whether the S3 PSRAM
   stays in self-refresh during automatic light sleep and what it costs.
 - **Current behavior:** PSRAM is enabled on the S3
-  (`sdkconfig.m5stick-s3` SPIRAM block). The light sleep datasheet figure of
+  (`sdkconfig.m5stick-s3` SPIRAM block). The part is 8 MB octal PSRAM, which is
+  why GPIO33 to GPIO37 and SPICS1 are not available on the StickS3
+  (ESP32-S3-PICO-1 Series Datasheet v1.2, Table 1-1 p. 9 and pin table note 4
+  p. 13; ESP32-S3 Series Datasheet v2.2, Table 2-14 and its notice, p. 31).
+  The light sleep datasheet figure of
   0.24 mA is a chip figure and does not describe the board PSRAM. The plan 63
   model has no PSRAM term (`tools/power-model/README.md:231-236`).
 - **Evidence:** inferred (code-read, datasheet). The gap is real, the cost is
@@ -635,26 +639,32 @@ This is a documentation and build consistency item, not a separate power lever.
 
 ### OS-07 Rate-limit the M5PM1 button read
 
-- **Change:** Poll the PMIC button state at 20 to 50 ms instead of every UI loop
-  iteration.
-- **Current behavior:** `Platform::update()` is called at the top of every UI
-  loop, and on the StickS3 it performs `m_M5PM1.btnGetState()` over I2C each
-  time (`src/FurblePlatform.cpp:747-758`). That is about 200 I2C transactions
-  per second, and it also defeats the PM1 I2C idle sleep that
-  `M5PM1_REG_I2C_CFG.SLP_TO` provides (`plans/26:210-216`).
+- **Change:** Implemented at 20 ms. `PlatformPolicy::pm1PollDue()` allows one PM1
+  read per `PM1_POLL_MS` (20 ms), so the UI loop still calls `update()` every
+  5 ms but no longer reads the PMIC on every pass.
+- **Current behavior:** `Platform::update()` reads `m_M5PM1.btnGetState()` only
+  when `pm1PollDue()` is true (`src/FurblePlatform.cpp:980-996`,
+  `include/FurblePlatformPolicy.h:19-24`). That is at most 50 I2C transactions
+  per second instead of 200. The read calls the library directly rather than
+  through `m5pm1Access()`, so a read lost to a PM1 idle-sleep wake costs one
+  poll and no press. Idle sleep itself is off in the current library path,
+  because M5Unified writes `I2C_CFG = 0x00` and `SLEEP[3:0] = 0` disables it
+  (M5PM1 Chip User Manual V1.9, section 6 p. 27 and note 2 p. 15).
 - **Evidence:** inferred (code-read, arithmetic). A 2-byte I2C read at 400 kHz is
-  roughly 50 to 100 us including overhead, so 200 per second is 10 to 20 ms per
-  second of bus and CPU time, about 0.4 to 0.8 mA at 40.2 mA active. The PM1
+  roughly 50 to 100 us including overhead, so the pre-change 200 per second was
+  10 to 20 ms per second of bus and CPU time, about 0.4 to 0.8 mA at 40.2 mA
+  active; 50 per second is a quarter of that. The PM1
   quiescent difference is `unknown`; the published L1 figure is 52 uA
   (`tools/power-model/board-currents.yaml:387-390`), but that is a state figure,
   not the delta caused by polling.
-- **Risk:** Medium-low. Button press latency and double-click detection must be
-  revalidated. The PM1 watchdog feed stays at 1 s.
-- **Effort:** Small.
+- **Risk:** none added. Button press latency and double-click detection still
+  need the hardware click-latency run. The PM1 watchdog feed stays at 1 s.
+- **Effort:** done.
 - **Required test:** Button click, double click, long press, and PMIC recovery
   tests (`pmic-recovery`), plus a hardware click-latency run. Measure the
-  StickS3 screen-off current with 5, 20, and 50 ms polling.
-- **Citation:** `src/FurblePlatform.cpp:747-758`, `plans/26:210-216`,
+  StickS3 screen-off current with 20 and 50 ms polling.
+- **Citation:** `src/FurblePlatform.cpp:980-996`,
+  `include/FurblePlatformPolicy.h:19-24`, `plans/26:210-216`,
   `tools/power-model/board-currents.yaml:387-390`.
 
 ### OS-08 Lengthen the M5PM1 watchdog feed period
@@ -899,9 +909,13 @@ This is a documentation and build consistency item, not a separate power lever.
   (`sdkconfig.m5stick-s3:2265-2280`). The secondary selects
   `USJ_ENABLE_USB_SERIAL_JTAG=y` (`sdkconfig.m5stick-s3:1820-1821`, IDF
   `esp_system/Kconfig:318-322`). Every log line is mirrored to both.
-- **Evidence:** inferred (kconfig). IDF says the USB Serial/JTAG module is on by default
-  after power-on, and disabling it when it is not used turns off its clock and
-  saves power (IDF `esp_driver_usb_serial_jtag/Kconfig:4-12`). It also says the
+- **Evidence:** inferred (kconfig), plus the SoC requirement: the module depends
+  on the PLL for its 48 MHz USB PHY clock and on APB_CLK at 40 MHz or more, its
+  APB clock is gated in light sleep, and the controller and both CPUs are
+  powered down in deep sleep (ESP32-S3 TRM v1.8, 33.4.2, p. 1253). IDF says
+  the USB Serial/JTAG module is on by default after power-on, and disabling it
+  when it is not used turns off its clock and saves power (IDF
+  `esp_driver_usb_serial_jtag/Kconfig:4-12`). It also says the
   module cannot work under light sleep (same file, `14-27`).
 - **Estimated saving:** `unknown`. The module clock and PHY current is not
   in the board current table. It is one of the residual nibbles plan 98 lists at
@@ -992,8 +1006,8 @@ These were examined and do not justify a power change on the current evidence.
 | Bluetooth modem sleep | S3 uses `MODEM_SLEEP_MODE_1`, main XTAL LPCLK, and MAC/BB power down. ESP32 boards use `MODEM_SLEEP_MODE_ORIG` on the main XTAL. This is the correct DFS-compatible set. | `sdkconfig.m5stick-s3:1452-1456`, `2086`, `sdkconfig.m5stick-c:1077-1080`, `plans/07:50-62` |
 | Main XTAL powered during light sleep | With the main XTAL as the BLE low power clock, the XTAL must stay powered. Disabling it would break the connected sleep clock. The plan 07 text that calls it meaningful only for the external 32 kHz path does not match the committed S3 config, but the committed config is the functional one. | `sdkconfig.m5stick-s3:1454-1456`, `plans/07:96-114` |
 | External 32.768 kHz crystal | Not fitted on the StickS3. The 230 uA BLE light sleep mode is impossible. This was established by the boot log in plan 00. | `plans/00:186`, `tools/power-model/README.md:62-70` |
-| GPS UART clock | S3 uses `UART_SCLK_XTAL`; ESP32 uses `UART_SCLK_REF_TICK`. This is the documented DFS-safe configuration. | `src/FurbleGPS.cpp:167-174` |
-| RMT IR clock | `RMT_CLK_SRC_DEFAULT` is safe, but not because the driver locks APB. It holds `ESP_PM_CPU_FREQ_MAX` without DMA and `ESP_PM_NO_LIGHT_SLEEP` with DMA (`components/esp_driver_rmt/src/rmt_common.c:230`), and the IR channel never sets `with_dma`. furble sets the CPU maximum to 160 MHz at runtime (`src/FurblePlatform.cpp:84`), where APB is 80 MHz, and the channel divisor is fixed at creation (`components/esp_driver_rmt/src/rmt_tx.c:324`) before the lock is taken (`:774`). The code always disables. | `src/FurbleIR.cpp:230-238`, `src/CLAUDE.md:84-95` |
+| GPS UART clock | S3 uses `UART_SCLK_XTAL`; ESP32 uses `UART_SCLK_REF_TICK`. On the S3 the third source, XTAL_CLK, is independent of APB_CLK, so the configuration is DFS safe. On the ESP32 it is not: the UART clock can only be APB_CLK or REF_TICK, and REF_TICK is derived from APB_CLK with a per-source divider, so a CPU clock source change needs the divider reprogrammed (`SYSCON_PLL_TICK_NUM`, `SYSCON_APLL_TICK_NUM`, `SYSCON_XTAL_TICK_NUM`, `SYSCON_CK8M_TICK_NUM`). ESP-IDF keeps that divider consistent, which is why the setting stays correct, not the absence of an APB dependency. | `src/FurbleGPS.cpp:167-174`; ESP32 TRM v5.9, 19.3.2 p. 312, 7.2.4.2 and Table 7.2-5 p. 169; ESP32-S3 TRM v1.8, 26.3 and 26.4.1 p. 926, `UART_SCLK_SEL` p. 961; IDF 5.5.3 `components/esp_hw_support/port/esp32/rtc_clk.c:379`, `397`, `442` calls `clk_ll_ref_tick_set_divider` (`components/hal/esp32/include/hal/clk_tree_ll.h:679-705`) to hold REF_TICK at 1 MHz |
+| RMT IR clock | `RMT_CLK_SRC_DEFAULT` is safe, but not because the driver locks APB. It holds `ESP_PM_CPU_FREQ_MAX` without DMA and `ESP_PM_NO_LIGHT_SLEEP` with DMA (`components/esp_driver_rmt/src/rmt_common.c:230`), and the IR channel never sets `with_dma`. furble sets the CPU maximum to 160 MHz at runtime (`src/FurblePlatform.cpp:84`), where APB is 80 MHz, and the channel divisor is fixed at creation (`components/esp_driver_rmt/src/rmt_tx.c:324`) before the lock is taken (`:774`). The code always disables. On the ESP32 a channel is clocked from either the APB bus clock or REF_TICK, on the S3 from its own source. The channel RAM shape differs and explains `SOC_RMT_MEM_WORDS_PER_CHANNEL`: the ESP32 has eight channels that are each TX or RX but not both, sharing one 512 by 32-bit RAM split into eight 64-word blocks; the S3 has four dedicated TX and four dedicated RX channels sharing one 384 by 32-bit RAM split into eight 48-word blocks. | `src/FurbleIR.cpp:215-278`, `src/FurbleIR.cpp:233`, `src/CLAUDE.md:58-64`; ESP32 TRM v5.9, 30.2.1 and 30.2.2 p. 728; ESP32-S3 TRM v1.8, 37.1 and 37.2 p. 1415, 37.3.2.2 p. 1417 |
 | I2S speaker clock | The IDF I2S driver holds the APB lock while the channel is enabled, and `M5.Speaker.end()` closes the amplifier between patterns. | `src/FurbleFeedback.cpp:14-20`, `166-170`, `330-352` |
 | Speaker, vibration, LED | All three are bracketed on demand and shut down between events. No idle cost found. | `src/FurbleFeedback.cpp:150-170`, `320-360` |
 | IR and SD tasks | Both block on a queue with `portMAX_DELAY`; no periodic polling. | `src/FurbleIR.cpp:219`, `src/FurbleSD.cpp:818` |
@@ -1045,8 +1059,8 @@ measurement to decide. Each still needs its test.
 4. **LOCK-01** The `SLEEP_CONN` default now ships on for the StickS3. The model
    says about 40 mA; the missing evidence is per-vendor link stability and a
    calibrated analyzer run.
-5. **OS-07** Rate-limit the M5PM1 button read. A plausible 0.4 to 0.8 mA
-   arithmetic estimate on the S3, entirely unmeasured, with a low-risk fix.
+5. **OS-07** Rate-limit the M5PM1 button read. Implemented at 20 ms; the
+   0.4 to 0.8 mA arithmetic estimate on the S3 is still unmeasured.
 6. **CON-01** Disable the USB Serial/JTAG secondary console in battery releases.
    Direct Kconfig statement that disabling saves power, plus it makes
    USB-attached measurement possible.
@@ -1283,6 +1297,14 @@ result. A null result is a valid result.
 - ESP32 Series Datasheet v5.3, Tables 4-2 and 5-4, active and light sleep
   current:
   https://documentation.espressif.com/esp32_datasheet_en.pdf
+- ESP32 Technical Reference Manual v5.9, UART clock tree (19.3.2 p. 312,
+  7.2.4.2 and Table 7.2-5 p. 169) and RMT architecture (30.2.1 and 30.2.2
+  p. 728):
+  https://documentation.espressif.com/esp32_technical_reference_manual_en.pdf
+- ESP32-S3 Technical Reference Manual v1.8, UART clock tree (26.3 and 26.4.1
+  p. 926, `UART_SCLK_SEL` p. 961), RMT (37.2 p. 1415, 37.3.2.2 p. 1417) and USB
+  Serial/JTAG (33.3.2 p. 1248, 33.3.5 p. 1249, 33.4.2 p. 1253):
+  https://documentation.espressif.com/esp32-s3_technical_reference_manual_en.pdf
 - Bosch BMI270 datasheet BST-BMI270-DS000-08, normal, low power, and suspend
   current:
   https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf

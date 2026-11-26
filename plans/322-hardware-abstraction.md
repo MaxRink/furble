@@ -149,7 +149,30 @@ sleep if the Cap is fitted.
 - `XL9555`: input, output (level written before direction), write, read.
   Read-modify-write against the live register, no cache.
 - `SX1262::sleep()`: NRESET pulse, bounded BUSY wait, SetSleep 0x84 0x00, 500
-  us settle, BUSY high check.
+  us settle, BUSY high check. Every number comes from the datasheet, and the
+  vendor page for the part serves no direct PDF link, so the byte-identical
+  mirrors are cited:
+  - NRESET held low for 200 us in the driver against "typically 100 us" for a
+    factory reset, which is followed by the standard calibration (8.1, p. 53).
+  - BUSY low before the command, with the wait budget at 10 ms against a cold
+    start of 3500 us and a warm start of 340 us (Table 8-2, p. 56). BUSY is
+    asserted at most 600 ns after the NSS rising edge that ends a write
+    command, and in sleep it is held high through a 20 kOhm resistor (8.3.1,
+    p. 55).
+  - The 500 us settle after SetSleep is the datasheet's own window: the device
+    is unresponsive for around 500 us while it saves the configuration, and
+    the host must send no SPI command during it (13.1.1, p. 72). It was not an
+    invented margin.
+  - Waking costs at least 100 us from the NSS falling edge to the first SCK
+    edge when leaving sleep, and MISO may take up to 150 us (Table 8-1 t10 and
+    t11, 8.2.2, p. 54).
+  - The rest of the table, if a later driver needs a mode change: STBY_RC to
+    STBY_XOSC 31 us, to FS 50 us, to RX 83 us, to TX 126 us; STBY_XOSC to FS
+    40 us, to TX 105 us, to RX 62 us; FS to RX 41 us, to TX 76 us; RX to FS
+    15 us, to TX 92 us (Table 8-2, p. 56).
+  There is no Semtech errata document for the part; section 15 "Known
+  Limitations", pages 109 to 111, is the functional substitute, and none of its
+  four items applies to a sleep-only driver.
 
 Sources: X-Powers AXP2101 datasheet revision 1.0 (2021-05-31); TI SLUUBD4A
 (BQ27220 TRM, revised November 2022); XINLUDA XL9535/XL9555 Rev 2.3; Semtech
