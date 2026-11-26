@@ -7,6 +7,7 @@
 
 #include <M5Unified.h>
 
+#include "FurbleIMUMotionScale.h"
 #include "FurblePlatform.h"
 
 namespace Furble {
@@ -15,10 +16,11 @@ namespace IMU {
 namespace {
 
 // Register addresses and bit masks are from the Bosch BMI270 datasheet
-// BST-BMI270-DS000 register map, cross-checked against the Bosch
-// BMI270_SensorAPI headers named in each comment. The any-motion and no-motion
-// feature layout is not in the datasheet. It is only described by that API, so
-// the feature offsets and field masks below cite it directly.
+// BST-BMI270-DS000-08 revision 1.6. Section 5.2.40 FEATURES, pages 92 and 93,
+// documents the any-motion and no-motion feature layout too, including the
+// field positions and the units, which FurbleIMUMotionScale.h states once. The
+// Bosch BMI270_SensorAPI headers named in each comment agree with it and are
+// cited as corroboration, not as the only source.
 constexpr uint8_t IMU_ADDRESS = 0x68;
 
 // bmi2_defs.h BMI2_CHIP_ID_ADDR, datasheet 5.2.1. BMI270 reads 0x24.
@@ -83,29 +85,30 @@ constexpr uint8_t ANY_MOTION_OFFSET = 0x0C;
 constexpr uint8_t NO_MOTION_PAGE = 2;
 constexpr uint8_t NO_MOTION_OFFSET = 0x00;
 
-// Field masks from bmi2_defs.h. Word 0 holds the duration in bits 12:0 and one
-// select bit per axis. Word 1 holds the slope threshold in bits 10:0 and the
-// feature enable in bit 15. Bits 14:11 of word 1 are the output configuration.
-// Bosch never writes them, so neither does this code: they keep whatever the
-// config file M5Unified uploaded put there.
-constexpr uint16_t DURATION_MASK = 0x1FFF;
+// Field masks from the datasheet, section 5.2.40, and the Bosch API. Word 0
+// holds the duration in bits 12:0 and one select bit per axis. Word 1 holds the
+// slope threshold in bits 10:0 and the feature enable in bit 15. Bits 14:11 of
+// word 1 are the output configuration. Bosch never writes them, so neither does
+// this code: they keep whatever the config file M5Unified uploaded put there.
+constexpr uint16_t DURATION_MASK = Scale::BMI270_DURATION_FIELD_MASK;
 constexpr uint16_t AXIS_SELECT_MASK = 0xE000;
-constexpr uint16_t THRESHOLD_MASK = 0x07FF;
+constexpr uint16_t THRESHOLD_MASK = Scale::BMI270_THRESHOLD_FIELD_MASK;
 constexpr uint16_t FEATURE_ENABLE = 0x8000;
 
-// One duration count is 20 ms and one threshold count is 0.48 mg, both stated
-// by the Bosch examples bmi270_examples/any_motion_interrupt and
-// no_motion_interrupt.
+// One duration count is 20 ms and one threshold count is 1 g / 2048, 0.4883 mg,
+// from section 5.2.40 pages 92 and 93. Both counts and the mg and ms each of
+// them produces are in FurbleIMUMotionScale.h, which is the one definition the
+// simulator double and the host tests read too.
 //
 // Any-motion uses the shortest duration the chip offers, because exit from
 // stationary has to be immediate. Its threshold is the Bosch default of 83 mg.
-constexpr uint16_t ANY_MOTION_DURATION = 1;
-constexpr uint16_t ANY_MOTION_THRESHOLD = 0xAA;
-// No-motion holds for 60 s, matching the software backend exactly so the two
-// paths report the same state at the same time. Its threshold is the Bosch
-// default of 70 mg.
-constexpr uint16_t NO_MOTION_DURATION = 3000;
-constexpr uint16_t NO_MOTION_THRESHOLD = 0x090;
+constexpr uint16_t ANY_MOTION_DURATION = Scale::BMI270_ANY_MOTION_DURATION_COUNTS;
+constexpr uint16_t ANY_MOTION_THRESHOLD = Scale::BMI270_ANY_MOTION_THRESHOLD_COUNTS;
+// No-motion holds for the shared 60 s, matching the software backend and the
+// MPU6886 hold exactly so every path reports the same state at the same time.
+// Its threshold is the Bosch default of 70 mg.
+constexpr uint16_t NO_MOTION_DURATION = Scale::BMI270_NO_MOTION_DURATION_COUNTS;
+constexpr uint16_t NO_MOTION_THRESHOLD = Scale::BMI270_NO_MOTION_THRESHOLD_COUNTS;
 
 uint32_t nowMs(void) {
   return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);

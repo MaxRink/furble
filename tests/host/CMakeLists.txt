@@ -1123,6 +1123,18 @@ target_include_directories(imu_motion_encoding_test PRIVATE
 target_compile_options(imu_motion_encoding_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
 
+# The motion scale audit. Every threshold in the motion path is a register count,
+# so this target pins the mg and ms each configuration produces, the full-scale
+# span of each field, and the assumption boundary on the MPU6886 count size. It
+# also drives sim/imu_motion_model.h, the decision code the simulator's virtual
+# engines run, with the configuration FurbleIMUSim.cpp builds, so the double
+# cannot model a sensitivity the hardware does not have. Both headers are pure,
+# so this target needs no stubs and no bus.
+add_executable(imu_motion_scale_test imu_motion_scale_test.cpp)
+target_include_directories(imu_motion_scale_test PRIVATE ${FURBLE_ROOT}/include ${FURBLE_ROOT}/sim)
+target_compile_options(imu_motion_scale_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                      -Wno-unused-parameter)
+
 # Pure chip drivers in lib/hal against a recording register bus and a fake
 # radio port. Expected values come from the datasheets cited in the test.
 add_executable(hal_drivers_test
@@ -2456,6 +2468,7 @@ if(BUILD_TESTING)
   add_test(NAME provision-apply-mqtt COMMAND provision_apply_mqtt_test)
   add_test(NAME text-size-policy COMMAND text_size_policy_test)
   add_test(NAME imu-motion-encoding COMMAND imu_motion_encoding_test)
+  add_test(NAME imu-motion-scale COMMAND imu_motion_scale_test)
   add_test(NAME hal-drivers COMMAND hal_drivers_test)
   add_test(NAME text-size-policy-stickc COMMAND text_size_policy_stickc_test)
   add_test(NAME stale-connect COMMAND stale_connect_test)

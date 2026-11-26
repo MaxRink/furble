@@ -113,6 +113,7 @@ the git history. They are no longer ownership rows.
 | [326-review-feedback.md](326-review-feedback.md) | Review-feedback record for the documentation accuracy refresh |
 | [327-control-gps-race.md](327-control-gps-race.md) | Locked `Control::m_Targets` walk for the GPS fan-out and the control task's `STATE_ACTIVE` liveness check |
 | [328-reference-docs-audit.md](328-reference-docs-audit.md) | Reference documentation audit: settings and console claims re-verified against the code, with the fixes and the claims that did not hold |
+| [332-imu-motion-scale-audit.md](332-imu-motion-scale-audit.md) | IMU motion wake scale audit against the BMI270 revision 1.6, MPU-6886 revision 1.1 and QMI8658A Rev D documents; one scale definition shared by the backends, the simulator double and the host tests |
 | [342-wifi-lost-ip.md](342-wifi-lost-ip.md) | Lost DHCP lease: `IP_EVENT_STA_LOST_IP` clears the WiFi cache, and the WebUI gate and status page read the live station address |
 | [342-review-feedback.md](342-review-feedback.md) | Review-feedback record for the lost-lease fix: doc paragraph, deliberate-stop gate test, and five recorded follow-ups |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |

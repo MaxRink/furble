@@ -208,7 +208,14 @@ settings-touching rebase.
   from that task and never block in one. Reader-facing state is atomic because
   the diagnostics timer reads it while `poll()` writes. Every engine register
   sequence holds `g_IMUMutex`, declared in this header, which the spirit level,
-  the IMU live page and the console probe also take.
+  the IMU live page and the console probe also take. `FurbleIMUMotionScale.h`
+  is the one definition of every motion count and its documented mg, ms and g
+  value, asserted against each other at compile time: the backends, the
+  simulator double and `tests/host/imu_motion_scale_test.cpp` read it, and no
+  file may hand convert a count to mg. The BMI270 scales are documented in
+  datasheet revision 1.6 section 5.2.40; the MPU-6886 count size is this
+  project's assumption because revision 1.1 gives none, and it is marked as one.
+  See plan 332 before changing a count or a scale.
 - `FurbleUI.h` exposes IMU diagnostics and spirit-level state only when the
   persisted IMU capability is enabled; simulator seams must model the same
   `M5.Imu` read boundary rather than adding widget-only state.

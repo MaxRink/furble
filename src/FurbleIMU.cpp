@@ -12,6 +12,7 @@
 #include "driver.h"
 #endif
 
+#include "FurbleIMUMotionScale.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
@@ -25,8 +26,10 @@ namespace {
 // whether a sample is quiet, and a continuous quiet window of STATIONARY_HOLD_MS
 // decides when the device is stationary. The BMI270 no-motion duration and the
 // MPU6886 software hold both use this same 60 s, so the three backends report
-// the same state at the same time.
-constexpr uint32_t STATIONARY_HOLD_MS = 60 * 1000;
+// the same state at the same time. FurbleIMUMotionScale.h holds the one
+// definition and static_asserts that the BMI270 duration in counts and the
+// MPU6886 hold are both this value.
+constexpr uint32_t STATIONARY_HOLD_MS = Scale::STATIONARY_HOLD_MS;
 // The chip engines threshold a filtered acceleration slope. This backend only
 // has raw magnitude, which is noisier, so its threshold is deliberately looser
 // than the 83 mg the BMI270 any-motion engine uses. MotionSource::setScale is

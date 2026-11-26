@@ -6,39 +6,28 @@
 // sample crosses the chip's slope threshold, no-motion raises STATIONARY after a
 // continuous quiet window. This backend models exactly that, reading the
 // injected accelerometer through Sim::imuGetAccel, the same surface the
-// software backend and the spirit level read. The register encoding itself is
-// covered by tests/host/imu_motion_encoding_test.cpp.
+// software backend and the spirit level read. The decision itself lives in
+// sim/imu_motion_model.h so a host test drives the same code, and the register
+// encoding is covered by tests/host/imu_motion_encoding_test.cpp.
+//
+// The slope thresholds come from the counts the firmware writes, converted by
+// FurbleIMUMotionScale.h. Do not hand-convert them here: a g value that drifts
+// from the driver certifies a sensitivity the hardware does not have.
 
 #include "FurbleIMU.h"
 
-#include <algorithm>
-#include <cmath>
 #include <mutex>
 
 #include <esp_timer.h>
 
 #include "FurblePlatform.h"
 #include "driver.h"
+#include "imu_motion_model.h"
 
 namespace Furble {
 namespace IMU {
 
 namespace {
-
-// The no-motion window every backend shares. The BMI270 no-motion duration, the
-// MPU6886 software hold and the software backend all use this same 60 s.
-constexpr uint32_t STATIONARY_HOLD_MS = 60 * 1000;
-
-// Slope thresholds in g, converted from the counts the firmware writes.
-// BMI270 any-motion is 0xAA counts at 0.48 mg. MPU6886 wake on motion is 0x10
-// counts at 4 mg.
-constexpr float BMI270_THRESHOLD_G = 0.0816f;
-constexpr float MPU6886_THRESHOLD_G = 0.064f;
-
-// The BMI270 any-motion duration is one count of 20 ms and the MPU6886 raises
-// its interrupt on the first qualifying sample, so both engines need exactly
-// one sample above the threshold to leave the stationary state.
-constexpr uint32_t MOTION_SAMPLES = 1;
 
 uint32_t nowMs(void) {
   return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
@@ -46,8 +35,12 @@ uint32_t nowMs(void) {
 
 class VirtualMotionBackend final: public MotionBackend {
  public:
-  VirtualMotionBackend(Backend backend, const char *name, float threshold)
-      : m_Backend(backend), m_Name(name), m_Threshold(threshold) {}
+  VirtualMotionBackend(Backend backend,
+                       const char *name,
+                       const Sim::ImuMotionModel::config_t &config)
+      : m_Backend(backend), m_Name(name) {
+    m_Model.configure(config);
+  }
 
   bool arm(void) override {
     // Same contract as the firmware backends: the bus lock is held across the
@@ -58,11 +51,8 @@ class VirtualMotionBackend final: public MotionBackend {
       return false;
     }
 
-    m_State = MotionState::MOVING;
-    m_QuietSince = 0;
-    m_MotionSamples = 0;
+    m_Model.arm();
     m_InterruptCount = 0;
-    m_HaveSample = false;
     m_UsesInterrupt = Platform::getInstance().armMotionWake();
     m_Armed = true;
     return true;
@@ -89,57 +79,18 @@ class VirtualMotionBackend final: public MotionBackend {
       return false;
     }
 
-    const uint32_t now = nowMs();
-
-    // Hardware engines compare per-axis sample-to-sample slope against a fixed
-    // chip threshold. The software calibration scale does not change hardware.
-    if (!m_HaveSample) {
-      m_LastAccel[0] = accel[0];
-      m_LastAccel[1] = accel[1];
-      m_LastAccel[2] = accel[2];
-      m_HaveSample = true;
-    }
-    const float slope = std::max(
-        std::fabs(accel[0] - m_LastAccel[0]),
-        std::max(std::fabs(accel[1] - m_LastAccel[1]), std::fabs(accel[2] - m_LastAccel[2])));
-    m_LastAccel[0] = accel[0];
-    m_LastAccel[1] = accel[1];
-    m_LastAccel[2] = accel[2];
-
-    if (slope >= m_Threshold) {
-      m_QuietSince = 0;
-      if (m_MotionSamples < MOTION_SAMPLES) {
-        m_MotionSamples++;
-      }
-      if ((m_State == MotionState::MOVING) || (m_MotionSamples < MOTION_SAMPLES)) {
-        return false;
-      }
-      // Any-motion fired. Exactly one engine is armed at a time, so the pair
-      // swaps here the same way the BMI270 backend swaps its feature bits.
-      m_InterruptCount++;
-      m_State = MotionState::MOVING;
-      state = m_State;
-      return true;
-    }
-
-    m_MotionSamples = 0;
-    if (m_QuietSince == 0) {
-      m_QuietSince = (now == 0) ? 1 : now;
+    if (!m_Model.step(nowMs(), accel)) {
       return false;
     }
 
-    if ((m_State == MotionState::MOVING) && ((now - m_QuietSince) >= STATIONARY_HOLD_MS)) {
-      // No-motion fired.
-      m_InterruptCount++;
-      m_State = MotionState::STATIONARY;
-      state = m_State;
-      return true;
-    }
-
-    return false;
+    m_InterruptCount++;
+    state = m_Model.moving() ? MotionState::MOVING : MotionState::STATIONARY;
+    return true;
   }
 
-  MotionState state(void) const override { return m_State; }
+  MotionState state(void) const override {
+    return m_Model.moving() ? MotionState::MOVING : MotionState::STATIONARY;
+  }
   Backend backend(void) const override { return m_Backend; }
   const char *name(void) const override { return m_Name; }
   bool usesInterrupt(void) const override { return m_UsesInterrupt; }
@@ -148,14 +99,9 @@ class VirtualMotionBackend final: public MotionBackend {
  private:
   const Backend m_Backend;
   const char *const m_Name;
-  const float m_Threshold;
-  MotionState m_State = MotionState::MOVING;
-  uint32_t m_QuietSince = 0;
-  uint32_t m_MotionSamples = 0;
+  Sim::ImuMotionModel m_Model;
   uint32_t m_InterruptCount = 0;
   bool m_UsesInterrupt = false;
-  float m_LastAccel[3] = {};
-  bool m_HaveSample = false;
   bool m_Armed = false;
 };
 
@@ -166,7 +112,7 @@ std::unique_ptr<MotionBackend> createBMI270Backend(void) {
     return nullptr;
   }
   return std::make_unique<VirtualMotionBackend>(Backend::BMI270, "bmi270-motion",
-                                                BMI270_THRESHOLD_G);
+                                                Sim::bmi270MotionConfig());
 }
 
 std::unique_ptr<MotionBackend> createMPU6886Backend(void) {
@@ -174,7 +120,7 @@ std::unique_ptr<MotionBackend> createMPU6886Backend(void) {
     return nullptr;
   }
   return std::make_unique<VirtualMotionBackend>(Backend::MPU6886, "mpu6886-wom",
-                                                MPU6886_THRESHOLD_G);
+                                                Sim::mpu6886MotionConfig());
 }
 
 }  // namespace IMU
