@@ -2,8 +2,9 @@
 
 Adversarial review of PR 524, the reversal of the #518 `ESP_LOG_INFO` cap. The
 review did not read the diff and agree with it: every claim the PR makes was
-rebuilt or re-derived on base `81139818` and head `5c09dd24`, with
-`FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e <env>`.
+rebuilt or re-derived from a built ELF, with
+`FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e <env>`, on the base the PR was
+opened against, `81139818`, and on the base it now sits on, `85b89931`.
 
 The PR has two halves and each can fail in one direction while the other hides
 it. Restoring the log maximum fails silently if the flag comes back but the
