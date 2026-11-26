@@ -1,7 +1,8 @@
 # 332 - Battery-backed RTC in the simulator
 
-Status: implemented on `feat/455-sim-rtc` for issue #455. Simulator only; no
-firmware behaviour changes.
+Status: implemented on `feat/455-sim-rtc` for issue #455, delivered in #507.
+Simulator only; no firmware behaviour changes. Issue #455 is closed against that
+PR; the hardware item below stays open in this plan.
 
 ## Gap
 
