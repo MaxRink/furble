@@ -24,6 +24,14 @@ UBSan rejects an enum value the stub does not declare. A shim that creates
 objects for host tasks frees them after joining the threads, and a test that
 replaces a thread's alternate signal stack restores the original one.
 
+`imu-motion-scale` owns the motion scales. It pins the mg and ms every motion
+configuration produces, the full-scale span of each register field and the
+assumption boundary on the MPU6886 count size, and it drives
+`sim/imu_motion_model.h`, the decision code the simulator's virtual engines run,
+so the double cannot model a sensitivity the hardware does not have. It includes
+`${FURBLE_ROOT}/sim` for that header and needs no stubs. `imu-motion-encoding`
+owns the register bytes and decodes them back to mg through the same header.
+
 Provisioning tests cover Legend Off through the production apply path and NVS
 store. Keep `Furble::Settings` qualified outside its namespace; run both the
 ordinary and MQTT-enabled provisioning targets when changing this coverage.

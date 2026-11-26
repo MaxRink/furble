@@ -274,8 +274,20 @@ The measurement plan in section 7 exists to close these.
 | Backend | Board | Poll | Entry to stationary | Exit to moving |
 | --- | --- | --- | --- | --- |
 | `software` | any IMU M5Unified can read | 1 Hz from the UI housekeeping timer | 60 s continuous quiet on `fabs(magnitude - 1 g) < 0.20 g * scale` | first sample above the threshold |
-| `bmi270-motion` | M5StickS3 | 1 Hz status read, `POLL_INTERVAL_MS` 1000 | BMI270 no-motion engine, 70 mg, 3000 counts (60 s) | BMI270 any-motion, 83 mg, 1 count (20 ms) |
-| `mpu6886-wom` | StickC, StickC Plus, Core2 | 1 Hz status read | software hold, 60 s since last WOM event | WOM event, 64 mg |
+| `bmi270-motion` | M5StickS3 | 1 Hz status read, `POLL_INTERVAL_MS` 1000 | BMI270 no-motion engine, 0x090 counts (70.3 mg), 3000 counts of 20 ms (60 s) | BMI270 any-motion, 0xAA counts (83.0 mg), 1 count of 20 ms |
+| `mpu6886-wom` | StickC, StickC Plus, Core2 | 1 Hz status read | software hold, 60 s since last WOM event | WOM event, 0x10 counts, 64 mg only under the assumed 4 mg count |
+
+The BMI270 counts and scales are documented: BST-BMI270-DS000-08 revision 1.6
+section 5.2.40, pages 92 and 93, gives the threshold field as bits 10:0 over 0 to
+1 g, so one count is 1 g / 2048 = 0.4883 mg, and 0xAA is the stated default of
+83 mg. The MPU-6886 threshold count size is not documented: DS-000193 revision
+1.1 sections 8.20 to 8.22 and table 15 name the three registers and give no
+per-count figure, so 4 mg and therefore 64 mg are assumptions this project has
+not measured. `include/FurbleIMUMotionScale.h` holds the one definition of every
+one of these numbers, and `tests/host/imu_motion_scale_test.cpp` pins the mg and
+ms each configuration produces. See
+[plans/332-imu-motion-scale-audit.md](../../plans/332-imu-motion-scale-audit.md)
+for the audit and the hardware gate that would close the MPU-6886 figure.
 
 `HW_MOTION` defaults to Software. Auto prefers the board engine and falls back
 to software. The setting is not immediate; the engine is chosen when the source
