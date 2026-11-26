@@ -1,0 +1,50 @@
+# Board row versus hardware model: M5StickS3.
+#
+# The M5PM1 keeps a wake timer, not a calendar RTC, and the product selector
+# lists none (plans/implemented/139-persistent-time.md), so neither side claims
+# a battery-backed RTC. See board-row-stickc.txt for the assertion contract.
+seed hw_profile sticks3
+wait 100
+
+assert hw.profile sticks3
+assert board.name StickS3
+
+assert hw.sd no
+assert board.sd no
+
+assert hw.audio yes
+assert board.audio yes
+
+assert hw.rtc no
+assert hw.rtc_backed no
+assert board.rtc_backed no
+
+# Timed wake path.
+assert hw.timed_wake pmic-timer
+assert board.timed_wake pmic-timer
+
+
+assert hw.ir yes
+assert board.ir yes
+
+assert hw.touch no
+
+assert board.battery_mah 250
+assert platform.battery.capacity 250
+
+assert hw.gauge voltage_charge
+assert platform.battery.caps.level yes
+assert platform.battery.caps.charging yes
+assert board.battery_charging yes
+assert platform.battery.caps.voltage yes
+assert board.battery_voltage yes
+assert platform.battery.caps.current no
+
+assert power.off_path pm1-off
+assert power.can_off yes
+assert board.can_power_off yes
+
+assert board.gps_rail yes
+assert power.rail.gps off
+assert power.rail.ext5v n/a
+exit

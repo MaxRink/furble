@@ -1,6 +1,7 @@
 # The touch Remote page keeps its full-size controls on every modeled panel.
 # On a narrow panel they stack into the page's scroll area instead of sharing
 # three columns that are too small for the controls and labels.
+seed touch true
 seed no_touch false
 seed fauxny true
 seed saved_camera true

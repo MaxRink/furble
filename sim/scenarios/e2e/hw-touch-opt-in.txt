@@ -1,0 +1,12 @@
+# A scenario can still ask for the touch layout on a board that lacks one.
+#
+# "seed touch true" overrides the capability default, which is what the
+# touch-layout geometry scenarios do when they use the 320x240 panel as a proxy
+# for a Core2 or Tough.
+seed hw_profile core-4mb
+seed touch true
+wait 300
+
+assert hw.touch no
+assert ui.nav_layout touch
+exit

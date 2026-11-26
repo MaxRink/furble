@@ -1,0 +1,10 @@
+# A board with a touch panel still renders the touch layout by default.
+#
+# Core2 has an FT6336U, so the capability default selects the touch layout
+# without any seed beyond the board identity.
+seed hw_profile core2
+wait 300
+
+assert hw.touch yes
+assert ui.nav_layout touch
+exit

@@ -1,5 +1,5 @@
 # M5Stack Core USB-UART profile (also the developer USB-debug fallback).
-seed hw_profile core
+seed hw_profile core-4mb
 wait 100
 assert hw.mcu esp32
 assert hw.usb uart
@@ -8,7 +8,7 @@ assert pmic.watchdog unavailable
 action usb-reset
 assert platform.reset_reason usb_uart_chip_reset
 assert usb.mode app
-assert hw.profile core
+assert hw.profile core-4mb
 assert hw.flash_kb 4096
 assert hw.psram absent
 assert mem.psram_total 0
@@ -17,7 +17,7 @@ assert hw.touch no
 assert hw.wifi yes
 assert hw.ethernet no
 assert hw.ble yes
-assert hw.ir yes
+assert hw.ir no
 assert hw.sd yes
 assert hw.audio yes
 # The Core has no calendar RTC chip (docs/console-commands.md).

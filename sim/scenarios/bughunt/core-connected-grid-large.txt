@@ -18,6 +18,7 @@
 # seeds Large, which is where master overflowed this page by 23 px and where the
 # names wrap to two lines. Two files because the text size is a boot seed,
 # following home-seven-rows.txt and home-seven-rows-large.txt.
+seed touch true
 seed text_size 2
 seed fauxny true
 seed saved_camera true

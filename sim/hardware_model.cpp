@@ -14,6 +14,7 @@
 #include <freertos/task.h>
 
 #include "FurbleCompanionMemory.h"
+#include "FurbleIP5306.h"
 #include "FurbleMQTTMemory.h"
 #include "clock.h"
 #include "crash_log_sim.h"
@@ -44,13 +45,32 @@ constexpr rtc_fact_t RTC_FACTS[] = {
     {"stickc-plus",      true,  "BM8563, docs/power/board-power.md"     },
     {"stickc-plus2",     true,  "BM8563 alarm wake, src/FurbleBoard.cpp"},
     {"sticks3",          false, "no RTC chip, docs/console-commands.md" },
-    {"core",             false, "no RTC chip, docs/console-commands.md" },
+    {"core-4mb",         false, "no RTC chip, docs/console-commands.md" },
+    {"core-16mb",        false, "no RTC chip, docs/console-commands.md" },
     {"core2",            true,  "BM8563, docs/power/board-power.md"     },
     {"tough",            true,  "BM8563, docs/power/board-power.md"     },
     {"headless-s3",      false, "no RTC, docs/power/board-power.md"     },
     {"waveshare-s3-eth", false, "no RTC on the StampS3"                 },
 };
 
+/*
+ * One modelled board row.
+ *
+ * `ir`, `sd`, `audio` and `touch` are the capabilities the firmware reads, not
+ * raw silicon inventory, so a scenario can hold the row against
+ * `Board::profile()`:
+ *   ir     an IR emitter the firmware can drive (a GPIO and a DIO-mode flash)
+ *   sd     a microSD slot on the display SPI bus that the firmware can mount
+ *   audio  a speaker or amplifier the firmware drives for feedback sound
+ *   touch  a touch panel
+ * `rtc` is a calendar chip at all and `rtcBatteryBacked` is whether it keeps
+ * time with the main cell out; RTC_FACTS is the per-row evidence for the first
+ * and docs/power/board-power.md section 2 for the second. A buzzer without a
+ * speaker path is not `audio`.
+ *
+ * `powerOff` names the modelled shutdown path and `ext5vShared` records that
+ * the Port A GPS rail and the external 5 V net are the same switch.
+ */
 struct board_caps_t {
   const char *mcu;
   uint32_t flashKb;
@@ -77,6 +97,12 @@ struct board_caps_t {
   const char *timedWake;  // "none", "pmic-timer" or "rtc-alarm"
   bool vbus;
   bool poe;
+  const char *powerOff;
+  // The platform can cut power: `Profile::powerOffPath`. It is a different
+  // question from `Profile::canPowerOff`, the UI policy gate, and the Core is
+  // the board where the two disagree (plan 354, #497).
+  bool powerOffPath;
+  bool ext5vShared;
 };
 
 const board_caps_t STICKC = {.mcu = "esp32",
@@ -95,12 +121,15 @@ const board_caps_t STICKC = {.mcu = "esp32",
                              .ble = true,
                              .ir = true,
                              .sd = false,
-                             .audio = true,
+                             .audio = false,
                              .rtc = true,
                              .rtcBatteryBacked = true,
                              .timedWake = "none",
                              .vbus = true,
-                             .poe = false};
+                             .poe = false,
+                             .powerOff = "axp192-off",
+                             .powerOffPath = true,
+                             .ext5vShared = false};
 const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .flashKb = 4096,
                                   .pmic = "axp192",
@@ -120,9 +149,14 @@ const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .audio = true,
                                   .rtc = true,
                                   .rtcBatteryBacked = true,
-                                  .timedWake = "none",
+                                  // The BM8563 INT reaches the AXP192 power key, so the
+                                  // alarm is the wake path (plan 350).
+                                  .timedWake = "rtc-alarm",
                                   .vbus = true,
-                                  .poe = false};
+                                  .poe = false,
+                                  .powerOff = "axp192-off",
+                                  .powerOffPath = true,
+                                  .ext5vShared = false};
 const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
                                    .flashKb = 4096,
                                    .pmic = "none",
@@ -141,10 +175,16 @@ const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
                                    .sd = false,
                                    .audio = true,
                                    .rtc = true,
-                                   .rtcBatteryBacked = false,
+                                   // The BM8563 stays powered across the HOLD power-off
+                                   // the timed wake uses, so the calendar is the retention
+                                   // mechanism (plan 350).
+                                   .rtcBatteryBacked = true,
                                    .timedWake = "rtc-alarm",
                                    .vbus = true,
-                                   .poe = false};
+                                   .poe = false,
+                                   .powerOff = "hold-latch",
+                                   .powerOffPath = true,
+                                   .ext5vShared = false};
 const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .flashKb = 8192,
                               .pmic = "m5pm1",
@@ -168,7 +208,10 @@ const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .rtcBatteryBacked = false,
                               .timedWake = "pmic-timer",
                               .vbus = true,
-                              .poe = false};
+                              .poe = false,
+                              .powerOff = "pm1-off",
+                              .powerOffPath = true,
+                              .ext5vShared = false};
 const board_caps_t CORE = {.mcu = "esp32",
                            .flashKb = 4096,
                            .pmic = "ip5306",
@@ -183,14 +226,45 @@ const board_caps_t CORE = {.mcu = "esp32",
                            .wifi = true,
                            .ethernet = false,
                            .ble = true,
-                           .ir = true,
+                           .ir = false,
                            .sd = true,
                            .audio = true,
                            .rtc = false,
                            .rtcBatteryBacked = false,
                            .timedWake = "none",
                            .vbus = true,
-                           .poe = false};
+                           .poe = false,
+                           .powerOff = "ip5306-light-load",
+                           .powerOffPath = true,
+                           .ext5vShared = false};
+// Current Basic units ship 16 MB, while the committed `m5stack-core` build is
+// configured for 4 MB (sdkconfig.m5stack-core, partitions_two_ota_large.csv).
+// Both rows exist so a scenario names the flash assumption it means.
+const board_caps_t CORE_16MB = {.mcu = "esp32",
+                                .flashKb = 16384,
+                                .pmic = "ip5306",
+                                .gauge = "four_level",
+                                .psram = "absent",
+                                .usb = "uart",
+                                .display = "320x240",
+                                .width = 320,
+                                .height = 240,
+                                .touch = false,
+                                .battery = true,
+                                .wifi = true,
+                                .ethernet = false,
+                                .ble = true,
+                                .ir = false,
+                                .sd = true,
+                                .audio = true,
+                                .rtc = false,
+                                .rtcBatteryBacked = false,
+                                .timedWake = "none",
+                                .vbus = true,
+                                .poe = false,
+                                .powerOff = "ip5306-light-load",
+                                .powerOffPath = true,
+                                .ext5vShared = false};
 const board_caps_t CORE2 = {.mcu = "esp32",
                             .flashKb = 16384,
                             .pmic = "axp192",
@@ -205,14 +279,17 @@ const board_caps_t CORE2 = {.mcu = "esp32",
                             .wifi = true,
                             .ethernet = false,
                             .ble = true,
-                            .ir = true,
+                            .ir = false,
                             .sd = true,
                             .audio = true,
                             .rtc = true,
                             .rtcBatteryBacked = true,
                             .timedWake = "none",
                             .vbus = true,
-                            .poe = false};
+                            .poe = false,
+                            .powerOff = "axp192-off",
+                            .powerOffPath = true,
+                            .ext5vShared = true};
 const board_caps_t TOUGH = {.mcu = "esp32",
                             .flashKb = 16384,
                             .pmic = "axp192",
@@ -227,14 +304,17 @@ const board_caps_t TOUGH = {.mcu = "esp32",
                             .wifi = true,
                             .ethernet = false,
                             .ble = true,
-                            .ir = true,
+                            .ir = false,
                             .sd = true,
                             .audio = true,
                             .rtc = true,
-                            .rtcBatteryBacked = false,
-                            .timedWake = "none",
+                            .rtcBatteryBacked = true,
+                            .timedWake = "rtc-alarm",
                             .vbus = true,
-                            .poe = false};
+                            .poe = false,
+                            .powerOff = "axp192-off",
+                            .powerOffPath = true,
+                            .ext5vShared = true};
 const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .flashKb = 8192,
                                .pmic = "none",
@@ -256,7 +336,10 @@ const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .rtcBatteryBacked = false,
                                .timedWake = "none",
                                .vbus = true,
-                               .poe = false};
+                               .poe = false,
+                               .powerOff = "deep-sleep",
+                               .powerOffPath = true,
+                               .ext5vShared = false};
 const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .flashKb = 16384,
                                 .pmic = "none",
@@ -278,7 +361,33 @@ const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .rtcBatteryBacked = false,
                                 .timedWake = "none",
                                 .vbus = false,
-                                .poe = false};
+                                .poe = false,
+                                .powerOff = "none",
+                                .powerOffPath = false,
+                                .ext5vShared = false};
+
+// IP5306 light-load cutoff. The part drops its boost when the load stays below
+// 45 mA for the window REG_SYS_CTL2 (0x02) bits 3:2 select, unless the "BOOST
+// output normally open" bit is set.
+//
+// The register meanings and the bits 3:2 table live in include/FurbleIP5306.h,
+// which the firmware also uses, so the model cannot drift from the shipped
+// decode. M5Unified 0.2.20 writes 0x02 = 0x6C, whose bits 3:2 are 11, the 64 s
+// window; the datasheet headline row's 32 s is the power-on default of field
+// 01, which the firmware overwrites.
+constexpr int IP5306_LIGHT_LOAD_MA = 45;
+constexpr uint8_t IP5306_SYS_CTL2_INIT = 0x6C;
+constexpr uint8_t IP5306_SYS_CTL0_INIT = 0x31;
+
+/** The bits 3:2 selector of REG_SYS_CTL2, 0 to 3. */
+constexpr uint8_t ip5306LightLoadField(uint8_t sysCtl2) {
+  return static_cast<uint8_t>((sysCtl2 & Furble::IP5306::SYS_CTL2_LIGHT_LOAD_MASK) >> 2);
+}
+
+/** The window that byte selects, in milliseconds, from the firmware decoder. */
+constexpr uint32_t ip5306LightLoadMs(uint8_t sysCtl2) {
+  return static_cast<uint32_t>(Furble::IP5306::lightLoadSeconds(sysCtl2)) * 1000U;
+}
 
 struct pmic_state_t {
   std::string variant;
@@ -318,6 +427,42 @@ struct pmic_state_t {
   // Modelled window one IR burst holds the EXT_5V rail, seeded by
   // `ir_burst_ms`. See hwIrBurstMs().
   uint32_t irBurstMs = 100;
+  // Register bytes a scenario can read back. Only the AXP192/AXP2101 ADC,
+  // rail and LDOIO registers and the IP5306 system-control bytes are modelled;
+  // every other address reads as zero with a zero write count.
+  uint8_t reg[256] = {};
+  uint32_t regWrites[256] = {};
+  // Writes the part cannot accept: an AXP192 register on an AXP2101 part, or
+  // the reverse. Fail closed so a scenario can assert the guard ran.
+  uint32_t violations = 0;
+  // IP5306 REG_SYS_CTL0 bit 1, "BOOST output normally open". Clear after the
+  // vendor init block, so the 45 mA light-load cutoff is armed.
+  bool boostKeepOn = false;
+  int loadMa = 60;
+  // The window the timer runs for. It is the value the 0x02 field decodes to,
+  // unless a scenario seeds one, either to shorten the virtual time or to
+  // exercise another field value. lightLoadWindowSeeded records which, so a
+  // scenario can prove the default came from the register byte.
+  uint32_t lightLoadWindowMs = ip5306LightLoadMs(IP5306_SYS_CTL2_INIT);
+  bool lightLoadWindowSeeded = false;
+  // A scenario-selected REG_SYS_CTL2 byte, written after the vendor block in
+  // hwStart(), so a scenario can decode a field value the vendor block does not
+  // select.
+  bool sysCtl2Seeded = false;
+  uint8_t sysCtl2Seed = IP5306_SYS_CTL2_INIT;
+  uint32_t lightLoadElapsedMs = 0;
+  uint32_t lightLoadCuts = 0;
+  bool panelOff = false;
+  uint32_t lastTickMs = 0;
+  bool ticked = false;
+  // Port A 5 V. On Core2 and Tough the same switch feeds the external 5 V net,
+  // so a GPS rail cut drops BUS_5V with it.
+  bool gpsRail = false;
+  bool ext5v = false;
+  uint32_t ext5vDrops = 0;
+  // Shutdown bookkeeping: what the modelled path did, not what was asked for.
+  uint32_t powerOffAttempts = 0;
+  uint32_t powerOffRefused = 0;
 };
 
 // The switched EXT 5 V output on the board. The M5PM1 owns the switch on the
@@ -599,8 +744,11 @@ const board_caps_t &capsFor(const std::string &profile) {
   if (profile == "stickc-plus2") {
     return STICKC_PLUS2;
   }
-  if (profile == "core") {
+  if (profile == "core-4mb") {
     return CORE;
+  }
+  if (profile == "core-16mb") {
+    return CORE_16MB;
   }
   if (profile == "core2") {
     return CORE2;
@@ -625,7 +773,7 @@ std::string defaultProfile(void) {
 #elif defined(FURBLE_M5STICKC)
   return "stickc";
 #elif defined(FURBLE_M5COREX)
-  return "core";
+  return "core-4mb";
 #else
   return "sticks3";
 #endif
@@ -730,6 +878,19 @@ bool rtcCapabilityMatchesLocked(hardware_state_t &hw) {
   return false;
 }
 
+/** The Port A rail and, on Core2 and Tough, the external 5 V net behind it. */
+void pmicSetGpsRailLocked(hardware_state_t &hw, bool on) {
+  hw.pmic.gpsRail = on;
+  if (!hw.caps.ext5vShared) {
+    return;
+  }
+  if (hw.pmic.ext5v && !on) {
+    hw.pmic.ext5vDrops++;
+  }
+  hw.pmic.ext5v = on;
+}
+
+/** Rebuild the holder list so a query returns a stable string. */
 void refreshRailHoldersLocked(hardware_state_t &hw) {
   std::string holders;
   const auto add = [&holders](const char *name) {
@@ -768,6 +929,8 @@ bool setRailLocked(hardware_state_t &hw, Furble::Sim::rail_holder_t holder, bool
   const bool blocked = !needed && (hw.rail.fixed || hw.rail.refused);
   if (blocked) {
     hw.rail.refusals++;
+    // The read-back is the rail, so the external 5 V net follows it here too.
+    pmicSetGpsRailLocked(hw, hw.rail.on);
     return hw.rail.on;
   }
 
@@ -777,6 +940,9 @@ bool setRailLocked(hardware_state_t &hw, Furble::Sim::rail_holder_t holder, bool
   if (hw.rail.on != wanted) {
     hw.rail.refusals++;
   }
+  // On Core2 and Tough the same switch feeds the external 5 V net, so the net
+  // follows the read-back rather than the request.
+  pmicSetGpsRailLocked(hw, hw.rail.on);
   return hw.rail.on;
 }
 
@@ -926,6 +1092,214 @@ void powerOnLocked(hardware_state_t &hw) {
   hw.resetReasonName = "poweron";
 }
 
+/*
+ * Modelled PMIC register bytes.
+ *
+ * Only the addresses a scenario can hold against the vendor init block are
+ * modelled. Each part reuses the same address for a different purpose, which
+ * is why the meaning is part of the model:
+ *
+ *   0x12  AXP192 rail enables            AXP2101 BATFET control
+ *   0x30  -                              AXP2101 ADC enable
+ *   0x82  AXP192 ADC enable 1            AXP2101 DCDC1 voltage (CPU rail)
+ *   0x83  AXP192 ADC enable 2            -
+ *   0x84  AXP192 ADC sample rate         -
+ *   0x90  AXP192 LDOIO0 mode             AXP2101 LDO enable 0
+ *   0x00  IP5306 SYS_CTL0 (boost keep-on)
+ *   0x01  IP5306 SYS_CTL1
+ *   0x02  IP5306 SYS_CTL2 (light-load window field)
+ *
+ * M5Unified 0.2.20 `Power_Class.cpp` writes 0x12/0x82=0xFF/0x83=0x80/0x84=0x32
+ * /0x90=0x07 on every AXP192 board and 0x12=0x00 (BATFET disable) plus
+ * 0x30=0x0F on the Core2 v1.1 AXP2101 path, and never writes 0x82 there. A
+ * write to the other part's layout is refused and counted, because on an
+ * AXP2101 0x82 moves DCDC1, which is the CPU rail on that board.
+ */
+struct reg_entry_t {
+  uint8_t reg;
+  const char *axp192Meaning;
+  const char *axp2101Meaning;
+  const char *ip5306Meaning;
+};
+
+constexpr reg_entry_t REG_ENTRIES[] = {
+    {0x00, nullptr,               nullptr,                 "ip5306-sys-ctl0"},
+    {0x01, nullptr,               nullptr,                 "ip5306-sys-ctl1"},
+    {0x02, nullptr,               nullptr,                 "ip5306-sys-ctl2"},
+    {0x12, "axp192-rail-enables", "axp2101-batfet",        nullptr          },
+    {0x30, nullptr,               "axp2101-adc-enable",    nullptr          },
+    {0x82, "axp192-adc-enable-1", "axp2101-dcdc1-voltage", nullptr          },
+    {0x83, "axp192-adc-enable-2", nullptr,                 nullptr          },
+    {0x84, "axp192-adc-rate",     nullptr,                 nullptr          },
+    {0x90, "axp192-ldoio0-mode",  "axp2101-ldo-enable-0",  nullptr          },
+};
+
+const reg_entry_t *regEntry(uint8_t reg) {
+  for (const reg_entry_t &entry : REG_ENTRIES) {
+    if (entry.reg == reg) {
+      return &entry;
+    }
+  }
+  return nullptr;
+}
+
+const char *regMeaning(const std::string &variant, uint8_t reg) {
+  const reg_entry_t *entry = regEntry(reg);
+  if (entry == nullptr) {
+    return "unknown";
+  }
+  if (variant == "axp192") {
+    return entry->axp192Meaning == nullptr ? "unknown" : entry->axp192Meaning;
+  }
+  if (variant == "axp2101") {
+    return entry->axp2101Meaning == nullptr ? "unknown" : entry->axp2101Meaning;
+  }
+  if (variant == "ip5306") {
+    return entry->ip5306Meaning == nullptr ? "unknown" : entry->ip5306Meaning;
+  }
+  return "unknown";
+}
+
+/** True when the modelled part carries this address in its own register map. */
+bool partHasRegister(const std::string &variant, uint8_t reg) {
+  return std::strcmp(regMeaning(variant, reg), "unknown") != 0;
+}
+
+/** One modelled register write. Returns false and counts a violation when the
+ * part does not have that register at all. */
+bool pmicWriteLocked(hardware_state_t &hw, uint8_t reg, uint8_t value) {
+  if (!partHasRegister(hw.pmic.variant, reg)) {
+    hw.pmic.violations++;
+    ESP_LOGE(LOG_TAG, "%s does not have register 0x%02X; write refused", hw.pmic.variant.c_str(),
+             static_cast<unsigned>(reg));
+    return false;
+  }
+  hw.pmic.reg[reg] = value;
+  hw.pmic.regWrites[reg]++;
+  return true;
+}
+
+/**
+ * One modelled register write that only makes sense on the part it was written
+ * for.
+ *
+ * The AXP192 and the AXP2101 share addresses, so "the part has 0x82" is not
+ * enough: on the AXP2101 it is the DCDC1 voltage register, which is the CPU rail
+ * on a Core2 v1.1. A byte written for the wrong register map is refused and
+ * counted instead of being applied to whatever sits at that address.
+ */
+bool pmicWriteForLocked(hardware_state_t &hw, uint8_t reg, uint8_t value, const char *meaning) {
+  if (std::strcmp(regMeaning(hw.pmic.variant, reg), meaning) != 0) {
+    hw.pmic.violations++;
+    ESP_LOGE(LOG_TAG, "%s register 0x%02X is %s, not %s; write refused", hw.pmic.variant.c_str(),
+             static_cast<unsigned>(reg), regMeaning(hw.pmic.variant, reg), meaning);
+    return false;
+  }
+  return pmicWriteLocked(hw, reg, value);
+}
+
+/** The vendor init block for the modelled part, as M5.begin() writes it. */
+void pmicInitLocked(hardware_state_t &hw) {
+  const std::string &variant = hw.pmic.variant;
+  if (variant == "axp192") {
+    // Rail enables: the StickC pair ends with LDO3 on for the LCD and DCDC3
+    // off; Core2 and Tough end with LDO2 on and LDO3/DCDC3 off. M5Unified no
+    // longer writes 0x12 as a whole byte, so only the per-rail bits land.
+    const bool stick = hw.profile == "stickc" || hw.profile == "stickc-plus";
+    pmicWriteLocked(hw, 0x12, stick ? 0x08 : 0x04);
+    pmicWriteLocked(hw, 0x82, 0xFF);  // ADC all on
+    pmicWriteLocked(hw, 0x83, 0x80);  // ADC temperature on
+    pmicWriteLocked(hw, 0x84, 0x32);  // ADC 25 Hz
+    pmicWriteLocked(hw, 0x90, 0x07);  // LDOIO0 floating
+  } else if (variant == "axp2101") {
+    pmicWriteLocked(hw, 0x12, 0x00);  // BATFET disable
+    pmicWriteLocked(hw, 0x30, 0x0F);  // ADC enabled
+  } else if (variant == "ip5306") {
+    (void)pmicWriteLocked(hw, 0x00, IP5306_SYS_CTL0_INIT);
+    pmicWriteLocked(hw, 0x01, 0x1D);
+    // The light-load selector. The vendor block writes 0x6C, bits 3:2 = 11,
+    // which is 64 s. A scenario may select another field value to prove the
+    // decode follows the byte, so a seeded byte is written in its place.
+    const uint8_t sysCtl2 = hw.pmic.sysCtl2Seeded ? hw.pmic.sysCtl2Seed : IP5306_SYS_CTL2_INIT;
+    if (pmicWriteForLocked(hw, 0x02, sysCtl2, "ip5306-sys-ctl2")
+        && !hw.pmic.lightLoadWindowSeeded) {
+      hw.pmic.lightLoadWindowMs = ip5306LightLoadMs(hw.pmic.reg[0x02]);
+    }
+    // Platform::keepIp5306BoostOn() holds SYS_CTL0 bit 1 for the session through
+    // Furble::IP5306::holdBoostOn(), because a panel-off Core draws less than
+    // 45 mA and the charger would read that as an idle load. The model takes the
+    // same step, so the cut is armed only after the manual Off releases the bit.
+    if (pmicWriteForLocked(hw, 0x00, Furble::IP5306::withBoostKeptOn(hw.pmic.reg[0x00]),
+                           "ip5306-sys-ctl0")) {
+      hw.pmic.boostKeepOn = Furble::IP5306::boostKeptOn(hw.pmic.reg[0x00]);
+    }
+  }
+}
+
+/**
+ * The modelled shutdown path.
+ *
+ * The IP5306 has no shutdown command (plans/354): the vendor path sleeps the
+ * panel, clears the boost keep-on bit and deep sleeps, and the rail then drops
+ * once the load stays under 45 mA for the light-load window. The request is
+ * accepted and deferred, so the modelled path reports success and releases the
+ * bit. Every other modelled board cuts a PMIC output, releases the HOLD latch,
+ * or deep sleeps.
+ */
+bool pmicPowerOffLocked(hardware_state_t &hw) {
+  hw.pmic.powerOffAttempts++;
+  if (hw.caps.powerOff != nullptr && std::strcmp(hw.caps.powerOff, "ip5306-light-load") == 0) {
+    // The vendor path sleeps the panel, clears the keep-on bit and deep sleeps;
+    // the rail then drops after the light-load window. The request is therefore
+    // accepted and deferred, not refused (plans/354, finding 2): the model
+    // releases the bit and reports the deferral so a scenario can see the boost
+    // cut follow on the virtual clock.
+    (void)pmicWriteForLocked(
+        hw, 0x00, static_cast<uint8_t>(hw.pmic.reg[0x00] & ~Furble::IP5306::SYS_CTL0_BOOST_KEEP_ON),
+        "ip5306-sys-ctl0");
+    hw.pmic.boostKeepOn = false;
+    // The rail is still up: the panel is dark and the charger owns the next
+    // step, so the state machine stays ON until the light-load cut fires.
+    hw.pmic.panelOff = true;
+    ESP_LOGI(LOG_TAG, "IP5306 keep-on released; the light-load cut removes the boost after %u ms",
+             static_cast<unsigned>(hw.pmic.lightLoadWindowMs));
+    return true;
+  }
+  hw.power.state = power_state_t::OFF;
+  return true;
+}
+
+/**
+ * Advance the modelled light-load timer.
+ *
+ * The IP5306 drops the boost when the load stays under 45 mA with the panel
+ * off for the configured window, unless the keep-on bit is set. The window is
+ * read from REG_SYS_CTL2 bits 3:2, so the model cuts at the 64 s the vendor
+ * block writes and not at the datasheet headline row's 32 s, which is the
+ * power-on default of a field the firmware overwrites.
+ */
+void pmicLightLoadTickLocked(hardware_state_t &hw, uint32_t nowMs) {
+  const uint32_t delta = hw.pmic.ticked ? (nowMs - hw.pmic.lastTickMs) : 0;
+  hw.pmic.lastTickMs = nowMs;
+  hw.pmic.ticked = true;
+  if (hw.pmic.variant != "ip5306" || hw.power.state != power_state_t::ON) {
+    hw.pmic.lightLoadElapsedMs = 0;
+    return;
+  }
+  if (!hw.pmic.panelOff || hw.pmic.loadMa >= IP5306_LIGHT_LOAD_MA || hw.pmic.boostKeepOn) {
+    hw.pmic.lightLoadElapsedMs = 0;
+    return;
+  }
+  hw.pmic.lightLoadElapsedMs += delta;
+  if (hw.pmic.lightLoadElapsedMs >= hw.pmic.lightLoadWindowMs) {
+    hw.pmic.lightLoadCuts++;
+    hw.power.state = power_state_t::OFF;
+    hw.pmic.lightLoadElapsedMs = 0;
+    ESP_LOGW(LOG_TAG, "IP5306 light-load cutoff after %u ms below %d mA with the panel off",
+             static_cast<unsigned>(hw.pmic.lightLoadWindowMs), IP5306_LIGHT_LOAD_MA);
+  }
+}
+
 void psramProbeTask(void *) {
   vTaskDelay(portMAX_DELAY);
 }
@@ -996,6 +1370,35 @@ void hwSetPmicVariant(const std::string &variant) {
     state().pmic.watchdogEnabled = false;
   } else if (variant == "ip5306" || variant == "axp192" || variant == "axp2101") {
     state().pmic.powerLatch = true;
+  }
+}
+
+void hwSetLoadMa(int loadMa) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().pmic.loadMa = loadMa;
+  state().pmic.lightLoadElapsedMs = 0;
+}
+
+void hwSetLightLoadWindowMs(uint32_t windowMs) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().pmic.lightLoadWindowMs = windowMs;
+  state().pmic.lightLoadWindowSeeded = true;
+  state().pmic.lightLoadElapsedMs = 0;
+}
+
+void hwSetIp5306SysCtl2(uint8_t value) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  hardware_state_t &hw = state();
+  hw.pmic.sysCtl2Seeded = true;
+  hw.pmic.sysCtl2Seed = value;
+  hw.pmic.lightLoadElapsedMs = 0;
+  // Seeds run before hwStart(), which is where the vendor block lands, so the
+  // byte is held until then. A model that already started takes it at once.
+  if (!hw.started) {
+    return;
+  }
+  if (pmicWriteForLocked(hw, 0x02, value, "ip5306-sys-ctl2") && !hw.pmic.lightLoadWindowSeeded) {
+    hw.pmic.lightLoadWindowMs = ip5306LightLoadMs(hw.pmic.reg[0x02]);
   }
 }
 
@@ -1307,6 +1710,9 @@ void hwStart(void) {
   }
   hw.pmic.batteryPresent = hw.caps.battery;
   hw.pmic.powerLatch = hw.caps.pmic[0] != 'n';
+  // The vendor init block, per part. The register bytes it leaves behind are
+  // what a scenario reads back with pmic.reg.<addr>.
+  pmicInitLocked(hw);
   hw.power.state = power_state_t::ON;
   hw.usb.mode = usb_mode_t::APP;
 
@@ -1639,6 +2045,34 @@ bool hwAction(const std::string &name) {
   }
   if (name == "pmic-watchdog-off") {
     hw.pmic.watchdogEnabled = false;
+    return true;
+  }
+  if (name == "pmic-boost-keep-on") {
+    // The keep-on bit that keeps the IP5306 boost alive under the 45 mA
+    // light-load floor (docs/power/board-power.md PM-06).
+    if (pmicWriteForLocked(hw, 0x00, Furble::IP5306::withBoostKeptOn(hw.pmic.reg[0x00]),
+                           "ip5306-sys-ctl0")) {
+      hw.pmic.boostKeepOn = true;
+    }
+    return true;
+  }
+  if (name == "pmic-boost-keep-off") {
+    if (pmicWriteForLocked(
+            hw, 0x00,
+            static_cast<uint8_t>(hw.pmic.reg[0x00] & ~Furble::IP5306::SYS_CTL0_BOOST_KEEP_ON),
+            "ip5306-sys-ctl0")) {
+      hw.pmic.boostKeepOn = false;
+    }
+    return true;
+  }
+  if (name == "pmic-axp192-adc") {
+    // The AXP192 ADC block M5Unified writes on every AXP192 board. On an AXP2101
+    // part 0x82 is the DCDC1 voltage register, which is the CPU rail on a Core2
+    // v1.1, so the block is refused there and counted. A scenario uses it as the
+    // negative control for "0x82 is never written".
+    (void)pmicWriteForLocked(hw, 0x82, 0xFF, "axp192-adc-enable-1");
+    (void)pmicWriteForLocked(hw, 0x83, 0x80, "axp192-adc-enable-2");
+    (void)pmicWriteForLocked(hw, 0x84, 0x32, "axp192-adc-rate");
     return true;
   }
   if (name == "wifi-connect") {
@@ -1988,6 +2422,11 @@ std::string hwQuery(const std::string &key) {
     if (sub == "rtc") {
       return hw.caps.rtc ? "yes" : "no";
     }
+    if (sub == "rtc_backed") {
+      // The profile column itself, not the runtime RTC mode `hw.rtc_battery`
+      // seeds: a scenario compares this against Board::profile().
+      return hw.caps.rtcBatteryBacked ? "yes" : "no";
+    }
     if (sub == "rtc_capability") {
       const rtc_fact_t *fact = rtcFactFor(hw.profile);
       return (fact != nullptr && hw.caps.rtc == fact->rtc) ? "match" : "mismatch";
@@ -2072,6 +2511,57 @@ std::string hwQuery(const std::string &key) {
     if (sub == "battery_percent") {
       return std::to_string(hw.pmic.batteryPercent);
     }
+    if (sub == "violations") {
+      return std::to_string(hw.pmic.violations);
+    }
+    if (sub == "boost_keep_on") {
+      return hw.pmic.boostKeepOn ? "yes" : "no";
+    }
+    if (sub == "load_ma") {
+      return std::to_string(hw.pmic.loadMa);
+    }
+    if (sub == "light_load_window_ms") {
+      return std::to_string(hw.pmic.lightLoadWindowMs);
+    }
+    if (sub == "light_load_field") {
+      // REG_SYS_CTL2 bits 3:2, the selector the window decodes from.
+      return std::to_string(ip5306LightLoadField(hw.pmic.reg[0x02]));
+    }
+    if (sub == "light_load_source") {
+      return hw.pmic.lightLoadWindowSeeded ? "seed" : "reg";
+    }
+    if (sub == "light_load_ms") {
+      return std::to_string(hw.pmic.lightLoadElapsedMs);
+    }
+    if (sub == "light_load_cuts") {
+      return std::to_string(hw.pmic.lightLoadCuts);
+    }
+    if (sub.compare(0, 4, "reg.") == 0) {
+      // pmic.reg.<0xNN>, pmic.reg.<0xNN>.writes and pmic.reg.<0xNN>.meaning.
+      std::string rest = sub.substr(4);
+      std::string field;
+      const size_t dot = rest.find('.');
+      if (dot != std::string::npos) {
+        field = rest.substr(dot + 1);
+        rest.resize(dot);
+      }
+      char *end = nullptr;
+      const unsigned long long reg = std::strtoull(rest.c_str(), &end, 0);
+      if (end == rest.c_str() || *end != '\0' || reg > 0xFF) {
+        return "invalid";
+      }
+      const uint8_t address = static_cast<uint8_t>(reg);
+      if (field.empty()) {
+        return std::to_string(hw.pmic.reg[address]);
+      }
+      if (field == "writes") {
+        return std::to_string(hw.pmic.regWrites[address]);
+      }
+      if (field == "meaning") {
+        return regMeaning(hw.pmic.variant, address);
+      }
+      return "invalid";
+    }
     if (sub == "pwr_cfg") {
       return std::to_string(hw.pmic.pwrCfg);
     }
@@ -2121,6 +2611,39 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "recoveries") {
       return std::to_string(hw.power.recoveries);
+    }
+    if (sub == "off_path") {
+      return hw.caps.powerOff == nullptr ? "unknown" : hw.caps.powerOff;
+    }
+    if (sub == "can_off") {
+      // The platform path (`Profile::powerOffPath`), not the UI policy gate
+      // (`Profile::canPowerOff`, which `board.can_power_off` reports). The Core
+      // is the board where they differ: its manual Off clears the IP5306
+      // boost keep-on bit and the light-load cut removes the rail after the
+      // 64 s window, so the path exists while the automatic policies stay off.
+      return hw.caps.powerOffPath ? "yes" : "no";
+    }
+    if (sub == "off_attempts") {
+      return std::to_string(hw.pmic.powerOffAttempts);
+    }
+    if (sub == "off_refused") {
+      return std::to_string(hw.pmic.powerOffRefused);
+    }
+    if (sub == "rail.gps") {
+      return hw.pmic.gpsRail ? "on" : "off";
+    }
+    if (sub == "rail.ext5v") {
+      // Only Core2 and Tough switch the external 5 V net with the Port A rail.
+      if (!hw.caps.ext5vShared) {
+        return "n/a";
+      }
+      return hw.pmic.ext5v ? "on" : "off";
+    }
+    if (sub == "rail.ext5v_drops") {
+      if (!hw.caps.ext5vShared) {
+        return "n/a";
+      }
+      return std::to_string(hw.pmic.ext5vDrops);
     }
   }
   if (prefixed("usb.")) {
@@ -2552,6 +3075,40 @@ bool hwGaugeCharge(void) {
   const std::string &gauge = state().pmic.gauge;
   return state().pmic.batteryPresent
          && (gauge == "voltage_current" || gauge == "voltage_charge" || gauge == "four_level");
+}
+
+bool hwTouch(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().caps.touch;
+}
+
+bool hwPowerOff(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return pmicPowerOffLocked(state());
+}
+
+void hwSetPanelOff(bool off) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().pmic.panelOff = off;
+  if (off) {
+    return;
+  }
+  // A lit panel means the load is no longer in the light-load window.
+  state().pmic.lightLoadElapsedMs = 0;
+}
+
+bool hwCanTurnDisplayOff(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  const hardware_state_t &hw = state();
+  // Only the IP5306 has a light-load cut that turns a panel-off state into a
+  // power cut. Every other modelled part answers yes, so this gate stays open
+  // on the boards it does not describe.
+  return hw.pmic.variant != "ip5306" || hw.pmic.boostKeepOn;
+}
+
+void hwTick(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  pmicLightLoadTickLocked(state(), clockMillis());
 }
 
 int hwBatteryPercent(void) {

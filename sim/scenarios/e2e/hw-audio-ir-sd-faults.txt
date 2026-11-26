@@ -1,5 +1,5 @@
 # Audio overcurrent, IR RMT timeout and SD card faults.
-seed hw_profile core
+seed hw_profile core-4mb
 wait 100
 assert audio.state idle
 assert ir.state idle

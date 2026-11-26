@@ -4,7 +4,7 @@
 # compressed icon was inflated on the internal pool. Under the heap abort
 # policy that malloc aborts the device. The model reproduces the exact size
 # and capability token, then aborts.
-seed hw_profile core
+seed hw_profile core-4mb
 seed heap_internal_free 10000
 seed heap_internal_largest 8000
 wait 100

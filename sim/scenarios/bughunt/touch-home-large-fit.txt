@@ -1,6 +1,7 @@
 # Supplemental touch-layout fit for the five-row Home state at Large text.
 # The seeds exactly match text-size-overflow-large; the touch guard makes the
 # physical no-touch runner skip this stricter viewport-specific assertion.
+seed touch true
 seed text_size 2
 seed fauxny true
 seed gps true

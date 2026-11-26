@@ -1,6 +1,7 @@
 # Supplemental touch-layout fit for the Connected page at Small text.
 # Physical Stick boards use the button-layout coverage in the shared and
 # board-specific scenarios; this guard makes the no-touch runner skip this lane.
+seed touch true
 seed text_size 0
 seed fauxny true
 seed gps true

@@ -1,0 +1,12 @@
+# Touch defaults to the modelled capability, not the panel class.
+#
+# The SDL panel always attaches a mouse-driven touch device, so an unseeded run
+# used to render the touch layout on every board, including boards with no touch
+# panel. The Core has none, so the default layout here is the physical-button
+# one, which is what M5.Touch.isEnabled() reports on the device.
+seed hw_profile core-4mb
+wait 300
+
+assert hw.touch no
+assert ui.nav_layout buttons
+exit

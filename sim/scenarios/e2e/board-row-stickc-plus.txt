@@ -1,0 +1,45 @@
+# Board row versus hardware model: M5StickC Plus.
+#
+# See board-row-stickc.txt for the two-sided assertion contract. The Plus adds
+# the buzzer the firmware drives for feedback sound; the RTC and the AXP192
+# rails are the same as the StickC.
+seed hw_profile stickc-plus
+wait 100
+
+assert hw.profile stickc-plus
+assert board.name StickC+
+
+assert hw.sd no
+assert board.sd no
+
+assert hw.audio yes
+assert board.audio yes
+
+assert hw.rtc yes
+assert hw.rtc_backed yes
+assert board.rtc_backed yes
+
+# Timed wake path.
+assert hw.timed_wake rtc-alarm
+assert board.timed_wake rtc-alarm
+
+
+assert hw.ir yes
+assert board.ir yes
+
+assert hw.touch no
+
+assert board.battery_mah 120
+assert platform.battery.capacity 120
+
+assert hw.gauge voltage_current
+assert platform.battery.caps.charging yes
+assert board.battery_charging yes
+
+assert power.off_path axp192-off
+assert power.can_off yes
+assert board.can_power_off yes
+
+assert board.gps_rail yes
+assert power.rail.ext5v n/a
+exit

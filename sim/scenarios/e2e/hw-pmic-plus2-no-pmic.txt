@@ -36,4 +36,5 @@ assert hw.ir yes
 assert hw.sd no
 assert hw.audio yes
 assert hw.rtc yes
+assert hw.rtc_backed yes
 exit

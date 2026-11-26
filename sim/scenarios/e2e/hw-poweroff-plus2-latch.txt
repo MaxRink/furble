@@ -1,0 +1,19 @@
+# The Plus2 powers off by releasing the HOLD latch.
+#
+# There is no PMIC on the Plus2; GPIO4 holds the rail and M5Unified's power-off
+# path is an ESP deep sleep with no wake source. The model treats that as a
+# rail drop and reports success.
+seed hw_profile stickc-plus2
+wait 300
+
+assert power.off_path hold-latch
+assert power.can_off yes
+assert power.state on
+
+action nav power_off
+wait 100
+
+assert platform.power_off yes
+assert power.off_refused 0
+assert power.state off
+exit

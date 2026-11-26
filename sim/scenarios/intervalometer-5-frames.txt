@@ -1,4 +1,10 @@
 # Connected FauxNY, five frames, two seconds between frames.
+# The committed power baseline in tools/power-model/baseline was recorded
+# in the touch layout, before touch defaulted to the modelled capability.
+# Keep that layout here so the gate stays a comparison of the same
+# scenario; re-recording the baselines in the shipped button layout is a
+# plan 63 follow-up.
+seed touch true
 seed fauxny true
 seed autoconnect true
 seed interval_count 5

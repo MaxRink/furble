@@ -1,4 +1,5 @@
 # Narrow Stick touch Remote controls intentionally wrap and scroll.
+seed touch true
 seed no_touch false
 seed fauxny true
 seed saved_camera true

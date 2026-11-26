@@ -1,0 +1,22 @@
+# The Core2 AXP192 does power itself off.
+#
+# AXP192 REG 32H bit 7 is the whole-chip shutdown, which is the path M5Unified's
+# Power_Class::_powerOff() takes for pmic_axp192. The model reports the rail
+# drop through power.state, and no refusal is recorded.
+seed hw_profile core2
+wait 300
+
+assert power.off_path axp192-off
+assert power.can_off yes
+assert power.state on
+assert power.off_attempts 0
+
+action nav power_off
+wait 100
+
+assert platform.power_off yes
+assert power.off_attempts 1
+assert power.off_refused 0
+assert power.state off
+assert board.can_power_off yes
+exit

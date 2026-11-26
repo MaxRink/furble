@@ -1,0 +1,36 @@
+# AXP192 register bytes the firmware init leaves behind.
+#
+# M5Unified 0.2.20 Power_Class.cpp writes the fixed AXP192 block at M5.begin():
+# REG 82H = 0xFF (ADC all on), REG 83H = 0x80 (temperature ADC on), REG 84H =
+# 0x32 (25 Hz), REG 90H = 0x07 (LDOIO0 floating), plus the per-rail bits in
+# REG 12H from the board switch: the StickC pair ends with LDO3 on, DCDC3 off.
+#
+# The model keeps those bytes and counts the writes, so a change to the block is
+# visible to a scenario instead of being asserted only against the model struct.
+seed hw_profile stickc
+wait 100
+
+assert pmic.variant axp192
+assert pmic.reg.0x82 255
+assert pmic.reg.0x82.writes 1
+assert pmic.reg.0x82.meaning axp192-adc-enable-1
+assert pmic.reg.0x83 128
+assert pmic.reg.0x83.writes 1
+assert pmic.reg.0x83.meaning axp192-adc-enable-2
+assert pmic.reg.0x84 50
+assert pmic.reg.0x84.writes 1
+assert pmic.reg.0x84.meaning axp192-adc-rate
+assert pmic.reg.0x90 7
+assert pmic.reg.0x90.writes 1
+assert pmic.reg.0x90.meaning axp192-ldoio0-mode
+assert pmic.reg.0x12 8
+assert pmic.reg.0x12.writes 1
+assert pmic.reg.0x12.meaning axp192-rail-enables
+assert pmic.violations 0
+
+# Re-writing the same block is accepted on this part and counted.
+action pmic-axp192-adc
+assert pmic.reg.0x82.writes 2
+assert pmic.reg.0x82 255
+assert pmic.violations 0
+exit

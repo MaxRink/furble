@@ -10,6 +10,7 @@ assert hw.touch yes
 assert hw.sd yes
 assert hw.audio yes
 assert hw.rtc yes
+assert hw.rtc_backed no
 assert mem.internal_total 532480
 assert mem.component.lvgl_draw 20480
 assert hw.usb uart
@@ -19,7 +20,7 @@ assert hw.ble yes
 assert hw.gauge voltage_current
 assert hw.psram quad
 assert mem.psram_total 8388608
-assert hw.ir yes
+assert hw.ir no
 assert pmic.watchdog unavailable
 assert mem.component.main_stack 16384
 exit

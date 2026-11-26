@@ -498,7 +498,7 @@
     },
     {
       "env": "m5stack-core",
-      "profile": "core",
+      "profile": "core-4mb",
       "chip": "esp32",
       "elf_symbols": {
         "_data_start": "0x3ffbdb60",

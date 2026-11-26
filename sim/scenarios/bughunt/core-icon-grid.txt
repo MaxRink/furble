@@ -24,6 +24,7 @@
 # core-icon-grid-large.txt is the same walk at the maximum text size, where the
 # names wrap and both pages scroll. Two files because the text size is a boot
 # seed, following home-seven-rows.txt and home-seven-rows-large.txt.
+seed touch true
 seed fauxny true
 seed gps true
 seed imu true

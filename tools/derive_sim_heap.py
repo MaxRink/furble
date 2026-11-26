@@ -44,7 +44,7 @@ ENVS = {
     "m5stick-c": ("esp32", 80, 160, "stickc"),
     "m5stick-c-plus": ("esp32", 135, 240, "stickc-plus"),
     "m5stick-s3": ("esp32s3", 135, 240, "sticks3"),
-    "m5stack-core": ("esp32", 320, 240, "core"),
+    "m5stack-core": ("esp32", 320, 240, "core-4mb"),
     "m5stack-core2": ("esp32", 320, 240, "core2"),
     "waveshare-s3-eth": ("esp32s3", 0, 0, "waveshare-s3-eth"),
     # Not a release env, but CI builds it and the simulator models it.

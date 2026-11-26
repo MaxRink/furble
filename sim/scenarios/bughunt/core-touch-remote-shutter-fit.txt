@@ -1,5 +1,6 @@
 # The modeled Core touch panel keeps all three full-size Remote controls in a
 # single row, so its shutter page remains fit-required.
+seed touch true
 seed no_touch false
 seed text_size 1
 seed fauxny true

@@ -63,7 +63,7 @@
         "lvgl_draw": 2160
       }
     },
-    "profile-core": {
+    "profile-core-4mb": {
       "min_internal_free": 117480,
       "min_internal_largest": 117480,
       "max_leaks": 0,

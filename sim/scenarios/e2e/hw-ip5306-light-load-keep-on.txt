@@ -1,0 +1,28 @@
+# The IP5306 keep-on bit defeats the light-load cutoff.
+#
+# The board boots with SYS_CTL0 bit 1 set (plans/354), so a panel-off load below
+# 45 mA leaves the rail up for as long as the bit stays set. This is the same
+# load, panel state and window that cut the boost in hw-ip5306-light-load-cut.txt
+# once the bit is released, so the pair proves the bit is the difference.
+seed hw_profile core-4mb
+seed ip5306_load_ma 20
+seed ip5306_light_load_ms 5000
+seed display_off 1
+seed inactivity 1
+wait 100
+
+assert pmic.boost_keep_on yes
+assert pmic.reg.0x00 51
+
+wait 32000
+wait 6000
+
+assert platform.display_off yes
+assert pmic.light_load_cuts 0
+assert pmic.light_load_ms 0
+assert power.state on
+
+# The load never entered the window: the timer stayed at zero the whole time.
+assert pmic.load_ma 20
+assert pmic.light_load_window_ms 5000
+exit

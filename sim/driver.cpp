@@ -33,6 +33,7 @@
 #include <FauxNY.h>
 #include <Preferences.h>
 #include "CameraList.h"
+#include "FurbleBoard.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
 #include "FurbleCrashLog.h"
@@ -355,10 +356,11 @@ void validateSeed(const std::string &name, const std::string &value) {
   }
 
   constexpr const char *byteSeeds[] = {
-      "brightness",   "inactivity", "display_off", "display_mode", "gps_rate",  "gps_constel",
-      "gps_power",    "gps_duty",   "cpu_freq",    "tx_power",     "scan_mode", "text_size",
-      "auto_off",     "low_batt",   "fb_output",   "gps_hold",     "imu_wake",  "gps_assist",
-      "gps_platform", "hw_motion",  "legend",      "timezone",     "gps_gnss",  "gps_psm",
+      "brightness",  "inactivity", "display_off", "display_mode", "gps_rate",
+      "gps_constel", "gps_power",  "gps_duty",    "cpu_freq",     "tx_power",
+      "scan_mode",   "text_size",  "auto_off",    "low_batt",     "fb_output",
+      "gps_hold",    "imu_wake",   "gps_assist",  "gps_platform", "hw_motion",
+      "legend",      "timezone",   "gps_gnss",    "gps_psm",      "ip5306_sys_ctl2",
   };
   if (std::find(std::begin(byteSeeds), std::end(byteSeeds), name) != std::end(byteSeeds)) {
     if (parseUnsigned(value) > std::numeric_limits<uint8_t>::max()) {
@@ -380,6 +382,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "boot_splash",
       "connect_fail",
       "no_touch",
+      "touch",
       "saved_camera",
       "scan_start_probe",
       "ble_saved",
@@ -421,6 +424,11 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::cerr << "Invalid " << name << ": " << value << '\n';
       std::exit(2);
     }
+    return;
+  }
+
+  if (name == "ip5306_load_ma" || name == "ip5306_light_load_ms") {
+    parseUnsigned(value);
     return;
   }
 
@@ -608,9 +616,12 @@ void validateSeed(const std::string &name, const std::string &value) {
     // failure counter rather than assuming the injection fired.
     return;
   } else if (name == "hw_profile") {
+    // "core-4mb" is the committed 4 MB build configuration and "core-16mb" is
+    // the 16 MB part current Basic units ship; the bare name "core" is refused
+    // so a scenario always states which flash assumption it means.
     if (value != "stickc" && value != "stickc-plus" && value != "stickc-plus2" && value != "sticks3"
-        && value != "core" && value != "core2" && value != "tough" && value != "headless-s3"
-        && value != "waveshare-s3-eth") {
+        && value != "core-4mb" && value != "core-16mb" && value != "core2" && value != "tough"
+        && value != "headless-s3" && value != "waveshare-s3-eth") {
       std::cerr << "Invalid hw_profile: " << value << '\n';
       std::exit(2);
     }
@@ -1461,6 +1472,14 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
     return true;
   }
 
+  // The Port A rail, through the production call, so the model sees the same
+  // switch traffic the GPS driver produces. A board whose profile has no GPS
+  // rail reports no effect rather than failing the step.
+  if (action.name == "gps-rail-on" || action.name == "gps-rail-off") {
+    const bool on = action.name == "gps-rail-on";
+    *applied = Platform::getInstance().setRail(PowerBackend::Rail::GPS, on);
+    return true;
+  }
   if (hwAction(action.name)) {
     *applied = true;
     return true;
@@ -2065,6 +2084,70 @@ std::string queryValueUnscoped(const std::string &key) {
     if (field == "charging") {
       return simulatedBattery.charging ? "yes" : "no";
     }
+    if (field == "capacity") {
+      return std::to_string(Platform::getInstance().getBatteryCapacity());
+    }
+    // The gauge capability the platform reports, which is the model side of
+    // the charge-state agreement a board-row scenario asserts.
+    if (field == "caps.level") {
+      return hwGaugeLevel() ? "yes" : "no";
+    }
+    if (field == "caps.voltage") {
+      return hwGaugeVoltage() ? "yes" : "no";
+    }
+    if (field == "caps.current") {
+      return hwGaugeCurrent() ? "yes" : "no";
+    }
+    if (field == "caps.charging") {
+      return hwGaugeCharge() ? "yes" : "no";
+    }
+  }
+  if (prefixed("board.")) {
+    // The firmware Profile row for the selected board. A scenario asserts the
+    // same literal against this and against hw.*/power.*, so a row that drifts
+    // from the hardware model fails instead of being checked against itself.
+    const Board::Profile &profile = Board::profile();
+    const std::string field = key.substr(std::char_traits<char>::length("board."));
+    if (field == "name") {
+      return profile.name;
+    }
+    if (field == "sd") {
+      return profile.sdSlot ? "yes" : "no";
+    }
+    if (field == "audio") {
+      return profile.feedbackSound ? "yes" : "no";
+    }
+    if (field == "rtc_backed") {
+      return profile.rtcBatteryBacked ? "yes" : "no";
+    }
+    if (field == "can_power_off") {
+      return profile.canPowerOff ? "yes" : "no";
+    }
+    if (field == "battery_mah") {
+      return std::to_string(profile.batteryCapacityMah);
+    }
+    if (field == "battery_charging") {
+      return profile.battery.charging ? "yes" : "no";
+    }
+    if (field == "battery_voltage") {
+      return profile.battery.voltage ? "yes" : "no";
+    }
+    if (field == "ir") {
+      return profile.irPin >= 0 ? "yes" : "no";
+    }
+    if (field == "gps_rail") {
+      return profile.gpsRail ? "yes" : "no";
+    }
+    if (field == "timed_wake") {
+      switch (profile.timedWake) {
+        case Board::TimedWake::PMIC_TIMER:
+          return "pmic-timer";
+        case Board::TimedWake::RTC_ALARM:
+          return "rtc-alarm";
+        default:
+          return "none";
+      }
+    }
   }
   if (key == "platform.watchdog") {
     return watchdogState();
@@ -2465,18 +2548,60 @@ void removePreferences(void) {
   unsetenv(GENERATED_PREFS_ENV);
 }
 
+/**
+ * Model profile name to the board identity `Board::profile()` reports.
+ *
+ * `headless-s3` is a devkit with no M5 board identity in this tree, so it keeps
+ * board_unknown and the no-hardware row, exactly as an unrecognized board does
+ * on device. `waveshare-s3-eth` is board_M5StampS3, the identity M5Unified
+ * detects there and the row #500 gave it (plans/349). The two Core profiles are
+ * the 4 MB build and the 16 MB retail part, which report the same board.
+ */
+m5::board_t boardProfileForName(const std::string &profile) {
+  if (profile == "stickc") {
+    return m5::board_t::board_M5StickC;
+  }
+  if (profile == "stickc-plus") {
+    return m5::board_t::board_M5StickCPlus;
+  }
+  if (profile == "stickc-plus2") {
+    return m5::board_t::board_M5StickCPlus2;
+  }
+  if (profile == "sticks3") {
+    return m5::board_t::board_M5StickS3;
+  }
+  if (profile == "core-4mb" || profile == "core-16mb" || profile == "core") {
+    return m5::board_t::board_M5Stack;
+  }
+  if (profile == "core2") {
+    return m5::board_t::board_M5StackCore2;
+  }
+  if (profile == "tough") {
+    return m5::board_t::board_M5Tough;
+  }
+  if (profile == "waveshare-s3-eth" || profile == "stamps3") {
+    return m5::board_t::board_M5StampS3;
+  }
+  return m5::board_t::board_unknown;
+}
+
 void applyScenarioSettings(void) {
   // The profile row is picked before boot, because Platform::init() and the GPS
   // task read it. A run without the seed keeps the detected board.
+  // The board identity is read from the seeds rather than from the model, so
+  // this block does not depend on the order the seeds are applied in.
   const auto board = scenarioSettings.find("board");
+  const auto profileSeed = scenarioSettings.find("hw_profile");
   if (board != scenarioSettings.end()) {
-    if (board->second == "stamps3") {
-      Sim::setBoardProfile(m5::board_t::board_M5StampS3);
-    } else if (board->second == "core") {
-      Sim::setBoardProfile(m5::board_t::board_M5Stack);
-    } else {
-      Sim::setBoardProfile(m5::board_t::board_unknown);
-    }
+    // Explicit `seed board` wins over the profile's own identity.
+    Sim::setBoardProfile(boardProfileForName(board->second));
+  } else if (profileSeed != scenarioSettings.end()) {
+    // The seeded `hw_profile` is also the board identity Board::profile()
+    // returns. Without this a scenario that seeds a Core, Core2 or Tough
+    // profile would still read the SDL panel class's own row, because the
+    // simulator compiles one M5GFX panel and the host build reports the board
+    // it detected. An unseeded run keeps that detected board.
+    Sim::setBoardProfile(boardProfileForName(profileSeed->second));
   }
 
   saveByte("brightness", Settings::BRIGHTNESS);
@@ -2535,6 +2660,18 @@ void applyScenarioSettings(void) {
   const auto psramMode = scenarioSettings.find("psram_mode");
   if (psramMode != scenarioSettings.end()) {
     hwSetPsramMode(psramMode->second);
+  }
+  const auto loadSeed = scenarioSettings.find("ip5306_load_ma");
+  if (loadSeed != scenarioSettings.end()) {
+    hwSetLoadMa(static_cast<int>(parseUnsigned(loadSeed->second)));
+  }
+  const auto lightWindowSeed = scenarioSettings.find("ip5306_light_load_ms");
+  if (lightWindowSeed != scenarioSettings.end()) {
+    hwSetLightLoadWindowMs(static_cast<uint32_t>(parseUnsigned(lightWindowSeed->second)));
+  }
+  const auto sysCtl2Seed = scenarioSettings.find("ip5306_sys_ctl2");
+  if (sysCtl2Seed != scenarioSettings.end()) {
+    hwSetIp5306SysCtl2(static_cast<uint8_t>(parseUnsigned(sysCtl2Seed->second)));
   }
   const auto pmicVariant = scenarioSettings.find("pmic_variant");
   if (pmicVariant != scenarioSettings.end()) {
