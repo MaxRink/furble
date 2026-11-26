@@ -56,6 +56,8 @@ class WebUI {
   void hostResetIdentity(void);
   /** The cached password half of the credential gate. */
   bool hostPasswordReady(void) const { return m_PasswordReady.load(); }
+  /** Run the production network readiness gate without starting the server. */
+  bool hostNetworkReady(void) const { return networkReady(); }
   void hostServiceTimerEvents(void);
 #endif
 

@@ -66,6 +66,14 @@ WiFi::status_t WiFi::getStatus(void) {
   return status;
 }
 
+bool WiFi::hasAssignedAddress(void) {
+  // The simulator has no DHCP client, so the fake station state is the only
+  // source. It matches what the cached snapshot reports, as the firmware's
+  // live esp-netif query does for a station that holds a lease.
+  const status_t status = getStatus();
+  return status.connected && !status.ip.empty();
+}
+
 bool WiFi::getNtpTimesync(Camera::timesync_t &) {
   return Sim::hwNtpSynced();
 }

@@ -11,6 +11,7 @@
 #include "FurbleWiFi.h"
 #include "Preferences.h"
 #include "esp_event.h"
+#include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "esp_wifi.h"
@@ -33,6 +34,10 @@ esp_event_handler_t furble_wifi_handler = nullptr;
 int event_handler_registrations = 0;
 int netif_creations = 0;
 int task_creations = 0;
+// The station address the fake esp-netif reports. Production code reads it
+// live, so the test moves it exactly as esp-netif does: set on GOT_IP, reset
+// to 0 by the ip-lost path before it posts IP_EVENT_STA_LOST_IP.
+uint32_t station_address = 0x0100007f;
 esp_event_base_t WIFI_EVENT = "wifi";
 esp_event_base_t IP_EVENT = "ip";
 int esp_event_handler_register(esp_event_base_t, int32_t, esp_event_handler_t h, void *) {
@@ -46,8 +51,12 @@ esp_netif_t *esp_netif_create_default_wifi_sta() {
   return &n;
 }
 int esp_netif_get_ip_info(esp_netif_t *, esp_netif_ip_info_t *i) {
-  i->ip.addr = 0x0100007f;
+  i->ip.addr = station_address;
   return 0;
+}
+bool esp_netif_is_netif_up(esp_netif_t *) {
+  // A lost lease does not bring the station netif down.
+  return true;
 }
 const char *esp_ip4addr_ntoa(const esp_ip4_addr_t *, char *b, int) {
   return std::strcpy(b, "127.0.0.1");
@@ -156,6 +165,27 @@ int disconnect(uint8_t reason) {
   return 0;
 }
 
+// esp-netif sets the address and then posts the event, and its ip-lost path
+// resets the address to 0 before it posts IP_EVENT_STA_LOST_IP. Mirror both
+// orders here so the production handler is driven by the same sequence.
+int gotIp(void) {
+  station_address = 0x0100007f;
+  if (furble_wifi_handler == nullptr) {
+    return 1;
+  }
+  furble_wifi_handler(nullptr, IP_EVENT, IP_EVENT_STA_GOT_IP, nullptr);
+  return 0;
+}
+
+int loseIp(void) {
+  station_address = 0;
+  if (furble_wifi_handler == nullptr) {
+    return 1;
+  }
+  furble_wifi_handler(nullptr, IP_EVENT, IP_EVENT_STA_LOST_IP, nullptr);
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -171,7 +201,7 @@ int main() {
   Furble::wifiEnabledSetting = true;
   if (require(Furble::WiFi::connect(), "enable after a disabled init did not start")
       || require(netif_creations == 1, "lazy start did not create exactly one netif")
-      || require(event_handler_registrations == 2, "lazy start did not register two handlers")
+      || require(event_handler_registrations == 3, "lazy start did not register three handlers")
       || require(task_creations == 1, "lazy start did not create one worker")) {
     return 3;
   }
@@ -408,6 +438,65 @@ int main() {
     if (require(allowed == (state == 0), "join scan predicate must allow only the idle state")) {
       return 20;
     }
+  }
+
+  // Plan 342: a lost DHCP lease must clear the cached address and the WebUI
+  // readiness answer, and a later GOT_IP must restore both. WebUI readiness is
+  // WiFi::hasAssignedAddress(): WebUI::networkReady() returns it directly.
+  if (!Furble::WiFi::connect() || gotIp() != 0) {
+    return 44;
+  }
+  if (require(Furble::WiFi::getStatus().connected && !Furble::WiFi::getStatus().ip.empty(),
+              "GOT_IP did not cache an address")
+      || require(Furble::WiFi::hasAssignedAddress(),
+                 "the WebUI readiness answer is false while an address is held")) {
+    return 45;
+  }
+  if (loseIp() != 0) {
+    return 46;
+  }
+  if (require(Furble::WiFi::getStatus().ip.empty(), "a lost IP kept the cached address")
+      || require(!Furble::WiFi::hasAssignedAddress(),
+                 "the WebUI readiness answer stayed true after a lost IP")) {
+    return 47;
+  }
+  // GOT_IP queued an NTP start. The cleared address flag must keep SNTP off
+  // when the worker runs that deferred work.
+  const int sntpLostBefore = sntp_starts;
+  Furble::WiFi::hostServiceEventStorage();
+  if (require(sntp_starts == sntpLostBefore, "a lost IP still started SNTP")) {
+    return 48;
+  }
+  // The readiness answer is live, so it appears with the address instead of
+  // waiting for the event that fills the cache.
+  station_address = 0x0100007f;
+  if (require(Furble::WiFi::hasAssignedAddress(),
+              "the WebUI readiness answer did not follow the live netif")
+      || require(Furble::WiFi::getStatus().ip.empty(), "the cache was filled without an event")) {
+    return 49;
+  }
+  station_address = 0;
+  if (gotIp() != 0) {
+    return 50;
+  }
+  if (require(Furble::WiFi::getStatus().connected, "a fresh GOT_IP did not report connected")
+      || require(!Furble::WiFi::getStatus().ip.empty(), "a fresh GOT_IP did not cache an address")
+      || require(Furble::WiFi::hasAssignedAddress(),
+                 "a fresh GOT_IP did not restore the WebUI readiness answer")) {
+    return 51;
+  }
+  // A deliberate stop clears the cache itself and its own driver stop drops the
+  // address, so the loss it produces is not a lease loss. The gate at
+  // src/FurbleWiFi.cpp:997 keeps the log and the notification off for that
+  // pair; without it a `wifi disable` logs an address loss it caused.
+  const int warningsBeforeStop = esp_log_warn_count;
+  Furble::WiFi::disconnect();
+  if (loseIp() != 0) {
+    return 52;
+  }
+  if (require(esp_log_warn_count == warningsBeforeStop,
+              "a deliberate stop still logged a lost IP")) {
+    return 53;
   }
 
   std::cout << "wifi.fallback wired_defer=1 wired_resume=1\n";

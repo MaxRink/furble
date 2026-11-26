@@ -242,6 +242,9 @@ settings-touching rebase.
   actions fail closed. Keep this overload and result enum simulator-only so
   firmware builds retain the production header surface.
 - FurbleWiFi.h exposes station provisioning and NTP status for the app layer.
+  `hasAssignedAddress()` is the live station readiness query: it asks esp-netif
+  for an up netif with a non-zero IPv4 address instead of reading the cached
+  status, so the WebUI gate cannot outlive a lost DHCP lease.
 - `FurbleWebUI.h` owns the HTTPS supervisor and release-retry state. The pure
   ingress checks in `FurbleWebUIProtocol.h` are shared with host coverage. Held
   ownership never crosses a complete Control session replacement.
