@@ -274,6 +274,21 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   or the send result; the GPX tail and the FAT state are what they protect. A
   refusal holds the automatic paths off for `AutoOff::retryBlocked()`, because
   each attempt blocks the UI task for the whole handshake.
+  device behavior is unchanged.
+  `exportSettings()` skips `Settings::COMPANION_PASSWORD`, which the file
+  format excludes and `importSetting()` refuses, and treats every other
+  serialization failure as fatal. Treating the password exclusion as an error
+  aborted every export at a table-order-dependent position. The backup is
+  written to `settings.tmp` and renamed over `settings.txt` only after it
+  flushed and closed, so a full card reports the failure and keeps the previous
+  backup. `SD::handlePoint()` still disables GPX logging and persists
+  `SD_GPX` false after `MAX_FAILURES` consecutive point failures.
+- `CompanionService::notifyCameras()` re-publishes every camera record on
+  `CAMERA_KEEPALIVE_MS` as well as on a change, because the transport reports
+  no delivery result: a refused notification would otherwise keep the phone's
+  list stale until that camera changed again. The existing
+  `CAMERA_NOTIFY_INTERVAL_MS` rate gate still applies to the keepalive, and
+  `notifyStatus()` has the same 30 s cadence.
 - `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
   knowledge; every method runs on the SD writer task.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.

@@ -242,6 +242,14 @@ class CompanionService {
   static constexpr size_t CAMERA_NAME_MAX = 64;
   /** Steady-state camera notification rate limit, matching the status packet. */
   static constexpr uint64_t CAMERA_NOTIFY_INTERVAL_MS = 1000;
+  /**
+   * Re-publish every camera record on this cadence, matching the status
+   * keepalive. The transport reports no delivery result, so a notification the
+   * controller refused (no free TX buffer, a link that dropped mid-call) would
+   * otherwise leave that state missing from the phone until the record changed
+   * again. Thirty seconds of four short records is negligible radio time.
+   */
+  static constexpr uint64_t CAMERA_KEEPALIVE_MS = 30 * 1000;
 
   enum setting_status_t : uint8_t {
     SETTING_OK,
@@ -290,6 +298,13 @@ class CompanionService {
   std::vector<camera_snapshot_t> m_LastCameras;
   bool m_HaveLastCameras = false;
   uint64_t m_LastCameraNotificationMs = 0;
+  /**
+   * Last time every record was published. Separate from the rate-gate stamp on
+   * purpose: a list that changes on every pass would otherwise keep the
+   * keepalive measure at one second forever, and a record the controller
+   * refused would stay missing for as long as any other camera kept moving.
+   */
+  uint64_t m_LastCameraFullPublishMs = 0;
 
   uint64_t m_CommandWindowMs = 0;
   uint8_t m_CommandCount = 0;

@@ -89,6 +89,13 @@ the write and checks the protected track still has its tail.
 the writer queue, and asserts that `SD::powerOff()` refuses without waiting
 rather than reporting a settled card, then releases the unmount and checks the
 writer finishes it.
+`FURBLE_GPX_DIRECTORY` for `src/FurbleGPX.cpp`. Its `export-full` mode pins the
+settings backup contract: the first export must complete without the companion
+password and without leaving `settings.tmp`, a second export must replace it, and
+a third under a reduced `RLIMIT_FSIZE` must fail while `settings.txt` keeps its
+previous contents. The mode defines `rename()` with FatFs semantics, `EEXIST`
+when the destination exists, because the host libc replaces and would otherwise
+hide the fact that the production export must drop the old copy first.
 
 The `gpx-writer` suite sets `FURBLE_GPX_DIRECTORY` to an absolute sandbox in
 the build tree, deliberately long. `GPX::open()` sizes its path buffer from

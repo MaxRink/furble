@@ -249,9 +249,12 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   void clearFaults();
 
   const Config &config() const;
-  const std::vector<Write> &writes() const;
-  const std::vector<Notification> &notifications() const;
-  const std::vector<uint8_t> &lastGeotag() const;
+  // A snapshot, not a view: the peer write handler appends to the log from the
+  // Control task while a test walks it, so a reference could be read after a
+  // reallocation. ASan reported that as a heap-use-after-free once.
+  std::vector<Write> writes() const;
+  std::vector<Notification> notifications() const;
+  std::vector<uint8_t> lastGeotag() const;
   const std::string &identifier() const;
   bool identifierTerminated() const;
   bool connected() const;

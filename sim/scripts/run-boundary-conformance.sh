@@ -25,8 +25,8 @@ cmake -S "$ROOT/tests/host" -B "$BUILD_DIR" -DBUILD_TESTING=ON >/dev/null
 echo "=== build linked boundary targets ==="
 cmake --build "$BUILD_DIR" -j "${FURBLE_BOUNDARY_JOBS:-4}" --target \
   boundary_ir_test boundary_sd_test boundary_feedback_test \
-  boundary_ethernet_test boundary_companion_test boundary_webui_tls_test \
-  boundary_headless_service_test real_wifi_lifecycle_test >/dev/null
+  boundary_shared_pin_test boundary_ethernet_test boundary_companion_test \
+  boundary_webui_tls_test boundary_headless_service_test real_wifi_lifecycle_test >/dev/null
 
 echo "=== run linked boundary targets ==="
 status=0
@@ -65,6 +65,8 @@ assert_token "sd.shutdown_refused acknowledged=0"
 assert_token "sd.shutdown_refused.released unmounted=1"
 assert_token "sd.shutdown_undelivered acknowledged=0"
 assert_token "sd.shutdown_undelivered.released drained=1"
+assert_token "sd.export_replace replaced=1"
+assert_token "sd.export_full backup_preserved=1"
 assert_token "feedback.sound event=shutter"
 assert_token "feedback.overcurrent begin_failures=2"
 assert_token "feedback.brownout low_battery_samples=6"

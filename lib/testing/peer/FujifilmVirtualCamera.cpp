@@ -136,16 +136,15 @@ const FujifilmVirtualCamera::Config &FujifilmVirtualCamera::config() const {
   return m_Config;
 }
 
-const std::vector<FujifilmVirtualCamera::Write> &FujifilmVirtualCamera::writes() const {
+std::vector<FujifilmVirtualCamera::Write> FujifilmVirtualCamera::writes() const {
   return m_Writes;
 }
 
-const std::vector<FujifilmVirtualCamera::Notification> &FujifilmVirtualCamera::notifications()
-    const {
+std::vector<FujifilmVirtualCamera::Notification> FujifilmVirtualCamera::notifications() const {
   return m_Notifications;
 }
 
-const std::vector<uint8_t> &FujifilmVirtualCamera::lastGeotag() const {
+std::vector<uint8_t> FujifilmVirtualCamera::lastGeotag() const {
   return m_LastGeotag;
 }
 

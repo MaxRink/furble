@@ -43,6 +43,10 @@ namespace {
 constexpr const char *SD_MOUNT_POINT = FURBLE_SD_MOUNT_POINT;
 constexpr const char *SETTINGS_DIRECTORY = FURBLE_SD_MOUNT_POINT "/furble";
 constexpr const char *SETTINGS_FILE = FURBLE_SD_MOUNT_POINT "/furble/settings.txt";
+// A backup is written here and renamed over SETTINGS_FILE only once it has
+// flushed and closed. Opening the backup itself with "w" truncated it first, so
+// a full card left no usable backup and the previous export was already gone.
+constexpr const char *SETTINGS_TEMP_FILE = FURBLE_SD_MOUNT_POINT "/furble/settings.tmp";
 constexpr uint32_t SD_SPI_FREQUENCY_KHZ = 10000;
 constexpr UBaseType_t WRITER_QUEUE_LENGTH = 8;
 constexpr uint32_t WRITER_STACK_BYTES = 6144;
@@ -1081,14 +1085,22 @@ bool SD::exportSettings(void) {
     return false;
   }
 
-  FILE *file = fopen(SETTINGS_FILE, "w");
+  FILE *file = fopen(SETTINGS_TEMP_FILE, "w");
   if (file == nullptr) {
     ESP_LOGE(LOG_TAG, "Unable to open settings export: %s.", strerror(errno));
     return false;
   }
 
   bool ok = (fprintf(file, "# furble settings v1\n") >= 0);
+  size_t written = 0;
   for (const auto &entry : Settings::getAll()) {
+    if (entry.second.type == Settings::COMPANION_PASSWORD) {
+      // The backup is a plain file on a card, so the secret is excluded, and
+      // importSetting() refuses it too. Treating that exclusion as a
+      // serialization error aborted every export at a position that depended on
+      // the settings table order, so the backup was always a partial subset.
+      continue;
+    }
     std::string value;
     if (!serializeSetting(entry.second, value) || (value.find('\n') != std::string::npos)
         || (fprintf(file, "%s=%s\n", entry.second.key, value.c_str()) < 0)) {
@@ -1096,6 +1108,12 @@ bool SD::exportSettings(void) {
       ESP_LOGE(LOG_TAG, "Unable to serialize setting %s.", entry.second.key);
       break;
     }
+    written++;
+  }
+  if (written == 0) {
+    // An empty backup would overwrite a usable one on import.
+    ok = false;
+    ESP_LOGE(LOG_TAG, "Settings export wrote no settings.");
   }
 
   if ((fflush(file) != 0) || (fsync(fileno(file)) != 0)) {
@@ -1104,12 +1122,45 @@ bool SD::exportSettings(void) {
   }
   if (fclose(file) != 0) {
     ok = false;
+    ESP_LOGE(LOG_TAG, "Unable to close settings export: %s.", strerror(errno));
   }
 
+  // The backup is replaced only after the new copy is on the card, so a full
+  // card leaves the previous export usable instead of a truncated file that a
+  // later import would apply in part.
+  //
+  // FatFs refuses an existing destination: f_rename() answers FR_EXIST when the
+  // name is already in use and vfs_fat_rename() maps that to EEXIST, while a
+  // POSIX rename() replaces instead. A bare rename() therefore succeeds on the
+  // host double and fails on the card from the second export on, so the old copy
+  // is dropped and the rename retried when the file system asks for it.
+  const bool complete = ok;
+  bool replaced = false;
   if (ok) {
-    ESP_LOGI(LOG_TAG, "Settings exported to %s.", SETTINGS_FILE);
+    if (rename(SETTINGS_TEMP_FILE, SETTINGS_FILE) == 0) {
+      replaced = true;
+    } else if ((errno == EEXIST) && (remove(SETTINGS_FILE) == 0)
+               && (rename(SETTINGS_TEMP_FILE, SETTINGS_FILE) == 0)) {
+      replaced = true;
+    }
+    if (!replaced) {
+      ok = false;
+      ESP_LOGE(LOG_TAG, "Unable to replace the settings export: %s.", strerror(errno));
+    }
   }
-  return ok;
+  if (!ok) {
+    if (complete) {
+      // Every setting reached the card, so the temporary file is the only copy
+      // and it is kept for a manual recovery.
+      ESP_LOGW(LOG_TAG, "The complete export is kept at %s.", SETTINGS_TEMP_FILE);
+    } else if (remove(SETTINGS_TEMP_FILE) != 0) {
+      ESP_LOGW(LOG_TAG, "Unable to remove the partial settings export: %s.", strerror(errno));
+    }
+    return false;
+  }
+
+  ESP_LOGI(LOG_TAG, "Settings exported to %s.", SETTINGS_FILE);
+  return true;
 }
 
 bool SD::importSettings(void) {

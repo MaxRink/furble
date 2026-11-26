@@ -353,6 +353,13 @@ the device stays on instead of dropping the rail on an open track. A writer
 that has stopped draining takes no request at all, and that refuses too. Track
 points queued while the writer is stuck are dropped, never blocking the caller,
 and the automatic shutdown paths wait 30 s before they try again.
+`Export Settings` writes one line per setting to `settings.txt` in the
+`furble` directory on the card and leaves the companion password out, because
+the file is plain text and the import path refuses that key too. The new copy
+is written beside the backup and renamed into place only after it has flushed
+and closed, so a full card reports a failed export and keeps the previous backup
+instead of replacing it with a truncated file. A failed export is reported in
+the log, not in a dialog.
 
 ### MQTT (8 MB+ debug/console builds)
 

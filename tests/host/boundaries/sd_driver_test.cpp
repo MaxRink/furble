@@ -8,6 +8,7 @@
 // unmount, which is how a hung writer that never answers the power-off
 // handshake is represented.
 
+#include <fcntl.h>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -39,6 +40,19 @@
 #ifndef FURBLE_BOUNDARY_SD_MOUNT
 #error "FURBLE_BOUNDARY_SD_MOUNT must name the host mount directory"
 #endif
+
+// FatFs refuses an existing destination: ff.c f_rename() answers FR_EXIST when
+// the name is already in use, and vfs_fat_rename() maps that to EEXIST, while a
+// POSIX rename() replaces. The production export has to cope with the card, so
+// this double reports what the card reports. It has to sit at global scope with
+// external linkage, or the call in src/FurbleSD.cpp would bind to libc instead.
+extern "C" int rename(const char *from, const char *to) {
+  if (std::filesystem::exists(to)) {
+    errno = EEXIST;
+    return -1;
+  }
+  return ::renameat(AT_FDCWD, from, AT_FDCWD, to);
+}
 
 namespace {
 
@@ -406,6 +420,82 @@ void runShutdownUndelivered(void) {
   std::cout << "sd.shutdown_undelivered.released drained=1 track_complete=1\n";
 }
 
+void runExportFull(void) {
+  clearMount();
+  initializeSettings(true);
+  setupBoard();
+
+  Furble::SD::init();
+  check(waitFor(Furble::SD::card_state_t::MOUNTED), "SD card did not mount for the export case");
+
+  const std::string path = std::string(GPX_DIRECTORY) + "/settings.txt";
+  const std::string temp = std::string(GPX_DIRECTORY) + "/settings.tmp";
+
+  check(Furble::SD::getInstance().request(Furble::SD::request_t::EXPORT),
+        "the first settings export was not queued");
+  check(waitForLog("Settings exported to"), "the first settings export did not complete");
+  check(!std::filesystem::exists(temp), "a successful export left its temporary file behind");
+
+  std::ifstream first_file(path);
+  const std::string first((std::istreambuf_iterator<char>(first_file)),
+                          std::istreambuf_iterator<char>());
+  first_file.close();
+  check(first.rfind("# furble settings v1", 0) == 0, "the first settings export has no header");
+  check(first.find("brightness=") != std::string::npos,
+        "the first settings export carries no settings");
+  std::cout << "sd.export_first path=" << path << " bytes=" << first.size() << '\n';
+
+  // A second export has to replace the first backup. On the card that is a two
+  // step replace, because f_rename() refuses the existing name; on a bare POSIX
+  // rename it looks identical, which is why the double above emulates FatFs.
+  const uint8_t brightness = Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS);
+  Furble::Settings::save<uint8_t>(Furble::Settings::BRIGHTNESS, (brightness == 64) ? 96 : 64);
+  check(Furble::SD::getInstance().request(Furble::SD::request_t::EXPORT),
+        "the replacing settings export was not queued");
+  std::string replaced;
+  {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+      std::ifstream current_file(path);
+      replaced = std::string((std::istreambuf_iterator<char>(current_file)),
+                             std::istreambuf_iterator<char>());
+      current_file.close();
+      if (!replaced.empty() && (replaced != first)) {
+        break;
+      }
+      sleepMs(10);
+    }
+  }
+  check(replaced != first, "a second settings export did not replace the previous backup");
+  check(!std::filesystem::exists(temp), "a replacing export left its temporary file behind");
+  std::cout << "sd.export_replace replaced=" << ((replaced != first) ? 1 : 0)
+            << " bytes=" << replaced.size() << '\n';
+
+  // A card with less free space than the backup needs fails partway through the
+  // write. This is the same host file-size seam the full-card GPX case uses.
+  signal(SIGXFSZ, SIG_IGN);
+  struct rlimit original = {};
+  check(getrlimit(RLIMIT_FSIZE, &original) == 0, "the host file-size limit could not be read");
+  struct rlimit limit = original;
+  limit.rlim_cur = static_cast<rlim_t>(replaced.size() / 2);
+  check(setrlimit(RLIMIT_FSIZE, &limit) == 0, "the host file-size limit could not be installed");
+
+  check(Furble::SD::getInstance().request(Furble::SD::request_t::EXPORT),
+        "the failing settings export was not queued");
+  check(waitForLog("SD settings export failed"),
+        "a full card did not reach the production export failure");
+  check(setrlimit(RLIMIT_FSIZE, &original) == 0, "the host file-size limit could not be restored");
+
+  std::ifstream kept_file(path);
+  const std::string kept((std::istreambuf_iterator<char>(kept_file)),
+                         std::istreambuf_iterator<char>());
+  kept_file.close();
+  check(kept == replaced, "a failed export replaced the previous settings backup");
+  check(!std::filesystem::exists(temp), "a failed export left its partial file on the card");
+  std::cout << "sd.export_full backup_preserved=" << ((kept == replaced) ? 1 : 0)
+            << " bytes=" << kept.size() << '\n';
+}
+
 }  // namespace
 
 extern "C" {
@@ -475,6 +565,8 @@ int main(int argc, char **argv) {
     runShutdownRefused();
   } else if (mode == "shutdown-undelivered") {
     runShutdownUndelivered();
+  } else if (mode == "export-full") {
+    runExportFull();
   } else {
     std::cerr << "unknown SD boundary mode: " << mode << '\n';
     return 2;
