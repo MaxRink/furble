@@ -272,6 +272,109 @@ a pin stayed untouched: the simulator's fake UART has no pads, so "no
 not by a pad observation. A hardware check on the Core and the Waveshare (IMU
 and battery after boot, W5500 link after boot) remains a device gate.
 
+## The UI offers GPS from the setting, not the receiver
+
+`GPS::isEnabled()` reports whether the receiver is running. On a `NONE` row it
+is false for the whole boot: `getInstance()` installs nothing and `enable()`
+returns early, so the stored setting cannot make `m_Enabled` true. Three UI
+gates used that flag to decide whether to *offer* GPS surfaces, and on those
+boards they hid all of them even with the setting on:
+
+- `showGPSWidgets()` at menu construction (`addGPSMenu`) and in the
+  `Settings::GPS` toggle callback, which owns every GPS settings row: baud,
+  rate, sentences, constellation, power, assist, hold, extrapolate, platform,
+  motion, and the GPS Data, NMEA and satellite sub-pages.
+- The Connected page's GPS Data entry.
+
+The first cut shipped the receiver flag there and the certified suite caught it.
+`core-connected-grid-large.txt` failed with
+
+    ASSERT FAILED: ui.visible_objects expected '25' got '22'
+
+one entry (container, icon, label) short of "eight entries, eight cells",
+because the eighth entry is GPS Data. The same cause failed 15 of the 51
+certified Core bughunt scenarios: `core-notouch-layout` and the four
+`gps-motion-row*` files reported `ui.gps_motion_row expected 'enabled' got
+'hidden'` or `'disabled' got 'hidden'`, the six `gps-hold-rows-*` files hit
+`Simulator action 'nav gps_hold' returned UNAVAILABLE, expected APPLIED`, and
+`page-matrix` and `overflow-sweep` could not reach the GPS pages they must
+sweep.
+`page-matrix` is pinned to all three boards by `EXACT_BOARDS` in
+`tools/check_sim_scenarios.py`, so re-scoping was not an option: the pages have
+to stay reachable on a board with no UART. `connstate-page-sweep` passed
+throughout because it reaches the Connected GPS Data page with
+`action page remote_gps`, which does not go through the hidden entry.
+
+This also contradicted the paragraph above ("The GPS menu still offers the
+setting, and the diagnostics report the receiver `absent`"): the page carrying
+that `absent` reading was the one being hidden. A Core owner with phone GPS over
+the companion link had no route to the page at all, while
+`UI::updateGpsIcon()` shows the status icon for a companion source precisely
+because a session can have no wired receiver.
+
+`src/FurbleUI.cpp` now has `gpsEnabledForUI()`, which reads
+`Settings::load<bool>(Settings::GPS)`, and the three gates call it. It follows
+`imuEnabledForUI()`: the persisted opt-in is read only while a menu is built or
+redisplayed, never from a live timer. `GPS::isEnabled()` keeps its meaning for
+the duty-cycle and rail policy, the status icon, the console and the companion
+status, so `gps.enabled` stays 0 and `gps.receiver` stays `absent` on a `NONE`
+row exactly as asserted above. The pages report the state instead of vanishing:
+the GPS Data page's cycle row already renders `receiverStateName(ABSENT)`.
+
+Result on the Core binary: 51 of 51 certified bughunt scenarios pass, and
+`core-connected-grid-large.txt` reads `assert ok: ui.visible_objects = 25`
+again. On the S3 and StickC the flag and the setting agree whenever a receiver
+can run, so the change is a no-op there: the power gate's eleven existing
+scenarios compare at +0.00% locally, `gps-duty-standby-cycle` apart, which sits
+at -1.56% locally and +0.14% on Linux CI for the same binary, both inside the
+10 percent band.
+
+## Receiver scenarios leave the Core board matrix
+
+Fifteen certified `e2e` scenarios drive the fake UART and assert receiver
+behaviour: the autobaud ladder, the acquisition deadline
+(`gps-fixed-baud-absent`), the ephemeris tiers, NMEA parsing, the satellite
+pages, MON-HW, the motion detector and prearm, and the GPS time-zone source.
+None of that can happen on a row that installs no driver, so the Core was never
+going to see them pass again: `gps.receiver` stays `absent` where they expect
+`present` or `detecting`, `gps.sats_in_view` stays 0, `gps.monhw` stays `none`,
+and `gps.motion_state` stays `off` because the detector is gated on `m_Enabled`.
+This is the scenario side being wrong, not the firmware: a receiver assertion on
+a board with no receiver certifies nothing.
+
+`m5stack-core` therefore left the `boards` list of those fifteen entries in
+`sim/scenarios/manifest.json`, and each file carries a two line header saying
+why. They stay certified on `m5stick-s3` and `m5stick-c`, both built and swept
+in CI, so the receiver stack keeps its coverage on two panels. The Core keeps
+what it can still certify: reachability and layout of every GPS page
+(`page-matrix`, `overflow-sweep`, `connstate-page-sweep`, the `core-*` layout
+files and the six `gps-hold-rows-*` files). All of them pass on the Core, and
+`connstate-page-sweep` still opens the Connected GPS Data page there.
+
+## Power baseline for waveshare-no-gps-uart
+
+`waveshare-no-gps-uart` is a `power-gate` scenario, so the gate demands a
+baseline and the check failed on that, not on a number:
+
+    waveshare-no-gps-uart: no baseline at tools/power-model/baseline/waveshare-no-gps-uart.json. Add one with the plan 63 flow.
+
+The other eleven scenarios compared at +0.00% and `gps-duty-standby-cycle` at
++0.14%, so nothing regressed: the missing baseline was the whole failure.
+
+The committed baseline is the report the code on this branch produces, in the
+same format as its neighbours: 81.255970 mA over 5015 ms, with
+`gps_service_timer` 5 fires, `battery_timer` 2, `icon_timer` 10,
+`inactivity_timer` 5, `invalidated_area_pixels` 4,036,887 and
+`flushed_pixels` 32,904. 81.255970 mA is also `menu-idle-30s`' figure, and that
+is the justification rather than a re-baseline: the model charges the GPS UART
+driver, the rail and the duty wake, so a row with no GPS UART must read the same
+as an idle menu. A future change that starts the rail, installs the driver or
+runs a duty cycle on a `NONE` board moves this number and fails the gate instead
+of passing silently. There is no before figure to record because the scenario is
+new and its subject, a `NONE` row, did not exist on master. The seeds are the
+only non-default input (`board stamps3`, `gps true`), and the report is
+byte-identical across repeated runs.
+
 ## Verification
 
 Local runs on `feat/gps-profile-pins`, base `origin/master` at `b711a44a`.
@@ -307,3 +410,51 @@ Hardware gates that remain, recorded so they are not lost: on the Core, boot
 with GPS enabled and confirm the IMU and the battery level still read after
 `GPS::init()`; on the Waveshare, confirm the W5500 link and MQTT stay up with
 the GPS setting on. Both are device gates, not simulator results.
+
+### Runs behind the two failing checks
+
+Worktree `/tmp/furble-gps-pins` on `feat/gps-profile-pins`, base
+`origin/master` at `b711a44a`. Three simulators were built with `sh sim/build.sh`
+and the dependency trees of the primary checkout: `sim/build-core` (320x240,
+`FURBLE_M5COREX` / `board_M5Stack`), `sim/build-s3` (135x240) and
+`sim/build-stickc` (80x160, `FURBLE_M5STICKC` / `board_M5StickC`).
+
+- `gh run view --log-failed` on run 45746216297 (`Simulator power regression`):
+  eleven `PASS` lines, then `waveshare-no-gps-uart: no baseline at
+  tools/power-model/baseline/waveshare-no-gps-uart.json. Add one with the plan
+  63 flow.` and `Power model gate failed`. No scenario regressed.
+- `gh run view --log-failed` on run 45746216291 (`sim-e2e`):
+  `ASSERT FAILED: ui.visible_objects expected '25' got '22'` in
+  `sim/scenarios/bughunt/core-connected-grid-large.txt`.
+- Core bughunt sweep, the same `--list-certified --suite bughunt --board
+  m5stack-core` selection CI uses, 51 scenarios: 36 pass and 15 fail before the
+  UI gate fix, 51 pass after. The pre-fix failures, captured from that binary:
+  `ASSERT FAILED: ui.gps_motion_row expected 'enabled' got 'hidden'`
+  (`core-notouch-layout`, `gps-motion-row`, `gps-motion-row-large`,
+  `gps-motion-row-small`), `ASSERT FAILED: ui.gps_motion_row expected
+  'disabled' got 'hidden'` (`gps-motion-row-gates`),
+  `Simulator action 'nav gps_hold' returned UNAVAILABLE, expected APPLIED`
+  (`gps-hold-rows-*`), `Simulator action 'nav gps_rate' returned UNAVAILABLE,
+  expected APPLIED` (`page-matrix`, `overflow-sweep`), and the object count
+  (`core-connected-grid`, `core-connected-grid-large`).
+- Core end-to-end sweep (`run-e2e.sh`, `FURBLE_SIM_BOARD_ID=m5stack-core`): 15
+  failures before the board matrix change, all receiver scenarios; 0 after.
+- Core physical-button pass (`run-notouch.sh`, same board id): 94 pass, 12
+  skipped as touch-layout scenarios, 0 fail.
+- S3 bughunt sweep, 57 scenarios: 57 pass before and after, which is the check
+  that the UI gate change is a no-op wherever a receiver can run.
+- Power gate, run exactly as the workflow does, per scenario `compare.py`
+  against `tools/power-model/baseline`: 11 of 11 `PASS`. `waveshare-no-gps-uart`
+  reads `81.255970 mA vs 81.255970 mA (+0.00%)`. `gps-duty-standby-cycle` reads
+  -1.56% here and +0.14% on the Linux CI run for the same binary, so that
+  scenario carries a platform offset well inside the 10 percent band; it is not
+  a result of this change.
+- `ctest --test-dir /tmp/furble-gps-host-build`: 196 of 196 pass.
+- `python3 tools/pre_review.py --base origin/master`: 10 gates pass.
+- `python3 tools/check_sim_scenarios.py`, `sh sim/scripts/check-doc-tokens.sh`
+  and `python3 tools/check_sim_coverage.py`: pass. `clang-format 21.1.2` leaves
+  no diff in `src/FurbleUI.cpp`.
+
+The Waveshare-side device gate above is unchanged by this round; the Core gate
+gains one item, that the GPS settings page and the Connected GPS Data entry stay
+reachable with the receiver absent.

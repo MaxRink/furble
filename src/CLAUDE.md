@@ -80,7 +80,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   installs no driver, logs once and stores `ABSENT`, and `enable()`/`disable()`
   return early while the task is missing, so a stored GPS setting cannot create
   a receiver or wind down a driver that was never installed. Never add a pin
-  fallback for that case.
+  fallback for that case. The UI offers GPS surfaces from
+  `gpsEnabledForUI()` in `src/FurbleUI.cpp`, which reads the setting, never
+  from `isEnabled()`: on a `NONE` row the receiver can never start, so gating
+  the GPS settings rows, the Connected page's GPS Data entry or the GPS
+  sub-pages on `isEnabled()` hides every one of them, including the page that
+  reports the receiver `absent`.
   Burst power cycling uses a bounded degraded retry state. It releases
   `NO_LIGHT_SLEEP` during backoff, ignores late UART lock reacquisition, and
   reacquires only after moving to the time-bounded acquisition probe. Keep the

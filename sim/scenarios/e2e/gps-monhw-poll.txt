@@ -6,6 +6,9 @@
 # against a live unit, so this pins the decode furble implements today. It is a
 # regression guard for the parser, not evidence about a real receiver. The
 # hardware gate has to re-read these four fields against an AT6668.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_baud 9600
 seed gps_uart_mode ack

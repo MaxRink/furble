@@ -1225,6 +1225,15 @@ reads `mqtt.retry_delay`.
 - GPS docs use `nav gps_sats` and the `gps-satellite-page` scenario. The fake
   UART includes a fixed GSV/GSA fixture, so the capture proves the satellite
   page route and parsed counts without implying live AT6668 hardware coverage.
+- A scenario that drives the fake UART and asserts receiver behaviour (the
+  autobaud ladder, the acquisition deadline, the ephemeris tiers, NMEA parsing,
+  the satellite pages, MON-HW, the motion detector, the GPS time-zone source)
+  lists only boards whose profile row names a GPS UART. `m5stack-core` left
+  those matrices with plan 336 because its row is `Board::GpsPinSource::NONE`
+  and `GPS::getInstance()` installs no driver there, so no seeded receiver can
+  appear. The Core keeps the scenarios that only need the pages to exist
+  (`page-matrix`, `overflow-sweep`, `connstate-page-sweep`), which is why the
+  GPS surfaces stay gated on the setting rather than on `isEnabled()`.
 - The fake UART models a receiver, not just a byte source. It records the rate
   the driver programmed and answers only when the modelled receiver rate
   matches, which is what makes the autobaud ladder and the no-receiver state

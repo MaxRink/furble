@@ -19,6 +19,9 @@
 # assert at all.
 #
 # Mutations that kill these assertions are recorded in plans/18-gps-motion.md.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed imu true
 seed gps_uart_mode ack

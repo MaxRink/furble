@@ -17,6 +17,9 @@
 #
 # Every degraded episode lasts at least the 10 s first backoff, so sampling
 # every 5 s sees any episode in the two minute window.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_power 0
 seed gps_duty 0

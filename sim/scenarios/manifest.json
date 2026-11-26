@@ -2013,8 +2013,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2097,8 +2096,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2112,8 +2110,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2127,8 +2124,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2141,8 +2137,7 @@
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
-        "m5stick-s3",
-        "m5stack-core"
+        "m5stick-s3"
       ],
       "capabilities": [
         "gps"
@@ -2228,8 +2223,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2243,8 +2237,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2258,8 +2251,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps",
@@ -2274,8 +2266,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2289,8 +2280,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps",
@@ -2305,8 +2295,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps",
@@ -2321,8 +2310,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2350,8 +2338,7 @@
       "suite": "e2e",
       "owner": "sim-e2e",
       "boards": [
-        "m5stick-s3",
-        "m5stack-core"
+        "m5stick-s3"
       ],
       "capabilities": [
         "gps"
@@ -2391,8 +2378,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"
@@ -2406,8 +2392,7 @@
       "owner": "sim-e2e",
       "boards": [
         "m5stick-s3",
-        "m5stick-c",
-        "m5stack-core"
+        "m5stick-c"
       ],
       "capabilities": [
         "gps"

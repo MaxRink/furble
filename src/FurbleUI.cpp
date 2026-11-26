@@ -186,6 +186,17 @@ bool imuEnabledForUI(void) {
   return Settings::load<bool>(Settings::IMU) && imuSensorEnabledForUI();
 }
 
+// Whether the user asked for GPS. This is the setting, not GPS::isEnabled(): a
+// board whose profile row carries GpsPinSource::NONE has no GPS UART, so its
+// receiver can never start and isEnabled() stays false however the setting
+// reads. Gating the GPS surfaces on the receiver would hide the settings rows,
+// the GPS Data entry and every GPS sub-page on those boards, including the page
+// that reports the receiver as absent. Like imuEnabledForUI() this reads NVS
+// only while a menu is built or redisplayed.
+bool gpsEnabledForUI(void) {
+  return Settings::load<bool>(Settings::GPS);
+}
+
 void setLabelTextIfChanged(lv_obj_t *label, const char *text) {
   const char *current = lv_label_get_text(label);
   if ((current == nullptr) || (std::strcmp(current, text) != 0)) {
@@ -2973,7 +2984,7 @@ lv_obj_t *UI::addSettingItem(lv_obj_t *page, const char *symbol, Settings::type_
         [](lv_event_t *e) {
           auto *status = static_cast<status_t *>(lv_event_get_user_data(e));
           status->gps->reloadSetting();
-          showGPSWidgets(status, status->gps->isEnabled());
+          showGPSWidgets(status, gpsEnabledForUI());
         },
         LV_EVENT_VALUE_CHANGED, &m_Status);
   }
@@ -3604,8 +3615,10 @@ void UI::addMainMenu(void) {
           // user can reach it.
           ui->updateCapabilityGating();
 
-          // only offer GPS data when GPS is enabled
-          if (ui->m_GPS.isEnabled()) {
+          // only offer GPS data when the user has GPS switched on. The
+          // receiver's own state is not the gate: a board with no GPS UART
+          // reports the receiver absent on the page the entry opens.
+          if (gpsEnabledForUI()) {
             lv_obj_clear_flag(m_Menu.at(m_RemoteGPSData).button, LV_OBJ_FLAG_HIDDEN);
           } else {
             lv_obj_add_flag(m_Menu.at(m_RemoteGPSData).button, LV_OBJ_FLAG_HIDDEN);
@@ -9816,7 +9829,7 @@ void UI::addGPSMenu(const menu_t &parent) {
   addGPSNMEAMenu(menu);
   addGPSSatMenu(menu);
 
-  showGPSWidgets(&m_Status, m_Status.gps->isEnabled());
+  showGPSWidgets(&m_Status, gpsEnabledForUI());
 }
 
 void UI::addGPSPowerMenu(const menu_t &parent) {

@@ -2,6 +2,9 @@
 # is checksummed, and the reload walks the whole blob before arming anything, so
 # one flipped byte has to drop the entire cache rather than desynchronise the
 # paced send.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_baud 9600
 seed gps_assist 2

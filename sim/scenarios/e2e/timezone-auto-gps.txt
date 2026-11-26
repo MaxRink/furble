@@ -4,6 +4,9 @@
 # Europe/Berlin zone, report the GPS source, and keep the manual selection
 # visible in the Time page. A second pass overrides the selection manually and
 # proves GPS cannot steal it back.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_uart_mode ack
 seed timezone 39

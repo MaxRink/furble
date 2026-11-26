@@ -6,6 +6,9 @@
 #
 # Six ladder steps at Casic::Autobaud::STEP_MS is about 7.2 s of virtual time,
 # so the bound below is a generous multiple and not a timing assertion.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_baud auto
 seed gps_receiver none
