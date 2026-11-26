@@ -25,8 +25,8 @@ The IFD is the protocol reference because both modules run the same ROM.
 
 | # | Fact | Document and section | Code | State |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | A UBX frame is 0xB5 0x62, a class, an id, a two-byte length and a payload | IFD 3.2 UBX frame structure | `lib/furble/protocol/GpsUbx.h:31`, `:32`, `:33` | VERIFIED |
-| 2 | The checksum is two bytes over class, id, length and payload | IFD 3.4 UBX checksum | `lib/furble/protocol/GpsUbx.h:34` | VERIFIED |
+| 1 | A UBX frame is 0xB5 0x62, a class, an id, a two-byte length and a payload | IFD 3.2 UBX frame structure | `lib/furble/protocol/GpsUbx.h:26`, `:27`, `:28` | VERIFIED |
+| 2 | The checksum is two bytes over class, id, length and payload | IFD 3.4 UBX checksum | `lib/furble/protocol/GpsUbx.h:29` | VERIFIED |
 | 3 | The message classes used are NAV 0x01, RXM 0x02, ACK 0x05, CFG 0x06, UPD 0x09 and MON 0x0A | IFD 3.8 UBX messages overview | `lib/furble/protocol/GpsUbx.h:42` to `:47` | VERIFIED |
 | 4 | UBX-ACK-ACK is class 0x05, id 0x01 and UBX-ACK-NAK is class 0x05, id 0x00 | IFD 3.9.1 and 3.9.2 | `lib/furble/protocol/GpsUbx.h:49`, `:50` | VERIFIED |
 | 5 | UBX-CFG-RST is 0x06 0x04, UBX-CFG-VALDEL 0x06 0x8C, UBX-CFG-VALGET 0x06 0x8B and UBX-CFG-VALSET 0x06 0x8A | IFD 3.10.2 to 3.10.5 | `lib/furble/protocol/GpsUbx.h:51` to `:54` | VERIFIED |

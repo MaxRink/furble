@@ -6,7 +6,8 @@ No firmware behaviour, setting, build or hardware change. Every register fact
 carries a document, revision and section, or is marked UNVERIFIED. The corpus is
 on branch `docs/datasheet-corpus`, PR 475. All three review rounds are applied:
 twelve findings in the first, eight in the second and five non-blocking
-follow-ups in the third, and the three resolution tables are below.
+follow-ups in the third, and the three resolution tables are below. A fourth
+pass audited the page `file:line` references and corrected eleven of them.
 
 Related: [322](322-hardware-abstraction.md) (the drivers the corpus documents),
 [287](287-mcu-portability-and-bundle-hardware.md) (the board survey),
@@ -313,3 +314,25 @@ are applied. The branch head is amended, not stacked.
 | 3 | IP5306 row 1b cited section 8 with no table name and no load condition | Row 1b names the control system table, the Automatic load detection time T loadD row, the 32 s and the continuous load below 45 mA condition, and page 5 of 10 |
 | 4 | The 45 mA was REPORTED and not read here on the page while `tools/power-model/board-currents.yaml:475-480` recorded it as datasheet | It is a datasheet value: V1.01 section 8 control system table, read for this change, so row 1b is VERIFIED. The Code cell carries `pmic.auto_off_threshold` and the page states that the YAML's `confidence: datasheet` was right. The stale unverified bullet is gone, which also makes the second-round row 2 record true. |
 | 5 | The gate skipped a token whose initialiser is not a bare, parenthesised or braced integer literal, so a bitwise or, a cast or a wrapped value was invisible | `lib/hal/CLAUDE.md` states the trade-off and names it the one fail-open path, plan 333 repeats it, and `test_non_literal_initialiser_is_out_of_scope` asserts the skip for all three forms |
+
+## Line-reference audit
+
+A fourth pass checked every backticked `file:line` under `docs/components/`
+against the tree at the branch head. Two hundred and fifty eight references
+resolve to a line that exists and is not blank, after eleven edits in seven
+pages; three more name a pinned library or ESP-IDF file outside the tree. Nine
+pointers resolved to a blank line, which a reader cannot follow: the SX1262
+`SLEEP_SETTLE_US` row, the SX1262 and AXP2101 header blocks, the `HalBus.h` seam
+range, both `FurbleIR.cpp` ranges, the `esp32-s3.md` RMT comment row and the
+u-blox frame row. The `esp32-s3.md` USB row named `src/FurbleCrashRecord.h`,
+which has only ever lived at `include/FurbleCrashRecord.h`. The u-blox rows cited
+`GpsUbx.h:31` to `:34` for the sync bytes and the checksum, which are at `:26`
+to `:29`.
+
+The audit is a script over the pages, not a gate, so nothing stops the next line
+shift. Two loose spans are accurate only as regions: `ublox-mia-m10q.md` cites
+`GpsUbx.h:6` to `:16` for the statement that both modules run the same ROM, which
+is at `:15` to `:16`, and both Espressif pages cite `FurbleIR.cpp:226` to `:296`
+for the whole RMT implementation. A follow-up should teach
+`tools/check_datasheet_citations.py` to resolve the page references, which is the
+one part of the page format nothing checks today.

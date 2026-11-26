@@ -30,9 +30,9 @@ tables. Those tables were not read here.
 | 5 | The SoC has an LED PWM controller with up to 16 channels | ESP32-DS section 4.8.8 LED PWM Controller | Backlight through the board support library, `src/FurbleUI.cpp:508` | VERIFIED |
 | 6 | The GPS UART must be clocked from the crystal, not from APB, because DFS scales APB and would move the baud rate | Root `CLAUDE.md`, hardware traps. The TRM clock table was not read | `src/FurbleGPS.cpp:176` to `:186` uses `UART_SCLK_REF_TICK` on this SoC (claim from a code comment, TRM not read) | UNVERIFIED |
 | 7 | A UART clocked from REF_TICK keeps its baud rate while APB scales | ESP32-TRM, clock selection for UART. Not read | `src/FurbleGPS.cpp:185` | UNVERIFIED |
-| 8 | RMT keeps its own APB power lock, so it is DFS safe without an extra lock | Root `CLAUDE.md`, hardware traps. Not a data sheet statement | `src/FurbleIR.cpp:260` to `:292` | UNVERIFIED |
+| 8 | RMT keeps its own APB power lock, so it is DFS safe without an extra lock | Root `CLAUDE.md`, hardware traps. Not a data sheet statement | `src/FurbleIR.cpp:261` to `:292` | UNVERIFIED |
 | 9 | The backlight PWM is clocked from APB, so APB must be pinned while the display is on | Root `CLAUDE.md`, hardware traps. The TRM clock tree was not read | `src/FurbleUI.cpp:508` to `:511`, `:1879` (claim from the trap note, TRM not read) | UNVERIFIED |
-| 10 | One RMT memory block is 64 symbols on this SoC | ESP32-TRM RMT chapter. Not read | `src/FurbleIR.cpp:229` to `:232` | UNVERIFIED |
+| 10 | One RMT memory block is 64 symbols on this SoC | ESP32-TRM RMT chapter. Not read | `src/FurbleIR.cpp:233` to `:235` | UNVERIFIED |
 | 11 | The 45 kOhm internal pull-up gives about 73 uA per asserted active-low line at 3.3 V | ESP32-DS DC characteristics, via `docs/power/datasheet-register.md` section 1 | `src/FurblePlatform.cpp:482` to `:490` | CITED |
 
 ## Where the code implements it

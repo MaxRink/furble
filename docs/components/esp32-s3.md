@@ -31,8 +31,8 @@ facts the hardware traps depend on.
 | 6 | The SoC has a USB Serial/JTAG controller, which is the console on this part | S3-DS section 4.2.1.8 USB Serial/JTAG Controller | `src/FurbleConsole.cpp:93` | VERIFIED |
 | 7 | The SoC has an LED PWM controller with up to 8 channels | S3-DS feature list, "LED PWM controller, up to 8 channels". The subsection number was not captured. | Backlight through the board support library, `src/FurbleUI.cpp:508` (count read, subsection number not read) | UNVERIFIED |
 | 8 | This SoC has no REF_TICK clock source, so the GPS UART must use the crystal | `src/FurbleGPS.cpp:176` to `:180`, comment. The TRM clock table was not read. | `src/FurbleGPS.cpp:183` uses `UART_SCLK_XTAL` (claim from a code comment, TRM not read) | UNVERIFIED |
-| 9 | One RMT memory block is 48 symbols on this SoC, against 64 on the ESP32 | `src/FurbleIR.cpp:229` to `:232`, comment. The TRM RMT chapter was not read. | `src/FurbleIR.cpp:232` | UNVERIFIED |
-| 10 | Opening the native USB Serial/JTAG port resets the chip, so a port open is the safe state transition | `CLAUDE.md`, hardware traps | `src/FurbleCrashRecord.h:150`, `src/FurbleConsole.cpp:2449` (no document statement) | UNVERIFIED |
+| 9 | One RMT memory block is 48 symbols on this SoC, against 64 on the ESP32 | `src/FurbleIR.cpp:233` to `:235`, comment. The TRM RMT chapter was not read. | `src/FurbleIR.cpp:235` | UNVERIFIED |
+| 10 | Opening the native USB Serial/JTAG port resets the chip, so a port open is the safe state transition | `CLAUDE.md`, hardware traps | `include/FurbleCrashRecord.h:150`, `src/FurbleConsole.cpp:2449` (no document statement) | UNVERIFIED |
 | 11 | The 8 MB 8-line PSRAM adds about 140 uA in light sleep, and DMA buffers must stay in internal memory | `docs/power/datasheet-register.md` section 1, and `CLAUDE.md` PSRAM trap | `include/FurbleUI.h` buffer allocation | CITED |
 
 ## Where the code implements it

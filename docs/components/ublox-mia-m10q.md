@@ -23,7 +23,7 @@ baud rate (`lib/furble/protocol/GpsUbx.h:6` to `:16`).
 | # | Fact | Document and section | Code | State |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | The module runs the same ROM SPG 5.10 protocol, so the IFD is the reference for both modules | IFD front matter, protocol version 34.10 | `lib/furble/protocol/GpsUbx.h:6` to `:16` | VERIFIED |
-| 2 | UBX framing, checksum, message classes and ids are the IFD facts listed on the MAX-M10S page | IFD 3.2, 3.4, 3.8, 3.9.1, 3.9.2, 3.10.2 to 3.10.5, 3.14.9, 3.15.11, 3.15.13 | `lib/furble/protocol/GpsUbx.h:31` to `:58` | VERIFIED |
+| 2 | UBX framing, checksum, message classes and ids are the IFD facts listed on the MAX-M10S page | IFD 3.2, 3.4, 3.8, 3.9.1, 3.9.2, 3.10.2 to 3.10.5, 3.14.9, 3.15.11, 3.15.13 | `lib/furble/protocol/GpsUbx.h:26` to `:58` | VERIFIED |
 | 3 | The module runs its UART at 38400 baud by default, four times the MAX-M10S default | DS-MIA Table 21 | `src/FurbleSettings.cpp` GPS baud default | CITED |
 | 4 | The module has no external flash, so configuration that must survive must live in the backup domain or be reapplied | IFD 4.3 and `plans/321-ublox-m10-driver.md` | `src/FurbleGPSUbx.cpp` configuration path | CITED |
 | 5 | GPS, Galileo and BeiDou B1I are used; BeiDou B1C is not, and B1I is off at the SPG 5.10 default | DS-MIA Table 5 and the IFD key set | `lib/furble/protocol/GpsUbx.h` signal key block | CITED |
