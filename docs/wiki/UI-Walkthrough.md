@@ -242,8 +242,8 @@ Every gesture control is disabled when the IMU is unavailable. The
 masks, the shutter guards, and the disabled state; the gating scenario runs on
 all three simulator panel sizes.
 
-![Sensors settings](../img/settings-sensors.png)
-![Gestures settings](../img/settings-gestures.png)
+![Sensors settings](img/settings-sensors.png)
+![Gestures settings](img/settings-gestures.png)
 
 ### Companion pairing
 
