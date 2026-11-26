@@ -193,10 +193,12 @@ same answer. A lost DHCP lease therefore closes the listener on the next
 supervisor poll and shows `connected:false` with an empty `ip` until a new lease
 arrives. Before plan 342 the cached address kept both claims alive: the page and
 the listener said connected on an address that no longer carried traffic, while
-MQTT, which already queried the live interfaces, had recovered on its own. An out-of-memory start keeps the stored
-identity; only a rejected certificate/key pair is replaced. Changing the
-companion password remains a USB console or provisioning action; clearing it
-closes the listener on the next WebUI reload.
+MQTT, which already queried the live interfaces, had recovered on its own.
+
+An out-of-memory start keeps the stored identity; only a rejected
+certificate/key pair is replaced. Changing the companion password remains a USB
+console or provisioning action; clearing it closes the listener on the next
+WebUI reload.
 
 ## API
 

@@ -11,6 +11,7 @@
 #include "FurbleWiFi.h"
 #include "Preferences.h"
 #include "esp_event.h"
+#include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "esp_wifi.h"
@@ -483,6 +484,19 @@ int main() {
       || require(Furble::WiFi::hasAssignedAddress(),
                  "a fresh GOT_IP did not restore the WebUI readiness answer")) {
     return 51;
+  }
+  // A deliberate stop clears the cache itself and its own driver stop drops the
+  // address, so the loss it produces is not a lease loss. The gate at
+  // src/FurbleWiFi.cpp:997 keeps the log and the notification off for that
+  // pair; without it a `wifi disable` logs an address loss it caused.
+  const int warningsBeforeStop = esp_log_warn_count;
+  Furble::WiFi::disconnect();
+  if (loseIp() != 0) {
+    return 52;
+  }
+  if (require(esp_log_warn_count == warningsBeforeStop,
+              "a deliberate stop still logged a lost IP")) {
+    return 53;
   }
 
   std::cout << "wifi.fallback wired_defer=1 wired_resume=1\n";

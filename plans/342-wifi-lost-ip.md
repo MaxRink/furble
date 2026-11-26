@@ -5,7 +5,9 @@ touches `src/FurbleWiFi.cpp`, `src/FurbleWebUI.cpp`, `include/FurbleWiFi.h`,
 `include/FurbleWebUI.h`, the WiFi and WebUI host doubles and tests,
 `sim/FurbleWiFi.cpp` and the matching docs. No hardware run: the defect and the
 fix are event and interface bookkeeping, and both host doubles drive the
-production handler.
+production handler. The independent review of `91d2d04b` passed with seven
+non-blocking findings; the two closed in this PR and the five recorded
+follow-ups are in [342-review-feedback.md](342-review-feedback.md).
 
 ## Defect
 
@@ -38,9 +40,12 @@ default station netif configures `.lost_ip_event = IP_EVENT_STA_LOST_IP`
 (`components/esp_netif/include/esp_netif_defaults.h:51`), and the ip-lost timer
 posts it only after it observes that the netif address went to zero
 (`components/esp_netif/lwip/esp_netif_lwip.c:1483-1516`, timer period
-`CONFIG_ESP_NETIF_IP_LOST_TIMER_INTERVAL`, 120 s in every committed
-`sdkconfig.*`). A cache kept in step by that event can therefore be stale for up
-to two minutes, which is longer than the WebUI supervisor period (500 ms) and
+`CONFIG_ESP_NETIF_IP_LOST_TIMER_INTERVAL`, 120 in the seven board
+`sdkconfig.<board>` files; the six `sdkconfig.<fragment>` files do not set it
+and are merged into a board file that does). The published commit message says
+"in every committed sdkconfig", which overstates that; this paragraph is the
+corrected wording. A cache kept in step by that event can therefore be stale for
+up to two minutes, which is longer than the WebUI supervisor period (500 ms) and
 the MQTT reconnect retry.
 
 So the work is split: the event keeps the cache honest for the console, NTP and
@@ -101,7 +106,23 @@ intentional stop.
   keeps its own generic loop on purpose: it must not bind to Wi-Fi, because a
   wired netif satisfies it just as well.
 - The WebUI keeps its `FURBLE_ETHERNET` branch. The station query answers for
-  the radio, the Ethernet branch answers for the wire, as before.
+  the radio, the Ethernet branch answers for the wire, as before. The wire
+  branch is still a cache: `Ethernet::isConnected()` and `getIP()` are written
+  only by the `IP_EVENT_ETH_GOT_IP` and `IP_EVENT_ETH_LOST_IP` handlers
+  (`src/FurbleEthernet.cpp:368-379`, `:464-472`), and the loss event comes from
+  the same 120 s ip-lost timer. On waveshare-s3-eth a wired lease loss keeps the
+  listener and `connected:true` for up to two minutes. Same defect class, wider
+  than this PR: the follow-up is a wired sibling of `hasAssignedAddress()` that
+  asks esp-netif for the Ethernet netif.
+- A station that never held an address still logs "WiFi lost its IP address,
+  waiting for DHCP" on each DHCP retry. esp-netif arms the ip-lost timer at
+  every DHCP start (`components/esp_netif/lwip/esp_netif_lwip.c:1627`, and
+  `:1529-1532` makes a second arm while it runs a no-op), so the first expiry
+  posts the event with no address behind it. The line stays in this PR, because
+  the handler's log is already reviewed and gating it changes what a support
+  session reads. The follow-up is to capture the previous `g_GotIp` under
+  `g_StateMutex` before clearing it and log only a real transition, leaving the
+  cache clear and the worker wake unchanged, with a never-held-address test.
 - No new task, no new start gate and no new setting. The poll cadence, the heap
   floors and the credential gate are unchanged.
 
@@ -113,8 +134,8 @@ ESP-IDF 5.5, the pinned framework package:
 | :--- | :--- |
 | `IP_EVENT_STA_LOST_IP` means "station lost IP and the IP is reset to 0" | `components/esp_netif/include/esp_netif_types.h:100` |
 | the default station netif posts that event | `components/esp_netif/include/esp_netif_defaults.h:51` |
-| the ip-lost timer resets `ip_info` for a DHCP client and posts the event | `components/esp_netif/lwip/esp_netif_lwip.c:1503-1516` |
-| the timer period is 120 s on every board file in this tree | `CONFIG_ESP_NETIF_IP_LOST_TIMER_INTERVAL=120` |
+| the ip-lost timer resets `ip_info` for a DHCP client and posts the event | `components/esp_netif/lwip/esp_netif_lwip.c:1506-1508` (reset) and `:1510-1516` (post) |
+| the timer period is 120 s in the seven board configs; the six fragments do not set it | `CONFIG_ESP_NETIF_IP_LOST_TIMER_INTERVAL=120` |
 
 Host coverage, `real-wifi-lifecycle` (`tests/host/wifi/real_wifi_test.cpp`),
 which compiles the production `src/FurbleWiFi.cpp` against the existing WiFi
@@ -129,12 +150,18 @@ double:
   loss;
 - a live address with no event yet already answers true, which is what the
   cached answer could not do;
-- a later `GOT_IP` restores the cache and the readiness answer.
+- a later `GOT_IP` restores the cache and the readiness answer;
+- a deliberate stop followed by the loss event its own driver stop produces logs
+  no warning, pinned by the `esp_log_warn_count` counter that
+  `tests/host/wifi/stubs/esp_log.h` increments on every `ESP_LOGW`.
 
 `tests/host/wifi/stubs/esp_netif.h` gained `esp_netif_is_netif_up()`, and the
 test's fake address is now mutable, because esp-netif resets the address to zero
 before it posts the loss. The station netif stays up across the loss, as it does
-on the device.
+on the device. The double always returns true, so only the address half of the
+query is tested: deleting the `esp_netif_is_netif_up()` check from
+`hasAssignedAddress()` still passes. A mutable up flag in the double, with a
+case where the netif is down while the address is set, is the follow-up.
 
 Host coverage, `webui-handler` (`tests/host/webui_handler_test.cpp`), which runs
 the production `src/FurbleWebUI.cpp`:
@@ -151,6 +178,7 @@ Mutation checks, all caught:
 | handler clears `g_GotIp` but not the address | `FAIL: a lost IP kept the cached address` |
 | readiness reads the cache instead of the netif | `FAIL: the WebUI readiness answer did not follow the live netif` |
 | WebUI gate and status page read `WiFi::getStatus()` | three failures in `webui_handler_test` |
+| the lost-IP gate drops `if (g_ConnectRequested)` | `FAIL: a deliberate stop still logged a lost IP`, exit 53; the same mutation passes the pre-change test, which is the hole this covers |
 
 ## Remaining disagreement between the surfaces
 
@@ -165,12 +193,20 @@ Recorded so the next reader does not rediscover them:
   supported profile creates one.
 - Neither surface reacts to a lease change that keeps a valid address (a DHCP
   renewal): the address is still live, so no event is due and both stay ready.
+- `/api/status` answers `connected` from the live netif and takes `ip` from the
+  cache (`src/FurbleWebUI.cpp:1150-1152`), so between the address appearing and
+  `GOT_IP` filling the cache the page sends `connected:true` with an empty `ip`,
+  which the embedded page renders as " -42 dBm" (`src/FurbleWebUI.cpp:157`). The
+  window is one event-handler hop wide. The fix is a live string sibling of
+  `hasAssignedAddress()` that returns the address from the same query.
 
 ## Docs
 
 - `src/CLAUDE.md`: the `FurbleWiFi` and `FurbleWebUI` entries.
 - `include/CLAUDE.md`: the `FurbleWiFi.h` entry for `hasAssignedAddress()`.
 - `docs/webui.md`: what "WiFi has no address" means and why it is live.
+- `plans/342-review-feedback.md`: the review record for this PR, including the
+  follow-ups named above.
 
 Plan number 342 follows the branch sequence; plans merged in this checkout stop
 at 325 and 326-338 are in flight on other branches.
