@@ -1234,7 +1234,7 @@ uint16_t Camera::verifyAttMtu(uint16_t floor) {
     if (!isConnected()) {
       break;
     }
-#if FURBLE_MTU_WAIT_USES_TICKS
+#if defined(FURBLE_MTU_WAIT_USES_TICKS)
     vTaskDelay(pdMS_TO_TICKS(POLL_MS));
 #else
     std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));

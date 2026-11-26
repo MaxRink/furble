@@ -14,7 +14,7 @@ causes. All three were re-verified in this tree before any change.
 | Cause | Verified location | What it did |
 | --- | --- | --- |
 | Discovery | `lib/furble/protocol/AdvertisementProtocol.cpp:73` | `matchesSonyAdvertisement` required tag `0x22` bits 7, 6 **and 1**. A 2019 body advertises `0xE8` or `0xEC`, which clears bit 1, so `Sony::matches` answered false and the body never reached the camera list. |
-| ATT MTU | `lib/furble/Sony.cpp:223` | The DD11 location packet is one 91 or 95 byte write, which needs an MTU of at least 98 with the three-byte ATT header. Nothing in the tree requested, verified or respected an MTU, so a link at the 23-byte ATT default could not carry it. |
+| ATT MTU | `lib/furble/Sony.cpp:223` | The DD11 location packet is one 91 or 95 byte write, which needs an MTU of at least 98 with the three-byte ATT header. No path verified or respected the negotiated MTU. DJI Osmo raised the local preference to 517; nothing else asked for anything, so a link at the 23-byte ATT default could not carry the packet and the failure was invisible. |
 | Location | `lib/furble/Sony.cpp:185` | `updateGeoData` was gated on `locationEnabled()`, which reads DD30 (allow) and DD31 (enable). A body that does not expose the pair returned false forever, so no location was ever written. |
 
 The issue also asked about a shared defect: `Camera::connect` returning false
@@ -204,15 +204,22 @@ model kept.
 
 ## Implementation state
 
-Done on `fix/316-sony-7rm4`.
+Done on `fix/316-sony-7rm4`, rebased onto `b711a44a` for the results below.
 
 | Gate | Result |
 | --- | --- |
-| `sony-advertisement` | pass |
-| `sony-geo` | pass |
+| `sony-advertisement` (new) | pass |
+| `sony-geo` (new) | pass |
 | `sony-location` (existing 91/95-byte form suite) | pass |
-| Targeted host suites that share the mock, the peer and `Camera` | see the commit message; run individually because the host was under another session's build load |
-| `python3 tools/pre_review.py --base origin/master` | pass |
+| `camera-regression` | pass |
+| `peer-contract` | pass |
+| `fujifilm-camera` (23-byte geotag through the new MTU gate) | pass |
+| `advertisement-dispatch`, `client-leak`, `connect-mid-drop`, `camera-pairing-peer` | pass |
+| `canon-time`, `ricoh-time`, `fujifilm-protocol` | pass |
+| `python3 tools/pre_review.py --base origin/master` | pass: whitespace, diff hygiene, settings contracts (6 pre-existing warnings, 0 failures), clang-format (12 changed files), C++ safety, CI workflow contract, simulator scenario manifest, simulator hardware coverage, coupling ratchet, 140 scanner unit tests |
+| `tools/check_portability_inventory.py`, `tools/check_hot_path_logs.py` | pass. The portable core contract is unchanged and the hot-path gate leaves its three guarded functions untouched; the new location logs are once per session behind `m_GeoReported`, not per GPS tick. |
+| `sh sim/scripts/check-doc-tokens.sh` | pass: `sim documentation tokens are present` |
+| Full host `ctest` | not run. The host was saturated with other sessions' PlatformIO and simulator builds, so the whole 198-test suite was not driven; the complete host build succeeded and the thirteen suites above, which drive the changed seams (the Sony path, `Camera::connect`, the mock write path and the peers), pass on it. CI is the confirmation. The remaining host targets link the mock but do not exercise the MTU, the Sony gate or the new peer surface. |
 
 Untested on hardware, as with every non-Fujifilm vendor: only the virtual peer
 covers this change.

@@ -1,16 +1,18 @@
 // Sony location delivery across the advertisement generations.
 //
 // Upstream issue 316: a 2019 ILCE-7RM4 was invisible to discovery, refused
-// pairing and never received location data. Discovery is covered by
+// pairing and never received location data. Discovery itself is covered by
 // sony_advertisement_test; this suite drives the production Sony location path
 // against the virtual peer for
 //
 //   1. the current generation, whose DD30/DD31 handshake is unchanged,
 //   2. the legacy generation, which exposes neither DD30 nor DD31 and gets the
 //      direct DD11 write,
-//   3. an ATT MTU too small to carry the 91 or 95 byte packet, where the write
-//      must not be attempted at all instead of failing every GPS tick,
-//   4. a body that refuses DD11 anyway, where the failure is a logged no-op and
+//   3. a peer that answers the MTU exchange with the 23-byte ATT minimum, where
+//      the write must not be attempted instead of failing on every GPS tick,
+//   4. a host whose preferred MTU is the 23-byte minimum, where the connect path
+//      has to raise the request to the floor before the link,
+//   5. a body that refuses DD11 anyway, where the failure is a logged no-op and
 //      is not retried for the rest of the session.
 
 #include <algorithm>
@@ -46,7 +48,7 @@ Furble::Camera::timesync_t timesync() {
   };
 }
 
-/** Every DD11 location update the peer accepted or rejected. */
+/** Every DD11 location update the peer saw, accepted or rejected. */
 size_t locationWrites(const Furble::Host::SonyVirtualCamera &peer) {
   return static_cast<size_t>(std::count_if(
       peer.writes().begin(), peer.writes().end(),
@@ -63,7 +65,6 @@ struct Case {
   Furble::Host::SonyVirtualCamera::Config config;
   /** Local preferred ATT MTU to force before connecting, 0 keeps the default. */
   uint16_t local_preferred_mtu;
-  bool expectConnected;
   Furble::Sony::Generation expectGeneration;
   Furble::Sony::GeoGate expectGate;
   bool expectLocationWrite;
@@ -89,27 +90,28 @@ bool run(const Case &item) {
   passed &=
       check(camera.generation() == item.expectGeneration, "the advertised generation is recorded");
 
-  const bool connected = camera.connect(Furble::TxPower::P3, 1000);
-  passed &= check(connected == item.expectConnected, item.label);
-  if (!connected) {
-    return passed;
+  if (!check(camera.connect(Furble::TxPower::P3, 1000), item.label)) {
+    return false;
   }
-
+  passed &= check(camera.isConnected(), "the camera reports the live link");
   passed &= check(camera.geoGate() == item.expectGate,
                   "the DD00 profile selects the expected location gate");
 
   // The exchange has to be requested with at least the packet the location path
-  // needs, and the result has to be visible on the link.
+  // needs. Read the local preference back after connect: the production path
+  // raises it to the floor before the link, and ATT then settles on the smaller
+  // of the two preferences.
   passed &= check(peer.requestedAttMtu() >= Furble::Camera::ATT_MTU_FLOOR,
                   "the connect path requests at least the ATT MTU floor");
-  // ATT settles on the smaller of the two preferences. Read the local one back
-  // after connect: the production path raises it to the floor before the link.
   const uint16_t localPreferred = NimBLEDevice::getMTU();
   passed &= check(localPreferred >= Furble::Camera::ATT_MTU_FLOOR,
-                  "the preferred ATT MTU was raised to at least the floor");
+                  "the preferred ATT MTU is at least the floor");
   const uint16_t settled = std::min<uint16_t>(localPreferred, item.config.max_att_mtu);
   passed &= check(peer.negotiatedAttMtu() == settled,
                   "the link settles on the smaller of the two MTU preferences");
+
+  // A packeted body must never be handed a location the link cannot frame: the
+  // host would fail it with BLE_HS_EMSGSIZE before the peer saw it.
   passed &= check(NimBLEDevice::mockAttWriteRejections() == 0,
                   "no write is handed to a link that cannot carry it");
 
@@ -122,10 +124,27 @@ bool run(const Case &item) {
     passed &= check(afterFirst == before, "no location write is attempted");
   }
 
+  // The allow/enable handshake runs only on a body that exposes the pair.
+  if (item.config.location_lock_characteristics_present) {
+    passed &=
+        check(hasCommand(peer, "DD30 location lock"), "the strict path asks for the location lock");
+    passed &= check(hasCommand(peer, "DD31 location enable"),
+                    "the strict path enables the location transfer");
+  } else {
+    passed &= check(!hasCommand(peer, "DD30 location lock"),
+                    "a body without DD30 is never asked for a location lock");
+    passed &= check(!hasCommand(peer, "DD31 location enable"),
+                    "a body without DD31 is never asked to enable the transfer");
+  }
+  if (item.expectLocationWrite) {
+    const size_t expectedForm = item.config.require_91_byte_location ? 91 : 95;
+    passed &= check(peer.lastLocation().size() == expectedForm,
+                    "the delivered location uses the expected form");
+  }
+
   camera.updateGeoData(gps(), timesync());
-  const size_t afterSecond = locationWrites(peer);
   if (item.expectNoRetry) {
-    passed &= check(afterSecond == afterFirst, "an impossible location write is not retried");
+    passed &= check(locationWrites(peer) == afterFirst, "an impossible write is not retried");
   }
 
   camera.disconnect();
@@ -140,13 +159,12 @@ int main() {
   Furble::Device::init(Furble::TxPower::P3);
   bool passed = true;
 
-  // 1. Current generation: DD30/DD31 present, the existing handshake runs, the
-  //    95-byte form is delivered as before.
+  // 1. Current generation: DD30/DD31 present, the existing handshake runs and
+  //    the 95-byte form is delivered as before.
   Case current;
   current.label = "the current generation connects and delivers a location";
   current.config = SonyVirtualCamera::Config {};
   current.local_preferred_mtu = 0;
-  current.expectConnected = true;
   current.expectGeneration = Furble::Sony::Generation::Current;
   current.expectGate = Furble::Sony::GeoGate::Strict;
   current.expectLocationWrite = true;
@@ -160,108 +178,66 @@ int main() {
   legacy.label = "the legacy generation connects and delivers a location";
   legacy.config = SonyVirtualCamera::legacyBody();
   legacy.local_preferred_mtu = 0;
-  legacy.expectConnected = true;
   legacy.expectGeneration = Furble::Sony::Generation::Legacy;
   legacy.expectGate = Furble::Sony::GeoGate::BestEffort;
   legacy.expectLocationWrite = true;
   legacy.expectNoRetry = false;
   passed &= run(legacy);
 
-  {
-    // The best-effort path must not write DD30 or DD31, which do not exist.
-    NimBLEDevice::resetMock();
-    SonyVirtualCamera peer(SonyVirtualCamera::legacyBody());
-    NimBLEDevice::setMockPeer(&peer);
-    const auto advertisement = peer.advertisement();
-    Furble::Sony camera(&advertisement);
-    if (check(camera.connect(Furble::TxPower::P3, 1000), "the legacy body connects")) {
-      camera.updateGeoData(gps(), timesync());
-      passed &= check(!hasCommand(peer, "DD30 location lock"),
-                      "the legacy body is never asked for a location lock");
-      passed &= check(!hasCommand(peer, "DD31 location enable"),
-                      "the legacy body is never asked to enable the transfer");
-      passed &= check(peer.lastLocation().size() == 95,
-                      "the legacy body receives the 95-byte location form");
-      camera.disconnect();
-    } else {
-      passed = false;
-    }
-  }
+  // 3. A peer that answers the exchange with the 23-byte ATT minimum. The write
+  //    must not be attempted and the camera must stay connected: a location is
+  //    simply absent for that session.
+  Case narrowPeer;
+  narrowPeer.label = "a body that answers the MTU exchange with 23 still connects";
+  narrowPeer.config = SonyVirtualCamera::legacyBody();
+  narrowPeer.config.max_att_mtu = 23;
+  narrowPeer.local_preferred_mtu = 0;
+  narrowPeer.expectGeneration = Furble::Sony::Generation::Legacy;
+  narrowPeer.expectGate = Furble::Sony::GeoGate::BestEffort;
+  narrowPeer.expectLocationWrite = false;
+  narrowPeer.expectNoRetry = true;
+  passed &= run(narrowPeer);
 
-  // 3. A link that cannot carry the packet: the peer answers the exchange with
-  //    the 23-byte ATT minimum. The write must not be attempted and the camera
-  //    must stay connected; a location is simply absent for the session.
-  Case narrowLegacy;
-  narrowLegacy.label = "a 23-byte MTU still connects";
-  narrowLegacy.config = SonyVirtualCamera::legacyBody();
-  narrowLegacy.config.max_att_mtu = 23;
-  narrowLegacy.local_preferred_mtu = 0;
-  narrowLegacy.expectConnected = true;
-  narrowLegacy.expectGeneration = Furble::Sony::Generation::Legacy;
-  narrowLegacy.expectGate = Furble::Sony::GeoGate::BestEffort;
-  narrowLegacy.expectLocationWrite = false;
-  narrowLegacy.expectNoRetry = true;
-
-  {
-    NimBLEDevice::resetMock();
-    SonyVirtualCamera peer(narrowLegacy.config);
-    NimBLEDevice::setMockPeer(&peer);
-    const auto advertisement = peer.advertisement();
-    Furble::Sony camera(&advertisement);
-    const bool connected = camera.connect(Furble::TxPower::P3, 1000);
-    passed &= check(connected, "a body that answers the MTU exchange with 23 connects");
-    if (connected) {
-      passed &= check(peer.negotiatedAttMtu() == 23, "the link stays at the ATT minimum");
-      passed &= check(camera.isConnected(), "the camera reports the live link");
-      camera.updateGeoData(gps(), timesync());
-      passed &= check(locationWrites(peer) == 0,
-                      "an MTU below the packet size produces no write attempt");
-      camera.updateGeoData(gps(), timesync());
-      passed &= check(locationWrites(peer) == 0, "the skipped write is not retried");
-      camera.disconnect();
-    } else {
-      passed = false;
-    }
-  }
-
-  // 3b. A host whose preferred MTU is the 23-byte ATT minimum: the connect path
-  //     has to raise the request to the floor before the link, or the location
-  //     packet never fits and the write fails at the ATT layer.
+  // 4. A host whose preferred MTU is the ATT minimum: the connect path raises
+  //    the request to the floor before the link, so the packet still fits.
   Case lowPreferred;
   lowPreferred.label = "a low preferred MTU is raised before the link";
   lowPreferred.config = SonyVirtualCamera::legacyBody();
   lowPreferred.local_preferred_mtu = 23;
-  lowPreferred.expectConnected = true;
   lowPreferred.expectGeneration = Furble::Sony::Generation::Legacy;
   lowPreferred.expectGate = Furble::Sony::GeoGate::BestEffort;
   lowPreferred.expectLocationWrite = true;
   lowPreferred.expectNoRetry = false;
+  passed &= run(lowPreferred);
 
-  {
-    NimBLEDevice::resetMock();
-    NimBLEDevice::setMTU(23);
-    SonyVirtualCamera peer(lowPreferred.config);
-    NimBLEDevice::setMockPeer(&peer);
-    const auto advertisement = peer.advertisement();
-    Furble::Sony camera(&advertisement);
-    const bool connected = camera.connect(Furble::TxPower::P3, 1000);
-    passed &= check(connected, "a host at the ATT minimum still connects");
-    if (connected) {
-      passed &= check(peer.requestedAttMtu() >= Furble::Camera::ATT_MTU_FLOOR,
-                      "the exchange requests at least the ATT MTU floor");
-      passed &=
-          check(peer.negotiatedAttMtu() >= 98, "the negotiated link can carry the 95-byte packet");
-      camera.updateGeoData(gps(), timesync());
-      passed &= check(locationWrites(peer) == 1, "the location write fits and is accepted");
-      passed &= check(NimBLEDevice::mockAttWriteRejections() == 0,
-                      "the location write was never rejected for size");
-      camera.disconnect();
-    } else {
-      passed = false;
-    }
-  }
+  // 5. A current-generation body whose discovery comes back without the pair
+  //    keeps the strict gate, so the bodies that work today do not change and
+  //    no unproven direct write happens.
+  Case currentWithoutPair;
+  currentWithoutPair.label = "a current body without the pair keeps the strict gate";
+  currentWithoutPair.config = SonyVirtualCamera::Config {};
+  currentWithoutPair.config.location_lock_characteristics_present = false;
+  currentWithoutPair.local_preferred_mtu = 0;
+  currentWithoutPair.expectGeneration = Furble::Sony::Generation::Current;
+  currentWithoutPair.expectGate = Furble::Sony::GeoGate::Strict;
+  currentWithoutPair.expectLocationWrite = false;
+  currentWithoutPair.expectNoRetry = true;
+  passed &= run(currentWithoutPair);
 
-  // 4. Best effort does not retry a body that refuses DD11: the first refusal
+  // 6. A legacy body that does expose the pair keeps the strict handshake: the
+  //    discovered profile is the authority, not the advertised generation.
+  Case legacyWithPair;
+  legacyWithPair.label = "a legacy body with the pair keeps the strict gate";
+  legacyWithPair.config = SonyVirtualCamera::legacyBody();
+  legacyWithPair.config.location_lock_characteristics_present = true;
+  legacyWithPair.local_preferred_mtu = 0;
+  legacyWithPair.expectGeneration = Furble::Sony::Generation::Legacy;
+  legacyWithPair.expectGate = Furble::Sony::GeoGate::Strict;
+  legacyWithPair.expectLocationWrite = true;
+  legacyWithPair.expectNoRetry = false;
+  passed &= run(legacyWithPair);
+
+  // 7. Best effort does not retry a body that refuses DD11: the first refusal
   //    ends the attempts for the session, without surfacing an error state.
   {
     NimBLEDevice::resetMock();
@@ -278,52 +254,6 @@ int main() {
       camera.updateGeoData(gps(), timesync());
       passed &=
           check(locationWrites(peer) == refused, "a refused best-effort write is not retried");
-      camera.disconnect();
-    } else {
-      passed = false;
-    }
-  }
-
-  // 5. A current-generation body whose discovery comes back without the pair
-  //    keeps the strict gate, so today's behaviour does not change for the
-  //    bodies that already work, and no unproven direct write happens.
-  {
-    NimBLEDevice::resetMock();
-    SonyVirtualCamera::Config strictOnly;
-    strictOnly.location_lock_characteristics_present = false;
-    SonyVirtualCamera peer(strictOnly);
-    NimBLEDevice::setMockPeer(&peer);
-    const auto advertisement = peer.advertisement();
-    Furble::Sony camera(&advertisement);
-    if (check(camera.connect(Furble::TxPower::P3, 1000), "the current body connects")) {
-      passed &= check(camera.geoGate() == Furble::Sony::GeoGate::Strict,
-                      "the current generation keeps the strict gate");
-      camera.updateGeoData(gps(), timesync());
-      passed &=
-          check(locationWrites(peer) == 0, "the strict gate delivers no location without the pair");
-      camera.disconnect();
-    } else {
-      passed = false;
-    }
-  }
-
-  // 6. A legacy body that does expose the pair keeps the strict handshake: the
-  //    discovered profile is the authority, not the advertised generation.
-  {
-    NimBLEDevice::resetMock();
-    SonyVirtualCamera::Config legacyWithPair = SonyVirtualCamera::legacyBody();
-    legacyWithPair.location_lock_characteristics_present = true;
-    SonyVirtualCamera peer(legacyWithPair);
-    NimBLEDevice::setMockPeer(&peer);
-    const auto advertisement = peer.advertisement();
-    Furble::Sony camera(&advertisement);
-    if (check(camera.connect(Furble::TxPower::P3, 1000), "the legacy body with a pair connects")) {
-      passed &= check(camera.geoGate() == Furble::Sony::GeoGate::Strict,
-                      "an exposed DD30/DD31 pair selects the strict gate");
-      camera.updateGeoData(gps(), timesync());
-      passed &= check(hasCommand(peer, "DD30 location lock"),
-                      "the strict path takes the lock before the location write");
-      passed &= check(locationWrites(peer) == 1, "the strict path delivers the location");
       camera.disconnect();
     } else {
       passed = false;
