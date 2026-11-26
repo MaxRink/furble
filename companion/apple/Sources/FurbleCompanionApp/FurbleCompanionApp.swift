@@ -47,17 +47,7 @@ private struct ContentView: View {
           Button("Reconnect") { client.start() }
         }
         Section("Status") {
-          if let status = client.status {
-            LabeledContent("Battery", value: status.batteryPercent == 255 ? "Unknown" : "\(status.batteryPercent)%")
-            LabeledContent(
-              "Voltage",
-              value: status.batteryMillivolts == UInt16.max
-                ? "Unknown" : "\(status.batteryMillivolts) mV")
-            LabeledContent("Cameras", value: "\(status.cameraConnected)/\(status.cameraTotal)")
-            LabeledContent("GPS", value: gpsStatusLabel(status))
-          } else {
-            Text("Waiting for an authenticated furble link")
-          }
+          CompanionStatusView(status: client.status)
         }
         if client.state.supportsCameras {
           CamerasSection(client: client)
@@ -206,17 +196,6 @@ private struct CameraRow: View {
       }
     }
     .padding(.vertical, 4)
-  }
-}
-
-private func gpsStatusLabel(_ status: FurbleProtocol.Status) -> String {
-  switch status.gpsSource {
-  case 1:
-    return "Receiver, \(status.gpsSatellites) sats"
-  case 2:
-    return "Phone"
-  default:
-    return "No fix"
   }
 }
 
