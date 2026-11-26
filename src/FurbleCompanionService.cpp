@@ -448,6 +448,12 @@ void CompanionService::notifyCameras(bool force) {
     if (!force && !rateAllowed) {
       return;
     }
+    // The transport reports no delivery result, so a refused notification is
+    // invisible here. Re-publish every record on the keepalive cadence so an
+    // undelivered state cannot stay missing from the phone's list for the rest
+    // of the session.
+    const bool keepalive =
+        !m_HaveLastCameras || ((now - m_LastCameraFullPublishMs) >= CAMERA_KEEPALIVE_MS);
 
     for (const auto &snapshot : snapshots) {
       const auto previous =
@@ -458,7 +464,7 @@ void CompanionService::notifyCameras(bool force) {
           (previous != m_LastCameras.end())
           && (std::memcmp(&previous->record, &snapshot.record, sizeof(companion_camera_t)) == 0)
           && (previous->name == snapshot.name);
-      if (force || !m_HaveLastCameras || !same) {
+      if (force || keepalive || !m_HaveLastCameras || !same) {
         changed.push_back(snapshot);
       }
     }
@@ -467,7 +473,16 @@ void CompanionService::notifyCameras(bool force) {
     // does: a callback may re-enter and must see the new baseline.
     m_LastCameras = snapshots;
     m_HaveLastCameras = true;
-    m_LastCameraNotificationMs = now;
+    if (!changed.empty()) {
+      // The stamp is the last notification handed to the transport, not the
+      // last call: the companion loop calls this every second, so refreshing it
+      // on an empty pass left the keepalive measure 1 s forever and it never
+      // fired outside the unit test's clock jump.
+      m_LastCameraNotificationMs = now;
+    }
+    if (keepalive) {
+      m_LastCameraFullPublishMs = now;
+    }
   }
 
   for (const auto &snapshot : changed) {

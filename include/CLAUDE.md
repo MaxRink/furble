@@ -141,6 +141,15 @@ Public headers for the app layer in src/, one header per module
   the headless NimBLE default, while a display queue failure must reject the
   unseen comparison. Camera pointers in queued requests are resolved against
   Control-owned shared pointers before use.
+  `CompanionService::notifyCameras()` re-publishes every camera record on
+  `CAMERA_KEEPALIVE_MS` (30 s) as well as on a change. The transport reports no
+  delivery result, so the keepalive is what bounds how long a notification the
+  controller refused can stay missing from the phone's list. Keep it inside the
+  `CAMERA_NOTIFY_INTERVAL_MS` rate gate, and mirror `notifyStatus()`, which has
+  used the same 30 s cadence since the status packet existed. The stamp it
+  measures from is the last notification handed to the transport, not the last
+  call: the companion loop calls this every second, so stamping an empty pass
+  makes the keepalive unreachable.
 
 ### Companion wire id reservations
 

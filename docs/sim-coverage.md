@@ -111,7 +111,7 @@ also refuses a dirty worktree.
 The committed artifact in `sim/coverage/fuzz_results.json` passes: 11 targets,
 145 seed runs, 124,148 iterations and zero failures. The committed manifests
 list 6,912 permutations and 13 memory profile scenarios, and
-`sh sim/scripts/run-boundary-conformance.sh` runs the 26 linked boundary ctest
+`sh sim/scripts/run-boundary-conformance.sh` runs the 27 linked boundary ctest
 cases. The
 memory dumps are ignored generated evidence, so run
 `python3 sim/scripts/run-memory-profile.py` before the final readiness check.

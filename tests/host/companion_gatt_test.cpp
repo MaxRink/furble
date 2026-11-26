@@ -171,7 +171,10 @@ class MockCentral final: public Furble::CompanionTransport {
     m_AuthIndications.clear();
     m_LastError = 0;
     m_HaveStatus = false;
+    m_RefuseNextCameraNotify = false;
   }
+
+  void setRefuseNextCameraNotify(bool refuse) { m_RefuseNextCameraNotify = refuse; }
 
   bool isConnected(void) const override { return m_Connected; }
 
@@ -183,6 +186,13 @@ class MockCentral final: public Furble::CompanionTransport {
 
   void notify(uint8_t charId, const uint8_t *data, size_t len) override {
     if (charId == Furble::COMPANION_CHAR_CAMERAS && data != nullptr) {
+      if (m_RefuseNextCameraNotify) {
+        // A controller with no free TX buffer drops the notification and the
+        // transport returns no result, so this is the only place a refusal can
+        // be modelled.
+        m_RefuseNextCameraNotify = false;
+        return;
+      }
       m_CameraNotifications.emplace_back(data, data + len);
       return;
     }
@@ -244,6 +254,7 @@ class MockCentral final: public Furble::CompanionTransport {
   std::vector<std::vector<uint8_t>> m_CameraNotifications;
   std::vector<std::vector<uint8_t>> m_AuthIndications;
   uint16_t m_LastError = 0;
+  bool m_RefuseNextCameraNotify = false;
 };
 
 // NimBLE can deliver a characteristic write while the disconnect callback is
@@ -1019,6 +1030,70 @@ void testCompanionCameras(void) {
   service.notifyCameras();
   check(central.cameraNotifications().empty(),
         "an unchanged batch after the window still notifies nothing");
+
+  // The transport reports no delivery result, so a notification the controller
+  // refused is invisible to the service and the cache would keep saying that
+  // state was published. The keepalive re-publishes every record, so the phone
+  // recovers within thirty seconds instead of at the next state change.
+  //
+  // Driven at the production cadence, one call per second, rather than by
+  // jumping the clock thirty seconds in one step: a stamp refreshed by an empty
+  // pass would still reach the keepalive under a single jump and never under the
+  // loop the firmware actually runs.
+  central.clearEvents();
+  int quietTicks = 0;
+  for (int tick = 0; tick < 30; tick++) {
+    furble_host_advance_time(1000 * 1000);
+    service.notifyCameras();
+    if (central.cameraNotifications().empty()) {
+      quietTicks++;
+    }
+  }
+  check(!central.cameraNotifications().empty(),
+        "the keepalive re-published nothing over thirty one-second calls");
+  check(central.cameraNotifications().size() == 2,
+        "the keepalive re-publishes every camera record");
+  check(quietTicks > 0, "the keepalive does not re-publish every second");
+  central.clearEvents();
+  furble_host_advance_time(1000 * 1000);
+  service.notifyCameras();
+  check(central.cameraNotifications().empty(), "the keepalive does not defeat the rate limit");
+
+  // One refused notification is dropped by the mock, exactly as a controller
+  // with no free TX buffer drops it. The service cannot see that, so only the
+  // keepalive can put the record back on the phone.
+  central.clearEvents();
+  service.notifyCameras(true);
+  central.clearEvents();
+  Furble::CameraList::get(0)->setActive(!Furble::CameraList::get(0)->isActive());
+  central.setRefuseNextCameraNotify(true);
+  furble_host_advance_time(1000 * 1000);
+  service.notifyCameras();
+  check(central.cameraNotifications().empty(), "the mock refused the changed record");
+  for (int tick = 0; tick < 30; tick++) {
+    furble_host_advance_time(1000 * 1000);
+    service.notifyCameras();
+  }
+  check(central.cameraNotifications().size() == 2,
+        "the keepalive puts a refused record back on the phone");
+
+  // A list that changes on every pass must not starve the keepalive. The
+  // cadence is measured from the last full publish, not from the last single
+  // record, because a busy list would otherwise hold the measure at one second
+  // for as long as any camera kept moving.
+  central.clearEvents();
+  int fullBatches = 0;
+  for (int tick = 0; tick < 30; tick++) {
+    Furble::CameraList::get(1)->setActive(!Furble::CameraList::get(1)->isActive());
+    furble_host_advance_time(1000 * 1000);
+    service.notifyCameras();
+    if (central.cameraNotifications().size() == 2) {
+      fullBatches++;
+    }
+    central.clearEvents();
+  }
+  check(fullBatches == 1,
+        "a list that changes every second still gets exactly one full re-publish in thirty");
 
   // Ids survive a delete of another entry.
   const uint8_t survivorId = secondId;

@@ -332,6 +332,14 @@ supported SD card slot.
 | Import Settings | n/a | action | n/a | Read settings from the SD card. |
 | Card Info | n/a | page | n/a | Mount state, capacity, free space. |
 
+`Export Settings` writes one line per setting to `settings.txt` in the
+`furble` directory on the card and leaves the companion password out, because
+the file is plain text and the import path refuses that key too. The new copy
+is written beside the backup and renamed into place only after it has flushed
+and closed, so a full card reports a failed export and keeps the previous backup
+instead of replacing it with a truncated file. A failed export is reported in
+the log, not in a dialog.
+
 ### MQTT (8 MB+ debug/console builds)
 
 MQTT is available only in the documented 8 MB and 16 MB board profiles and is

@@ -34,7 +34,7 @@ this fix changes a public header rather than only the wait.
     at 3 s (`POWER_OFF_WAIT_MS`), then extends once by 5 s
     (`POWER_OFF_EXTENDED_WAIT_MS`).
 - The refusal logs name the writer task, and the logs and `xTaskCreate()` share
-  one `WRITER_TASK_NAME` (`src/FurbleSD.cpp:50`) so the name cannot drift:
+  one `WRITER_TASK_NAME` (`src/FurbleSD.cpp:54`) so the name cannot drift:
   - error: `SD writer task 'sd' did not take the power off request in 100 ms, refusing to power off.`
   - warning: `SD writer task 'sd' did not acknowledge power off in 3000 ms, extending the wait.`
   - error: `SD writer task 'sd' did not acknowledge power off after 8000 ms, refusing to power off.`

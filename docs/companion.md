@@ -62,7 +62,10 @@ uint8 name[name_len]
 ```
 
 The list ends with a record whose camera ID is `0xff`. Indications carry list
-records and command responses. Notifications carry changed camera state.
+records and command responses. Notifications carry changed camera state, and
+every record is re-published every 30 s whether or not it changed, so a
+notification the controller refused cannot leave the app's list stale for the
+rest of the session. The 1 s rate limit applies to those refreshes too.
 
 The companion radio advertises for 60 seconds after companion mode is opened.
 Reopen companion mode to pair another phone.

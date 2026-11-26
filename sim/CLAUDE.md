@@ -544,7 +544,7 @@ reads `mqtt.retry_delay`.
   unfixed failing seeds, incomplete permutations, missing memory profile dumps
   and a dirty worktree. The committed manifests hold 198 modeled hardware
   entries, 20 crash entries, 11 fuzz targets, 6,912 permutations and 13 memory
-  profile scenarios. `sh sim/scripts/run-boundary-conformance.sh` runs the 18
+  profile scenarios. `sh sim/scripts/run-boundary-conformance.sh` runs the 27
   linked boundary ctest cases.
   The dumps are ignored generated evidence, so run
   `python3 sim/scripts/run-memory-profile.py` before the final check. Hardware

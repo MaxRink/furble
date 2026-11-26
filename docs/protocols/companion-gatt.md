@@ -117,9 +117,9 @@ records only, one trailing flags byte
 | `flags` | bit 0 needs restart, bit 1 dangerous | `include/FurbleCompanionService.h:236-237` |
 
 A malformed length, an op other than 0 to 2, or a non-zero length on op 0 or 1
-produces `SETTING_BAD_LENGTH` (`src/FurbleCompanionService.cpp:1043-1051`). An
+produces `SETTING_BAD_LENGTH` (`src/FurbleCompanionService.cpp:1052-1060`). An
 unknown id produces `SETTING_UNKNOWN_ID`
-(`src/FurbleCompanionService.cpp:1076-1082`).
+(`src/FurbleCompanionService.cpp:1093-1097`).
 
 Command responses and list records are indicated, and unsolicited state events
 are notified. That split is deliberate and is the same one settings versus status
@@ -198,7 +198,7 @@ The four packets and their sizes are `AUTH_VERSION` 0x01, `AUTH_OP_BEGIN` 0x00,
 `AUTH_OP_PROOF` 0x01 and `AUTH_OP_RESULT` 0x02, with a challenge of two plus
 sixteen bytes, a proof of two plus sixteen and a result of three
 (`include/FurbleCompanionService.h:62-68`). The exchange runs in
-`handleAuth()` (`src/FurbleCompanionService.cpp:594-660`).
+`handleAuth()` (`src/FurbleCompanionService.cpp:609-666`).
 
 | Result value | Meaning |
 | ---: | :--- |

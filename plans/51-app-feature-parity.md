@@ -149,7 +149,7 @@ interface, which is what section 1.3 of plan 50 promised.
 The firmware side is nearly complete. `Settings::setting_t` carries a frozen
 `wire_id` for every setting (`src/FurbleSettings.cpp:11-39`). Ids 1 to 23 are
 assigned. `TOUCH_CALIBRATION` and `BULB` carry `wire_id = 0`, meaning not on
-the wire. `CompanionService::handleSettings` (`src/FurbleCompanionService.cpp:1027`) serves
+the wire. `CompanionService::handleSettings` (`src/FurbleCompanionService.cpp:1042-1203`) serves
 list, get and set for the full table, typed as bool, u8, u32, string or blob
 (`src/FurbleCompanion.cpp:643-680`), and every write goes through the same
 `Settings::save` path the menu uses.
