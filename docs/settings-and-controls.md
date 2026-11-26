@@ -349,8 +349,10 @@ and companion tasks only queue requests and snapshots. Power off is a
 handshake with that task: it queues the close, waits 3 s for the writer to
 close the track and unmount, extends the wait by 5 s once for a slow mount or
 FAT flush, and refuses the shutdown if the writer still has not answered, so
-the device stays on instead of dropping the rail on an open track. Track points
-queued while the writer is stuck are dropped, never blocking the caller.
+the device stays on instead of dropping the rail on an open track. A writer
+that has stopped draining takes no request at all, and that refuses too. Track
+points queued while the writer is stuck are dropped, never blocking the caller,
+and the automatic shutdown paths wait 30 s before they try again.
 
 ### MQTT (8 MB+ debug/console builds)
 

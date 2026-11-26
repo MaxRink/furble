@@ -437,7 +437,7 @@ boot:
    queue means the control task is not draining, which means the shutter will
    not work.
 5. **UI loop ticking**, in a GUI build. `UI::task`
-   (`src/FurbleUI.cpp:13416-13474`) has completed at least 100 iterations, which
+   (`src/FurbleUI.cpp:13436-13496`) has completed at least 100 iterations, which
    at the 5 ms `LOOP_ACTIVE_MS` delay is about half a second of a live LVGL handler.
    In a `FURBLE_NO_DISPLAY` build from `plans/33-wifi-hub.md`, substitute the
    headless loop.

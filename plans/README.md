@@ -122,7 +122,7 @@ the git history. They are no longer ownership rows.
 | [332-imu-motion-scale-review-feedback.md](332-imu-motion-scale-review-feedback.md) | Review-feedback record for PR 504: the bytes decode to 83.0 and 70.3 mg, both durations obey the 50 Hz sample rule, the MPU-6886 count size is an assumption everywhere and no register value changed, plus the two component pages the change left contradicting the code |
 | [332-sim-rtc.md](332-sim-rtc.md) | Battery-backed RTC in the simulator: seeded calendar chip, `FURBLE_SIM` TimeKeeper seam, and the stale, valid, late and lost deep-sleep scenarios (#455) |
 | [332-review-feedback.md](332-review-feedback.md) | Review-feedback record for the simulator RTC model: the unasserted production epoch, the leaked `.rtc` sidecar, the completed scenario table, and the board-row duplication |
-| [341-sd-shutdown-ack.md](341-sd-shutdown-ack.md) | SD power-off handshake: check the acknowledgement, extend the wait once, and refuse the shutdown instead of cutting the rail on an open track |
+| [341-sd-shutdown-ack.md](341-sd-shutdown-ack.md) | SD power-off handshake: `SD::powerOff()` reports a refusal for a missed acknowledgement or a request the writer never took, `Platform::powerOff()` then keeps the rail up, and the automatic paths back off |
 | [342-wifi-lost-ip.md](342-wifi-lost-ip.md) | Lost DHCP lease: `IP_EVENT_STA_LOST_IP` clears the WiFi cache, and the WebUI gate and status page read the live station address |
 | [342-review-feedback.md](342-review-feedback.md) | Review-feedback record for the lost-lease fix: doc paragraph, deliberate-stop gate test, and five recorded follow-ups |
 | [339-mqtt-retry-backoff.md](339-mqtt-retry-backoff.md) | Capped exponential MQTT retry backoff and a WiFi-style failure classifier, so an outage never blocks the hub |
@@ -248,6 +248,7 @@ implemented.
 | [344-review-feedback.md](344-review-feedback.md) | Review-feedback record for PR 483: the gate's real detection envelope, node assertions, locale restore, exported test activity, resolved Compose UI test versions, uncacheable regeneration and the platform jar download |
 | [474-companion-coverage.md](474-companion-coverage.md) | Companion coverage audit: the layer matrix both apps are documented against, five more Android baselines, visible snapshot results in CI, the golden-corpus contract test and the trigger fixture defect it found |
 | [347-core-debug-flash-headroom.md](347-core-debug-flash-headroom.md) | Core dual-OTA debug headroom: compile furble at `ESP_LOG_INFO` on `m5stack-core-debug`, 431 bytes of slot slack to 25,807, and why the other debug envs keep VERBOSE |
+| [475-review-feedback.md](475-review-feedback.md) | Review-feedback record for PR 494: the full-queue bypass, the unbounded automatic retry, the two false user-visible claims, the citation drift, the boundary count and the reachable board row |
 
 ## Network, companion, and simulator follow-ups
 

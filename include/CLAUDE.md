@@ -108,12 +108,14 @@ Public headers for the app layer in src/, one header per module
   `SD::logPoint()` API and the atomic state accessors, and never call GPX
   methods directly. `SD::powerOff()` is the one blocking call: it returns
   `false` when the writer did not acknowledge inside its timeout plus one
-  extension, and every caller must treat that as "the card may still be
-  writing" and keep the rails up.
+  extension, or did not take the request at all, and every caller must treat
+  that as "the card may still be writing" and keep the rails up.
 - `FurbleAutoOff.h` contains the pure disconnected-idle policy predicate.
   Charging blocks auto-off unless the explicit `AUTO_OFF_CHARGING` opt-in is
   enabled; callers must sample charging telemetry and keep policy ticks free of
-  NVS writes.
+  NVS writes. It also carries the refusal backoff: `POWER_OFF_RETRY_MS`,
+  `retryAfter()` and the wrap-safe `retryBlocked()` that holds the automatic
+  shutdown paths off after a refused power off.
 - `FurbleSettings.h` assigns the IMU enable switch wire id 46.
 - `FurbleSettingsDefaults.h` holds the fresh-device defaults and the
   board-conditional `displayOff()` policy. Its Core Basic comment carries the

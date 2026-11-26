@@ -503,6 +503,8 @@ Plan 341 (`plans/341-sd-shutdown-ack.md`) fixes the handshake above. The
 original wait discarded the `xSemaphoreTake` result and `Platform::powerOff()`
 cut the rail anyway, so a slow mount or FAT write lost the GPX tail and left
 FAT dirty. `SD::powerOff()` now returns `bool`, extends the wait once, names the
-writer that did not answer, and refuses; the no-card and no-writer cases keep
-the plain off path. State: fixed on `fix/sd-writer-ack`, proven by the
-`boundary-sd-shutdown-refused` host test, hardware validation pending.
+writer that did not answer, and refuses; a board with no card slot has no queue
+and no writer task, so that case keeps the plain off path. A writer that has
+stopped draining cannot take the request at all, and that refuses too. State:
+fixed on `fix/sd-writer-ack`, proven by the `boundary-sd-shutdown-refused` and
+`boundary-sd-shutdown-undelivered` host tests, hardware validation pending.

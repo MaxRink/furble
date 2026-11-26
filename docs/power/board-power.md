@@ -428,36 +428,49 @@ the order of the three steps below is fixed:
 3. Only then does the rail drop, through the M5PM1 `shutdown()` on the StickS3
    or `M5.Power.powerOff()` on the AXP192 and IP5306 boards.
 
+`SD::powerOff()` refuses in two shapes, because both leave the track open. A
+writer that is still busy takes the request and misses both waits. A writer that
+has stopped draining cannot take the request at all, because its queue is full
+of the track points whose file it holds; that returns `false` after the 100 ms
+send timeout rather than after a wait, since there is nothing to acknowledge.
+
 A refused shutdown returns `false` and leaves the rail up. `Platform::powerOff()`
-returns before it disables the watchdog, and `UI::doPowerOff()`, which had
-already disabled it for the teardown, re-arms it from the saved `WATCHDOG`
-setting and clears its power-off latch after logging `Power off failed,
-resuming.`. The user sees the device stay on with the camera already
-disconnected, the panel still lit, and GPX logging still running, because the
-track the writer is stuck on is the data the refusal protects. On a critically
-low battery the warning box returns and the countdown restarts on the next
-one-second pass. Cutting the rail instead, which is what happened before plan
-341, truncates the GPX tail and leaves FAT dirty.
+returns before it disables the watchdog. `UI::doPowerOff()` had already disabled
+it for the teardown, so it re-arms it from the saved `WATCHDOG` setting, clears
+its power-off latch and logs `Power off failed, resuming.`. The user sees the
+device stay on with the camera already disconnected and the panel still lit.
+Tracking does not advance while the writer is stuck: `SD::logPoint()` drops the
+points queued behind it and the track file already open is the data the refusal
+protects. The next point reopens the track once the writer catches up.
 
-A board with no SD slot, and a writer queue that never took the request, have
-nothing to acknowledge, so those cases keep the plain off path and the rail
-drops as before.
+A refusal also holds the two automatic paths off for a 30 s backoff, because
+each attempt blocks the UI task for the whole handshake; an explicit Off or
+console request is not gated. On a critically low battery the warning box
+returns, so the still-on device has a visible reason. The console `power off`
+reply is unchanged and reports the queueing, not the outcome.
 
-Those four paths are the whole scope of the handshake. A timed shutdown
-(`Platform::powerOffUntil()` with a non-zero delay) and a restart
-(`Platform::restart()`) skip it, so both leave the track for the next mount to
-repair, which is the same data-loss class this refusal avoids. The 5 s
-extension is a chosen bound, not a measurement: no card has been timed for a
-worst-case mount or `fsync()`. No host target compiles the firmware
-`Platform::powerOff()`, and the simulator supplies its own, so the firmware
-build covers that early return while the boundary test covers `SD::powerOff()`.
-Hardware validation is pending: pulling a card mid-write and asking for power
-off has not been tried on a Core.
+Only a board with no SD slot keeps the plain off path and drops the rail as
+before, because it has no queue and no writer task. Those four paths are the
+whole scope of the handshake. A timed shutdown (`Platform::powerOffUntil()` with
+a non-zero delay) and a restart (`Platform::restart()`) skip it, so both leave
+the track for the next mount to repair, which is the same data-loss class this
+refusal avoids.
 
-Evidence: `code`. The two bounds are `POWER_OFF_WAIT_MS` and
-`POWER_OFF_EXTENDED_WAIT_MS` in `src/FurbleSD.cpp`, and the refusal is asserted
-by the `boundary-sd-shutdown-refused` host test. The 8 s total bound is well
-inside the 45 s M5PM1 watchdog the UI disables before it calls in.
+The 5 s extension and the 30 s retry backoff are chosen bounds, not
+measurements: no card has been timed for a worst-case mount or `fsync()`. On the
+board rows, `sdSlot` and `canPowerOff` meet only on Core2, so the SD refusal is
+reachable on that image; the StickS3 reports no SD slot and its refusal is the
+PMIC one. No host target compiles the firmware `Platform::powerOff()`, and the
+simulator supplies its own, so the firmware build covers that early return while
+the boundary tests cover `SD::powerOff()`. Hardware validation is pending:
+pulling a card mid-write and asking for power off has not been tried on a Core2.
+
+Evidence: `code`. The bounds are `POWER_OFF_WAIT_MS`, `POWER_OFF_EXTENDED_WAIT_MS`
+and `REQUEST_SEND_TIMEOUT_MS` in `src/FurbleSD.cpp`, and the retry bound is
+`POWER_OFF_RETRY_MS` in `include/FurbleAutoOff.h`. The two refusals are asserted
+by the `boundary-sd-shutdown-refused` and `boundary-sd-shutdown-undelivered`
+host tests. The 8 s total bound is well inside the 45 s M5PM1 watchdog the UI
+disables before it calls in.
 
 ## 4. Opportunity catalog
 
