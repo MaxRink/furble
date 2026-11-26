@@ -1,0 +1,23 @@
+# A cold boot loses the battery-backed RTC calendar.
+#
+# The same chip and install seed, but the boot reason is a full power loss, so
+# the cell did not keep the registers: after the restart the reading is unset
+# and the install seed must not resurrect the old value. The chip is still
+# fitted, so TimeKeeper reports an available RTC with no clock and the resume
+# gate falls back to the timer authority.
+seed hw_profile stickc-plus2
+seed reset_reason poweron
+seed rtc_model backed
+seed rtc_epoch 1767225600
+assert hw.rtc_epoch 1767225600
+assert hw.rtc_clock valid
+wait 2000
+assert hw.rtc_epoch 1767225602
+restart
+assert hw.rtc_model backed
+assert hw.rtc_clock unset
+assert hw.rtc_epoch 0
+assert time.rtc_available yes
+assert time.valid no
+assert time.source none
+exit

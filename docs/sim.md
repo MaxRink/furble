@@ -500,6 +500,48 @@ between is lost and `pmic.pwr_cfg_lost` records it.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
 
+#### Battery-backed RTC model
+
+The host has no I2C bus, so M5GFX's host stub always fails and `M5.Rtc` can
+never come up in the simulator. A scenario can install a modelled calendar chip
+in its place. `src/FurbleTimeKeeper.cpp` reads it through the same weak
+simulator hooks it already used for the system clock; the firmware path still
+reads `M5.Rtc`, and nothing in the production decision logic changes.
+
+`rtc_model` is `off` (the default), `unbacked` or `backed`. `off` leaves the
+wall clock on the host clock, which is what every scenario written before the
+model did. `backed` fits a cell, so the calendar keeps counting through a
+simulated power-off; `unbacked` loses it. `rtc_epoch` is the calendar reading in
+seconds since the Unix epoch and must be inside 2020-01-01 to 2100-01-01, the
+window every production clock check uses. `rtc_clock_lost` set to `true`
+keeps the register value but raises the voltage-low flag, the PCF8563 answer to
+a backup supply that dropped: the reading is still there and production
+refuses it.
+
+The modelled board row decides the wake path, not the compiled panel. The
+StickC Plus2 row is the only profile whose timed wake is the BM8563 alarm, so
+`hw_profile stickc-plus2` with a modelled chip is what makes
+`Platform::canTimedWake()` true and lets a resume record survive to
+`UI::Intervalometer::loadResume()`.
+
+The model is host persistence, not firmware: the reading lives in a sidecar
+beside the preferences store, `<FURBLE_SIM_PREFS>.rtc`, or in
+`FURBLE_SIM_RTC_STATE` when that is set. It survives a `restart` step and a
+simulated timed power-off, where `Platform::powerOffUntil()` advances the
+calendar by the requested sleep interval. A cold boot (`reset_reason` `poweron`,
+`brownout` or `power_glitch`) is a complete power loss: the sidecar is
+discarded, the registers come back unset, and an install seed cannot resurrect
+the old reading. A scenario without `rtc_model` removes the sidecar so no run
+inherits another one's chip.
+
+Because the modelled chip is what `std::time()` reports while it is installed,
+a scenario's `resume_fixture` wake times are computed on the same clock
+production compares against. `assert hw.rtc_model`, `hw.rtc_battery`,
+`hw.rtc_clock` (`valid`, `lost` or `unset`), `hw.rtc_volt_low`, `hw.rtc_epoch`
+and `hw.timed_wake` report the model; `assert time.valid`, `time.source`,
+`time.rtc_available`, `time.rtc_battery` and `time.epoch_s` report what
+production `TimeKeeper` made of it.
+
 #### Internal-heap pressure model
 
 The host heap is much larger than a StickS3's internal SRAM, so allocation
@@ -1087,18 +1129,19 @@ The other namespaces are:
 - `hw.*` reports profile identity and capabilities (`hw.profile`, `hw.mcu`,
   `hw.flash_kb`, `hw.psram`, `hw.pmic`, `hw.gauge`, `hw.usb`, `hw.display`,
   `hw.touch`, `hw.wifi`, `hw.ethernet`, `hw.ble`, `hw.ir`, `hw.sd`, `hw.audio`,
-  `hw.rtc`, `hw.battery`). `hw.rtc_capability` is `match` when the profile's RTC
-  capability agrees with its verified row and `mismatch` when it does not, and
-  `hw.fail_closed` reports whether the model recorded a defect. `pmic.*` reports
-  variant, gauge, battery, charging, charger, charge current, watchdog, download
-  lock, power latch, brownouts, battery millivolts/percent, `pmic.pwr_cfg` (the
-  one M5PM1 PWR_CFG byte in decimal), `pmic.pwr_cfg_lost` (read-modify-write
-  losses the shared byte allowed) and `pmic.watchdog_cycles` (PMIC-driven system
-  power cycles). `rail.state` is `on` or `off`, `rail.holders` names the
-  consumers currently keeping it on (`none`, `gps`, `ir`, `gps+ir`) and
-  `rail.refusals` counts requests the board could not honour. `ir.state` is
-  `absent`, `idle`, `transmitting`, `unpowered` or `timeout`, with
-  `ir.transmits` and `ir.failures` beside it.
+  `hw.rtc`, `hw.rtc_model`, `hw.rtc_battery`, `hw.rtc_clock`, `hw.rtc_volt_low`,
+  `hw.rtc_epoch`, `hw.timed_wake`, `hw.battery`). `hw.rtc_capability` is `match`
+  when the profile's RTC capability agrees with its verified row and `mismatch`
+  when it does not, and `hw.fail_closed` reports whether the model recorded a
+  defect. `pmic.*` reports variant, gauge, battery, charging, charger, charge
+  current, watchdog, download lock, power latch, brownouts, battery
+  millivolts/percent, `pmic.pwr_cfg` (the one M5PM1 PWR_CFG byte in decimal),
+  `pmic.pwr_cfg_lost` (read-modify-write losses the shared byte allowed) and
+  `pmic.watchdog_cycles` (PMIC-driven system power cycles). `rail.state` is `on`
+  or `off`, `rail.holders` names the consumers currently keeping it on (`none`,
+  `gps`, `ir`, `gps+ir`) and `rail.refusals` counts requests the board could not
+  honour. `ir.state` is `absent`, `idle`, `transmitting`, `unpowered` or
+  `timeout`, with `ir.transmits` and `ir.failures` beside it.
 - `power.*` reports the button state machine and one-event counters:
   `power.state`, `power.clicks`, `power.double_clicks`, `power.long_presses`,
   `power.resets`, `power.offs`, `power.downloads` and `power.recoveries`.
@@ -1460,7 +1503,9 @@ first configuration. The modelled board keeps V_BCKP exactly when
 the build models the Core. With `gps_rail_refused` it reports that it can, and
 the cut still leaves the rail on. `gps.time_resolved` reports whether the snapshot
 time may set the clock, and `time.gps` whether the wall clock was last set
-from GPS. `uart.ubx_polls` counts MON-VER detection
+from GPS. `time.valid`, `time.source` (`none`, `nvs`, `rtc`, `companion`, `gps`
+or `ntp`), `time.rtc_available`, `time.rtc_battery` and `time.epoch_s` report
+the production `TimeKeeper::status()` the intervalometer resume gate reads. `uart.ubx_polls` counts MON-VER detection
 polls the driver wrote.
 
 ## Fault injection and fuzzing

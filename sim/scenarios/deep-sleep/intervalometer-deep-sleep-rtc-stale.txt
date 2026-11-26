@@ -1,0 +1,32 @@
+# A stale resume record is rejected when a battery-backed RTC is present.
+#
+# The modelled board row is the StickC Plus2, the one board whose timed wake is
+# the BM8563 alarm, with a backup cell fitted so the calendar survives the
+# power-off. trustedWallClock() is then true at boot and loadResume() compares
+# the record's wake time with the clock: two hours old is beyond the one hour
+# limit, so the record is cleared and no shot is taken. Without the modelled
+# chip the same fixture is accepted on the M5PM1 timer, which is what
+# intervalometer-deep-sleep-stale.txt asserts.
+seed hw_profile stickc-plus2
+seed rtc_model backed
+seed rtc_epoch 1767225600
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed timed_wake true
+seed resume_fixture stale
+seed interval_count 2
+seed interval_delay 1
+seed interval_shutter 30
+assert hw.rtc_model backed
+assert hw.rtc_battery yes
+assert hw.timed_wake rtc-alarm
+assert time.rtc_available yes
+assert time.rtc_battery yes
+assert time.source rtc
+assert time.valid yes
+wait 5000
+assert platform.wake_marker no
+assert camera.shutter_presses 0
+assert ui.interval_state idle
+exit

@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include <esp_log.h>
@@ -68,6 +70,11 @@ struct board_caps_t {
   bool sd;
   bool audio;
   bool rtc;
+  // The board profile's own columns, mirroring include/FurbleBoard.h in
+  // src/FurbleBoard.cpp: whether a cell keeps the calendar through a power
+  // off, and which wake path the board has.
+  bool rtcBatteryBacked;
+  const char *timedWake;  // "none", "pmic-timer" or "rtc-alarm"
 };
 
 const board_caps_t STICKC = {.mcu = "esp32",
@@ -87,7 +94,9 @@ const board_caps_t STICKC = {.mcu = "esp32",
                              .ir = true,
                              .sd = false,
                              .audio = true,
-                             .rtc = true};
+                             .rtc = true,
+                             .rtcBatteryBacked = true,
+                             .timedWake = "none"};
 const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .flashKb = 4096,
                                   .pmic = "axp192",
@@ -105,7 +114,9 @@ const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .ir = true,
                                   .sd = false,
                                   .audio = true,
-                                  .rtc = true};
+                                  .rtc = true,
+                                  .rtcBatteryBacked = true,
+                                  .timedWake = "none"};
 const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
                                    .flashKb = 4096,
                                    .pmic = "none",
@@ -123,7 +134,9 @@ const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
                                    .ir = true,
                                    .sd = false,
                                    .audio = true,
-                                   .rtc = true};
+                                   .rtc = true,
+                                   .rtcBatteryBacked = false,
+                                   .timedWake = "rtc-alarm"};
 const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .flashKb = 8192,
                               .pmic = "m5pm1",
@@ -143,7 +156,9 @@ const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .audio = true,
                               // The board has no RTC chip. Keep this in step with
                               // RTC_FACTS; hwRtcCapability() asserts the pair.
-                              .rtc = false};
+                              .rtc = false,
+                              .rtcBatteryBacked = false,
+                              .timedWake = "pmic-timer"};
 const board_caps_t CORE = {.mcu = "esp32",
                            .flashKb = 4096,
                            .pmic = "ip5306",
@@ -161,7 +176,9 @@ const board_caps_t CORE = {.mcu = "esp32",
                            .ir = true,
                            .sd = true,
                            .audio = true,
-                           .rtc = false};
+                           .rtc = false,
+                           .rtcBatteryBacked = false,
+                           .timedWake = "none"};
 const board_caps_t CORE2 = {.mcu = "esp32",
                             .flashKb = 16384,
                             .pmic = "axp192",
@@ -179,7 +196,9 @@ const board_caps_t CORE2 = {.mcu = "esp32",
                             .ir = true,
                             .sd = true,
                             .audio = true,
-                            .rtc = true};
+                            .rtc = true,
+                            .rtcBatteryBacked = true,
+                            .timedWake = "none"};
 const board_caps_t TOUGH = {.mcu = "esp32",
                             .flashKb = 16384,
                             .pmic = "axp192",
@@ -197,7 +216,9 @@ const board_caps_t TOUGH = {.mcu = "esp32",
                             .ir = true,
                             .sd = true,
                             .audio = true,
-                            .rtc = true};
+                            .rtc = true,
+                            .rtcBatteryBacked = false,
+                            .timedWake = "none"};
 const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .flashKb = 8192,
                                .pmic = "none",
@@ -215,7 +236,9 @@ const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .ir = false,
                                .sd = false,
                                .audio = false,
-                               .rtc = false};
+                               .rtc = false,
+                               .rtcBatteryBacked = false,
+                               .timedWake = "none"};
 const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .flashKb = 16384,
                                 .pmic = "none",
@@ -233,7 +256,9 @@ const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .ir = false,
                                 .sd = true,
                                 .audio = false,
-                                .rtc = false};
+                                .rtc = false,
+                                .rtcBatteryBacked = false,
+                                .timedWake = "none"};
 
 struct pmic_state_t {
   std::string variant;
@@ -372,6 +397,109 @@ struct mqtt_model_state_t {
   size_t heapFreeAfter = 0;
 };
 
+// The modelled calendar chip. The register reading is an anchor plus the
+// virtual clock, so a `wait` moves the clock the way wall time moves on a
+// board. Nothing here replaces a firmware driver: TimeKeeper reads the same
+// sample it reads from M5.Rtc, through its simulator hooks.
+struct rtc_state_t {
+  Furble::Sim::rtc_mode_t mode = Furble::Sim::rtc_mode_t::OFF;
+  bool hasReading = false;
+  bool voltLow = false;
+  bool restored = false;  // a sidecar reading outranks the scenario seed
+  uint64_t epochS = 0;    // register reading at anchorUs
+  uint64_t anchorUs = 0;  // virtual clock when that reading was taken
+};
+
+constexpr const char *RTC_SIDECAR_MAGIC = "furble-sim-rtc";
+constexpr unsigned RTC_SIDECAR_VERSION = 1;
+
+struct rtc_sidecar_t {
+  bool batteryBacked = false;
+  bool hasReading = false;
+  bool voltLow = false;
+  uint64_t epochS = 0;
+};
+
+std::string rtcSidecarPath(void) {
+  const char *explicitPath = std::getenv("FURBLE_SIM_RTC_STATE");
+  if (explicitPath != nullptr && explicitPath[0] != '\0') {
+    return explicitPath;
+  }
+  const char *prefs = std::getenv("FURBLE_SIM_PREFS");
+  if (prefs == nullptr || prefs[0] == '\0') {
+    return std::string();
+  }
+  return std::string(prefs) + ".rtc";
+}
+
+void discardRtcSidecar(void) {
+  const std::string path = rtcSidecarPath();
+  if (!path.empty()) {
+    std::remove(path.c_str());
+  }
+}
+
+void persistRtcSidecar(const rtc_state_t &rtc) {
+  const std::string path = rtcSidecarPath();
+  if (path.empty() || rtc.mode == Furble::Sim::rtc_mode_t::OFF) {
+    return;
+  }
+  FILE *file = std::fopen(path.c_str(), "w");
+  if (file == nullptr) {
+    return;
+  }
+  std::fprintf(file, "%s %u %s %s %s %llu\n", RTC_SIDECAR_MAGIC, RTC_SIDECAR_VERSION,
+               rtc.mode == Furble::Sim::rtc_mode_t::BACKED ? "backed" : "unbacked",
+               rtc.hasReading ? "set" : "unset", rtc.voltLow ? "low" : "ok",
+               static_cast<unsigned long long>(rtc.epochS));
+  std::fclose(file);
+}
+
+bool readRtcSidecar(rtc_sidecar_t &out) {
+  const std::string path = rtcSidecarPath();
+  if (path.empty()) {
+    return false;
+  }
+  FILE *file = std::fopen(path.c_str(), "r");
+  if (file == nullptr) {
+    return false;
+  }
+  char magic[32] = {};
+  char backing[16] = {};
+  char registers[16] = {};
+  char supply[16] = {};
+  unsigned version = 0;
+  unsigned long long epochS = 0;
+  const int fields = std::fscanf(file, "%31s %u %15s %15s %15s %llu", magic, &version, backing,
+                                 registers, supply, &epochS);
+  std::fclose(file);
+  if ((fields != 6) || (std::strcmp(magic, RTC_SIDECAR_MAGIC) != 0)
+      || (version != RTC_SIDECAR_VERSION)
+      || ((std::strcmp(backing, "backed") != 0) && (std::strcmp(backing, "unbacked") != 0))
+      || ((std::strcmp(registers, "set") != 0) && (std::strcmp(registers, "unset") != 0))
+      || ((std::strcmp(supply, "low") != 0) && (std::strcmp(supply, "ok") != 0))) {
+    return false;
+  }
+  out.batteryBacked = std::strcmp(backing, "backed") == 0;
+  out.hasReading = std::strcmp(registers, "set") == 0;
+  out.voltLow = std::strcmp(supply, "low") == 0;
+  out.epochS = static_cast<uint64_t>(epochS);
+  return true;
+}
+
+// A cold boot is a complete power loss: the cell did not keep the calendar
+// either. Every other reset reason leaves the chip running.
+bool coldBootReason(uint32_t reason) {
+  return (reason == ESP_RST_POWERON) || (reason == ESP_RST_BROWNOUT)
+         || (reason == ESP_RST_PWR_GLITCH);
+}
+
+uint64_t rtcReadingLocked(const rtc_state_t &rtc) {
+  const uint64_t nowUs = Furble::Sim::clockMicros();
+  const uint64_t elapsedUs = (nowUs >= rtc.anchorUs) ? (nowUs - rtc.anchorUs) : 0;
+  return rtc.epochS + (elapsedUs / 1000000ULL);
+}
+
 struct hardware_state_t {
   std::mutex mutex;
   std::string profile;
@@ -385,6 +513,7 @@ struct hardware_state_t {
   peripheral_state_t peripheral;
   rail_state_t rail;
   mqtt_model_state_t mqtt;
+  rtc_state_t rtc;
   uint64_t leakProbe = 0;
   // Blocks held by heap-squeeze, freed by heap-release.
   std::vector<uint64_t> squeeze;
@@ -685,6 +814,9 @@ uint32_t reasonForName(const std::string &name) {
   if (name == "power_glitch") {
     return ESP_RST_PWR_GLITCH;
   }
+  if (name == "deepsleep") {
+    return ESP_RST_DEEPSLEEP;
+  }
   return ESP_RST_POWERON;
 }
 
@@ -710,6 +842,8 @@ const char *reasonName(uint32_t reason) {
       return "jtag";
     case ESP_RST_PWR_GLITCH:
       return "power_glitch";
+    case ESP_RST_DEEPSLEEP:
+      return "deepsleep";
     default:
       return "poweron";
   }
@@ -907,6 +1041,158 @@ void hwSetWifiAuth(const std::string &auth) {
 void hwSetMqttDiscoveryPayload(size_t bytes) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   state().mqttDiscoveryPayload = bytes;
+}
+
+void hwSetRtcModel(const std::string &mode) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  rtc_state_t &rtc = state().rtc;
+  rtc = {};
+  rtc.anchorUs = clockMicros();
+  if (mode == "backed") {
+    rtc.mode = rtc_mode_t::BACKED;
+  } else if (mode == "unbacked") {
+    rtc.mode = rtc_mode_t::UNBACKED;
+  } else {
+    // No chip: the wall clock stays on the host clock, exactly as it was
+    // before the model existed, and no sidecar from an earlier run can leak
+    // into this one.
+    discardRtcSidecar();
+    return;
+  }
+
+  rtc_sidecar_t sidecar = {};
+  const bool cold = coldBootReason(state().resetReason);
+  const bool haveSidecar = readRtcSidecar(sidecar);
+  if (!cold && haveSidecar) {
+    rtc.restored = true;
+    // Only a cell-backed chip keeps its registers while the rail is down. A
+    // chip without one comes back unset.
+    if (rtc.mode == rtc_mode_t::BACKED) {
+      rtc.hasReading = sidecar.hasReading;
+      rtc.epochS = sidecar.epochS;
+      rtc.voltLow = sidecar.voltLow;
+    }
+    ESP_LOGI(LOG_TAG, "rtc %s restored from the chip: registers %s at %llu s", mode.c_str(),
+             rtc.hasReading ? "set" : "unset", static_cast<unsigned long long>(rtc.epochS));
+  } else {
+    if (haveSidecar) {
+      // A cold boot is a full power loss: the cell did not keep the calendar,
+      // and an install seed must not quietly resurrect the old reading.
+      discardRtcSidecar();
+      rtc.restored = true;
+      ESP_LOGI(LOG_TAG, "rtc %s lost the calendar on a cold boot", mode.c_str());
+    } else {
+      ESP_LOGI(LOG_TAG, "rtc %s installed without a calendar", mode.c_str());
+    }
+  }
+}
+
+void hwSetRtcEpoch(uint64_t seconds) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  rtc_state_t &rtc = state().rtc;
+  if (rtc.restored) {
+    // The sidecar is what the chip actually holds. A cold-start install seed
+    // must not overwrite a cell-backed reading.
+    return;
+  }
+  rtc.epochS = seconds;
+  rtc.anchorUs = clockMicros();
+  rtc.hasReading = true;
+  rtc.voltLow = false;
+  persistRtcSidecar(rtc);
+}
+
+void hwSetRtcClockLost(bool lost) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  rtc_state_t &rtc = state().rtc;
+  if (rtc.mode == rtc_mode_t::OFF) {
+    return;
+  }
+  // A PCF8563 keeps its last register value when the backup supply drops; the
+  // voltage-low flag is what says the value cannot be trusted. Keep the
+  // reading so anything that formats a date still sees registers, and let the
+  // production read path refuse it through the flag.
+  rtc.voltLow = lost;
+  persistRtcSidecar(rtc);
+}
+
+bool hwRtcPresent(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rtc.mode != rtc_mode_t::OFF;
+}
+
+bool hwRtcBatteryBacked(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rtc.mode == rtc_mode_t::BACKED;
+}
+
+uint64_t hwRtcEpochSeconds(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  const rtc_state_t &rtc = state().rtc;
+  if (rtc.mode == rtc_mode_t::OFF) {
+    return 0;
+  }
+  return rtcReadingLocked(rtc);
+}
+
+bool hwRtcRead(uint64_t &epoch_us, bool &volt_low) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  const rtc_state_t &rtc = state().rtc;
+  volt_low = rtc.voltLow;
+  if ((rtc.mode == rtc_mode_t::OFF) || !rtc.hasReading) {
+    return false;
+  }
+  epoch_us = rtcReadingLocked(rtc) * 1000000ULL;
+  return true;
+}
+
+void hwRtcWrite(uint64_t epoch_us) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  rtc_state_t &rtc = state().rtc;
+  if (rtc.mode == rtc_mode_t::OFF) {
+    return;
+  }
+  rtc.epochS = epoch_us / 1000000ULL;
+  rtc.anchorUs = clockMicros();
+  rtc.hasReading = true;
+  rtc.voltLow = false;
+  persistRtcSidecar(rtc);
+}
+
+bool hwRtcTimedAlarmBoard(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return std::strcmp(state().caps.timedWake, "rtc-alarm") == 0;
+}
+
+void hwRtcPowerOff(uint32_t seconds) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  rtc_state_t &rtc = state().rtc;
+  if (rtc.mode == rtc_mode_t::OFF) {
+    return;
+  }
+  if (rtc.mode == rtc_mode_t::BACKED) {
+    // The cell keeps the chip counting through the sleep.
+    rtc.epochS = rtcReadingLocked(rtc) + seconds;
+    rtc.anchorUs = clockMicros();
+  } else {
+    // No cell: the registers do not survive the rail going down.
+    rtc.epochS = 0;
+    rtc.anchorUs = clockMicros();
+    rtc.hasReading = false;
+    rtc.voltLow = false;
+  }
+  persistRtcSidecar(rtc);
+}
+
+void hwRtcPersist(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  rtc_state_t &rtc = state().rtc;
+  if (rtc.mode == rtc_mode_t::OFF) {
+    return;
+  }
+  rtc.epochS = rtcReadingLocked(rtc);
+  rtc.anchorUs = clockMicros();
+  persistRtcSidecar(rtc);
 }
 
 void hwSetRailFixed(bool fixed) {
@@ -1631,6 +1917,30 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "fail_closed") {
       return hw.failClosed ? "yes" : "no";
+    }
+    // The modelled calendar chip, separate from the board capability above.
+    if (sub == "rtc_model") {
+      return hw.rtc.mode == rtc_mode_t::BACKED     ? "backed"
+             : hw.rtc.mode == rtc_mode_t::UNBACKED ? "unbacked"
+                                                   : "off";
+    }
+    if (sub == "rtc_battery") {
+      return hw.rtc.mode == rtc_mode_t::BACKED ? "yes" : "no";
+    }
+    if (sub == "rtc_clock") {
+      if (hw.rtc.mode == rtc_mode_t::OFF || !hw.rtc.hasReading) {
+        return "unset";
+      }
+      return hw.rtc.voltLow ? "lost" : "valid";
+    }
+    if (sub == "rtc_volt_low") {
+      return hw.rtc.voltLow ? "yes" : "no";
+    }
+    if (sub == "rtc_epoch") {
+      return std::to_string(hw.rtc.mode == rtc_mode_t::OFF ? 0 : rtcReadingLocked(hw.rtc));
+    }
+    if (sub == "timed_wake") {
+      return hw.caps.timedWake;
     }
   }
   if (prefixed("pmic.")) {

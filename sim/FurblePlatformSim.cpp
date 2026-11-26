@@ -297,10 +297,15 @@ bool Platform::canTimedWake(void) {
   // off. The marker is persisted through the same host NVS file as resume
   // state, so a second simulator process is a deterministic virtual boot.
 #if defined(FURBLE_M5STICKS3)
-  return M5.getBoard() == m5::board_t::board_M5StickS3;
-#else
-  return false;
+  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
+    return true;
+  }
 #endif
+  // A modelled RTC-alarm board, the StickC Plus2 row, wakes through its
+  // BM8563 alarm. This is the production gate: the profile's timed wake plus a
+  // chip that can be programmed. Without a modelled chip nothing can wake the
+  // device, exactly as on hardware.
+  return Sim::hwRtcTimedAlarmBoard() && Sim::hwRtcPresent();
 }
 
 bool Platform::powerOffUntil(uint32_t seconds) {
@@ -343,6 +348,9 @@ bool Platform::powerOffUntil(uint32_t seconds) {
   if (markerWritten != sizeof(bool)) {
     return false;
   }
+  // The RTC chip counts on its own supply while the SoC is off. Record the
+  // sleep interval so the next process boots from an advanced calendar.
+  Sim::hwRtcPowerOff(seconds);
   std::_Exit(0);
 }
 

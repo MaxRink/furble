@@ -2860,6 +2860,25 @@
       "status": "modeled"
     },
     {
+      "id": "rtc.plus2.calendar",
+      "profile": "stickc-plus2",
+      "category": "peripheral",
+      "feature": "Battery-backed RTC calendar and trusted wall clock at boot",
+      "source": "src/FurbleTimeKeeper.cpp, src/FurbleUIIntervalometer.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-stale.txt",
+      "assertions": [
+        "hw.rtc_model",
+        "hw.rtc_battery",
+        "hw.timed_wake",
+        "time.rtc_available",
+        "time.source",
+        "time.valid",
+        "ui.interval_state"
+      ],
+      "status": "modeled"
+    },
+    {
       "id": "power.pmic_irq_latch",
       "profile": "sticks3",
       "category": "power",
@@ -2916,6 +2935,21 @@
         "hw.rtc",
         "hw.rtc_capability",
         "hw.fail_closed"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "rtc.plus2.power-cycle",
+      "profile": "stickc-plus2",
+      "category": "power",
+      "feature": "RTC calendar survives a soft reset and a timed power-off, and is lost on a cold boot",
+      "source": "src/FurbleTimeKeeper.cpp, src/FurblePlatform.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-persist.txt",
+      "assertions": [
+        "hw.rtc_epoch",
+        "hw.rtc_clock",
+        "time.source"
       ],
       "status": "modeled"
     }

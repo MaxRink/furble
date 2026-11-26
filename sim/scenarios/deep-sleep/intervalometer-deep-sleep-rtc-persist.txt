@@ -1,0 +1,28 @@
+# A soft reset keeps a battery-backed RTC running.
+#
+# The restart step re-executes the simulator binary with RAM wiped and the NVS
+# store kept. The modelled chip is a separate register file on its own cell, so
+# it carries the reading across the reboot and keeps counting afterwards. The
+# seeded epoch is an install value: after the reboot the persisted reading wins.
+seed hw_profile stickc-plus2
+seed reset_reason software
+seed rtc_model backed
+seed rtc_epoch 1767225600
+assert hw.rtc_model backed
+assert hw.rtc_battery yes
+assert hw.rtc_clock valid
+assert hw.rtc_epoch 1767225600
+assert time.rtc_available yes
+assert time.source rtc
+wait 3000
+assert hw.rtc_epoch 1767225603
+restart
+assert hw.rtc_model backed
+assert hw.rtc_clock valid
+assert hw.rtc_epoch 1767225603
+assert time.rtc_available yes
+assert time.valid yes
+assert time.source rtc
+wait 1000
+assert hw.rtc_epoch 1767225604
+exit

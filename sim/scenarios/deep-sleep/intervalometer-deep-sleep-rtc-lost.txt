@@ -1,0 +1,33 @@
+# A resume after the RTC lost power falls back to the timer authority.
+#
+# The chip is fitted but its cell did not hold the calendar, so TimeKeeper has
+# no sample, trustedWallClock() is false and the record's two hour old wake
+# time cannot be compared with now. The record is accepted because the M5PM1
+# style timed wake is verified, and the run takes its shot after the boot
+# relative margin. intervalometer-deep-sleep-rtc-stale.txt is the same record
+# with a live chip, where it is rejected: the pair is the coverage for the
+# clock gate.
+seed hw_profile stickc-plus2
+seed rtc_model backed
+seed rtc_epoch 1767225600
+seed rtc_clock_lost true
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed timed_wake true
+seed resume_fixture stale
+seed interval_count 2
+seed interval_delay 1
+seed interval_shutter 30
+assert hw.rtc_model backed
+assert hw.rtc_battery yes
+assert hw.rtc_clock lost
+assert hw.rtc_volt_low yes
+assert time.rtc_available yes
+assert time.valid no
+assert time.source none
+wait 5000
+assert platform.wake_marker no
+assert-eventually-virtual 20000 ui.interval_state finished
+assert camera.shutter_presses 1
+exit

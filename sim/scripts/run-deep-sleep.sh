@@ -35,10 +35,11 @@ export FURBLE_SIM_DEEP_SLEEP_PREFS="$PREFS"
 export FURBLE_SIM_DEEP_SLEEP_EVIDENCE="$EVIDENCE"
 
 run_start() {
+  start_script=$1
   timeout_marker=$(mktemp "${TMPDIR:-/tmp}/furble-deep-sleep-timeout.XXXXXX")
   rm -f "$timeout_marker"
 
-  "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-start.txt" &
+  "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/$start_script" &
   sim_pid=$!
   (
     sleep "$START_TIMEOUT"
@@ -71,21 +72,37 @@ run_start() {
 # The first invocation exits at the simulated timed shutdown. The second keeps
 # the NVS file and therefore sees both the persisted resume record and wake
 # marker, exactly like app_main after a PMIC power-on.
+check_evidence() {
+  label=$1
+  expected_evidence=resume_and_timed_wake_persisted
+  if evidence=$(cat "$EVIDENCE" 2>/dev/null); then
+    :
+  else
+    evidence=
+  fi
+  if [ "$evidence" != "$expected_evidence" ]; then
+    echo "$label did not verify the expected pre-exit persistence evidence" >&2
+    exit 1
+  fi
+}
+
 unset FURBLE_SIM_PRESERVE_PREFS
 rm -f "$EVIDENCE"
-run_start
-expected_evidence=resume_and_timed_wake_persisted
-if evidence=$(cat "$EVIDENCE" 2>/dev/null); then
-  :
-else
-  evidence=
-fi
-if [ "$evidence" != "$expected_evidence" ]; then
-  echo "Timed-sleep start did not verify the expected pre-exit persistence evidence" >&2
-  exit 1
-fi
+run_start intervalometer-deep-sleep-start.txt
+check_evidence "Timed-sleep start"
 export FURBLE_SIM_PRESERVE_PREFS=1
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-resume.txt"
+
+# The same power cycle on the RTC-alarm board row with a modelled,
+# battery-backed chip. The chip keeps counting through the off interval that
+# Platform::powerOffUntil() records, so the resumed process reads a wall clock
+# it can trust. Remove the chip sidecar first: this device is fresh.
+unset FURBLE_SIM_PRESERVE_PREFS
+rm -f "$EVIDENCE" "$PREFS.rtc"
+run_start intervalometer-deep-sleep-rtc-start.txt
+check_evidence "RTC timed-sleep start"
+export FURBLE_SIM_PRESERVE_PREFS=1
+"$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-resume.txt"
 
 unset FURBLE_SIM_DEEP_SLEEP_PREFS
 unset FURBLE_SIM_PRESERVE_PREFS

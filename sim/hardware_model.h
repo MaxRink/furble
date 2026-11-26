@@ -146,6 +146,43 @@ uint32_t hwWifiAttempts(void);
 uint32_t hwWifiRetryMs(void);
 bool hwNtpSynced(void);
 
+/*
+ * Battery-backed RTC model.
+ *
+ * The modelled chip is the calendar the firmware reads through M5.Rtc on
+ * device. The host has no I2C bus, so the simulator supplies the sample
+ * through TimeKeeper's simulator hooks instead; production logic is unchanged.
+ * A scenario installs the chip, sets its calendar and decides whether a cell
+ * keeps it through a power-off. `hw.rtc`, the static capability, stays the
+ * board-profile answer and is independent of this model.
+ */
+enum class rtc_mode_t { OFF, UNBACKED, BACKED };
+
+/** Install the chip: off, present without a cell, or battery-backed. */
+void hwSetRtcModel(const std::string &mode);
+/** Set the calendar reading, in seconds since the Unix epoch. */
+void hwSetRtcEpoch(uint64_t seconds);
+/** Raise or clear the voltage-low flag. The registers keep their last value;
+ *  production refuses a cell-backed reading while the flag is set. */
+void hwSetRtcClockLost(bool lost);
+
+/** True when the model has a chip installed. */
+bool hwRtcPresent(void);
+bool hwRtcBatteryBacked(void);
+/** The register reading, valid calendar or not. */
+uint64_t hwRtcEpochSeconds(void);
+/** A calendar sample for TimeKeeper. False when there is none. */
+bool hwRtcRead(uint64_t &epoch_us, bool &volt_low);
+/** Record a calendar write, as M5.Rtc.setDateTime() would. */
+void hwRtcWrite(uint64_t epoch_us);
+/** True when the modelled profile wakes through the RTC alarm. */
+bool hwRtcTimedAlarmBoard(void);
+/** The chip kept counting through a simulated power-off. Persists the
+ *  reading so the next process boots from the same chip state. */
+void hwRtcPowerOff(uint32_t seconds);
+/** Persist the chip state before a simulated reset. */
+void hwRtcPersist(void);
+
 /** MQTT stack model observability. */
 const char *hwMqttModelState(void);
 bool hwMqttModelOverflow(void);
