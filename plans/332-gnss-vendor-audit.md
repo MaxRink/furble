@@ -219,6 +219,13 @@ Modelled:
   (`sim/fake_uart.cpp:639`) and `$PCAS12` timing (`:659`). The longer
   `$PCAS03` body still contains that prefix, so the satellite fixture still
   answers.
+- The `$PCAS03` fallback route. The driver writes the prune only when a binary
+  `CFG-MSG` write is not acknowledged (the fallback in `finishConfigCommand()`),
+  and the fake CASIC receiver acknowledges every `CFG-MSG` frame, so a default
+  scenario never sees that body. `uart.pcas03` (`sim/driver.cpp`) reports the
+  last `$PCAS03` sentence on the port, and `gps-nmea-prune-fallback` seeds
+  `gps_uart_mode nack` and asserts the exact prune body, so the route is a
+  committed test rather than a manual capture.
 
 Not modelled, for the simulation alignment work:
 
@@ -239,12 +246,11 @@ Not modelled, for the simulation alignment work:
   command) and no restart.
 - The `$PCAS10` restart latency. A real restart stops output for about a second
   and reloads the configuration; the shim leaves the stream running.
-- The `$PCAS03` fallback path. The driver writes the prune only when a binary
-  `CFG-MSG` write is not acknowledged (`src/FurbleGPS.cpp:1606`, the fallback at
-  `:1552`), and the fake CASIC receiver acknowledges every `CFG-MSG` frame, so a
-  default scenario never sees that body. It appears only with
-  `gps_uart_mode nack`, which is how the wire strings below were captured. A
-  scenario that asserts the prune therefore has to seed the refusal.
+- The `$PCAS03` fallback path is modelled as an observation, not as a receiver.
+  `uart.pcas03` reports what the driver sent, so the test proves the body the
+  firmware builds. The fake receiver still replays one canned NMEA stream
+  whatever the rates say, so it does not prove the receiver applied them, which
+  is the "Default sentence set" gap above.
 - The explanatory ERROR of RN 7.2. The virtual M10 answers NAK and nothing else;
   the release notes describe an `ERROR` message as well.
 - AssistNow with B1C, which the model does not refuse even though RN 5.1.5 says
@@ -266,8 +272,10 @@ Not modelled, for the simulation alignment work:
   sends the power write before the signal write when the plan asks for it, and
   reports the effective `ana` in the UBX status.
 
-Everything else stays as it was: no new setting, no new key, no change to the
-CASIC binary path, no change to the simulator.
+Everything else stays as it was: no new setting, no new key, and no change to
+the CASIC binary path. The one simulator change is the `uart.pcas03` query,
+which observes the sentence the driver already sends; it models no new receiver
+behavior.
 
 ## Tests
 
@@ -277,6 +285,7 @@ CASIC binary path, no change to the simulator.
 | `gps-casic`, `testSentenceCommand()` | the three exact bodies, fifteen fields each, no checksum |
 | `gps-ubx`, `testB1cRejections()` | B1C selected by BeiDou plus GLONASS; ANA off with B1C; the power write ordered before the signals; B1I keeps ANA and the power-last order; B1I off before B1C on before GLONASS on |
 | `gps-ubx-m10`, `testB1cConfigOrder()` | the virtual receiver NAKs signals before `OPERATEMODE=FULL` and accepts the plan's order, ending on B1C and GLONASS with B1I off |
+| `gps-nmea-prune-fallback` (simulator) | the prune reaches the wire on its only real route: a NAKed `CFG-MSG` frame falls back to `$PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0*02`, read back through `uart.pcas03` |
 
 Observed on the wire, from `uart-dump` runs against the simulator with the CASIC
 model (the whole sentence, checksum included):
@@ -288,7 +297,8 @@ $PCAS03,1,1,1,1,1,1,1,1,,,,,,*02       satellite page closed, gps_nmea false
 ```
 
 The prune body needs the seeded NAK because it is the `CFG-MSG` fallback, as
-noted in section 7.
+noted in section 7. `gps-nmea-prune-fallback` seeds it, so the row above is a
+committed assertion rather than a manual capture.
 
 Red evidence, on the tree before the fixes:
 
@@ -366,7 +376,11 @@ Implemented on `fix/gnss-doc-audit` (plan 332):
   `src/FurbleGPS.cpp`.
 - `Ubx::plan()` reports `ana` and `power_before_signals`;
   `src/FurbleGPSUbx.cpp` follows both and logs the AssistNow refusal.
-- Three host tests and one source contract test, listed above.
+- `uart.pcas03` in `sim/driver.cpp` reports the last `$PCAS03` sentence the
+  driver sent, and `gps-nmea-prune-fallback` asserts the prune body on the
+  NAKed `CFG-MSG` fallback route.
+- Three host tests, one simulator scenario and one source contract test, listed
+  above.
 
 Deviations from the audit as asked:
 

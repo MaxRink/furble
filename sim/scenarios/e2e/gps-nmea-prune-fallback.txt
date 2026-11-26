@@ -1,0 +1,14 @@
+# The sentence prune only reaches the wire as the fallback for a CFG-MSG frame
+# the receiver did not acknowledge, and the fake CASIC receiver acknowledges
+# every CFG-MSG frame. A NAKing receiver is therefore the only route that shows
+# the $PCAS03 body on the port, which is the route this scenario pins. The body
+# writes all fourteen rate fields, so RMC and GGA stay on and DHV, LPS, UTC and
+# GST are written off instead of keeping whatever rate the receiver had.
+seed gps true
+seed gps_nmea true
+seed gps_uart_mode nack
+wait 5000
+assert-eventually 2000 gps.config.0.state NACKED
+assert gps.config.0.attempts 1
+assert-eventually 2000 uart.pcas03 $PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0*02
+exit
