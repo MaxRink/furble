@@ -47,7 +47,7 @@ Out of scope:
   PR01.
 - `include/FurblePlatform.h:52`, `M5PM1 m_M5PM1;`. Add battery accessors on
   `Platform` so the UI never talks to the PMIC directly.
-- `src/FurblePlatform.cpp:34-39`, the `FURBLE_M5STICKS3` block where `m_M5PM1`
+- `src/FurblePlatform.cpp:34-49`, the `FURBLE_M5STICKS3` block where `m_M5PM1`
   is begun. The retry helper belongs next to it.
 - `include/FurbleSettings.h:16-29` and `:145-148`, enum and `storage_type`.
 - `src/FurbleSettings.cpp:11-24` and `:186-227`, table row and default.
@@ -116,7 +116,7 @@ The M5PM1 sleeps after an I2C idle period, configured with `setI2cSleepTime`.
 The vendor documentation states that the first communication after that sleep
 fails and only wakes the chip. So every read path on the S3 must retry once:
 issue the transaction, and on failure repeat it. Put this in one helper in
-`Platform` and use it for every M5PM1 access. `src/FurblePlatform.cpp:86` already
+`Platform` and use it for every M5PM1 access. `src/FurblePlatform.cpp:96` already
 calls `m_M5PM1.btnGetState()` every update and checks for `M5PM1_OK`, so the
 failure mode is already reachable in the current code.
 

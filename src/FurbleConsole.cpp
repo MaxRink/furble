@@ -1470,6 +1470,8 @@ const char *timeSourceName(TimeSource source) {
       return "gps";
     case TimeSource::NTP:
       return "ntp";
+    case TimeSource::TIMED_WAKE:
+      return "timed_wake";
     default:
       return "none";
   }

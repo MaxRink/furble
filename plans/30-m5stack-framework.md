@@ -339,7 +339,7 @@ sleep as a feature and notes the caveats. The documented behaviour is that the
 first transaction after the chip has slept fails and only serves to wake it. The
 library does not absorb that. Every caller has to retry.
 
-This hits furble twice. `src/FurblePlatform.cpp:86` calls `m_M5PM1.btnGetState()`
+This hits furble twice. `src/FurblePlatform.cpp:96` calls `m_M5PM1.btnGetState()`
 on every update and checks for `M5PM1_OK`, so it already sees the failure. And
 M5Unified reads M5PM1 registers directly through `M5.In_I2C` in
 `getBatteryVoltage`, `getBatteryLevel` and `isCharging` with no retry at all, so

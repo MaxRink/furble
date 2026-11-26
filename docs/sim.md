@@ -440,6 +440,7 @@ UI is constructed. These byte settings are:
 `brightness`, `inactivity`, `display_off`, `display_mode` (0 GUI, 1 console),
 `gps_rate`, `gps_constel`,
 `gps_power`, `gps_duty`, `gps_hold`, `cpu_freq`, `tx_power`, `scan_mode`,
+`time_epoch` (unix seconds, installed through TimeKeeper as a synced clock),
 `text_size`, `legend`, `timezone`, `auto_off`, `low_batt`, `fb_output`,
 `hw_motion`, `gps_assist`
 (0 off, 1 position and time, 2 with ephemeris), `gps_platform` (0 do not send,
@@ -567,13 +568,35 @@ inherits another one's chip. An orderly exit removes it with the generated
 store, and the startup sweep removes it with a dead pid's store, so a scripted
 run leaves neither behind.
 
-Because the modelled chip is what `std::time()` reports while it is installed,
-a scenario's `resume_fixture` wake times are computed on the same clock
-production compares against. `assert hw.rtc_model`, `hw.rtc_battery`,
-`hw.rtc_clock` (`valid`, `lost` or `unset`), `hw.rtc_volt_low`, `hw.rtc_epoch`
-and `hw.timed_wake` report the model; `assert time.valid`, `time.source`,
-`time.rtc_available`, `time.rtc_battery` and `time.epoch_s` report what
-production `TimeKeeper` made of it.
+The modelled chip seeds the RTC-domain running clock at boot, and that one
+clock is what `std::time()`, TimeKeeper's simulator hooks and a scenario's
+`resume_fixture` wake times all read, so a scenario compares clock values in one
+epoch domain. `hwSetSystemTime()` replaces it, as `settimeofday()` does, and a
+board without a chip starts unset until production sets one from the stored
+checkpoint or a timed-wake prediction. It is boot-scoped: a `restart` re-execs
+the binary, and the next boot seeds it again from the chip, so the retained
+soft-reset clock itself is covered by the host soft-reset matrix rather than
+here.
+
+`seed time_epoch <unix-seconds>` installs a wall clock through the production
+`TimeKeeper` before the script runs, which is what SNTP, a GPS fix or a
+companion sample does, and is the only way a chip-less board starts a scripted
+run with a clock. `assert hw.rtc_model`, `hw.rtc_battery`, `hw.rtc_clock`
+(`valid`, `lost` or `unset`), `hw.rtc_volt_low`, `hw.rtc_epoch` and
+`hw.timed_wake` report the model; `assert time.valid`, `time.source` (`none`,
+`nvs`, `rtc`, `companion`, `gps`, `ntp` or `timed_wake`), `time.rtc_available`,
+`time.rtc_battery`, `time.epoch_s` and `time.uncertainty_ms` report what
+production `TimeKeeper` made of it, including the uncertainty it claims.
+
+The timed-wake clock record crosses a simulated power-off in the prefs file,
+because the host has no M5PM1 RTC buffer to hold it. It is the production
+record, built by `TimeKeeper::prepareTimedWake()` in
+`Platform::powerOffUntil()` and adopted by `TimeKeeper::adoptTimedWake()` when
+`consumeTimedWake()` confirms the marker, so only the storage is modelled. The
+two-leg scenario is `intervalometer-deep-sleep-clock-start.txt` with
+`-clock-resume.txt`: the resumed leg reads a recovered clock and runs its
+deadline instead of waiting from boot. The stale-record rejection itself is
+covered by the host `time_keeper_*` tests, which can drive every gate directly.
 
 #### Internal-heap pressure model
 

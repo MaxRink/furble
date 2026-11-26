@@ -139,4 +139,4 @@ supply the timestamp.
 - [M5Stack M5StickC, BM8563 RTC](https://docs.m5stack.com/en/core/m5stickc)
 - Furble source: `lib/furble/Camera.h:111`, `lib/furble/Sony.cpp:145-160`,
   `lib/furble/Fujifilm.cpp:132-137`, `src/FurbleGPS.cpp:174-187`,
-  `src/FurblePlatform.cpp:76`
+  `src/FurblePlatform.cpp:86`

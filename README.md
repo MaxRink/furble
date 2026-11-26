@@ -702,7 +702,11 @@ between frames when the next delay is at or above the threshold. The threshold
 defaults to 60 seconds and accepts 0 to 999 seconds. After a timed wake, furble
 reconnects once and continues the remaining frames. A clock kept across a soft
 reset on a board without an RTC chip is not trusted for the resumed wait, so
-that wait counts from boot, as it does after an NVS restore.
+that wait counts from boot, as it does after an NVS restore. A verified timed
+wake is bounded instead: the shutdown predicts the clock at the wake instant
+from the interval it arms, keeps the prediction in power-off retained memory,
+and adopts it only when the board confirms the wake, with 2 seconds plus
+2 percent of the powered-off interval as its uncertainty.
 Delay and shutter time can be figured with custom or preset values from 0 to 999 in milliseconds, seconds or minutes.
 
 Some camera protocols such as Ricoh GR trigger capture with a single operation request and do not expose separate exposure start/stop control. For those cameras the intervalometer still controls the wait, count, and delay between captures, but the camera ignores the configured shutter-open duration.

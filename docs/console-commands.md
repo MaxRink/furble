@@ -379,7 +379,12 @@ See `docs/power/board-power.md` and `plans/implemented/364-ext5v-rail.md`.
 Calendar time is retained across power loss by the backed RTC on StickC,
 StickC-Plus, and Core2 when its backup supply is healthy. StickS3 has no
 battery-backed calendar RTC, so it restores the last NVS value with an explicit
-uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample.
+uncertainty penalty until GPS, NTP, or a companion supplies a fresh sample. A
+verified timed wake on that board is the exception: the shutdown predicted the
+clock at the wake instant from the interval it armed, and `time status` then
+reports source `timed_wake` with an uncertainty of 2 percent of that interval
+plus two seconds on top of the value at shutdown, until a GPS, NTP or companion
+sample corrects it.
 
 On a board where M5Unified finds no calendar RTC chip, such as StickS3 or Core,
 a soft reset keeps the running clock. After `esp_restart()`, an OTA restart, a
@@ -402,7 +407,7 @@ with a calendar RTC chip still seed from it on every boot.
 
 `ntp sync` fails with `NTP needs WiFi, an IP address and an enabled setting`
 when the WiFi station is not up, so a board on Ethernet only cannot sync this way
-(`src/FurbleConsole.cpp:2405-2413`).
+(`src/FurbleConsole.cpp:2407-2415`).
 
 ## provision
 

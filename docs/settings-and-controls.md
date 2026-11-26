@@ -253,7 +253,13 @@ remaining frames. A failed reconnect clears the saved run and shows
 `RESUME FAILED`.
 The resumed wait uses the wall clock only when it is trustworthy. A clock
 restored from NVS, or kept across a soft reset on a board without an RTC chip,
-is not, so the wait counts from boot instead.
+is not, so the wait counts from boot instead. A verified timed wake is the
+exception: before the shutdown, furble predicts the clock at the wake instant
+from the interval it arms, keeps the prediction in power-off retained memory so
+it costs no flash write, and adopts it only when the board confirms the wake
+through its own marker. The adopted clock carries 2 seconds plus 2 percent of
+the powered-off interval as its uncertainty, so the resumed wait compares the
+saved deadline against a clock that is bounded to that window.
 
 ### Theme
 

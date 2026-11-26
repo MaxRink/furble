@@ -66,6 +66,17 @@ static_assert(static_cast<uint8_t>(PlatformPolicy::RailSupply::BATTERY)
 static_assert(static_cast<uint8_t>(PlatformPolicy::RailSupply::UNKNOWN)
                   == static_cast<uint8_t>(M5PM1_PWR_SRC_UNKNOWN),
               "RailSupply::UNKNOWN must follow the M5PM1 PWR_SRC enumeration");
+
+// The 32-byte RTC buffer holds the four byte wake marker and, after it, the
+// wall-clock prediction TimeKeeper builds for the wake instant. The PM1 keeps
+// the buffer while the ESP32 is off, so the prediction costs no flash write.
+constexpr uint8_t TIMED_WAKE_RECORD_OFFSET = sizeof(TIMED_WAKE_MARKER);
+constexpr uint8_t TIMED_WAKE_BUFFER_BYTES = 32;
+static_assert(TIMED_WAKE_RECORD_OFFSET + TimeKeeperPolicy::RECORD_BYTES <= TIMED_WAKE_BUFFER_BYTES,
+              "the timed wake prediction does not fit the M5PM1 RTC buffer");
+// The marker and the prediction are cleared as one buffer: no later boot may
+// pair one with the other's absence.
+constexpr uint8_t TIMED_WAKE_CLEAR[TIMED_WAKE_BUFFER_BYTES] = {};
 }  // namespace
 #endif
 
@@ -933,21 +944,33 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     if (!SD::getInstance().powerOff()) {
       ESP_LOGW(LOG_TAG, "SD writer did not acknowledge, staying awake");
       (void)m5pm1Access([this]() { return m_M5PM1.timerClear(); });
-      uint32_t clear = 0;
-      (void)m5pm1Access([this, &clear]() {
-        return m_M5PM1.writeRtcRAM(0, reinterpret_cast<const uint8_t *>(&clear), sizeof(clear));
-      });
+      (void)m5pm1Access(
+          [this]() { return m_M5PM1.writeRtcRAM(0, TIMED_WAKE_CLEAR, sizeof(TIMED_WAKE_CLEAR)); });
       restoreWatchdog();
       return false;
+    }
+
+    // Predict the wall clock at the wake instant into the PM1 RTC buffer,
+    // beside the marker. It survives the ESP power-off the PMIC performs and
+    // costs no NVS write, so a timelapse cycle cannot turn a timed wake into
+    // flash wear. A prediction that cannot be made is not a reason to refuse
+    // the sleep: the next boot then keeps the stored checkpoint clock, which is
+    // what every board did before this record existed.
+    uint8_t prediction[TimeKeeperPolicy::RECORD_BYTES] = {};
+    const size_t predictionLength =
+        TimeKeeper::getInstance().prepareTimedWake(seconds, prediction, sizeof(prediction));
+    if ((predictionLength > 0) && !m5pm1Access([this, &prediction, predictionLength]() {
+          return m_M5PM1.writeRtcRAM(TIMED_WAKE_RECORD_OFFSET, prediction,
+                                     static_cast<uint8_t>(predictionLength));
+        })) {
+      ESP_LOGW(LOG_TAG, "Failed to save the timed wake clock prediction");
     }
 
     if (!m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
       ESP_LOGE(LOG_TAG, "Failed to shut down M5PM1 for timed wake");
       (void)m5pm1Access([this]() { return m_M5PM1.timerClear(); });
-      uint32_t clear = 0;
-      (void)m5pm1Access([this, &clear]() {
-        return m_M5PM1.writeRtcRAM(0, reinterpret_cast<const uint8_t *>(&clear), sizeof(clear));
-      });
+      (void)m5pm1Access(
+          [this]() { return m_M5PM1.writeRtcRAM(0, TIMED_WAKE_CLEAR, sizeof(TIMED_WAKE_CLEAR)); });
       restoreWatchdog();
       return false;
     }
@@ -1066,10 +1089,23 @@ bool Platform::consumeTimedWake(void) {
 
     const bool timedWake =
         ((wakeSource & M5PM1_WAKE_SRC_TIM) != 0) && (marker == TIMED_WAKE_MARKER);
-    uint32_t clear = 0;
-    (void)m5pm1Access([this, &clear]() {
-      return m_M5PM1.writeRtcRAM(0, reinterpret_cast<const uint8_t *>(&clear), sizeof(clear));
-    });
+
+    // Read the prediction the shutdown left beside the marker, then clear the
+    // whole buffer so a second boot cannot adopt the same record. Only a
+    // confirmed timed wake makes the interval in it the one that elapsed; any
+    // other boot discards it and keeps the stored checkpoint clock.
+    uint8_t prediction[TimeKeeperPolicy::RECORD_BYTES] = {};
+    if (!m5pm1Access([this, &prediction]() {
+          return m_M5PM1.readRtcRAM(TIMED_WAKE_RECORD_OFFSET, prediction,
+                                    static_cast<uint8_t>(sizeof(prediction)));
+        })) {
+      return false;
+    }
+    (void)m5pm1Access(
+        [this]() { return m_M5PM1.writeRtcRAM(0, TIMED_WAKE_CLEAR, sizeof(TIMED_WAKE_CLEAR)); });
+    if (timedWake && !TimeKeeper::getInstance().adoptTimedWake(prediction, sizeof(prediction))) {
+      ESP_LOGW(LOG_TAG, "Timed wake kept the stored clock");
+    }
     return timedWake;
   }
 #endif

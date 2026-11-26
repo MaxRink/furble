@@ -28,36 +28,36 @@ printed page, so a reader can find the register in either form.
 | # | Fact | Document and section | Code | State |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | `PWR_CFG` is register 0x06 and its default 0x17 means LED enable, 5 V boost off, 3.3 V LDO on, 3.3 V DCDC on and charge on | M5PM1-UM section 2 register (7), `PWR_CFG` 0x06, page 13 of 33 | No direct write; the library's `setLedEnLevel` path | VERIFIED |
-| 2 | `I2C_CFG` is register 0x09, its `SPD` field is bit 4 and its `SLP_TO` field is bits 3:0, where 0 disables idle sleep | M5PM1-UM section 2 register (10), `I2C_CFG` 0x09, page 15 of 33 | `src/FurblePlatform.cpp:159` and the `m5pm1Access` retry path | VERIFIED |
-| 3 | The first I2C transaction after idle sleep fails and only wakes the chip, and an incomplete address within 300 ms of that first transaction puts it back to sleep, so every access is retried once | M5PM1-UM section 2 register (10) note 2, page 15 of 33 | `src/FurblePlatform.cpp:171`, `:177`, `:201`, `:221`, `:241` | VERIFIED |
-| 4 | `WDT_CNT` is 0x0A in seconds with 0 disabling the watchdog, and `WDT_KEY` at 0x0B is fed 0xA5 to clear and reload | M5PM1-UM section 2 registers (11) and (12), page 15 of 33 | `src/FurblePlatform.cpp:196`, `:241` | VERIFIED |
+| 2 | `I2C_CFG` is register 0x09, its `SPD` field is bit 4 and its `SLP_TO` field is bits 3:0, where 0 disables idle sleep | M5PM1-UM section 2 register (10), `I2C_CFG` 0x09, page 15 of 33 | `src/FurblePlatform.cpp:169` and the `m5pm1Access` retry path | VERIFIED |
+| 3 | The first I2C transaction after idle sleep fails and only wakes the chip, and an incomplete address within 300 ms of that first transaction puts it back to sleep, so every access is retried once | M5PM1-UM section 2 register (10) note 2, page 15 of 33 | `src/FurblePlatform.cpp:181`, `:188`, `:212`, `:232`, `:252` | VERIFIED |
+| 4 | `WDT_CNT` is 0x0A in seconds with 0 disabling the watchdog, and `WDT_KEY` at 0x0B is fed 0xA5 to clear and reload | M5PM1-UM section 2 registers (11) and (12), page 15 of 33 | `src/FurblePlatform.cpp:206`, `:252` | VERIFIED |
 | 5 | `SYS_CMD` is 0x0C with the key 0xA in bits 7:4, and 0xA1 in the register means power off | M5PM1-UM section 2 register (13), `SYS_CMD` 0x0C, page 15 of 33 | `src/FurblePlatform.cpp` power-off path | VERIFIED |
 | 6 | `HOLD_CFG` at 0x07, default 0x00, holds the power and GPIO state | M5PM1-UM section 2 register (8), `HOLD_CFG` 0x07, page 13 of 33 | Library call, no direct use in furble | VERIFIED |
-| 7 | `WAKE_SRC` at 0x05 is read-clear only, so writing it cannot select a source | M5PM1-UM section 2 register (6), `WAKE_SRC` 0x05, page 13 of 33 | `src/FurblePlatform.cpp:822` | VERIFIED |
-| 8 | The RTC buffer is 32 bytes at 0xA0 to 0xBF and survives an ESP32 power-off | M5PM1-UM section 11 RTC Buffer, page 25 of 33 | `src/FurblePlatform.cpp:752`, `:829` (4 bytes at offset 0) | VERIFIED |
-| 9 | The system timer counts in seconds in `TIM_CNT` 0x38 to 0x3B and arms through `TIM_CFG` 0x3C, and the 32-bit limit is 214,748,364 s | M5PM1-UM section 5 System Timer, Table 4, page 20 of 33 | `src/FurblePlatform.cpp:738-765` | VERIFIED |
+| 7 | `WAKE_SRC` at 0x05 is read-clear only, so writing it cannot select a source | M5PM1-UM section 2 register (6), `WAKE_SRC` 0x05, page 13 of 33 | `src/FurblePlatform.cpp:832` | VERIFIED |
+| 8 | The RTC buffer is 32 bytes at 0xA0 to 0xBF and survives an ESP32 power-off | M5PM1-UM section 11 RTC Buffer, page 25 of 33 | `src/FurblePlatform.cpp:888` (marker, 4 bytes at offset 0), `:921` (predicted wake clock, 28 bytes at offset 4), `:1064` (the whole buffer cleared on consume) | VERIFIED |
+| 9 | The system timer counts in seconds in `TIM_CNT` 0x38 to 0x3B and arms through `TIM_CFG` 0x3C, and the 32-bit limit is 214,748,364 s | M5PM1-UM section 5 System Timer, Table 4, page 20 of 33 | `src/FurblePlatform.cpp:748-775` | VERIFIED |
 | 10 | The status LED stays lit at display off unless it is cleared, which saves `PWR_CFG` bit 4 | M5PM1-UM section 2 register (7) bit 4, page 13 of 33, and `CLAUDE.md` hardware traps | `src/FurbleFeedback.cpp:306` to `:312` | VERIFIED |
-| 11 | The BMI270 interrupt reaches the chip on GPIO4 on the StickS3, and a GPIO interrupt has a polarity bit where 1 is active low | M5Stack StickS3 low-power page, and M5PM1-UM GPIO interrupt registers, pages 19 and 20 of 33 | `src/FurbleBoard.cpp:17`, `src/FurblePlatform.cpp:526-537` | CITED |
-| 12 | `SYS_CMD` command 11 in bits 1:0 is Download mode, and I2C idle sleep is invalid while the part is in it | M5PM1-UM section 2 register (13) page 15 of 33, and section 6 note page 17 of 33 | `src/FurblePlatform.cpp:171-187` | VERIFIED |
+| 11 | The BMI270 interrupt reaches the chip on GPIO4 on the StickS3, and a GPIO interrupt has a polarity bit where 1 is active low | M5Stack StickS3 low-power page, and M5PM1-UM GPIO interrupt registers, pages 19 and 20 of 33 | `src/FurbleBoard.cpp:17`, `src/FurblePlatform.cpp:536-547` | CITED |
+| 12 | `SYS_CMD` command 11 in bits 1:0 is Download mode, and I2C idle sleep is invalid while the part is in it | M5PM1-UM section 2 register (13) page 15 of 33, and section 6 note page 17 of 33 | `src/FurblePlatform.cpp:181-197` | VERIFIED |
 
 ## Operations the firmware uses
 
 | Operation | Purpose | Citation |
 | :--- | :--- | :--- |
-| `begin` | bind to the internal bus | `src/FurblePlatform.cpp:125` |
-| `setSingleResetDisable(true)` | disable the BtnPWR single-click reset | `src/FurblePlatform.cpp:126` |
-| `setDoubleOffDisable(true)` | disable the BtnPWR double-click power off | `src/FurblePlatform.cpp:127` |
-| `setDownloadLock` and `getDownloadLock` | long-press download recovery, set and verified | `src/FurblePlatform.cpp:171-187` |
-| `wdtSet`, `wdtGetCount`, `wdtFeed` | watchdog arm, verify and feed | `src/FurblePlatform.cpp:241-273` |
-| `readVbat` | battery voltage | `src/FurblePlatform.cpp:282,903` |
-| `getPowerConfig` and `setLedEnLevel` | keep the status LED dark at display off, then restore it | `src/FurblePlatform.cpp:292-312` |
-| `shutdown` | power off | `src/FurblePlatform.cpp:441,760` |
-| `gpioSet`, `gpioSetFunc`, `gpioSetWakeEnable`, `gpioSetWakeEdge`, `irqSetGpioMask`, `irqClearGpioAll` | arm GPIO 4 as the IMU wake source and unmask its IRQ | `src/FurblePlatform.cpp:526-537` |
-| `irqGetGpioStatus` | read the latched IRQ state | `src/FurblePlatform.cpp:653` |
-| `timerSet(seconds, M5PM1_TIM_ACTION_POWERON)`, `timerClear` | timed wake for a scheduled power off | `src/FurblePlatform.cpp:738-765` |
-| `writeRtcRAM` and `readRtcRAM` | a 4-byte marker across a timed power off, `TIMED_WAKE_MARKER` 0x49564c31 | `src/FurblePlatform.cpp:34,752,829` |
-| `getWakeSource` | why the device woke | `src/FurblePlatform.cpp:822` |
-| `btnGetState` | power key sampling | `src/FurblePlatform.cpp:991` |
+| `begin` | bind to the internal bus | `src/FurblePlatform.cpp:135` |
+| `setSingleResetDisable(true)` | disable the BtnPWR single-click reset | `src/FurblePlatform.cpp:136` |
+| `setDoubleOffDisable(true)` | disable the BtnPWR double-click power off | `src/FurblePlatform.cpp:137` |
+| `setDownloadLock` and `getDownloadLock` | long-press download recovery, set and verified | `src/FurblePlatform.cpp:181-197` |
+| `wdtSet`, `wdtGetCount`, `wdtFeed` | watchdog arm, verify and feed | `src/FurblePlatform.cpp:251-283` |
+| `readVbat` | battery voltage | `src/FurblePlatform.cpp:292,903` |
+| `getPowerConfig` and `setLedEnLevel` | keep the status LED dark at display off, then restore it | `src/FurblePlatform.cpp:302-322` |
+| `shutdown` | power off | `src/FurblePlatform.cpp:451,760` |
+| `gpioSet`, `gpioSetFunc`, `gpioSetWakeEnable`, `gpioSetWakeEdge`, `irqSetGpioMask`, `irqClearGpioAll` | arm GPIO 4 as the IMU wake source and unmask its IRQ | `src/FurblePlatform.cpp:536-547` |
+| `irqGetGpioStatus` | read the latched IRQ state | `src/FurblePlatform.cpp:663` |
+| `timerSet(seconds, M5PM1_TIM_ACTION_POWERON)`, `timerClear` | timed wake for a scheduled power off | `src/FurblePlatform.cpp:748-775` |
+| `writeRtcRAM` and `readRtcRAM` | a 4-byte marker across a timed power off, `TIMED_WAKE_MARKER` 0x49564c31, followed by the 28-byte `TimeSample` record of the predicted wake clock | `src/FurblePlatform.cpp:38`, `:889`, `:921` |
+| `getWakeSource` | why the device woke | `src/FurblePlatform.cpp:832` |
+| `btnGetState` | power key sampling | `src/FurblePlatform.cpp:1013` |
 
 ## Timing constants
 
@@ -66,12 +66,22 @@ printed page, so a reader can find the register in either form.
 | `PM1_TIMEOUT_MS` | 45000 | watchdog window | `include/FurbleWatchdog.h:12` |
 | `PM1_TIMEOUT_S` | 45 | the same value in the register's unit | `include/FurbleWatchdog.h:13` |
 | `PM1_FEED_PERIOD_MS` | 1000 | feed cadence | `include/FurbleWatchdog.h:14` |
-| `TIMED_WAKE_MARKER` | 0x49564c31 | RTC RAM marker that proves a timed wake was programmed | `src/FurblePlatform.cpp:34` |
+| `TIMED_WAKE_MARKER` | 0x49564c31 | RTC RAM marker that proves a timed wake was programmed | `src/FurblePlatform.cpp:38` |
+| `TIMED_WAKE_RECORD_OFFSET` | 4 | where the predicted wake clock starts, after the marker | `src/FurblePlatform.cpp:42` |
+| `TIMED_WAKE_PPM` | 20000 | estimated M5PM1 timer error used to bound an adopted clock, 2 percent | `include/FurbleTimeKeeper.h:126` |
+| `TIMED_WAKE_BASE_MS` | 2000 | fixed part of that bound: one-second timer resolution plus the boot-to-read gap | `include/FurbleTimeKeeper.h:127` |
 | `TIMED_WAKE_MAX_EARLY_S` | 60 | how early a timed wake may fire and still resume | `include/FurblePlatform.h:207` |
 
 The 45 s window is well inside the register's range, which is one second per
 count up to the 32-bit timer limit. The feed period of one second leaves 44
 missed feeds before a reset.
+
+The timer's clock source and accuracy are not published, so `TIMED_WAKE_PPM` is
+an estimate rather than a measurement. It bounds the wall clock a verified timed
+wake adopts, together with the fixed base term, and plan 320 records the bench
+run that would replace it. Until then a clock recovered after a timed power-off
+is stated as `2 percent of the armed interval plus 2 s` on top of the uncertainty
+the clock carried at shutdown.
 
 ## The retry-once rule
 
@@ -87,15 +97,15 @@ does not lose the access that follows it. Do not call a raw `M5PM1` method.
 
 The status LED stays lit at display off unless it is cleared. `PWR_CFG` bit 4 is
 the LED enable, so `setLedEnLevel(false)` clears it and the firmware restores the
-previous level afterwards (`src/FurblePlatform.cpp:292-312`).
+previous level afterwards (`src/FurblePlatform.cpp:302-322`).
 
 ## Flash and download recovery
 
 - `prepareFlash()` disables the watchdog, verifies the count is zero, unlocks
   long-press download recovery and refuses to proceed when the PMIC rejects
-  either step (`src/FurblePlatform.cpp:191-215`).
+  either step (`src/FurblePlatform.cpp:201-225`).
 - `cancelFlashPreparation()` restores the watchdog and reports failure when the
-  restore cannot be confirmed (`src/FurblePlatform.cpp:221-232`).
+  restore cannot be confirmed (`src/FurblePlatform.cpp:231-242`).
 - The recovery path stays available after a cancel on purpose. Manual rescue of a
   wedged device depends on it.
 - Download mode is `SYS_CMD` command 11, and the manual states that I2C idle
@@ -104,10 +114,10 @@ previous level afterwards (`src/FurblePlatform.cpp:292-312`).
 
 ## Where the code implements it
 
-- `src/FurblePlatform.cpp:125` to `:127`: `begin()`, then single-click reset and
+- `src/FurblePlatform.cpp:135` to `:138`: `begin()`, then single-click reset and
   double-click power off are disabled so a button gesture cannot reset the
   board under the UI.
-- `src/FurblePlatform.cpp:171` to `:241`: download recovery, watchdog readback
+- `src/FurblePlatform.cpp:181` to `:252`: download recovery, watchdog readback
   and the watchdog set path, all through the retrying access helper.
 - `src/FurbleFeedback.cpp:306` to `:312`: wakes the chip before the amplifier
   access that follows an idle sleep.
@@ -120,7 +130,7 @@ previous level afterwards (`src/FurblePlatform.cpp:292-312`).
 
 Every PMIC failure logs at WARN or ERROR with the operation name and returns
 false. `watchdogEnable()` re-arms on a verify failure so a half-configured
-watchdog cannot leave the device unwatched (`src/FurblePlatform.cpp:241-257`).
+watchdog cannot leave the device unwatched (`src/FurblePlatform.cpp:251-267`).
 
 ## Citation gaps
 

@@ -757,6 +757,19 @@ uint64_t rtcReadingLocked(const rtc_state_t &rtc) {
   return rtc.epochS + (elapsedUs / 1000000ULL);
 }
 
+// The RTC-domain running clock. On hardware settimeofday() writes the RTC_HRT
+// backed system clock, M5.begin() seeds it from the calendar chip, and it ticks
+// from there. The host has neither, so this models one: a base reading anchored
+// on the virtual clock, seeded from the modelled chip when one has a reading.
+// A soft reset does not carry it here because the re-exec starts with RAM
+// wiped; the retained-clock path that would is covered by
+// tests/host/time_keeper_persistence_test.cpp.
+struct system_clock_t {
+  bool set = false;
+  uint64_t epochUs = 0;   // reading at anchorUs
+  uint64_t anchorUs = 0;  // virtual clock when that reading was taken
+};
+
 struct hardware_state_t {
   std::mutex mutex;
   std::string profile;
@@ -771,6 +784,7 @@ struct hardware_state_t {
   rail_state_t rail;
   mqtt_model_state_t mqtt;
   rtc_state_t rtc;
+  system_clock_t system;
   uint64_t leakProbe = 0;
   // Blocks held by heap-squeeze, freed by heap-release.
   std::vector<uint64_t> squeeze;
@@ -813,6 +827,28 @@ struct hardware_state_t {
 hardware_state_t &state(void) {
   static hardware_state_t instance;
   return instance;
+}
+
+uint64_t systemReadingLocked(const system_clock_t &clock) {
+  if (!clock.set) {
+    return 0;
+  }
+  const uint64_t nowUs = Furble::Sim::clockMicros();
+  const uint64_t elapsedUs = (nowUs >= clock.anchorUs) ? (nowUs - clock.anchorUs) : 0;
+  return clock.epochUs + elapsedUs;
+}
+
+// Models the calendar load M5.begin() performs: a board that finds a chip
+// reading boots with that time in its system clock. A chip with no reading, or
+// no chip at all, leaves the system clock unset and the production fallbacks
+// take over.
+void seedSystemClockLocked(hardware_state_t &hw) {
+  if ((hw.rtc.mode == Furble::Sim::rtc_mode_t::OFF) || !hw.rtc.hasReading) {
+    return;
+  }
+  hw.system.set = true;
+  hw.system.anchorUs = Furble::Sim::clockMicros();
+  hw.system.epochUs = rtcReadingLocked(hw.rtc) * 1000000ULL;
 }
 
 const board_caps_t &capsFor(const std::string &profile) {
@@ -1651,6 +1687,9 @@ void hwSetRtcModel(const std::string &mode) {
       ESP_LOGI(LOG_TAG, "rtc %s installed without a calendar", mode.c_str());
     }
   }
+  // M5.begin() loads the calendar into the system clock on device, so a chip
+  // with a reading must also seed the modelled running clock.
+  seedSystemClockLocked(state());
 }
 
 void hwSetRtcEpoch(uint64_t seconds) {
@@ -1666,6 +1705,7 @@ void hwSetRtcEpoch(uint64_t seconds) {
   rtc.hasReading = true;
   rtc.voltLow = false;
   persistRtcSidecar(rtc);
+  seedSystemClockLocked(state());
 }
 
 void hwSetRtcClockLost(bool lost) {
@@ -1759,6 +1799,24 @@ void hwRtcPersist(void) {
   rtc.epochS = rtcReadingLocked(rtc);
   rtc.anchorUs = clockMicros();
   persistRtcSidecar(rtc);
+}
+
+void hwSetSystemTime(uint64_t epoch_us) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  system_clock_t &clock = state().system;
+  clock.set = true;
+  clock.epochUs = epoch_us;
+  clock.anchorUs = Furble::Sim::clockMicros();
+}
+
+uint64_t hwSystemTimeUs(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return systemReadingLocked(state().system);
+}
+
+bool hwSystemTimeSet(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().system.set;
 }
 
 void hwSetRailFixed(bool fixed) {

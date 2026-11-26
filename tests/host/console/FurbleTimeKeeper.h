@@ -19,6 +19,10 @@ enum class TimeSource : uint8_t {
   COMPANION = 3,
   GPS = 4,
   NTP = 5,
+  // A clock predicted before a timed power-off and confirmed by the board's
+  // wake marker. Kept in step with include/FurbleTimeKeeper.h so the console
+  // double renders every production source name.
+  TIMED_WAKE = 6,
 };
 
 class TimeKeeper {

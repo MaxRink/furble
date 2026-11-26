@@ -1,0 +1,27 @@
+# The first half of the timed-wake wall clock test (plan 320 C2).
+#
+# The StickS3 has no RTC chip, so the only clock that crossed a timed power-off
+# was the stored checkpoint, which does not advance over the off interval. The
+# clock seeded here is what a GPS fix, an SNTP reply or a companion sample sets
+# before a run; Platform::powerOffUntil() predicts the clock at the wake instant
+# from it and the interval it arms, and keeps the record beside its wake marker.
+# The second half is intervalometer-deep-sleep-clock-resume.txt.
+seed time_epoch 1767225600
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed ivl_sleep_thr 10
+seed interval_count 2
+seed interval_delay 16
+seed interval_shutter 30
+seed interval_wait 0
+assert time.valid yes
+assert time.source ntp
+# The modelled running clock ticks, so the epoch is a lower bound only.
+assert_min time.epoch_s 1767225600
+assert time.rtc_available no
+wait 5000
+action intervalometer
+# The first shot's 30 ms exposure is followed by this full delay. Keep the
+# wait beyond that boundary so the production sleep decision is reached.
+wait 20000

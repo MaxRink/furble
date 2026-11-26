@@ -40,7 +40,7 @@ board identity and its simulator model wrong in three ways.
    Reachability, stated because it limits what this change can fix: the shipped
    `waveshare-s3-eth` image is `FURBLE_NO_DISPLAY`, so `UI::doPowerOff()` is not
    compiled in and the console `power off` command refuses on that build
-   (`src/FurbleConsole.cpp:1918`). The refusal below is a profile invariant, not
+   (`src/FurbleConsole.cpp:1920`). The refusal below is a profile invariant, not
    the fix for a failure a user meets on today's image: it keeps any later
    caller, and any UI image flashed onto this board, from latching a half-off
    state.
@@ -118,13 +118,13 @@ Callers, all checked:
 - `Platform::powerOffUntil()` forwards a `seconds == 0` request to `powerOff()`
   and propagates false. Its timed path already fails closed for a row with
   `TimedWake::NONE` (`Timed wake is unsupported on this board`,
-  `src/FurblePlatform.cpp:823`), so the Waveshare row cannot reach a timed
+  `src/FurblePlatform.cpp:833`), so the Waveshare row cannot reach a timed
   sleep either.
 - `UI::processAutoOff()` and `UI::processLowBattery()` both return early when
   the row's `canPowerOff` is false, so the timer cannot reach a refusal on the
   Waveshare row.
 - The console `power off` command refuses outright on `FURBLE_NO_DISPLAY`
-  builds (`src/FurbleConsole.cpp:1918`), which is every Waveshare image.
+  builds (`src/FurbleConsole.cpp:1920`), which is every Waveshare image.
 - The simulator `Platform::powerOff()` mirrors the gate, so `platform.power_off`
   stays `no` after a refused request instead of claiming success.
 

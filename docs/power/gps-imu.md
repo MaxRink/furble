@@ -872,7 +872,7 @@ range with its basis, not a claim.
 - **Effort.** Not applicable.
 - **Required test.** Not applicable. Plan 20 gate steps 1 and 2 already exercise
   the armed path.
-- **Citation.** `src/FurblePlatform.cpp:548-583`;
+- **Citation.** `src/FurblePlatform.cpp:558-593`;
   `src/FurbleIMUMotionBMI270.cpp:255`; `src/FurbleIMUMotionMPU6886.cpp:144`.
 
 ### I-02 Put the IMU in accelerometer-only mode when the gyro has no consumer
@@ -901,7 +901,7 @@ range with its basis, not a claim.
 - **Required test.** `motion status` transitions in each mode; level accuracy on
   the S3 and one MPU6886 board; `imu live` gyro values when the page opens;
   external current with IMU off, IMU on with gyro, IMU on without gyro.
-- **Citation.** `src/FurblePlatform.cpp:41-48`; `src/FurbleIMU.cpp:59-67`;
+- **Citation.** `src/FurblePlatform.cpp:51-58`; `src/FurbleIMU.cpp:59-67`;
   `src/FurbleIMUMotionBMI270.cpp:70-74`, `:208-215`; `src/FurbleUI.cpp:6136-6137`
   (level uses accel), `:9067-9072` (live page reads gyro); BMI270 datasheet;
   MPU-6886 datasheet; `board-currents.yaml`.
@@ -971,7 +971,7 @@ range with its basis, not a claim.
 - **Effort.** S.
 - **Required test.** Measure current with IMU off after a cold boot and after an
   IMU-on session plus restart; read the chip power register to confirm suspend.
-- **Citation.** `src/FurblePlatform.cpp:41`; M5Unified IMU API (`sleep`);
+- **Citation.** `src/FurblePlatform.cpp:51`; M5Unified IMU API (`sleep`);
   BMI270 datasheet 3.5 uA suspend; MPU-6886 datasheet 6 uA sleep.
 
 ### I-06 Debounce the panel wake separately from the GPS exit
@@ -1280,7 +1280,7 @@ current saving.
 | Motion API | `include/FurbleIMU.h:28-190` |
 | UI timers and motion consumer | `src/FurbleUI.cpp:415-462`, `:9681` |
 | Gesture thresholds | `include/FurbleUIGesture.h:45-53`, `src/FurbleUIGesture.cpp:70-190` |
-| Platform IMU and wake path | `src/FurblePlatform.cpp:41-48`, `:401-605`, `:674-740` |
+| Platform IMU and wake path | `src/FurblePlatform.cpp:51-58`, `:412-616`, `:685-751` |
 | Defaults | `src/FurbleSettings.cpp:545-760` |
 | Per-second logs | `src/FurbleControl.cpp:155-158`, `src/FurblePower.cpp:84-92`, `:118-130` |
 | PM and log config | `sdkconfig.m5stick-s3:2110-2120`, `:2466`, `:2491`, `:2585-2594` |

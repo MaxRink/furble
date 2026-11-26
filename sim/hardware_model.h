@@ -228,6 +228,22 @@ void hwRtcPowerOff(uint32_t seconds);
 /** Persist the chip state before a simulated reset. */
 void hwRtcPersist(void);
 
+/*
+ * The RTC-domain running clock.
+ *
+ * On device, settimeofday() writes the RTC_HRT backed system clock and
+ * M5.begin() seeds it from the calendar chip. `std::time()` and TimeKeeper's
+ * simulator hooks read this model, so a scenario can assert the clock a timed
+ * wake or a stored checkpoint recovered instead of only the chip registers.
+ * Installing or seeding a chip with a reading seeds it too. It is boot-scoped:
+ * a restart re-execs the binary and the next boot seeds it again from the chip
+ * or the stored checkpoint, as a power-on does.
+ */
+void hwSetSystemTime(uint64_t epoch_us);
+/** The modelled running clock. 0 when nothing has set it this boot. */
+uint64_t hwSystemTimeUs(void);
+bool hwSystemTimeSet(void);
+
 /** MQTT stack model observability. */
 const char *hwMqttModelState(void);
 bool hwMqttModelOverflow(void);

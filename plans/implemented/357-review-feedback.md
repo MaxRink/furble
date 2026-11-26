@@ -44,7 +44,7 @@ Held, with the command or file that settles each one:
 | 6,912 permutations | `sim/coverage/permutations.json` `expected_count: 6912` |
 | 13 memory profile scenarios | `sim/coverage/memory_budget.json`: 13 scenario keys |
 | 18 linked boundary ctest cases | `tests/host/CMakeLists.txt` expands 4 `boundary-ir` plus 4 `boundary-sd` plus 5 `boundary-feedback` plus four singles plus `real-wifi-lifecycle`, which is 18, and `sim/scripts/run-boundary-conformance.sh` selects exactly `^(boundary-|real-wifi-lifecycle$)` |
-| Eight `M5.getBoard()` call sites, six in `src/FurbleUI.cpp` | `git grep -n "M5.getBoard()" 92618bff -- src sim`: `src/FurbleUI.cpp` 843, 2000, 10560, 10668, 11348, 13536, `src/FurbleBoard.cpp:83`, `sim/FurblePlatformSim.cpp:289` |
+| Eight `M5.getBoard()` call sites, six in `src/FurbleUI.cpp` | `git grep -n "M5.getBoard()" 92618bff -- src sim`: `src/FurbleUI.cpp` 843, 2000, 10560, 10668, 11348, 13536, `src/FurbleBoard.cpp:83`, `sim/FurblePlatformSim.cpp:295` |
 | `Profile` has 19 columns and the T-Beam row now compiles | `include/FurbleBoard.h:35-54`: 19 fields, `gpsRail` last; the plan's new row has 19 initialisers |
 | The citation `include/FurbleBoard.h:36-54` | field list runs 36 to 54, with `struct Profile {` on 35 |
 | hal-1 and hal-2 merged in #462 on the #460 macros | `fd51e96c` is #462, `f4cf0d32` is #460; both are ancestors of `92618bff` |

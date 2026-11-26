@@ -1,0 +1,36 @@
+# The second half of the timed-wake wall clock test (plan 320 C2).
+#
+# A fresh process boots after a simulated PM1 power-on with no RTC chip and no
+# running clock. The production TimeKeeper adopts the prediction the shutdown
+# left beside the wake marker, so the wall clock is trustworthy again: the
+# saved record's deadline is compared against it instead of falling back to the
+# boot-relative margin, and the remaining shot runs. Before the change this leg
+# reported source nvs and the clock did not move across the power-off.
+seed fauxny true
+seed autoconnect true
+seed ivl_sleep true
+seed ivl_sleep_thr 10
+seed interval_count 2
+seed interval_delay 16
+seed interval_shutter 30
+seed interval_wait 0
+assert time.valid yes
+assert time.source timed_wake
+# The checkpoint does not advance across the power-off, so it reads the shutdown
+# instant, six seconds after the seed. The prediction is that instant plus the
+# one second interval the first leg armed, and the boot time since the rail came
+# back adds a second at most.
+assert_min time.epoch_s 1767225606
+assert_max time.epoch_s 1767225610
+# The claim the adopted value carries: the shutdown uncertainty of one second,
+# 2 % of the armed interval and the two second base, so a few seconds either way
+# and never the seven day ceiling.
+assert_min time.uncertainty_ms 3000
+assert_max time.uncertainty_ms 6000
+assert-eventually-virtual 5000 control.state active
+assert platform.timed_wake yes
+assert platform.wake_marker no
+assert camera.shutter_presses 0
+assert-eventually-virtual 30000 ui.interval_state finished
+assert camera.shutter_presses 1
+exit

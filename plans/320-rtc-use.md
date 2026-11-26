@@ -1,8 +1,11 @@
 # 320 - Making better use of the ESP32 RTC domain
 
-Status: research and ranked ideas. Nothing here is implemented. Code facts
-were checked against master `e66e8807` on 2026-11-13. External sources were
-read the same day.
+Status: research and ranked ideas, revisited. C1 and C4 were already
+implemented on master when the ranked list was re-checked, and C2 landed in this
+PR. C3, C5, C8, C9 and C10 remain open with the gates recorded below. Code facts
+were checked against master `e66e8807` on 2026-11-13; the re-check was against
+master `253d9cbe` on 2026-11-26, and the implementation state section records
+what moved and why.
 
 Tags on external claims: [vendor] Espressif, NXP or M5Stack documentation;
 [measured: who] a third-party measurement; [inferred] my conclusion.
@@ -22,13 +25,13 @@ changes worth making.
 | RTC slow clock | Internal RC on every board (`CONFIG_RTC_CLK_SRC_INT_RC=y`), recalibrated on every automatic light sleep (`CONFIG_PM_LIGHTSLEEP_RTC_OSC_CAL_INTERVAL=1`). 8MD256, external crystal and external oscillator are unset. | all six release sdkconfigs |
 | BLE sleep clock | ESP32: `CONFIG_BTDM_CTRL_LPCLK_SEL_MAIN_XTAL`. S3: `CONFIG_BT_CTRL_LPCLK_SEL_MAIN_XTAL`; StickS3 and headless also set `CONFIG_BT_CTRL_MAIN_XTAL_PU_DURING_LIGHT_SLEEP`, the Waveshare profile does not. | sdkconfigs; [00-hardware-experiments.md](00-hardware-experiments.md) experiment A |
 | System time | `CONFIG_LIBC_TIME_SYSCALL_USE_RTC_HRT=y` (RTC timer plus high-resolution timer). | `sdkconfig.m5stick-s3:2379` |
-| RTC memory | Only `src/FurbleCrashLog.cpp:31` uses `RTC_NOINIT_ATTR`. No `RTC_DATA_ATTR`. On the S3, RTC fast RAM is heap (`CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=y`). | grep of `src/`, `include/`, `lib/` |
+| RTC memory | `src/FurbleCrashLog.cpp:31` and `TimeKeeper`'s retained clock record (`src/FurbleTimeKeeper.cpp:96`) use `RTC_NOINIT_ATTR`. No `RTC_DATA_ATTR`. On the S3, RTC fast RAM is heap (`CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=y`). | grep of `src/`, `include/`, `lib/` |
 | ULP | `CONFIG_ULP_COPROC_ENABLED` unset. | `sdkconfig.m5stick-s3:2560` |
-| ESP deep sleep | Never entered. Timed wake is a full power-off: M5PM1 timer plus shutdown on the StickS3, BM8563 countdown plus GPIO4 hold release on the StickC Plus2. `Platform::canTimedWake()` is false on every other board. | `src/FurblePlatform.cpp:689-830` |
-| Wall clock | `TimeKeeper::init()` reads the M5 RTC if present, else restores the NVS checkpoint with a one hour uncertainty penalty (`NVS_RESTORE_UNCERTAINTY_MS`), then sets the system time from it. `knownBatteryBackedRtc()` is true for StickC, StickC Plus and Core2. | `src/FurbleTimeKeeper.cpp:43-52,130-145,198-235` |
+| ESP deep sleep | Never entered. Timed wake is a full power-off: M5PM1 timer plus shutdown on the StickS3, BM8563 countdown plus a hold-pin release on the StickC Plus2 and an AXP192 cut on the StickC Plus and the Tough. `Platform::canTimedWake()` is false on the Core, the Core2 and the Waveshare row. C4 delivered the BM8563 rows through plan 350. | `src/FurblePlatform.cpp`, `src/FurbleBoard.cpp` rows |
+| Wall clock | `TimeKeeper::init()` keeps the running clock across a soft reset from an RTC-memory record, else reads the M5 RTC if present, else restores the NVS checkpoint with a one hour uncertainty penalty (`NVS_RESTORE_UNCERTAINTY_MS`), then sets the system time from it. A verified timed wake on the M5PM1 board now adopts a predicted clock (C2). `rtcBatteryBacked` is true for StickC, StickC Plus, Plus2, Core2 and Tough. | `src/FurbleTimeKeeper.cpp`, `src/FurbleBoard.cpp` rows |
 | Intervalometer resume | NVS key `ivl_resume`. On the StickS3 the post-wake clock is NVS-sourced and therefore untrusted (`trustedWallClock()`), so the M5PM1 timer is the only authority. | `src/FurbleUIIntervalometer.cpp:25,193` |
 | GPS aid | Last fix cached in NVS key `gps_fix`, write-throttled. | `src/FurbleGPS.cpp` `loadAidCache()`, `updateAidCache()` |
-| M5PM1 | 32-bit second timer and a 32-byte RTC buffer. furble uses 4 bytes of it for the timed wake marker. | `src/FurblePlatform.cpp` |
+| M5PM1 | 32-bit second timer and a 32-byte RTC buffer. furble uses 4 bytes for the timed wake marker and, since C2, the 28 after it for the predicted wake clock. | `src/FurblePlatform.cpp` |
 
 Pin facts that decide what the RTC domain can reach (from M5Unified
 `M5Unified.cpp` and `Power_Class.cpp`):
@@ -118,7 +121,7 @@ hardware check is needed before claiming the behavior.
 
 ### C3. Measure the real clock error, then calibrate it. Rank 3.
 
-- Finding: `UNCERTAINTY_GROWTH_PPM = 100` (`include/FurbleTimeKeeper.h:36`)
+- Finding: `UNCERTAINTY_GROWTH_PPM = 100` (`include/FurbleTimeKeeper.h:46`)
   assumes the timer error stays under 100 ppm. With tickless idle, most of a
   screen-off hour is light sleep timed by the RC slow clock
   (`docs/power/soc.md` SOC-06). Third-party deep sleep measurements show RC
@@ -240,7 +243,36 @@ hardware check is needed before claiming the behavior.
 
 ## Implementation state
 
-Research only when written; C1 is the recommended first change.
+Re-checked against master `253d9cbe` on 2026-11-26. What the ranked list assumed
+has moved:
+
+- C1 is implemented. `TimeKeeperPolicy::restoreRetained()`, the
+  `RTC_NOINIT_ATTR` record and the reset-reason gate landed with plan 139, and
+  `tests/host/time_keeper_persistence_test.cpp` runs the whole soft-reset
+  matrix: every reset reason, a valid and a lost record, and no chip, an
+  unbacked chip or a backed one, plus the fast-kept-clock lockout regression.
+  The plan's "now" row for `knownBatteryBackedRtc()` is also stale: the profile
+  column is `rtcBatteryBacked` and five rows set it.
+- C4 is delivered for the StickC Plus and the Tough through plan 350, as the
+  follow-up section below records. The plain StickC row keeps
+  `TimedWake::NONE`.
+- C2 is implemented in this PR. See the follow-up section.
+- C3, C5 and C10 need hardware, and their entries already say so: C3 needs the
+  four hour drift measurement before any trim, C5 depends on C3 and needs a
+  time-entry UI plus DST and past-alarm semantics, and C10 needs a PM1-shutdown
+  current comparison.
+- C6 is withdrawn. Its RTC mirror is redundant because every reset the RTC
+  memory survives, NVS survives too, including an OTA and a panic, so the
+  mirrored fix would never be read where the stored one is not. Its wear claim
+  does not survive arithmetic either: the 56-byte `gps_fix` record is rewritten
+  every ten minutes, which is 144 writes a day, about three and a half pages of
+  a 24 KB NVS partition, and roughly 700 partition cycles over ten years against
+  a 100,000-cycle endurance. Trading a decade of cold-start aiding accuracy for
+  that is not worth a user-visible change, so the write interval stays.
+- C7 is not started: it needs a resume origin that bypasses the timed-wake gate,
+  a two-attempt crash-loop bound, and a retained record written at every shot
+  boundary, which is a UI state-machine change rather than an RTC-domain one.
+- C8 waits for C3, and C9 is a board-selection rule with no firmware change.
 
 ## Follow-up: StickC Plus timed wake landed as C4's Part
 
@@ -254,3 +286,74 @@ BM8563 INT coupled into the AXP192 power key through R401 and C401, which is
 vendor-documented and not scoped here, so C4's hardware gate (G35 shared with
 the MPU6886 and the AXP192 IRQ, panel state, resume) still applies. C5's
 calendar alarm, C3's trim measurement, C6 and C7 remain open.
+
+## Follow-up: C2, the timed-wake clock, landed
+
+State: implemented in this PR. The StickS3 is the only `TimedWake::PMIC_TIMER`
+row, so this is its board path; the BM8563 rows already carry their clock in the
+chip and are unchanged.
+
+What the plan sketched matches what landed, with two deviations:
+
+- Storage is the M5PM1 RTC buffer, not NVS. `Platform::powerOffUntil()` writes
+  the 28-byte record at offset 4 of the 32-byte buffer, after the four byte wake
+  marker, and a `static_assert` fails the build if the record grows past it. NVS
+  would have cost one flash write per timelapse cycle, which is the wear the
+  plan's C6 wants to remove, and the plan already names the buffer as the
+  alternative. `consumeTimedWake()` reads the record, clears the whole buffer in
+  one write so no later boot can adopt it, and adopts it only when the marker
+  verifies.
+- The record is the existing 28-byte `TimeSample` wire record with a new
+  `TimeSource::TIMED_WAKE` value, so there is no second codec and no record
+  version bump. The source appends at 6 and takes its authority from
+  `sourcePriority()`, which maps it to 2: above a stored checkpoint and below a
+  calendar chip. `TimeKeeperPolicy::valid()` and `decode()` accept it, and a
+  record written by an older firmware still decodes to the same values.
+
+**Accuracy claim.** A clock adopted after a verified timed wake is `predicted
+epoch at the wake instant + the boot time measured since the rail came back`,
+with uncertainty `uncertainty at shutdown + 2 percent of the armed interval +
+2 s`. The 2 percent is an estimate, not a measurement: the M5PM1 timer counts
+whole seconds and neither its clock source nor its accuracy is published (S8), so
+the base term covers the one-second timer resolution and the interval between the
+rail restoring and the first read. For a one hour interval that is about 74 s, for
+a 30 s interval about 3 s. The bench item C2 in the plan above (PM1 accuracy over
+1 h and 8 h against GPS time) would replace the 2 percent with a measured figure;
+until then the claim is the estimate above, and `time status` and the simulator's
+`time.uncertainty_ms` report it, so the operator sees the window rather than a
+bare timestamp.
+
+**How a stale value is rejected.** Five gates, and each is host-tested:
+
+1. The record does not decode: magic, version, length, the reserved bytes and
+   the CRC all have to hold, so a truncated, erased or partially written buffer
+   writes nothing.
+2. The record's source is not `TIMED_WAKE`. A record left by another path, or a
+   buffer that was never written, is refused rather than reinterpreted.
+3. The board did not confirm a timed wake. Only `consumeTimedWake()`'s own
+   marker check calls the adoption, and a manual power-on or a brownout clears
+   the buffer without adopting it, so an interval that never elapsed cannot be
+   added to the clock.
+4. The stored checkpoint reaches past the prediction. A checkpoint that is newer
+   than the shutdown instant the record describes cannot be older than it, so the
+   record is stale or from another device and is refused.
+5. The arithmetic leaves the accepted range: an interval of zero or beyond a day
+   writes no record at all, and an adopted value outside the epoch window or over
+   the uncertainty ceiling is refused.
+
+A refused or missing record keeps the stored checkpoint clock with its one hour
+penalty, which is the behaviour every board had before this change, so the clock
+never becomes silently worse.
+
+Coverage: `time_keeper_policy_test` covers the bound arithmetic, the failure cases
+above and the record round trip; `time_keeper_persistence_test` runs a GPS-seeded
+run, a simulated power cut, the adoption, the `timed_wake` source surviving a
+further soft reset, and the confirmation that adoption costs no NVS write;
+`intervalometer-deep-sleep-clock-start.txt` with `-clock-resume.txt` cover the
+two-leg power cycle: the resumed leg reports `time.source timed_wake` with a
+three second uncertainty and runs its saved deadline instead of counting from
+boot. The stale-record gates are host-tested rather than scenario-tested,
+because a scenario clock strong enough to compare a fixture deadline against
+outranks the prediction and would not exercise it. The hardware gate stays
+open: C1's bench item (RTC retention through `esp_restart()`, a panic and a USB
+port-open reset) and C2's PM1 accuracy run both need the StickS3 on the bench.

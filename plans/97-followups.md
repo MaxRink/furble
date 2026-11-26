@@ -300,7 +300,7 @@ remediation batches. The batch is named in each GATED-ON tag.
 - PM1 watchdog liveness. High leverage, structural. The watchdog is fed only
   from UI::task, so any long UI block becomes a hard reset. Consider a small
   dedicated feeder that feeds only while a UI heartbeat advances. Source: plan
-  96 B9, `src/FurblePlatform.cpp:341-348`. READY-NOW. Fork-only mechanism, see
+  96 B9, `src/FurblePlatform.cpp:351-358`. READY-NOW. Fork-only mechanism, see
   the upstream section.
 
 ## Group 2: deferred features

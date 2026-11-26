@@ -36,7 +36,7 @@ with a named `NO_LIGHT_SLEEP` lock. No behavior change.
 
 Verified current state:
 
-- `src/FurblePlatform.cpp:65-72` builds an `esp_pm_config_t` with
+- `src/FurblePlatform.cpp:75-82` builds an `esp_pm_config_t` with
   `max_freq_mhz = 160`, `min_freq_mhz = 40`, `light_sleep_enable = enable` and
   calls `esp_pm_configure()`.
 - `src/FurblePlatform.cpp:14` calls `instance.setSleep(true)` before `M5.begin()`,

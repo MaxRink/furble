@@ -104,6 +104,17 @@ check_evidence "RTC timed-sleep start"
 export FURBLE_SIM_PRESERVE_PREFS=1
 "$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-rtc-resume.txt"
 
+# The same power cycle on the S3 row, where no chip holds the clock. The
+# prediction Platform::powerOffUntil() leaves beside the wake marker is the only
+# clock that crosses the off interval, so the resumed run has a trustworthy
+# deadline (plan 320 C2).
+unset FURBLE_SIM_PRESERVE_PREFS
+rm -f "$EVIDENCE" "$PREFS.rtc"
+run_start intervalometer-deep-sleep-clock-start.txt
+check_evidence "Timed-wake clock start"
+export FURBLE_SIM_PRESERVE_PREFS=1
+"$SIM" --script "$ROOT/sim/scenarios/deep-sleep/intervalometer-deep-sleep-clock-resume.txt"
+
 unset FURBLE_SIM_DEEP_SLEEP_PREFS
 unset FURBLE_SIM_PRESERVE_PREFS
 unset FURBLE_SIM_PREFS

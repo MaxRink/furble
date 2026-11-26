@@ -43,15 +43,15 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   `IR::createChannel()` never sets `with_dma`, so the zero-initialised struct
   keeps it false (`src/FurbleIR.cpp:230-238`), and furble raises the PM CPU
   maximum itself, 160 MHz by default (`include/FurblePlatform.h:25-28`,
-  `src/FurblePlatform.cpp:84`). The sdkconfig boot default of 80 MHz is not what
+  `src/FurblePlatform.cpp:94`). The sdkconfig boot default of 80 MHz is not what
   pins APB. `ESP_PM_CPU_FREQ_MAX` maps to `PM_MODE_CPU_MAX` (ESP-IDF
   `components/esp_pm/pm_impl.c:230-234`), which holds the CPU at its 160 MHz
   maximum, where APB runs at 80 MHz. That matters because the channel divisor is
   fixed at creation, not at enable: on the S3 the prescale comes from the cached
   APB frequency (`components/esp_driver_rmt/src/rmt_common.c:152-169`, called at
-  `:253`), the clock is selected at
+  `:264`), the clock is selected at
   `components/esp_driver_rmt/src/rmt_tx.c:324`, and the lock is only taken
-  later in `rmt_tx_enable()` (`:774`). The argument therefore holds only when
+  later in `rmt_tx_enable()` (`:785`). The argument therefore holds only when
   APB was already 80 MHz at channel creation. Enabling `with_dma` on the S3
   would swap `ESP_PM_CPU_FREQ_MAX` for `ESP_PM_NO_LIGHT_SLEEP`, which maps to
   `PM_MODE_APB_MIN` (`components/esp_pm/pm_impl.c:237-238`), and the 38 kHz
@@ -415,11 +415,11 @@ live in the pinned `libdeps` copy, not in this tree. Review record:
    `esp_driver_rmt`. The operational conclusion survives on furble facts, not on
    the driver: `src/FurbleIR.cpp:230-238` leaves `with_dma` false, and furble
    raises the PM CPU maximum to 160 MHz at boot
-   (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:84`), where APB
+   (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:94`), where APB
    runs at 80 MHz. The 80 MHz sdkconfig boot default is not the reason the APB
    clock holds. The divisor is fixed at channel creation
    (`components/esp_driver_rmt/src/rmt_tx.c:324`), before the driver takes the
-   lock in `rmt_tx_enable()` (`:774`), so the argument holds only when APB was
+   lock in `rmt_tx_enable()` (`:785`), so the argument holds only when APB was
    already 80 at creation. Enabling `with_dma` on the S3 would swap the lock for
    `ESP_PM_NO_LIGHT_SLEEP`, which maps to `PM_MODE_APB_MIN`
    (`components/esp_pm/pm_impl.c:237-238`), and the 38 kHz carrier would drift

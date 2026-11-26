@@ -151,5 +151,81 @@ int main() {
   CHECK(!rtcValueTrusted(true, true));
   CHECK(rtcValueTrusted(false, false));
   CHECK(rtcValueTrusted(false, true));
+
+  // Timed wake prediction (plan 320 C2). A timed power-off knows the interval
+  // it armed, so the clock at the wake instant is predicted rather than
+  // restored. The bound is 2 % of the interval plus a two second base, on top
+  // of the uncertainty the clock already carried.
+  CHECK(sourcePriority(TimeSource::NVS) < sourcePriority(TimeSource::TIMED_WAKE));
+  CHECK(sourcePriority(TimeSource::TIMED_WAKE) < sourcePriority(TimeSource::RTC));
+  CHECK(sourcePriority(TimeSource::TIMED_WAKE) < sourcePriority(TimeSource::GPS));
+  CHECK(valid(TimeSample {noon, 1000, TimeSource::TIMED_WAKE, 0}));
+
+  // A two hour interval: 2 % is 144 s, plus the 2 s base.
+  CHECK(timedWakeUncertaintyMs(0, 7200) == 144000U + TIMED_WAKE_BASE_MS);
+  // The interval is bounded and a zero interval means there was no timer.
+  CHECK(timedWakeUncertaintyMs(1000, 0) == 1000U + TIMED_WAKE_BASE_MS);
+  CHECK(timedWakeUncertaintyMs(MAX_UNCERTAINTY_MS, 3600) == MAX_UNCERTAINTY_MS);
+  CHECK(TIMED_WAKE_MAX_SLEEP_S == 24U * 60U * 60U);
+
+  TimeSample prediction = {};
+  CHECK(predictTimedWake(gps, 3000, 7200, prediction));
+  CHECK(prediction.source == TimeSource::TIMED_WAKE);
+  CHECK(prediction.epoch_us == gps.epoch_us + 7200ULL * 1000000ULL);
+  CHECK(prediction.uncertainty_ms == 1000U + 144000U + TIMED_WAKE_BASE_MS);
+  CHECK(prediction.monotonic_ms == 3000);
+  // The prediction carries the source that produced it through the same
+  // versioned record as every other sample, so the boot path needs no second
+  // decoder.
+  std::array<uint8_t, RECORD_BYTES> wake = {};
+  CHECK(encode(prediction, wake.data(), wake.size()) == RECORD_BYTES);
+
+  // Fail closed: a stopped clock, a zero interval, an interval past the day,
+  // and an uncertainty that the addition would push over the ceiling.
+  CHECK(!predictTimedWake(nvs, 0, 0, prediction));
+  CHECK(!predictTimedWake(nvs, 0, TIMED_WAKE_MAX_SLEEP_S + 1, prediction));
+  TimeSample expired = gps;
+  expired.uncertainty_ms = MAX_UNCERTAINTY_MS - 100;
+  CHECK(!predictTimedWake(expired, 3000, 7200, prediction));
+  TimeSample invalid = gps;
+  invalid.source = TimeSource::NONE;
+  CHECK(!predictTimedWake(invalid, 3000, 3600, prediction));
+  CHECK(prediction.source == TimeSource::TIMED_WAKE);
+
+  // Adoption adds the boot time that the timer measured, and nothing else: a
+  // confirmed wake already bounds the interval.
+  TimeSample adopted = {};
+  CHECK(adoptTimedWake(wake.data(), wake.size(), 4000, &nvs, adopted));
+  CHECK(adopted.source == TimeSource::TIMED_WAKE);
+  CHECK(adopted.epoch_us == prediction.epoch_us + 4000000ULL);
+  CHECK(adopted.uncertainty_ms == prediction.uncertainty_ms);
+  CHECK(adopted.monotonic_ms == 4000);
+  CHECK(validAt(adopted, 4000));
+  // No checkpoint at boot is allowed: a first power-on has nothing stored.
+  CHECK(adoptTimedWake(wake.data(), wake.size(), 4000, nullptr, adopted));
+  // A checkpoint that reaches past the prediction cannot have been written
+  // before the shutdown the record describes, so the record is refused.
+  TimeSample ahead = nvs;
+  ahead.epoch_us = prediction.epoch_us + 1000000ULL;
+  CHECK(!adoptTimedWake(wake.data(), wake.size(), 4000, &ahead, adopted));
+
+  // Fail closed: another source's record, a truncated or corrupted record, an
+  // erased one, and a boot time that would leave the accepted epoch range.
+  std::array<uint8_t, RECORD_BYTES> notWake = {};
+  CHECK(encode(nvs, notWake.data(), notWake.size()) == RECORD_BYTES);
+  CHECK(!adoptTimedWake(notWake.data(), notWake.size(), 0, nullptr, adopted));
+  CHECK(!adoptTimedWake(wake.data(), wake.size() - 1, 0, nullptr, adopted));
+  CHECK(!adoptTimedWake(nullptr, wake.size(), 0, nullptr, adopted));
+  std::array<uint8_t, RECORD_BYTES> erasedWake = {};
+  CHECK(!adoptTimedWake(erasedWake.data(), erasedWake.size(), 0, nullptr, adopted));
+  for (size_t byte = 0; byte < wake.size(); byte++) {
+    std::array<uint8_t, RECORD_BYTES> corrupted = wake;
+    corrupted[byte] ^= 0x20;
+    CHECK(!adoptTimedWake(corrupted.data(), corrupted.size(), 0, nullptr, adopted));
+  }
+  // A boot time so far ahead that the prediction would leave the accepted
+  // epoch range is refused rather than wrapped.
+  CHECK(!adoptTimedWake(wake.data(), wake.size(), std::numeric_limits<uint64_t>::max(), nullptr,
+                        adopted));
   return 0;
 }

@@ -283,7 +283,7 @@ the next transaction is the first valid one (manual, `I2C_CFG` note 2, page
 address within 300 ms puts the part back to sleep (same note). Furble does
 retry: `m5pm1Access()` runs an access twice before it counts a failure
 (`include/FurblePlatform.h:370-394`), and `wakeM5PM1()` spends a discarded
-voltage read so the retry is the real one (`src/FurblePlatform.cpp:278-283`).
+voltage read so the retry is the real one (`src/FurblePlatform.cpp:288-293`).
 The PM1 button poll and the three `begin()` calls reach the library directly,
 so a failed button read costs one 20 ms poll, not a lost press. M5Unified also
 clears the PM1 watchdog count at begin. Furble later arms the watchdog for 45
@@ -434,7 +434,7 @@ state through light sleep, which is what the LED and IR paths rely on.
 is powered from VBUS and draws nothing from the battery when unplugged. The five
 battery release builds have no console. The ESP32 console builds (the `-debug`
 envs) hold `ESP_PM_APB_FREQ_MAX` for the life of the console
-(`src/FurbleConsole.cpp:2838-2847`), which blocks light sleep by the IDF mode
+(`src/FurbleConsole.cpp:2840-2849`), which blocks light sleep by the IDF mode
 mapping. This is stated in the source comment and is not a measurement. The
 StickS3, headless, and Waveshare console builds use USB Serial/JTAG instead and
 take the lock described below.
@@ -603,7 +603,7 @@ Estimates are not measurements unless the label says `measured-local`.
   current library path, so the PM1 is not idle-sleeping between reads, and the
   manual makes idle sleep invalid while PWM is enabled and while entering
   Download mode in any case (M5PM1 Chip User Manual V1.9, pages 27 and 28).
-- Evidence: `code` (`src/FurblePlatform.cpp:980-996`,
+- Evidence: `code` (`src/FurblePlatform.cpp:1002-1018`,
   `include/FurblePlatformPolicy.h:19-24`, M5Unified 0.2.20
   `M5Unified.cpp:3414` and `M5Unified.hpp:647`), `datasheet` (`I2C_CFG`).
 - Estimated saving: 40 to 150 uA average (`inferred`), unchanged from the
@@ -660,7 +660,7 @@ Estimates are not measurements unless the label says `measured-local`.
   for the whole console session. The same gap exists between boot and the first
   UI display-off transition.
 - Evidence: `code` (`src/FurbleUI.cpp:10150-10167`,
-  `src/FurblePlatform.cpp:221-254`), `datasheet` (`PWR_CFG` bit 4).
+  `src/FurblePlatform.cpp:231-264`), `datasheet` (`PWR_CFG` bit 4).
 - Estimated saving: 1 to 3 mA while the LED is on (`inferred`). The LED
   current is not in the tree and is not measured. The LED is already cleared on
   a normal display-off, so this only affects console mode and the boot window.
@@ -1038,7 +1038,7 @@ Estimates are not measurements unless the label says `measured-local`.
   reads only `getAccel`; the gyro is never read. The IMU setting defaults off
   and applies on reboot. The hardware any-motion engine in plan 20 is not the
   default.
-- Evidence: `code` (`src/FurbleIMU.cpp`, `src/FurblePlatform.cpp:40`),
+- Evidence: `code` (`src/FurbleIMU.cpp`, `src/FurblePlatform.cpp:50`),
   `datasheet` (BMI270 685 uA normal versus 4 to 10 uA accel low power; MPU6886
   2.79 mA versus 40 uA accel low power), `model` (the peripheral term is fixed
   at 0.0035 mA, not the IMU normal-mode current).
@@ -1069,7 +1069,7 @@ Estimates are not measurements unless the label says `measured-local`.
 - Current behavior: `armMotionWake()` configures GPIO13 as an input with the
   internal pull-up enabled, because the code treats the PM1 IRQ as open-drain
   active low. While the line is held low, the pull-up sinks about 73 uA.
-- Evidence: `code` (`src/FurblePlatform.cpp:461-472`), `datasheet` (45 kOhm
+- Evidence: `code` (`src/FurblePlatform.cpp:471-482`), `datasheet` (45 kOhm
   typical pull-up).
 - Estimated saving: 0 to 73 uA (`inferred`), depending on how long the line is
   asserted. A latched IRQ that never releases is the worst case, and that is
@@ -1469,7 +1469,7 @@ Estimates are not measurements unless the label says `measured-local`.
   console, which blocks light sleep. The debug fragment adds
   `CONFIG_PM_PROFILING`, FreeRTOS run time stats, and the LVGL sysmon and perf
   monitor. The single factory partition means no OTA.
-- Evidence: `code` (`src/FurbleConsole.cpp:2838-2847`, `sdkconfig.debug`,
+- Evidence: `code` (`src/FurbleConsole.cpp:2840-2849`, `sdkconfig.debug`,
   `sdkconfig.m5stack-core-usb-debug`).
 - Estimated saving: 0. This profile is not a release configuration. Its current
   is not a release current.

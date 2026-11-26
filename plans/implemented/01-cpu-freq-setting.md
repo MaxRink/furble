@@ -28,7 +28,7 @@ Out of scope:
 
 - `include/FurblePlatform.h:46` `const int CPU_MAX_FREQ_MHZ = 160;`
 - `include/FurblePlatform.h:47` `const int CPU_MIN_FREQ_MHZ = 40;`
-- `src/FurblePlatform.cpp:65-72` `Platform::setSleep()` builds `esp_pm_config_t`
+- `src/FurblePlatform.cpp:75-82` `Platform::setSleep()` builds `esp_pm_config_t`
   from those two constants and calls `ESP_ERROR_CHECK(esp_pm_configure(...))`.
 - `platformio.ini:10` `board_build.f_cpu = 80000000L`
 - `sdkconfig.m5stick-s3:1395` `CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=80`
@@ -50,7 +50,7 @@ current behaviour as the default.
 - `include/FurblePlatform.h:46-47`, replace `CPU_MAX_FREQ_MHZ` with a member
   holding the current maximum, keep `CPU_MIN_FREQ_MHZ` as a constant, and declare
   `setCPUMaxFreq(uint8_t mhz)` and `uint8_t getCPUMaxFreq(void) const`.
-- `src/FurblePlatform.cpp:65-72`, `setSleep()` reads the member. Add
+- `src/FurblePlatform.cpp:75-82`, `setSleep()` reads the member. Add
   `setCPUMaxFreq()` which stores the value, then re-applies the current sleep
   state through the same `esp_pm_configure` path.
 - `src/FurblePlatform.cpp:13-14`, note that `setSleep(true)` runs before

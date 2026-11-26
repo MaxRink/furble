@@ -58,17 +58,27 @@ uint8_t sourcePriority(TimeSource source) {
   // GPS and NTP are both authoritative UTC sources. Keep them at the same
   // level so whichever one arrives first cannot be displaced by a less
   // reliable fallback, while either can correct RTC/NVS state.
+  //
+  // A timed-wake prediction is deliberately between a stored checkpoint and a
+  // calendar chip: it knows how long the device was off, but that knowledge is
+  // the programmed interval plus an estimated timer bound, not a measurement.
   switch (source) {
     case TimeSource::GPS:
     case TimeSource::NTP:
       return 5;
+    case TimeSource::COMPANION:
+      return 4;
+    case TimeSource::RTC:
+      return 3;
+    case TimeSource::TIMED_WAKE:
+      return 2;
     default:
       return static_cast<uint8_t>(source);
   }
 }
 
 bool valid(const TimeSample &sample) {
-  return sample.source != TimeSource::NONE && sample.source <= TimeSource::NTP
+  return sample.source != TimeSource::NONE && sample.source <= TimeSource::TIMED_WAKE
          && sample.epoch_us >= MIN_EPOCH_SECONDS * 1000000ULL
          && sample.epoch_us < MAX_EPOCH_SECONDS * 1000000ULL
          && sample.uncertainty_ms <= MAX_UNCERTAINTY_MS;
@@ -182,7 +192,7 @@ bool decode(const uint8_t *buffer, size_t length, TimeSample &sample) {
     return false;
   }
   const TimeSource source = static_cast<TimeSource>(record.source);
-  if (source == TimeSource::NONE || source > TimeSource::NTP) {
+  if (source == TimeSource::NONE || source > TimeSource::TIMED_WAKE) {
     return false;
   }
   sample = {record.epoch_us, record.uncertainty_ms, source, 0};
@@ -218,6 +228,68 @@ bool restoreRetained(const uint8_t *record,
     return false;
   }
   sample = restored;
+  return true;
+}
+
+uint32_t timedWakeUncertaintyMs(uint32_t uncertainty_ms, uint32_t programmed_seconds) {
+  const uint64_t growth =
+      (static_cast<uint64_t>(programmed_seconds) * 1000ULL * TIMED_WAKE_PPM + 999999ULL)
+      / 1000000ULL;
+  const uint64_t grown =
+      static_cast<uint64_t>(uncertainty_ms) + growth + static_cast<uint64_t>(TIMED_WAKE_BASE_MS);
+  return grown > MAX_UNCERTAINTY_MS ? MAX_UNCERTAINTY_MS : static_cast<uint32_t>(grown);
+}
+
+bool predictTimedWake(const TimeSample &current,
+                      uint64_t monotonic_ms,
+                      uint32_t programmed_seconds,
+                      TimeSample &prediction) {
+  if (!validAt(current, monotonic_ms) || (programmed_seconds == 0)
+      || (programmed_seconds > TIMED_WAKE_MAX_SLEEP_S)) {
+    return false;
+  }
+  const uint64_t epoch_us = predictedEpochUs(current, monotonic_ms)
+                            + static_cast<uint64_t>(programmed_seconds) * 1000000ULL;
+  const uint32_t uncertainty_ms =
+      timedWakeUncertaintyMs(predictedUncertaintyMs(current, monotonic_ms), programmed_seconds);
+  const TimeSample candidate = {epoch_us, uncertainty_ms, TimeSource::TIMED_WAKE, monotonic_ms};
+  // A bound that has already reached the ceiling is no bound at all, so no
+  // record is written and the next boot keeps the checkpoint path.
+  if ((uncertainty_ms >= MAX_UNCERTAINTY_MS) || !validAt(candidate, monotonic_ms)) {
+    return false;
+  }
+  prediction = candidate;
+  return true;
+}
+
+bool adoptTimedWake(const uint8_t *record,
+                    size_t length,
+                    uint64_t boot_ms,
+                    const TimeSample *checkpoint,
+                    TimeSample &sample) {
+  TimeSample predicted = {};
+  if (!decode(record, length, predicted) || (predicted.source != TimeSource::TIMED_WAKE)) {
+    return false;
+  }
+  // The prediction describes the instant the timer fired, and the boot timer
+  // measured the time from that instant to here, so the two add up without a
+  // growth term of their own. A checkpoint that reaches further than the
+  // prediction cannot have been written before the shutdown it describes, so
+  // the record is stale or was left by another board.
+  if ((checkpoint != nullptr) && valid(*checkpoint)
+      && (checkpoint->epoch_us > predicted.epoch_us)) {
+    return false;
+  }
+  constexpr uint64_t maxEpochUs = MAX_EPOCH_SECONDS * 1000000ULL;
+  if ((boot_ms > (maxEpochUs / 1000ULL)) || (predicted.epoch_us > maxEpochUs - boot_ms * 1000ULL)) {
+    return false;
+  }
+  const TimeSample adopted = {predicted.epoch_us + boot_ms * 1000ULL, predicted.uncertainty_ms,
+                              TimeSource::TIMED_WAKE, boot_ms};
+  if (!validAt(adopted, boot_ms)) {
+    return false;
+  }
+  sample = adopted;
   return true;
 }
 

@@ -173,7 +173,7 @@ Out of scope:
   `Settings::init()` at 28, `Device::init(...)` at 29, the control task at 32
   and `vUITask(NULL)` at 39. Lines 27 to 32 are display independent and stay.
   Line 39 branches.
-- `src/FurblePlatform.cpp:9-45`, `Platform::getInstance`. It calls `M5.begin()`
+- `src/FurblePlatform.cpp:9-55`, `Platform::getInstance`. It calls `M5.begin()`
   with `cfg.clear_display = true` at line 17. On a bare devkit `M5.getBoard()`
   returns `board_unknown` and `M5.Display` has no panel. Confirm M5Unified
   tolerates this rather than assuming it. The `m_PMICHack` switch at lines
@@ -237,7 +237,7 @@ is too small to justify one.
 
 The 5 ms delay is worth keeping identical rather than lengthening. It is what
 makes `Platform::update()` responsive enough for the PMIC click counter at
-`src/FurblePlatform.cpp:54-60`.
+`src/FurblePlatform.cpp:64-70`.
 
 ### The intervalometer is not a UI feature but it lives in the UI
 
@@ -278,7 +278,7 @@ speaker and the mic, so the remaining risk is the display and `pmic_button`.
 Test this on the StickS3 running the headless image. A bare devkit is out of scope for 33a (PMIC dependency, see Scope).
 If `M5.begin()` misbehaves, the fallback is to skip M5Unified entirely under
 `FURBLE_NO_DISPLAY` and call `esp_timer_get_time()` directly for
-`Platform::tick()` at `src/FurblePlatform.cpp:51-53`. That is a bigger change
+`Platform::tick()` at `src/FurblePlatform.cpp:61-63`. That is a bigger change
 and should be a second PR if it is needed.
 
 ### Flash saved

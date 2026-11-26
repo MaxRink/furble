@@ -413,6 +413,100 @@ int main() {
   softResetClock();
   boot(Rtc::ABSENT, ESP_RST_SW, false);
   CHECK(!keeper.status().valid);
+
+  // Timed wake prediction (plan 320 C2). A board without an RTC chip keeps
+  // only the stored checkpoint across a timed power-off, and that checkpoint
+  // does not advance over the off interval, so the resumed run had no clock it
+  // could trust. The prediction rides the power-off retained buffer instead.
+  nvs_test_reset();
+  powerOnClock();
+  boot(Rtc::ABSENT, ESP_RST_POWERON, true);
+  CHECK(keeper.update(Furble::TimeSource::GPS, epoch, 1000));
+  constexpr uint64_t tenMinutesMs = 10ULL * 60ULL * 1000ULL;
+  constexpr uint32_t oneHourS = 60U * 60U;
+  // 10 min of running time at 100 ppm is 60 ms of growth, then 2 % of the one
+  // hour interval plus the two second base for the timer's resolution.
+  constexpr uint32_t wakeUncertainty =
+      1000 + 60
+      + static_cast<uint32_t>((oneHourS * 1000ULL * Furble::TimeKeeperPolicy::TIMED_WAKE_PPM)
+                              / 1000000ULL)
+      + Furble::TimeKeeperPolicy::TIMED_WAKE_BASE_MS;
+  setTimeMs(tenMinutesMs);
+  std::array<uint8_t, Furble::TimeKeeperPolicy::RECORD_BYTES> wake = {};
+  CHECK(keeper.prepareTimedWake(oneHourS, wake.data(), wake.size())
+        == Furble::TimeKeeperPolicy::RECORD_BYTES);
+  CHECK(nvs_test_commit_count() == 1);
+
+  // The power cut restarts the monotonic timer and clears the system clock.
+  setTimeMs(0);
+  powerOnClock();
+  boot(Rtc::ABSENT, ESP_RST_POWERON, true);
+  CHECK(keeper.status().valid);
+  CHECK(keeper.status().source == Furble::TimeSource::NVS);
+  CHECK(keeper.status().epoch_us == epoch);
+  // One second of this boot has already elapsed when the marker is consumed.
+  setTimeMs(1000);
+  CHECK(keeper.adoptTimedWake(wake.data(), wake.size()));
+  CHECK(keeper.status().source == Furble::TimeSource::TIMED_WAKE);
+  CHECK(keeper.status().epoch_us
+        == epoch + tenMinutesMs * 1000ULL + oneHourS * 1000000ULL + 1000000ULL);
+  CHECK(keeper.status().uncertainty_ms == wakeUncertainty);
+  // The prediction is the system clock now, so a camera time sync and a
+  // geotag written after the wake carry the recovered value.
+  CHECK(furble_sim_system_time_us() == keeper.status().epoch_us);
+  // Adoption is free: a timelapse cycle must not turn a timed wake into NVS
+  // wear.
+  CHECK(nvs_test_commit_count() == 1);
+
+  // A further soft reset keeps the adopted source and the running clock, so a
+  // panic straight after a wake does not fall back to the stale checkpoint.
+  softResetClock();
+  boot(Rtc::ABSENT, ESP_RST_PANIC, false);
+  CHECK(keeper.status().source == Furble::TimeSource::TIMED_WAKE);
+  CHECK(keeper.status().epoch_us
+        == epoch + tenMinutesMs * 1000ULL + oneHourS * 1000000ULL + 1000000ULL);
+
+  // A record from another source and an erased buffer both keep the
+  // checkpoint path, which is exactly what the board did before the record.
+  nvs_test_reset();
+  powerOnClock();
+  boot(Rtc::ABSENT, ESP_RST_POWERON, true);
+  CHECK(keeper.update(Furble::TimeSource::GPS, epoch, 1000));
+  setTimeMs(0);
+  powerOnClock();
+  boot(Rtc::ABSENT, ESP_RST_POWERON, true);
+  CHECK(keeper.status().source == Furble::TimeSource::NVS);
+  std::array<uint8_t, Furble::TimeKeeperPolicy::RECORD_BYTES> notWake = {};
+  const Furble::TimeSample stored = {epoch, 1000, Furble::TimeSource::NVS, 0};
+  CHECK(Furble::TimeKeeperPolicy::encode(stored, notWake.data(), notWake.size())
+        == Furble::TimeKeeperPolicy::RECORD_BYTES);
+  CHECK(!keeper.adoptTimedWake(notWake.data(), notWake.size()));
+  std::array<uint8_t, Furble::TimeKeeperPolicy::RECORD_BYTES> erasedWake = {};
+  CHECK(!keeper.adoptTimedWake(erasedWake.data(), erasedWake.size()));
+  CHECK(keeper.status().source == Furble::TimeSource::NVS);
+  CHECK(keeper.status().epoch_us == epoch);
+
+  // A first power-on has no checkpoint to compare the record against, and the
+  // prediction is still adopted: the interval was armed, so the value is
+  // better than no clock at all.
+  nvs_test_reset();
+  powerOnClock();
+  boot(Rtc::ABSENT, ESP_RST_POWERON, true);
+  CHECK(!keeper.status().valid);
+  setTimeMs(1000);
+  CHECK(keeper.adoptTimedWake(wake.data(), wake.size()));
+  CHECK(keeper.status().source == Furble::TimeSource::TIMED_WAKE);
+  CHECK(keeper.status().epoch_us
+        == epoch + tenMinutesMs * 1000ULL + oneHourS * 1000000ULL + 1000000ULL);
+
+  // With no valid clock at shutdown there is nothing to predict, so the buffer
+  // stays untouched and the next boot keeps the checkpoint path.
+  nvs_test_reset();
+  powerOnClock();
+  boot(Rtc::ABSENT, ESP_RST_POWERON, true);
+  std::array<uint8_t, Furble::TimeKeeperPolicy::RECORD_BYTES> empty = {};
+  CHECK(keeper.prepareTimedWake(oneHourS, empty.data(), empty.size()) == 0);
+
   hostTimeResetReason() = ESP_RST_POWERON;
   return 0;
 }

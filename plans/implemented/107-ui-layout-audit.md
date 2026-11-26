@@ -46,7 +46,7 @@ Mechanism:
     `ICON_HEADER_SIZE` (24px, `include/FurbleUI.h`), plus a small floating
     shutter-lock icon and a grey connector line. This is the layout a real
     M5StickS3 uses, because the StickS3 has no touch panel.
-- The sim forces the touch branch. `sim/FurblePlatformSim.cpp:31-37`: "The SDL
+- The sim forces the touch branch. `sim/FurblePlatformSim.cpp:32-38`: "The SDL
   panel always attaches a mouse-driven touch device, so `M5.Touch.isEnabled()`
   is true regardless of the simulated board. A scenario can seed `no_touch true`
   to detach it." The walkthrough scenario did not seed `no_touch true`, so the

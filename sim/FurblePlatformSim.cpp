@@ -19,6 +19,7 @@
 #include "FurblePlatformPolicy.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
+#include "FurbleTimeKeeper.h"
 #include "FurbleWatchdog.h"
 #include "Scan.h"
 #include "clock.h"
@@ -40,6 +41,11 @@ using Watchdog::PM1_FEED_PERIOD_MS;
 using Watchdog::PM1_TIMEOUT_S;
 #endif
 
+// The host has no M5PM1 RTC buffer, so the timed-wake clock record lives in an
+// NVS blob beside the wake marker: the prefs file is the only store that
+// crosses a simulated power cycle. Both are written at the simulated shutdown
+// and consumed on the next boot, as Platform::consumeTimedWake() does.
+constexpr const char *TIMED_WAKE_RECORD_KEY = "sim_wake_time";
 }  // namespace
 
 Platform &Platform::getInstance(void) {
@@ -377,6 +383,25 @@ bool Platform::powerOffUntil(uint32_t seconds) {
   if (markerWritten != sizeof(bool)) {
     return false;
   }
+
+  // The M5PM1 keeps its 32-byte RTC buffer while the ESP32 is off, and the
+  // production path predicts the wall clock into it here. The host has no PM1
+  // RTC buffer, so the same bytes go to the prefs file beside the marker. They
+  // are a copy of the production record, not a second implementation of it,
+  // and adoption runs the production TimeKeeper path.
+  uint8_t prediction[TimeKeeperPolicy::RECORD_BYTES] = {};
+  const size_t predictionLength =
+      TimeKeeper::getInstance().prepareTimedWake(seconds, prediction, sizeof(prediction));
+  {
+    Preferences record;
+    record.begin(FURBLE_STR, false);
+    if (predictionLength > 0) {
+      record.put(TIMED_WAKE_RECORD_KEY, prediction, predictionLength);
+    } else {
+      record.remove(TIMED_WAKE_RECORD_KEY);
+    }
+    record.end();
+  }
   // The RTC chip counts on its own supply while the SoC is off. Record the
   // sleep interval so the next process boots from an advanced calendar.
   Sim::hwRtcPowerOff(seconds);
@@ -394,7 +419,21 @@ bool Platform::consumeTimedWake(void) {
   if (timedWake) {
     prefs.remove("sim_timed_wake");
   }
+  // The record is consumed on every boot, exactly as the PM1 RTC buffer is
+  // cleared in Platform::consumeTimedWake(): a later manual power-on must not
+  // adopt an interval that never elapsed.
+  uint8_t prediction[TimeKeeperPolicy::RECORD_BYTES] = {};
+  const size_t predictionLength =
+      prefs.getBytesLength(TIMED_WAKE_RECORD_KEY) == sizeof(prediction)
+          ? prefs.get(TIMED_WAKE_RECORD_KEY, prediction, sizeof(prediction))
+          : 0;
+  if (prefs.isKey(TIMED_WAKE_RECORD_KEY)) {
+    prefs.remove(TIMED_WAKE_RECORD_KEY);
+  }
   prefs.end();
+  if (timedWake && (predictionLength == sizeof(prediction))) {
+    (void)TimeKeeper::getInstance().adoptTimedWake(prediction, predictionLength);
+  }
   return timedWake;
 }
 

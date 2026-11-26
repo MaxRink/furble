@@ -76,14 +76,14 @@ Out of scope:
 
 ## Files to change
 
-- `src/FurblePlatform.cpp:34-39`, the `FURBLE_M5STICKS3` block inside
+- `src/FurblePlatform.cpp:34-49`, the `FURBLE_M5STICKS3` block inside
   `Platform::getInstance()`. Line 35 is `m_M5PM1.begin(&M5.In_I2C)`, which must
   happen before any watchdog register access. Lines 36-38 are the three gesture
   disables. Arm the watchdog immediately after line 38.
-- `src/FurblePlatform.cpp:74-80`, `Platform::powerOff()`. Under
+- `src/FurblePlatform.cpp:84-90`, `Platform::powerOff()`. Under
   `FURBLE_M5STICKS3` it calls `m_M5PM1.shutdown()` at line 76. Disarm the
   watchdog before that call.
-- `src/FurblePlatform.cpp:82-101`, `Platform::update()`. It runs every UI loop
+- `src/FurblePlatform.cpp:92-111`, `Platform::update()`. It runs every UI loop
   iteration and already talks to the PM1 over I2C at line 86
   (`m_M5PM1.btnGetState`). This is the natural place for the feed, since it is
   already the one function that touches the PM1 on every pass.
@@ -429,7 +429,7 @@ On device, M5StickS3 over USB:
     step 5.
 
 Battery drain: the feed adds one I2C register write per second on a bus that is
-already polled every loop for the button state (`src/FurblePlatform.cpp:84-88`).
+already polled every loop for the button state (`src/FurblePlatform.cpp:94-98`).
 Measure idle current with the watchdog on and off over ten minutes each and
 report both numbers. If the difference is not in the noise, investigate the PM1
 I2C idle sleep interaction before merging.
