@@ -7,6 +7,7 @@
 
 #include <M5Unified.h>
 
+#include "FurbleIMUMotionScale.h"
 #include "FurblePlatform.h"
 
 namespace Furble {
@@ -15,8 +16,14 @@ namespace IMU {
 namespace {
 
 // Register addresses and bit fields are from the InvenSense MPU-6886 datasheet
-// register map, revision 1.2. The arm sequence matches the M5StickC library's
+// DS-000193 revision 1.1. The arm sequence matches the M5StickC library's
 // enableWakeOnMotion(), which furble cannot call because it uses M5Unified.
+//
+// The threshold registers are at 0x20, 0x21 and 0x22 per table 15 and sections
+// 8.20 to 8.22. Section 5.1 step 4 of the same document says to write
+// ACCEL_WOM_THR at 0x1F, and table 15 has no 0x1F entry: that step is a vendor
+// document defect, and this driver follows the register map. The M5StickC-Plus
+// vendor driver uses the same three addresses.
 constexpr uint8_t IMU_ADDRESS = 0x68;
 constexpr uint8_t WHO_AM_I = 0x75;
 constexpr uint8_t EXPECTED_WHO_AM_I = 0x19;
@@ -37,10 +44,15 @@ constexpr uint32_t POLL_INTERVAL_MS = 1000;
 // The MPU6886 has wake on motion but no no-motion engine, so entry into the
 // stationary state stays a software decision. The hold matches the software
 // backend and the BMI270 no-motion duration exactly.
-constexpr uint32_t STATIONARY_HOLD_MS = 60 * 1000;
-// One threshold count is 4 mg, so 0x10 is about 64 mg. That is close to the
-// BMI270 any-motion default of 83 mg, which keeps the two chips comparable.
-constexpr uint8_t WOM_THRESHOLD = 0x10;
+constexpr uint32_t STATIONARY_HOLD_MS = Scale::MPU6886_STATIONARY_HOLD_MS;
+// 0x10 counts at the assumed count size of FurbleIMUMotionScale.h is 64 mg.
+// ASSUMPTION: DS-000193 revision 1.1 sections 8.20 to 8.22 give no per-count
+// figure for these registers, so 4 mg per count is a family figure this project
+// has not verified. 64 mg sits near the BMI270 any-motion default of 83 mg,
+// which is what keeps the two chips comparable, but the real sensitivity is
+// only known once a tilt test measures it. See the scale header and
+// plans/332-imu-motion-scale-audit.md before changing either value.
+constexpr uint8_t WOM_THRESHOLD = Scale::MPU6886_WOM_THRESHOLD_COUNTS;
 // INT_STATUS bits 7, 6 and 5 are WOM_X, WOM_Y and WOM_Z.
 constexpr uint8_t WOM_STATUS_MASK = 0xE0;
 

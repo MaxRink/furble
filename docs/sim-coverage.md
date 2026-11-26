@@ -70,6 +70,19 @@ prove the device waited, only that production asked the ROM for the delay.
   command before any other) stays a hardware item. See
   `plans/334-sim-hardware-alignment.md`.
 
+## Hardware facts the doubles do not model
+
+A boundary target replaces the lowest hardware API, so a vendor timing or a
+memory split is outside its reach by construction. These are the ones that
+matter to a modelled feature, with the document that governs each:
+
+| Feature | Fact the double does not cover | Document |
+| :--- | :--- | :--- |
+| IR RMT (`boundary.ir_driver`, `peripheral.ir`) | `rmt_tx_channel_config_t.mem_block_symbols` is one RAM block: 64 words on the ESP32 and 48 on the S3, because the ESP32 shares one 512 by 32-bit RAM over eight channels that are each TX or RX and the S3 shares one 384 by 32-bit RAM over four TX and four RX channels. The host RMT double accepts any block size, so a frame that would overflow a real block is not caught here | ESP32 TRM v5.9, 30.2.1 and 30.2.2, p. 728; ESP32-S3 TRM v1.8, 37.2 p. 1415 and 37.3.2.2 p. 1417; `src/FurbleIR.cpp:233` |
+| W5500 Ethernet (`boundary.waveshare_eth`) | RSTn must be held low at least 500 us, the internal PLL locks within 1 ms of release, and the regulator wakes in 10 us. The SPI, GPIO and W5500 double completes a reset in zero time | W5500 datasheet Ver 1.1.0, 1.1 pin 37 p. 10, 5.5.1 and Figure 22 p. 60, 5.5.2 p. 60 |
+| USB Serial/JTAG console | RTS 1 with DTR 0 resets the SoC, SRST resets the digital system but not the USB Serial/JTAG controller (which is why the host keeps the port), and the module needs the PLL and APB_CLK at 40 MHz or more. There is no USB controller in the simulator, so a port-open reset is not replayed | ESP32-S3 TRM v1.8, Table 33.3-2 p. 1248, 33.3.5 p. 1249, 33.4.2 p. 1253, Tables 33.4-3 and 33.4-4 p. 1254 |
+| Octal PSRAM boards (`m5stick-s3`, `waveshare-s3-eth`) | GPIO33 to GPIO37 and SPICS1 belong to the octal PSRAM on both boards, so a profile that assigned them would fail on hardware and no memory scenario would notice | ESP32-S3-PICO-1 datasheet v1.2, Table 1-1 p. 9 and pin table note 4 p. 13; ESP32-S3 datasheet v2.2, 2.3.5 p. 26 and Table 2-14 p. 31 |
+
 ## Checkers
 
 ```sh
