@@ -1,5 +1,12 @@
 # Audio overcurrent, IR RMT timeout and SD card faults.
-seed hw_profile core-4mb
+#
+# The fault shims are board-independent, but an IR fault needs an emitter that
+# is powered: the Core row has no emitter at all (`ir.state` is `absent` there,
+# pinned in hw-pmic-ip5306-core.txt), and on the StickS3 the EXT_5V rail feeds
+# the IR parts, so a rail-off run reads `unpowered`. The StickC Plus drives IR
+# TX on G9 from its own GPIO on an AXP192 board, so the fault path is reachable
+# without a rail action.
+seed hw_profile stickc-plus
 wait 100
 assert audio.state idle
 assert ir.state idle

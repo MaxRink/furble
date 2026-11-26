@@ -32,6 +32,8 @@ assert hw.wifi yes
 assert hw.ethernet no
 assert hw.ble yes
 assert hw.ir no
+# The fault shims read the same column: no emitter means no IR state to drive.
+assert ir.state absent
 assert hw.rtc no
 assert hw.rtc_capability match
 assert hw.gauge four_level
