@@ -16,6 +16,66 @@ cd companion/android
 The app supports Android API 26 and higher and targets Android API 37. The
 Gradle wrapper is configured for Gradle 9.4.1 and Android Gradle Plugin 9.2.1.
 
+## Tests
+
+`./gradlew test` runs the JVM unit tests and the Robolectric UI snapshot test.
+The Android CI job already invokes it before the debug APK build:
+
+```sh
+cd companion/android
+./gradlew test
+```
+
+The protocol, camera catalog, auth gate and GATT contract tests are plain JVM
+tests. `CompanionScreenshotTest` is the only test that starts an Android
+runtime: it composes the main screen from `CompanionScreens.kt` with
+Robolectric's native graphics mode, renders it at 720x1440 pixels and compares
+the bitmap with the committed baseline
+`app/src/test/screenshots/companion-main.png`. The comparison allows a channel
+difference of 2 and 0.1 percent of differing pixels, which is 1036 of the
+1,036,800 pixels in the capture.
+
+That budget makes the test a layout gate, not a copy gate. Layout-scale changes
+fail with an order of magnitude to spare: 1 dp more spacing in the status list
+changed 27,667 pixels, 27 times the budget. A text change only fails once it
+reaches roughly a dozen characters: an appended period changed 12 pixels and an
+appended short word 654, while a one-character substitution can land on either
+side of the budget, because the count follows the glyphs that move rather than
+the characters edited.
+
+The slack is insurance for an unproven runner, not a measured requirement. The
+baseline was rendered on macOS arm64 and matched a linux/amd64 render with 0
+differing pixels, so nothing observed needs it. It exists so the first CI run
+cannot fail on glyph noise before that run shows what the runner renders. A
+failure writes the rendered screen to
+`app/build/outputs/screenshots/companion-main-actual.png` and names that path.
+
+Every rendering input is pinned so the same source produces the same pixels:
+API 35 and the `en-rUS` locale through `@Config`, density 2 and font scale 1
+through the composition, and a 360dp x 720dp capture region. The test restores
+the calling JVM locale afterwards. The screen shows no clock, no location fix
+and no network value, so no wall-clock or device state reaches the bitmap. Two
+known nodes, the top bar and the session state line, are asserted before the
+capture, so an asynchronous repository change fails on the node that moved
+instead of on a pixel count.
+
+Regenerate the baseline only after reviewing an intended UI change, then commit
+the new PNG with that change:
+
+```sh
+cd companion/android
+./gradlew testDebugUnitTest --tests '*CompanionScreenshotTest*' -PupdateScreenshots
+```
+
+Update mode turns off both the up-to-date check and the build cache, because the
+regenerated image is also the test task's input, and it writes through a temp
+file so an interrupted run cannot leave a truncated baseline.
+
+Robolectric downloads the Android 15 platform jar, about 197 MB, and its native
+runtime on the first run and reuses them from the Maven cache afterwards. The
+emulator smoke job is unaffected: it installs the debug APK and keeps its launch
+and logcat checks.
+
 ## Protocol
 
 The app targets the additive companion capability contract from
