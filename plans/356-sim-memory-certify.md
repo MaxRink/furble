@@ -149,25 +149,44 @@ they run the whole certified sweep, while this one runs four scenarios, so
 17.15% describes the MQTT owner's reach under memory pressure, not the
 firmware's overall coverage.
 
+### Measured CI result, clang-18, all four stacks
+
+The `Coverage floor` workflow ran on this head (run 45725944601, `CC=clang-18`,
+`LLVM_COV=/usr/lib/llvm-18/bin/llvm-cov`). It selected the new stack, printed
+`Running 4 m5stick-s3 scenarios with 4 workers.`, and reported:
+
+| Stack | Covered | Instrumented | Coverage | Floor |
+| --- | ---: | ---: | ---: | ---: |
+| host | 19,153 | 25,321 | 75.64% | 62.55% |
+| sim m5stick-s3 (135x240) | 17,157 | 26,778 | 64.07% | 50.13% |
+| sim m5stick-c (80x160) | 14,486 | 26,669 | 54.32% | 35.90% |
+| sim m5stack-core (320x240) | 14,176 | 26,700 | 53.09% | 35.12% |
+| sim m5stick-s3 mqtt (135x240) | 4,915 | 28,651 | 17.15% | n/a |
+| sim union | 17,978 | 28,761 | 62.51% | 50.66% |
+| **grand union** | 31,181 | 39,023 | 79.90% | 69.26% |
+
+Every row is at or above its floor and the job ended with `Coverage is at or
+above every floor.` The new stack reproduces the local 4,915 of 28,651 and 491
+of 1,727 exactly under clang-18, so its counted and covered lines do not depend
+on the compiler.
+
 ## Remaining gaps
 
-1. **The union floors must be reratcheted with `--lower` in the clang-18 run.**
-   The MQTT stack adds 1,727 instrumented lines of which 491 are covered, so
-   unioning it pushes the grand union down from the committed 69.26% and the
-   sim union down from 50.66%. Order of magnitude, from the measured 491/1,727
-   against an instrumented union of roughly 38,000 to 40,000 lines: about 1.7
-   points on the grand union and 0.9 on the sim union. The exact values need a
-   full four-stack run, which needs clang-18 and is hours of compilation on
-   this host, so the floors are deliberately left alone. Until that ratchet
-   lands, `tools/coverage.py --check` fails on the union and sim-union rows
-   (measured here as `sim union: 17.15% below floor 50.66%` and
-   `union: 17.15% below floor 69.26%` on the deliberately single-stack run,
-   which also lists the three panel stacks and the host stack as unmeasured),
-   and `.github/workflows/coverage.yml` will fail on it. That is a known,
-   quantified consequence of measuring more code, not a hidden regression:
-   `--ratchet --lower --reason "the MQTT transport build adds the production
-   FurbleMQTT.cpp denominator"` is the documented path and is what the next
-   clang-18 run should do.
+1. **The predicted union-floor failure did not happen, so no floor moved.**
+   This plan expected the union floors to need `--lower`, because unioning 1,727
+   instrumented lines at 491 covered should have pushed the grand union below
+   its committed 69.26% and the sim union below 50.66%. The full clang-18 run
+   falsified that: with all four stacks measured, `sim union` is 17,978 of
+   28,761, 62.51%, and the grand union is 31,181 of 39,023, 79.90%, against
+   those same unchanged floors. The job printed `Coverage is at or above every
+   floor.` and exited 0, so no `--lower` ratchet ran and
+   `tests/coverage_floor.json` is untouched. The prediction came from the
+   deliberately single-stack local run, where the union row prints that one
+   stack's 17.15% because the host and panel stacks are unmeasured. From the
+   printed rows the new stack costs about 2.2 points on the sim union and about
+   2.4 on the grand union, which both rows absorb. Those two floor values stay
+   unwritten on purpose: the stack floor needs its own ratchet, and the file
+   floor would fail every partial run, which item 2 covers.
 2. **`src/FurbleMQTT.cpp` is still absent from `CRITICAL_FILES`.** Its lines
    exist only in the MQTT build, so a file floor would fail every partial run
    that does not measure that stack. Add the file and its 27.43 floor in the
@@ -198,9 +217,10 @@ firmware's overall coverage.
   `src/FurbleMQTT.cpp`, were compiled in this worktree from this worktree's
   sources with `FURBLE_MQTT=1 FURBLE_SIM_MQTT=1`, and the link ran here. The
   build script itself is unmodified.
-- **Only the `sim-mqtt` stack was measured**, by design: it is the stack this
-  change adds. The host stack and the three panel stacks were not re-measured,
-  so this branch has no full-run number to ratchet from.
+- **The local run measured only the `sim-mqtt` stack**, by design: it is the
+  stack this change adds, and the host stack and the three panel stacks were
+  not re-measured here. The four-stack numbers come from the `Coverage floor`
+  workflow on this head (run 45725944601), not from this host.
 - **`sim/scripts/run-memory.sh` is now manifest-driven.** It selects
   `--list-certified --suite e2e --board m5stick-s3 --transport mqtt` instead of
   naming four files, and fails loudly when that selection is empty. The four
