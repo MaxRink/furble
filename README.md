@@ -705,8 +705,13 @@ reset on a board without an RTC chip is not trusted for the resumed wait, so
 that wait counts from boot, as it does after an NVS restore. A verified timed
 wake is bounded instead: the shutdown predicts the clock at the wake instant
 from the interval it arms, keeps the prediction in power-off retained memory,
-and adopts it only when the board confirms the wake, with 2 seconds plus
-2 percent of the powered-off interval as its uncertainty.
+and adopts it only when the board confirms the wake. Its uncertainty is whatever
+the clock carried at shutdown plus two seconds plus two percent of the
+powered-off interval, so it grows by that much on every sleep of a run. The
+intervalometer's own timing is unaffected while no other source corrects the
+clock in between, because its saved deadline and the adopted clock come from the
+same prediction; an absolute timestamp does carry the accumulated window, and a
+GPS, NTP or companion sample replaces it.
 Delay and shutter time can be figured with custom or preset values from 0 to 999 in milliseconds, seconds or minutes.
 
 Some camera protocols such as Ricoh GR trigger capture with a single operation request and do not expose separate exposure start/stop control. For those cameras the intervalometer still controls the wait, count, and delay between captures, but the camera ignores the configured shutter-open duration.

@@ -148,6 +148,16 @@ TimeKeeper &TimeKeeper::getInstance(void) {
 
 void TimeKeeper::flush(void) {}
 
+size_t TimeKeeper::prepareTimedWake(uint32_t, uint8_t *, size_t) {
+  // This target compiles the real Platform but not the clock: no prediction is
+  // produced, so a timed shutdown writes no record and keeps the checkpoint.
+  return 0;
+}
+
+bool TimeKeeper::adoptTimedWake(const uint8_t *, size_t) {
+  return false;
+}
+
 Power &Power::getInstance(void) {
   static Power instance;
   return instance;

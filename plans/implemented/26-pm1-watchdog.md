@@ -200,8 +200,8 @@ change beyond the two declarations.
 
 ### Where to feed
 
-Feed from `Platform::update()` (`src/FurblePlatform.cpp:1452-1480`), rate limited
-to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:410-412`).
+Feed from `Platform::update()` (`src/FurblePlatform.cpp:1503-1531`), rate limited
+to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:421-423`).
 
 `Platform::update()` is called from `UI::task` at `src/FurbleUI.cpp:2125`, once
 every loop, and the loop delays 5 ms at line 2133. So the feed is attempted
@@ -270,7 +270,7 @@ easy to get wrong:
 Disarm before anything that intentionally stops the firmware, otherwise the PM1
 resets a device the user asked to switch off:
 
-- `Platform::powerOff()` (`src/FurblePlatform.cpp:553-598`). Call
+- `Platform::powerOff()` (`src/FurblePlatform.cpp:564-609`). Call
   `watchdogEnable(false)` before `m_M5PM1.shutdown()` at line 76.
 - The Theme page restart button, which calls `esp_restart()` at
   `src/FurbleUI.cpp:1990`. A reset re-runs `Platform::getInstance()` and

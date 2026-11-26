@@ -959,11 +959,22 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     uint8_t prediction[TimeKeeperPolicy::RECORD_BYTES] = {};
     const size_t predictionLength =
         TimeKeeper::getInstance().prepareTimedWake(seconds, prediction, sizeof(prediction));
-    if ((predictionLength > 0) && !m5pm1Access([this, &prediction, predictionLength]() {
-          return m_M5PM1.writeRtcRAM(TIMED_WAKE_RECORD_OFFSET, prediction,
-                                     static_cast<uint8_t>(predictionLength));
-        })) {
-      ESP_LOGW(LOG_TAG, "Failed to save the timed wake clock prediction");
+    if (predictionLength > 0) {
+      if (!m5pm1Access([this, &prediction, predictionLength]() {
+            return m_M5PM1.writeRtcRAM(TIMED_WAKE_RECORD_OFFSET, prediction,
+                                       static_cast<uint8_t>(predictionLength));
+          })) {
+        ESP_LOGW(LOG_TAG, "Failed to save the timed wake clock prediction");
+      }
+    } else {
+      // No prediction this time. Clear the record region anyway: a boot that
+      // failed between the marker write and consumeTimedWake()'s clear can have
+      // left an older record here, and the marker just written must never be
+      // paired with an interval from an earlier shutdown.
+      uint8_t cleared[TimeKeeperPolicy::RECORD_BYTES] = {};
+      (void)m5pm1Access([this, &cleared]() {
+        return m_M5PM1.writeRtcRAM(TIMED_WAKE_RECORD_OFFSET, cleared, sizeof(cleared));
+      });
     }
 
     if (!m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
@@ -1095,14 +1106,18 @@ bool Platform::consumeTimedWake(void) {
     // confirmed timed wake makes the interval in it the one that elapsed; any
     // other boot discards it and keeps the stored checkpoint clock.
     uint8_t prediction[TimeKeeperPolicy::RECORD_BYTES] = {};
-    if (!m5pm1Access([this, &prediction]() {
-          return m_M5PM1.readRtcRAM(TIMED_WAKE_RECORD_OFFSET, prediction,
-                                    static_cast<uint8_t>(sizeof(prediction)));
-        })) {
-      return false;
-    }
+    const bool recordRead = m5pm1Access([this, &prediction]() {
+      return m_M5PM1.readRtcRAM(TIMED_WAKE_RECORD_OFFSET, prediction,
+                                static_cast<uint8_t>(sizeof(prediction)));
+    });
+    // Clear the whole buffer on every boot, including one where the record
+    // could not be read: a record this boot could not interpret must not
+    // survive to be adopted against a later marker.
     (void)m5pm1Access(
         [this]() { return m_M5PM1.writeRtcRAM(0, TIMED_WAKE_CLEAR, sizeof(TIMED_WAKE_CLEAR)); });
+    if (!recordRead) {
+      return false;
+    }
     if (timedWake && !TimeKeeper::getInstance().adoptTimedWake(prediction, sizeof(prediction))) {
       ESP_LOGW(LOG_TAG, "Timed wake kept the stored clock");
     }

@@ -62,6 +62,11 @@ uint8_t sourcePriority(TimeSource source) {
   // A timed-wake prediction is deliberately between a stored checkpoint and a
   // calendar chip: it knows how long the device was off, but that knowledge is
   // the programmed interval plus an estimated timer bound, not a measurement.
+  //
+  // Every enumerator is listed and there is no default, so a source appended to
+  // the enum is a -Wswitch build failure here instead of silently taking its
+  // authority from its ordinal. That is the promise the header makes: authority
+  // comes from this table, not from the value's position.
   switch (source) {
     case TimeSource::GPS:
     case TimeSource::NTP:
@@ -72,9 +77,12 @@ uint8_t sourcePriority(TimeSource source) {
       return 3;
     case TimeSource::TIMED_WAKE:
       return 2;
-    default:
-      return static_cast<uint8_t>(source);
+    case TimeSource::NVS:
+      return 1;
+    case TimeSource::NONE:
+      break;
   }
+  return 0;
 }
 
 bool valid(const TimeSample &sample) {

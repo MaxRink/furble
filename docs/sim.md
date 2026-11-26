@@ -595,7 +595,17 @@ record, built by `TimeKeeper::prepareTimedWake()` in
 `consumeTimedWake()` confirms the marker, so only the storage is modelled. The
 two-leg scenario is `intervalometer-deep-sleep-clock-start.txt` with
 `-clock-resume.txt`: the resumed leg reads a recovered clock and runs its
-deadline instead of waiting from boot. The stale-record rejection itself is
+deadline instead of waiting from boot, and asserts the `time.uncertainty_ms`
+window the adoption claims.
+
+Two of the firmware's properties are outside this model and must not be read as
+covered by it. The record costs no flash write on device because it lives in the
+PM1 RTC buffer; the simulator's copy is a prefs write, so a wear regression
+cannot fail a scenario, and the host `time_keeper_persistence_test` NVS commit
+counter is what holds that claim. And the marker gate is inside the simulator's
+own `Platform` double, so a scenario can show that the adopted source appears
+only with `platform.timed_wake`, not that production's
+`Platform::consumeTimedWake()` still checks it. The stale-record rejection is
 covered by the host `time_keeper_*` tests, which can drive every gate directly.
 
 #### Internal-heap pressure model

@@ -323,7 +323,28 @@ until then the claim is the estimate above, and `time status` and the simulator'
 `time.uncertainty_ms` report it, so the operator sees the window rather than a
 bare timestamp.
 
-**How a stale value is rejected.** Five gates, and each is host-tested:
+**What the clock is worth, and where the error comes from.** The formula is
+recursive: the next prediction starts from the sample this one adopted, so a
+timelapse adds `2 s + 2 percent` of its interval to both the epoch error and the
+reported window on every sleep. A single resumed cycle is inside a few seconds;
+a long run accumulates. Two consequences, both worth stating because a reader
+will otherwise assume the clock is corrected:
+
+- The intervalometer's own timing does not drift with it. `startResume()`
+  compares the deadline saved before the shutdown with the clock adopted after
+  it, and both are values from the same prediction chain, so the accumulated
+  error cancels in the subtraction. What the shot timing loses is the clock's
+  error at the moment of saving, and only if another source re-anchors the clock
+  between the boot and `startResume()`.
+- An absolute value does carry it: a GPX point written before a GPS fix, a
+  camera time sync, and the `time status` epoch all report the predicted clock
+  within its stated window. A GPS, NTP or companion sample outranks the
+  prediction and replaces it, and `trustedWallClock()` has no uncertainty
+  threshold of its own, so the window is reported rather than enforced. That is
+  the shape of the claim: the clock is bounded and the bound is visible, not
+  guaranteed exact.
+
+**How a stale value is rejected.** Five gates:
 
 1. The record does not decode: magic, version, length, the reserved bytes and
    the CRC all have to hold, so a truncated, erased or partially written buffer
@@ -340,6 +361,22 @@ bare timestamp.
 5. The arithmetic leaves the accepted range: an interval of zero or beyond a day
    writes no record at all, and an adopted value outside the epoch window or over
    the uncertainty ceiling is refused.
+
+Gates 1, 2, 4 and 5 are host-tested, in `time_keeper_policy_test` and
+`time_keeper_persistence_test`. Gate 3 is not: the marker check lives in
+`Platform::consumeTimedWake()`, which needs the M5PM1, so it is covered by
+argument and by the simulator scenario asserting the adopted source appears only
+after `platform.timed_wake`, not by a host test. The policy function it guards
+takes the marker decision as a precondition. The earlier text here said all five
+were host-tested; that was wrong for gate 3.
+
+The buffer is cleared on every boot, not only on a confirmed timed wake, so the
+record cannot outlive the boot that should have consumed it. Two narrow paths are
+covered by that rule rather than by a test: `consumeTimedWake()` clears the
+buffer even when the record read fails, so an uninterpretable record cannot
+survive to be adopted against a later marker, and `powerOffUntil()` clears the
+record region when it cannot build a new prediction, so the marker it just wrote
+is never paired with an interval from an earlier shutdown.
 
 A refused or missing record keeps the stored checkpoint clock with its one hour
 penalty, which is the behaviour every board had before this change, so the clock

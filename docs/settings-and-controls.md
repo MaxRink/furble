@@ -257,9 +257,14 @@ is not, so the wait counts from boot instead. A verified timed wake is the
 exception: before the shutdown, furble predicts the clock at the wake instant
 from the interval it arms, keeps the prediction in power-off retained memory so
 it costs no flash write, and adopts it only when the board confirms the wake
-through its own marker. The adopted clock carries 2 seconds plus 2 percent of
-the powered-off interval as its uncertainty, so the resumed wait compares the
-saved deadline against a clock that is bounded to that window.
+through its own marker. The adopted clock carries the uncertainty it had at
+shutdown plus 2 seconds and 2 percent of the powered-off interval, so the
+resumed wait compares the saved deadline against a clock bounded to that window.
+The 2 percent is an estimate, not a measurement: the M5PM1 timer counts whole
+seconds and its accuracy is unpublished. Because each sleep re-predicts from the
+previous prediction, the window and the absolute error grow by that much once
+per cycle of a run; a GPS, NTP or companion sample replaces it, and it never
+displaces such a sample.
 
 ### Theme
 
