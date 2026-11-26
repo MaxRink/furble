@@ -7,7 +7,8 @@ carries a document, revision and section, or is marked UNVERIFIED. The corpus is
 on branch `docs/datasheet-corpus`, PR 475. All three review rounds are applied:
 twelve findings in the first, eight in the second and five non-blocking
 follow-ups in the third, and the three resolution tables are below. A fourth
-pass audited the page `file:line` references and corrected eleven of them.
+pass audited the page `file:line` references and corrected eleven of them, and
+the rebase onto #479 is recorded at the end.
 
 Related: [322](322-hardware-abstraction.md) (the drivers the corpus documents),
 [287](287-mcu-portability-and-bundle-hardware.md) (the board survey),
@@ -38,7 +39,7 @@ Three failure modes motivated the work:
 
 | Area | Change |
 | :--- | :--- |
-| `docs/components/` | One index and 27 component pages, 2153 lines |
+| `docs/components/` | One index and 27 component pages, 2167 lines |
 | `tools/check_datasheet_citations.py` | The gate, 339 lines |
 | `tests/test_check_datasheet_citations.py` | 26 cases, 327 lines |
 | `lib/hal` comments | Confirmed sections added where the driver had none: AXP2101 section 6.3 and 6.13.2, the BQ27220 per-command sections, the SX1262 windows, the XL9555 command bytes |
@@ -150,8 +151,8 @@ the section and page the pass gave.
   the page, at `lib/hal/<file>:<line>: <token>`.
 - Exit 0 when clean, 1 on a violation, 2 for an invalid invocation.
 
-Current tree: 31 tokens, 27 cited, 4 documented gaps (`CHIP_ID`, `ADDRESS`,
-`ADDRESS_BASE`, `POLL_US`), 0 errors. The unit test pins that token count and the per-file
+Current tree: 34 tokens, 30 cited, 4 documented gaps (`CHIP_ID`,
+`SLEEP_CONFIRM_BUDGET_US`, `POLL_US`, `ADDRESS_BASE`), 0 errors. The unit test pins that token count and the per-file
 counts, so a driver that stops being scanned fails the suite. The driver stem
 maps to a page through `PAGE_BY_STEM`, and an unmapped stem maps to `<stem>.md`,
 so a new driver lands on a predictable path and fails if the page is missing.
@@ -208,9 +209,9 @@ that wires a driver does not inherit them silently.
 
 | Hazard | Location | State |
 | :--- | :--- | :--- |
-| BQ27220 `read()` sends five standard commands back to back against a 66 us packet gap and two commands per second limit, and the bus seam has no delay hook | `lib/hal/BQ27220.cpp:32-48`, `lib/hal/HalBus.h:32-42` | Latent, no caller |
-| SX1262 BUSY timeout leaves the radio in STDBY_RC at 0.6 mA rather than 160 nA, and the driver has no retry | `lib/hal/SX1262.cpp:13-18` | Latent, no caller |
-| The AXP2101 driver reads REG 90 bit 4 as BLDO1 where the vendor table labels it aldo1 twice; the comment at `lib/hal/AXP2101.cpp:39-41` is load bearing | `lib/hal/AXP2101.cpp:39`, `:47` | Latent, comment must stay |
+| BQ27220 pacing: `read()` asks the bus for the 66 us gap before every packet after the first, and the hook's default is a no-op, so a firmware adapter must override it | `lib/hal/BQ27220.cpp:41-53`, `lib/hal/HalBus.h:52` | Driver fixed in #479, adapter override latent |
+| SX1262 BUSY timeout leaves the radio in STDBY_RC at 0.6 mA rather than 160 nA, and the driver has no retry. Both transitions are waited for inside budgets since #479 | `lib/hal/SX1262.cpp:31-33`, `:46` | Latent, no caller |
+| The AXP2101 driver reads REG 90 bit 4 as BLDO1 where the vendor table labels it aldo1 twice; the comment at `lib/hal/AXP2101.cpp:47-49` is load bearing | `lib/hal/AXP2101.cpp:47` to `:49`, `:50` | Latent, comment must stay |
 | The W5500 hardware reset is 100 us in the pinned stack against a 500 us minimum, and the host double asserts only the GPIO number | `esp_eth_phy_w5500.c:160`, `src/FurbleEthernet.cpp:192`, `tests/host/boundaries/ethernet_w5500_test.cpp:183` | Live on the Waveshare board |
 | The MPU-6886 wake threshold assumes 4 mg per count with no datasheet scale, at a plus or minus 8 g range set by `ACCEL_CONFIG` 0x10, so the effective threshold may be about four times the intended value | `src/FurbleIMUMotionMPU6886.cpp:41-43`, `:109` | Live on the StickC family |
 | The panel sleep wait runs from SLPIN to SLPOUT, while the documents require 120 ms after SLPOUT before the next SLPIN plus 5 ms before any other command | `src/FurbleUI.cpp:1888-1897`, `include/FurbleUI.h:1135` | Live on every panel board |
@@ -225,7 +226,7 @@ have no owner yet and are the follow-up work.
 
 ```
 python3 tools/check_datasheet_citations.py
-  -> 27 cited, 4 page gaps, 0 errors of 31 tokens, exit 0
+  -> 30 cited, 4 page gaps, 0 errors of 34 tokens, exit 0
 python3 -m unittest tests.test_check_datasheet_citations -v
   -> Ran 26 tests, OK
 python3 -m unittest discover -s tests -p 'test_check_datasheet_citations.py'
@@ -299,7 +300,7 @@ five cases the hardening added; the third round refreshes the four counts in row
 | 4 | The definition regexes were loose | Optional parentheses, any integer suffix, optional whitespace after `#`, brace initialisers, and every declarator on a line rather than only the first. The gate reads them with `finditer`. A shift or an or of names after the value is still not a definition. |
 | 5 | A URL in a string could fabricate an inline citation | A line is split into code and comment by a scanner that only accepts a `//` outside a string or character literal, and blanks the literal bodies in the code half. A definition inside a string is not a token, and a URL cannot cite. Both are tested. |
 | 6 | The gate read fewer suffixes than the format gate, and only validated pages with a driver | It reads the eight suffixes `tools/check_format.py` formats, pinned by a test against that module, and it validates the `Citation gaps` table on every page under `docs/components/`, so a page with no driver cannot carry a malformed table. |
-| 7 | Stale figures in this plan and the gate missing from two pre-review lists | The tool is 339 lines, the test file 26 cases and 327 lines, the corpus 27 pages plus the index at 2153 lines, and the unverified bullets count 147, four to seven per page. The datasheet gate is named in the `pre_review.py` lists in `CLAUDE.md` and `CONTRIBUTING.md`. |
+| 7 | Stale figures in this plan and the gate missing from two pre-review lists | The tool is 339 lines, the test file 26 cases and 327 lines, the corpus 27 pages plus the index at 2167 lines, and the unverified bullets count 147, four to seven per page. The datasheet gate is named in the `pre_review.py` lists in `CLAUDE.md` and `CONTRIBUTING.md`. |
 | 8 | Nothing said what the gate cannot check | `docs/components/README.md` states that the gate checks citation shape and never document identity: a plausible number passes, and only reading the document settles the section, the revision and the fact. |
 
 ## Review record, PR 475, third round
@@ -318,9 +319,9 @@ are applied. The branch head is amended, not stacked.
 ## Line-reference audit
 
 A fourth pass checked every backticked `file:line` under `docs/components/`
-against the tree at the branch head. Two hundred and fifty eight references
-resolve to a line that exists and is not blank, after eleven edits in seven
-pages; three more name a pinned library or ESP-IDF file outside the tree. Nine
+against the tree at the branch head. Two hundred and sixty references resolve
+to a line that exists and is not blank, after eleven edits in seven pages and
+the reconciliation with #479; three more name a pinned library or ESP-IDF file outside the tree. Nine
 pointers resolved to a blank line, which a reader cannot follow: the SX1262
 `SLEEP_SETTLE_US` row, the SX1262 and AXP2101 header blocks, the `HalBus.h` seam
 range, both `FurbleIR.cpp` ranges, the `esp32-s3.md` RMT comment row and the
@@ -336,3 +337,21 @@ is at `:15` to `:16`, and both Espressif pages cite `FurbleIR.cpp:226` to `:296`
 for the whole RMT implementation. A follow-up should teach
 `tools/check_datasheet_citations.py` to resolve the page references, which is the
 one part of the page format nothing checks today.
+
+## Rebase onto master after #479
+
+The branch was queued against b711a44a. #479 landed first and changed three
+`lib/hal` drivers the corpus describes, so the rebase onto bebf7caf was both
+textual and factual. One file conflicted, `lib/hal/CLAUDE.md`: master's bus
+pacing, enable-what-you-decode, wait-for-a-level and fake-bus rules follow the
+citation paragraphs, and the corpus pages, the gate description and the
+conditional PDF rule stay, so the file carries both sets with one PDF rule.
+
+The reconciliation then followed the merged code. The SX1262 page cites the new
+`waitBusy` helper and the two budgets, and `SLEEP_CONFIRM_BUDGET_US` is a new
+citation gap because no tabulated value bounds how soon BUSY goes high. The
+BQ27220 page records the pacing #479 implemented, so the old "no delay hook" gap
+becomes the adapter's obligation to override a no-op default. The hazard table
+marks both drivers, and the AXP2101 comment reference moved with the file. The
+gate counts move with the tree: 34 tokens, 30 cited, 4 documented gaps, 0
+errors.

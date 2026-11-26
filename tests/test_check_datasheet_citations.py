@@ -301,15 +301,15 @@ class CitationGateTest(unittest.TestCase):
     """A coverage regression fails here, not silently in a page."""
     errors, checked, cited, tolerated = check(ROOT)
     self.assertEqual(errors, [])
-    self.assertEqual((checked, cited, tolerated), (31, 27, 4))
+    self.assertEqual((checked, cited, tolerated), (34, 30, 4))
     counts = {
       "lib/hal/AXP2101.cpp": 15,
       "lib/hal/AXP2101.h": 1,
       "lib/hal/BQ27220.cpp": 5,
-      "lib/hal/BQ27220.h": 1,
+      "lib/hal/BQ27220.h": 3,
       "lib/hal/HalBus.h": 0,
       "lib/hal/SX1262.cpp": 0,
-      "lib/hal/SX1262.h": 5,
+      "lib/hal/SX1262.h": 6,
       "lib/hal/XL9555.cpp": 3,
       "lib/hal/XL9555.h": 1,
     }
