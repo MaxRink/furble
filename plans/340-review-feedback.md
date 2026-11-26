@@ -15,7 +15,7 @@ Simulator evidence only. No hardware run is claimed here or in the plan.
 | # | Finding | Resolution | Evidence |
 | ---: | :--- | :--- | :--- |
 | 1 | The failure branch publishes `m_UartInstallFailed` before `m_Queue = NULL`, so a reader that sees the flag can still hold the old handle. The pinned driver writes the event queue into `*uart_queue` and then, when its interrupt allocation fails, calls `uart_driver_delete()`, which frees that queue. A failed install can therefore leave a dangling handle. Another task that observed the flag first could reach `reset()` and call `xQueueReset()` on a queue that no longer exists. | Fixed. The handle is cleared before the flag is published. The clear itself is load bearing, not defensive: it is the only thing that makes the null guard in `reset()` correct on that path. | `src/FurbleGPS.cpp:207` clears and `src/FurbleGPS.cpp:208` publishes. The dangling handle is what `components/esp_driver_uart/src/uart.c` in framework-espidf 3.50402.0 leaves: `uart_driver_install()` writes `*uart_queue` after allocating the driver object, and its `err:` label calls `uart_driver_delete()` and returns the error. |
-| 2 | Nine `file:line` citations into `src/FurbleGPS.cpp` in six other docs were stale after the rebase. This PR adds 45 net lines to that file and master's citation gate, which #511 merged, re-checks every citation into a changed file. `pre_review` failed on all nine. | Fixed. Eight were shifted by the hunk map and one, `Control::updateGPS`, was already three lines stale and now points at the call. | `python3 tools/check_doc_citations.py --base origin/master`: `0 errors of 285 citations in 42 files`. Files: `docs/components/at6668.md`, `plans/00-hardware-experiments.md` (two), `plans/50-companion-app-design.md`, `plans/implemented/14-gps-pcas.md` (three), `plans/implemented/15-gps-power.md`, `plans/implemented/21-imu-dead-reckoning.md`. |
+| 2 | Sixteen `file:line` citations into `src/FurbleGPS.cpp` in six other docs were stale. This PR adds 45 net lines to that file and master's citation gate, which #511 merged, re-checks every citation into a changed file. Nine were stale at the first rebase and `pre_review` failed on all of them; seven more were stale at the second because master had moved that file again. | Fixed. Fifteen were shifted by the hunk map and `Control::updateGPS` was already three lines stale, so it now points at the call. | `python3 tools/check_doc_citations.py --base origin/master`: `0 errors of 235 citations in 44 files`. Files: `docs/components/at6668.md`, `plans/00-hardware-experiments.md` (two), `plans/50-companion-app-design.md`, `plans/implemented/14-gps-pcas.md` (three), `plans/implemented/15-gps-power.md`, `plans/implemented/21-imu-dead-reckoning.md`. |
 | 3 | The fake returned `ESP_ERR_INVALID_STATE`. The pinned driver never returns that from `uart_driver_install()`: its own checks and its allocation path return `ESP_FAIL`, and the interrupt allocation it can fail on returns only `ESP_ERR_INVALID_ARG` or `ESP_ERR_NOT_FOUND`. The plan's documented cause, internal RAM exhaustion, is the allocation path, so the scenario exercised a code the firmware will not log. | Fixed. The fake returns `ESP_FAIL`, and `docs/sim.md`, `sim/CLAUDE.md`, the plan and the PR body say so. The decision path only branches on `!= ESP_OK`, so this is fidelity, not coverage. | `sim/fake_uart.cpp:518`. `components/esp_driver_uart/src/uart.c` returns `ESP_FAIL` for the port, buffer and allocation checks and for an already installed driver; `esp_intr_alloc_intrstatus` documents `ESP_ERR_INVALID_ARG` and `ESP_ERR_NOT_FOUND`. The fixed run logs `Failed to install gps uart: ESP_FAIL (0xffffffff)`. |
 | 4 | `docs/wiki/Console-Commands.md` mirrors `docs/console-commands.md` and was not updated, so the two copies of the `gps` status reference disagreed. `CLAUDE.md` maps a console reference change to the console doc, the README serial console block and `docs/wiki/`. | Fixed. The same paragraph is in both copies. The in-repo wiki copy needs a manual push after merge, as `CLAUDE.md` requires. | The two paragraphs are byte identical; `sh sim/scripts/check-doc-tokens.sh` passes. |
 | 5 | The PR body's "Not verified" bullet said the firmware build never compiles `src/FurbleGPS.cpp`. That is false. Every firmware lane compiles it, and the only red firmware lane at this head is the Core OTA debug app slot, which grew by the code this PR adds. | Fixed in the PR body: the firmware compile is covered by CI on all twelve envs, the size lane is repo-wide, and the local gap is the hardware run only. | `src/CMakeLists.txt:17` lists `FurbleGPS.cpp` unconditionally in `furble_sources`. CI run 45773425629 built eleven firmware envs green and failed `build (m5stack-core-debug)` on size. |
@@ -106,11 +106,12 @@ Neighbouring GPS scenarios on both panels, all exit 0: `gps-no-receiver`,
 `gps-autobaud-ladder`, `gps-duty-no-fix`, `gps-receiver-detail`,
 `gps-ubx-detect`.
 
-The full certified e2e suite on the StickS3 binary,
+The full certified e2e suite on the StickS3 binary at `563971d6`,
 `sh sim/scripts/run-e2e.sh`: `All 247 end-to-end scenarios passed`. The only
 behavioural change outside the failed-install path is the parser-buffer clear
 moving above the null-queue guard in `reset()`, which is a no-op whenever a queue
-exists.
+exists. CI runs the same suite on the rebased head, which is the authority for
+the merged tree.
 
 `python3 tools/pre_review.py --base origin/master`: `PASS: 13 gates`, including
 the scanner unit tests and the citation gate #511 added.
@@ -130,11 +131,15 @@ reported `flash 1,740,960, exceeds flash_slot 1,740,800 by 160`, and the
 aggregate `success`. That lane was over its slot on master since #501 for every
 branch, and the 144 bytes this PR adds sat on top of it. #518 then moved the
 Core OTA debug lane to `ESP_LOG_INFO` and landed 24,944 bytes of headroom, so the
-same code measures
-`PASS m5stack-core-debug: flash 1,715,856/1,740,800` at `563971d6`. All 37 checks
-pass at that head, including `build (m5stack-core-debug)`, the aggregate
-`success`, `sim-e2e` with the new scenario, both sanitizer jobs, the coverage
-floor and the size report.
+same code measured
+`PASS m5stack-core-debug: flash 1,715,856/1,740,800` at `563971d6`, where all 37
+checks passed, including `build (m5stack-core-debug)`, the aggregate `success`,
+`sim-e2e` with the new scenario, both sanitizer jobs, the coverage floor and the
+size report.
+
+The head that merged rebases the same code onto a later master. The gate was run
+on that head immediately before the merge and reported zero review threads with
+every check run passed or skipped.
 
 ## Follow-up
 

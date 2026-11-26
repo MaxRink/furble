@@ -147,8 +147,8 @@ Neighbouring GPS scenarios on both panel binaries, all exit 0:
 and C++ files, C++ safety, CI workflow contract, scenario manifest, hardware
 coverage, coupling ratchet, datasheet citations, M5GFX board pinning and
 documentation citations, plus the 213 scanner unit tests). The citation gate is
-what caught the nine citations this rebase made stale; see
-[340-review-feedback.md](340-review-feedback.md).
+what caught the sixteen citations this branch's line additions made stale in
+other docs; see [340-review-feedback.md](340-review-feedback.md).
 
 ## Remaining gate
 
