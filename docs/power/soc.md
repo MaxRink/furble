@@ -555,7 +555,7 @@ This is a documentation and build consistency item, not a separate power lever.
   `control-zombie-cancel`, `control-interleave`, and the simulator connect and
   reconnect scenarios. Confirm the reclaim deadline still fires within its
   documented bound.
-- **Citation:** `src/FurbleControl.cpp:27`, `484`, `1515`, `1227`,
+- **Citation:** `src/FurbleControl.cpp:31`, `484`, `1515`, `1227`,
   `include/FurbleControl.h:88`, `98`.
 
 ### OS-03 Lengthen the per-target queue timeout

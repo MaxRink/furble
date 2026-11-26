@@ -12,6 +12,18 @@ is `control-connect-camera-race: PASS`; near matches do not count. Keep the
 shell contract test runnable without a compiler so wrapper behavior remains
 covered even when the TSAN binary is unavailable.
 
+`control-adaptive-floor` owns the adaptive transmit policy's station floor. It
+drives `Control::setWifiConnectedProbe()` directly and asserts the dBm the radio
+is asked for, because the policy's input on device is the WiFi service's state
+and its output is a radio request; neither is observable through another seam.
+`FURBLE_HOST_RSSI_SAMPLE_INTERVAL_MS` shrinks only the sample cadence, so a
+three-sample policy step is milliseconds rather than fifteen seconds. The
+`hostAdaptiveEnabled()` and `hostTxPower()` knobs in `control/FurbleSettings.h`
+default to the fresh-device values, so every other control target is unchanged.
+`canon-identity-ack` asserts the `response` flag on the writes the Canon peers
+receive, which is the only observable for "did the connect sequence wait for the
+camera to accept this identity step".
+
 `control-gps-race` is the GPS fan-out probe: one thread loops
 `Control::updateGPS()` while the main thread alternates `addActive()` and
 `disconnect()`. It sits beside `control-connect-camera-race` and

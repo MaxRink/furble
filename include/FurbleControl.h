@@ -439,6 +439,19 @@ class Control {
   static TxPower savedTxPower(void);
 
   /**
+   * Install the WiFi station probe the adaptive power policy reads.
+   *
+   * The adaptive policy floors its step-down while the station is connected:
+   * BLE and WiFi share one 2.4 GHz front end, so a step that is comfortable on
+   * an idle channel buys a retry once WiFi is transmitting. Control must not
+   * depend on the WiFi service (the control host suite compiles Control against
+   * shims, and the probe is the only thing it needs), so the WiFi service
+   * installs this at init. Until it does, the probe answers "not connected" and
+   * the policy keeps its default floor. A null probe uninstalls it.
+   */
+  static void setWifiConnectedProbe(bool (*probe)(void));
+
+  /**
    * Enable or disable adaptive connection parameters on active cameras.
    *
    * Returns at once. The fan-out enters NimBLE per camera and can block on the
@@ -448,6 +461,16 @@ class Control {
   void setConnSaver(bool enabled);
 
 #if defined(FURBLE_HOST_CONTROL_TEST)
+  /**
+   * Run one adaptive power sample from the calling thread (host tests only).
+   *
+   * The production caller is the control task's tick, once every
+   * `RSSI_SAMPLE_INTERVAL_MS`. A host test shrinks that cadence through
+   * `FURBLE_HOST_RSSI_SAMPLE_INTERVAL_MS` and then drives the samples it wants,
+   * so the policy is exercised without a wall-clock wait per step.
+   */
+  void sampleAdaptivePowerForTest(void) { sampleAdaptivePower(); }
+
   /**
    * Reset the singleton to a fresh-boot state (host tests only).
    *

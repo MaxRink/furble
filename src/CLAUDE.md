@@ -378,6 +378,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Every NVS write of the access point runs under `g_ApStorageMutex`. A clear
   bumps `g_ApGeneration` and cancels the queued work; a save captured under an
   older generation is dropped, so a clear is never undone.
+  `WiFi::init()` installs `Control::setWifiConnectedProbe()` before its own
+  early return, so the adaptive transmit floor applies to a station the user
+  enables after boot as well as to one that was on at boot. The probe reads
+  `g_Connected`, which is lock-free, and it is the only WiFi state the BLE side
+  gets.
   `IP_EVENT_STA_LOST_IP` clears `g_GotIp` and the cached address on the same
   task and notifies the worker, without stopping the station, the NTP client or
   the driver: esp-netif resets the address to 0 before it posts the event, and

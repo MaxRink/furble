@@ -2224,6 +2224,30 @@ target_compile_options(control_conn_saver_test PRIVATE
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_libraries(control_conn_saver_test PRIVATE furble_host_camera)
 
+# The adaptive transmit policy floors its step-down while the WiFi station is
+# connected. The WiFi service installs the probe on device; this drives it
+# directly and asserts the level the radio is asked for.
+# FURBLE_HOST_RSSI_SAMPLE_INTERVAL_MS shrinks only the sample cadence, so a
+# three-sample policy step is milliseconds instead of fifteen seconds.
+add_executable(control_adaptive_floor_test
+               control_adaptive_floor_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp)
+target_include_directories(control_adaptive_floor_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(control_adaptive_floor_test
+                           PRIVATE FURBLE_HOST_CONTROL_TEST
+                                   FURBLE_HOST_RSSI_SAMPLE_INTERVAL_MS=1)
+target_compile_options(control_adaptive_floor_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_libraries(control_adaptive_floor_test PRIVATE furble_host_camera)
+
 # Pin the transmit power mapping between the ESP-IDF setting and the camera
 # library TxPower through the public Control API.
 add_executable(tx_power_mapping_test
@@ -2784,6 +2808,7 @@ if(BUILD_TESTING)
 
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-conn-saver COMMAND control_conn_saver_test)
+  add_test(NAME control-adaptive-floor COMMAND control_adaptive_floor_test)
   add_test(NAME tx-power-mapping COMMAND tx_power_mapping_test)
 
   # Teardown wedge regression (plan 148). Bounded by a hard timeout so a

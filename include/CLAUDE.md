@@ -19,6 +19,13 @@ Public headers for the app layer in src/, one header per module
   request or reset transaction. `m_ConnectFailCount` remains control-task-owned.
 - `FurbleControl::setPower` is the user-selected maximum for Bluetooth transmit
   power. Adaptive runtime changes must stay at or below that cap.
+- `Control::setWifiConnectedProbe()` is how the station state reaches the
+  adaptive policy: the WiFi service installs a `bool (*)()` at init and Control
+  carries no WiFi include, so the control host suite still links against shims
+  only. The probe is read once per sample, and a null probe means "no station",
+  which is the fresh-device behaviour. Do not replace it with a pushed flag:
+  a push has to name every transition, and a missed one leaves the floor on
+  after the station drops.
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
