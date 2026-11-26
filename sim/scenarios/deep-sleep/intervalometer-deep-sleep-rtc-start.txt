@@ -19,6 +19,7 @@ seed interval_wait 0
 assert hw.rtc_model backed
 assert hw.rtc_clock valid
 assert time.source rtc
+assert time.epoch_s 1767225600
 wait 5000
 action intervalometer
 # The first shot's 30 ms exposure is followed by this full delay. Keep the

@@ -106,6 +106,10 @@ int main() {
   const std::filesystem::path callerFile = directory / callerName;
   const std::filesystem::path unrelatedFile = directory / "notes.txt";
   const std::filesystem::path foreignSidecar = directory / (deadName + ".tmp.999999");
+  // The modelled RTC chip's register file, which the simulator writes beside
+  // the store as <store>.rtc.
+  const std::filesystem::path deadRtc = directory / (deadName + ".rtc");
+  const std::filesystem::path liveRtc = directory / (liveName + ".rtc");
   const std::filesystem::path notesSidecar = directory / (deadName + ".tmp.notes");
   touch(deadFile);
   touch(std::filesystem::path(deadFile.string() + ".generated"));
@@ -120,13 +124,17 @@ int main() {
   touch(unrelatedFile);
   touch(foreignSidecar);
   touch(notesSidecar);
+  touch(deadRtc);
+  touch(liveRtc);
 
   const std::size_t removed = sweepStalePreferences(directory, static_cast<int>(getpid()));
-  check(removed == 2, "the sweep removed the dead store and its sidecar");
+  check(removed == 3, "the sweep removed the dead store, its sidecar and its RTC file");
   check(!std::filesystem::exists(deadFile), "the dead store was removed");
   check(!std::filesystem::exists(deadFile.string() + ".generated"),
         "the dead store marker was removed");
   check(!std::filesystem::exists(temporaryFile), "the dead sidecar was removed");
+  check(!std::filesystem::exists(deadRtc), "the dead store's modelled RTC file was removed");
+  check(std::filesystem::exists(liveRtc), "a live store's modelled RTC file was kept");
   check(std::filesystem::exists(liveFile), "a live store was kept");
   check(std::filesystem::exists(selfFile), "the current process store was kept");
   check(std::filesystem::exists(callerFile), "a caller-owned store without a marker was kept");

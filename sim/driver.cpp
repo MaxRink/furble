@@ -2388,6 +2388,10 @@ void removePreferences(void) {
   }
   std::remove(generatedPreferencesPath.c_str());
   std::remove((generatedPreferencesPath + ".generated").c_str());
+  // The modelled RTC chip writes its register file beside the store
+  // (hardware_model.cpp rtcSidecarPath()). It is scratch state too, and
+  // leaving it behind would outlive the run that created it.
+  std::remove((generatedPreferencesPath + ".rtc").c_str());
   const std::string temporaryPath = generatedPreferencesPath + ".tmp." + std::to_string(getpid());
   std::remove(temporaryPath.c_str());
   crashLogRemovePersisted();

@@ -11,6 +11,7 @@ seed rtc_model backed
 seed rtc_epoch 1767225600
 assert hw.rtc_epoch 1767225600
 assert hw.rtc_clock valid
+assert time.epoch_s 1767225600
 wait 2000
 assert hw.rtc_epoch 1767225602
 restart
@@ -20,4 +21,5 @@ assert hw.rtc_epoch 0
 assert time.rtc_available yes
 assert time.valid no
 assert time.source none
+assert time.epoch_s 0
 exit

@@ -196,6 +196,13 @@ std::size_t sweepStalePreferences(const std::filesystem::path &directory, int se
           removed++;
         }
       }
+      // The modelled RTC chip's register file sits beside the store as
+      // `<store>.bin.rtc`. It belongs to the same dead owner, so it goes with
+      // it; otherwise a crashed run would leave it behind for good.
+      const std::filesystem::path rtcSidecar = path.string() + ".rtc";
+      if (ownedRegularFile(rtcSidecar) && isRegular(rtcSidecar) && removeFile(rtcSidecar)) {
+        removed++;
+      }
     }
   }
   return removed;
