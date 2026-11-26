@@ -221,7 +221,10 @@ model kept.
 
 ## Implementation state
 
-Done on `fix/316-sony-7rm4`, rebased onto `b711a44a` for the results below.
+Done on `fix/316-sony-7rm4`. The results below are from the final rebase onto
+`4bf0b97d`, which carries #518's Core debug log level; earlier rebases onto
+`b711a44a` and `7caf0468` gave the same suite results and differ only in the
+flash figure.
 
 | Gate | Result |
 | --- | --- |
@@ -236,7 +239,7 @@ Done on `fix/316-sony-7rm4`, rebased onto `b711a44a` for the results below.
 | `python3 tools/pre_review.py --base origin/master` | pass: whitespace, diff hygiene, settings contracts (6 pre-existing warnings, 0 failures), clang-format (12 changed files), C++ safety, CI workflow contract, simulator scenario manifest, simulator hardware coverage, coupling ratchet, 140 scanner unit tests |
 | `tools/check_portability_inventory.py`, `tools/check_hot_path_logs.py` | pass. The portable core contract is unchanged and the hot-path gate leaves its three guarded functions untouched; the new location logs are once per session behind `m_GeoReported`, not per GPS tick. |
 | `sh sim/scripts/check-doc-tokens.sh` | pass: `sim documentation tokens are present` |
-| Full host `ctest` | not run. The host was saturated with other sessions' PlatformIO and simulator builds, so the whole 198-test suite was not driven; the complete host build succeeded and the thirteen suites above, which drive the changed seams (the Sony path, `Camera::connect`, the mock write path and the peers), pass on it. CI is the confirmation. The remaining host targets link the mock but do not exercise the MTU, the Sony gate or the new peer surface. |
+| Full host `ctest` | 202 of 202 passed on the rebased head, in 108 s. The suite links the NimBLE mock everywhere, so this is also the check that the mock's new ATT MTU model and the write-size gate break no other camera path. |
 
 Untested on hardware, as with every non-Fujifilm vendor: only the virtual peer
 covers this change.
@@ -281,10 +284,8 @@ covers this change.
    a permanent one and treats both the same for `GEO_FAILURE_LIMIT` attempts.
    Plumb the ATT status through `Camera::gattWrite` and latch on a permanent
    class only. Review finding 4 was fixed short of this.
-6. The image is 1,212 bytes larger in CI, measured as the difference between the
-   `m5stack-core-debug` flash figure on this branch's merge build (1,741,293 at
-   `48fe3096`) and the same job on its base `7caf0468` (1,740,081). That lane has
-   719 bytes of slack at the base and 535 on master at `c644f39e`, so the branch
-   is over the slot on its own. Size work belongs to the tree-wide Core debug
-   recovery, not to a partial trim of this feature, so the branch stays whole and
-   waits for that recovery. Review finding 6 records the arithmetic.
+6. Closed. The image is 1,212 bytes larger in CI, measured between this branch's
+   merge build (1,741,293 at `48fe3096`) and the same job on its base `7caf0468`
+   (1,740,081), which overflowed a 719-byte margin. PR #518 (`4bf0b97d`)
+   reclaimed 25,392 bytes on that env and this head builds at 1,716,393 of
+   1,740,800. Nothing here was trimmed to absorb it.
