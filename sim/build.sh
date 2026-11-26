@@ -374,6 +374,7 @@ for source in \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurbleGPSUbx.cpp" \
   "$ROOT/src/FurbleMemoryPressure.cpp" \
+  "$ROOT/src/FurbleOTA.cpp" \
   "$ROOT/src/FurbleOTAAdmission.cpp" \
   "$ROOT/src/FurbleOTACommand.cpp" \
   "$ROOT/src/FurbleOTAHTTPS.cpp" \

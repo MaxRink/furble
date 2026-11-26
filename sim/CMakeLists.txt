@@ -138,6 +138,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
     "${FURBLE_ROOT}/src/FurbleGPSUbx.cpp"
     "${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp"
+    "${FURBLE_ROOT}/src/FurbleOTA.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAAdmission.cpp"
     "${FURBLE_ROOT}/src/FurbleOTACommand.cpp"
     "${FURBLE_ROOT}/src/FurbleOTAHTTPS.cpp"
