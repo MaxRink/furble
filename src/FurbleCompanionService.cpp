@@ -95,6 +95,24 @@ bool unpackInterval(const uint8_t *data, size_t length, interval_t &interval) {
   return true;
 }
 
+// The value a secret setting reports over the companion service.
+//
+// The stored credential never leaves the device on this link. The answer is the
+// word the console prints for the same setting (`set` or `unset`), delivered as
+// the setting's own SETTING_STRING type so no client needs a new wire type to
+// render it, and so an app that offers a text field has nothing secret to echo
+// back. Writes are unaffected: the setting stays write-only, not read-only.
+constexpr char SECRET_SET[] = "set";
+constexpr char SECRET_UNSET[] = "unset";
+
+/** Fill value with the set/unset word for one secret setting. */
+bool secretIndicator(Settings::type_t type, std::vector<uint8_t> &value) {
+  const std::string stored = Settings::load<std::string>(type);
+  const char *word = stored.empty() ? SECRET_UNSET : SECRET_SET;
+  value.assign(word, word + std::strlen(word));
+  return true;
+}
+
 }  // namespace
 
 CompanionService::CompanionService(CompanionTransport &transport)
@@ -867,7 +885,6 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       return true;
     }
     case Settings::WIFI_SSID:
-    case Settings::WIFI_PSK:
     case Settings::NTP_SERVER:
     case Settings::THEME:
     case Settings::BUTTON_MODE:
@@ -876,16 +893,27 @@ bool CompanionService::settingValue(Settings::type_t type, std::vector<uint8_t> 
       value.assign(v.begin(), v.end());
       return value.size() <= 255;
     }
+    // The WiFi passphrase is write-only over this link. A client that holds the
+    // companion password can still set it, and no read returns it: the value is
+    // the same set/unset word the console prints, so a client needs no new type
+    // to render it and cannot echo a stored secret back into a text field
+    // (plans/96 C6). The WebUI already answers a secret with an indicator.
+    case Settings::WIFI_PSK:
+      return secretIndicator(type, value);
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
     case Settings::MQTT_URI:
     case Settings::MQTT_USER:
-    case Settings::MQTT_PASS:
     case Settings::MQTT_BASE:
     {
       const std::string v = Settings::load<std::string>(type);
       value.assign(v.begin(), v.end());
       return value.size() <= 255;
     }
+    // Same rule for the broker password. MQTT_URI stays readable because it is
+    // the broker address a user needs to see; it may embed userinfo, which the
+    // item records as a separate open caveat rather than a read to redact.
+    case Settings::MQTT_PASS:
+      return secretIndicator(type, value);
 #endif
     case Settings::COMPANION_PASSWORD:
       return false;

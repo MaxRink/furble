@@ -371,6 +371,92 @@ void testPasswordLoadFailureDeniesPrivilegedWrites(void) {
   Furble::Settings::setPasswordSaveResult(true);
 }
 
+// A secret setting is write-only over the companion link: a client that holds
+// the companion password may still set the WiFi passphrase, and no read (single
+// or list) returns the stored text. The answer is the same set/unset word the
+// console prints, so the value stays a SETTING_STRING a client already renders
+// (plans/96 C6). Red-first evidence: before the redaction, the op-1 record
+// carried the passphrase itself.
+void testCompanionSecretRedaction(void) {
+  std::cout << "test: companion secret reads are redacted\n";
+  NimBLEDevice::resetMock();
+
+  const std::string passphrase = "correct-horse-battery";
+  Furble::Settings::save<std::string>(Furble::Settings::WIFI_PSK, passphrase);
+
+  MockCentral central;
+  CompanionService service(central);
+  central.attach(service);
+  service.init();
+  central.connect();
+
+  auto containsPassphrase = [&](const std::vector<std::vector<uint8_t>> &records) {
+    const std::string needle(passphrase);
+    for (const auto &record : records) {
+      const std::string text(record.begin(), record.end());
+      if (text.find(needle) != std::string::npos) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Op 1, the single-setting read the app's editor uses.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 53, 0}), "companion routes a WiFi passphrase read");
+  check(central.indications().size() == 1, "the passphrase read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    const std::string value(record.begin() + 4, record.end());
+    check(record.size() == 4 + 3 && record[0] == 0 && record[1] == 53 && record[2] == 3,
+          "the passphrase read reports an OK SETTING_STRING record");
+    check(value == "set", "a stored passphrase reads back as set");
+  }
+  check(!containsPassphrase(central.indications()), "the passphrase itself never crosses the link");
+
+  // Op 0, the full catalog, which the app lists before an editor is opened.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {0, 0, 0}), "companion routes a settings list read");
+  check(!central.indications().empty(), "the settings list produced records");
+  check(!containsPassphrase(central.indications()), "the catalog does not leak the passphrase");
+  bool listed = false;
+  for (const auto &record : central.indications()) {
+    if ((record.size() >= 4) && (record[1] == 53)) {
+      listed = true;
+      const std::string value(record.begin() + 4, record.begin() + 4 + record[3]);
+      check(record[0] == 0 && record[2] == 3, "the catalog lists the passphrase as a string");
+      check(value == "set", "the catalog reports the passphrase as set");
+    }
+  }
+  check(listed, "the catalog still lists the passphrase row so an app can set it");
+
+  // The write half is unchanged: a new passphrase still lands in the store.
+  const std::string replacement = "new-passphrase";
+  std::vector<uint8_t> writeRecord {2, 53, static_cast<uint8_t>(replacement.size())};
+  writeRecord.insert(writeRecord.end(), replacement.begin(), replacement.end());
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, writeRecord), "companion routes a WiFi passphrase write");
+  check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK) == replacement,
+        "a companion passphrase write still reaches the store");
+  check(central.indications().size() == 1 && central.indications()[0][0] == 0,
+        "the passphrase write is acknowledged");
+
+  // An unset secret reads as unset, not as an empty string a client could write
+  // back as the credential.
+  Furble::Settings::save<std::string>(Furble::Settings::WIFI_PSK, "");
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 53, 0}), "companion routes the cleared passphrase read");
+  check(central.indications().size() == 1, "the cleared passphrase read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    check(std::string(record.begin() + 4, record.end()) == "unset",
+          "a cleared passphrase reads back as unset");
+  }
+
+  central.disconnect();
+  NimBLEDevice::resetMock();
+}
+
 void testCompanionGattFlow(void) {
   std::cout << "test: companion mock-central location/status/settings/trigger flow\n";
   NimBLEDevice::resetMock();
@@ -1116,6 +1202,7 @@ int main(void) {
   FurbleHostTaskScope taskScope;
   testPasswordLoadFailureDeniesPrivilegedWrites();
   testAuthDisconnectRace();
+  testCompanionSecretRedaction();
   testCompanionGattFlow();
   testCompanionCameras();
   if (g_Failures != 0) {

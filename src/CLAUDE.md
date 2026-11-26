@@ -268,6 +268,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   on after a cut that followed a GNSS stop, `railOffOrRestart()` sends GNSS
   start. `m_UbxStopped` records that stop; only `railOffOrRestart()` clears
   it, because `disable()` runs `resetUbx()` between the stop and the cut.
+- The companion settings read is redacted for the two credentials. `WIFI_PSK`
+  and `MQTT_PASS` answer the word `set` or `unset` in `settingValue()`; the
+  stored text never crosses the characteristic, matching the console and the
+  WebUI. Writes are unaffected, so the settings stay write-only rather than
+  read-only. Keep `MQTT_URI` readable: it is the broker address, and userinfo
+  inside it is a separate open item. Any new secret setting belongs in
+  `secretIndicator()` too (plans/96 C6).
 - `CompanionService::m_Mutex` serializes the status and camera notification
   caches and all
   trigger rate and held-command state, including timer and disconnect release.
