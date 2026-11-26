@@ -59,6 +59,10 @@ struct Profile {
   // alive. The chip's voltage-low flag stays the guard for a calendar that did
   // stop, and it is read on a backed row only.
   bool rtcBatteryBacked;
+  // M5Unified can reach an RTC chip on the internal I2C bus. This is not the
+  // timed-wake column: the Plus2 is the only row with a chip M5Unified drives,
+  // so a write to its calendar is the only one that reaches hardware.
+  bool rtcOnBus;
   int8_t irPin;  // -1 when the board has no IR emitter
   MotionWake motionWake;
   int8_t motionWakePin;  // SoC pin for motionWake, -1 for NONE

@@ -350,6 +350,9 @@ settings-touching rebase.
   carries the hardware's SD slot, NS4168 speaker, BT1-backed BM8563 and RTC
   alarm wake; the Core2 row keeps `TimedWake::NONE` because the 2023.2 revision
   removed its RTC backup cell (plans/354).
+  `rtcOnBus` means an RTC chip the driver can reach answers on the internal
+  I2C bus, which is only the Plus2's BM8563; it is not the same fact as
+  `rtcBatteryBacked` or as the `TimedWake` kind, so gate RTC writes on it.
 - `Board::gpsPins()` is the only GPS UART pin source. `BOARD_SUPPORT` reads
   M5Unified's Port A table in `src/FurbleBoard.cpp`; a board M5Unified cannot
   describe sets `GpsPinSource::PROFILE` and carries `gpsRxPin`/`gpsTxPin` in its
@@ -369,6 +372,24 @@ settings-touching rebase.
   an RMT transfer, so no caller may add work inside those two calls. Only
   `ledSharesIr()` selects the path; a board with separate pins keeps driving its
   LED directly.
+- `FurblePmicIrq.h` owns the M5PM1 IRQ status facts and the clear sequence
+  `Platform` uses. IRQ Status 1 (0x40) and Status 2 (0x41) are latches. The chip
+  manual (V1.9) states the hold rule: a GPIO configured as IRQ is held low until
+  the IRQ Status is cleared. The zero write is the vendor driver's own clear
+  (`irqClearGpioAll()` and `irqClearSysAll()` both write 0x00), not a manual
+  claim. `clearLatched()` writes Status 1 then Status 2 through the caller's
+  retried access, so a late GPIO4 edge survives the sequence for the motion
+  poll. `tests/host/platform-wake` compiles `src/FurblePlatform.cpp` against the
+  latching shim and drives the four call sites; `pmic_irq_test` covers the
+  header alone. Do not replace the clear with a mask write and do not clear only
+  Status 1; see plans/363.
+- `FurbleFeedbackPolicy.h` holds the speaker volume ceiling
+  (`MAX_BATTERY_VOLUME` = 191, the StickS3 notice's 75 percent of 0 to 255) and
+  `onBatteryPower()`, which is true when the board can tell its power source
+  apart and has no positive VBUS reading. The charge flag is deliberately not an
+  input: a failed PMIC read reports "charging" on the StickS3, so only a VBUS
+  measurement proves mains power. Callers cap what reaches the amplifier and
+  never rewrite the stored setting.
 - `FurblePowerBackend.h` is the contract a board's power hardware meets: the
   shared battery and rail types plus the member list `meetsPowerBackend()`
   checks, asserted after `Platform` in `FurblePlatform.h`. It is a

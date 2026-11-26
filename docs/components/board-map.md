@@ -230,7 +230,7 @@ The protocol timings are in [the IR remote page](../protocols/ir-remote.md).
 
 Which outputs a board has is the `feedbackSound`, `feedbackLight` and
 `feedbackVibration` fields of the board profile
-(`include/FurbleBoard.h:75`, `src/FurbleBoard.cpp:66-104`). A request for an
+(`include/FurbleBoard.h:77-79`, `src/FurbleBoard.cpp:66-104`). A request for an
 output the board lacks is skipped rather than logged as a failure
 (`src/FurbleFeedback.cpp:85-87`).
 

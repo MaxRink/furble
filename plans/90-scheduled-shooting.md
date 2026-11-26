@@ -76,7 +76,7 @@ If this is built, it splits into two independent pieces.
 on when it expires. The documented call is
 `pm1.timerSet(seconds, M5PM1_TIM_ACTION_POWERON)` followed by `pm1.shutdown()`.
 `Platform::powerOff()` already calls `m_M5PM1.shutdown()`
-(`src/FurblePlatform.cpp:493-535`), so half of the sequence exists.
+(`src/FurblePlatform.cpp:509-554`), so half of the sequence exists.
 
 Because the timer takes a duration and not a time of day, the sequence is:
 

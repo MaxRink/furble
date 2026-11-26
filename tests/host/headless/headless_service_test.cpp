@@ -15,6 +15,7 @@
 #include "FurblePlatform.h"
 #include "FurbleUI.h"
 #include "M5Unified.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "headless_state.h"
 
@@ -31,12 +32,27 @@ namespace {
 constexpr int REQUIRED_LOOPS = 45;
 int g_Loops = 0;
 int g_Failures = 0;
+// "watchdog-refused" runs the same production boot with the PMIC double
+// refusing the arm, which is the degraded state the boot log must show.
+bool g_WatchdogRefused = false;
 
 void check(bool condition, const char *message) {
   if (!condition) {
     std::cerr << "HEADLESS FAIL: " << message << '\n';
     g_Failures++;
   }
+}
+
+// The boundary log shim stores every ESP_LOGx line under its own lock.
+bool logContains(const char *needle) {
+  auto &store = BoundaryHost::detail::logStore();
+  const std::lock_guard<std::mutex> lock(store.mutex);
+  for (const auto &line : store.lines) {
+    if (line.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::vector<std::string> bootWithoutTask() {
@@ -82,6 +98,16 @@ void finish(void) {
   check(controlTasks == 1, "the production Control task was not created exactly once");
   check(cpuFreqSets == 1, "the stored CPU frequency was not applied");
   check(watchdogEnables == 1, "the StickS3 watchdog setting was not applied");
+  if (g_WatchdogRefused) {
+    // A refused arm must be logged and must not end the boot: every stage
+    // below has already run by the time finish() is reached.
+    check(watchdogRefusals == 1, "the refused watchdog arm was not observed exactly once");
+    check(logContains("M5PM1 watchdog arm refused"), "a refused watchdog arm was not logged");
+  } else {
+    check(watchdogRefusals == 0, "the watchdog double refused an arm it should have taken");
+    check(!logContains("M5PM1 watchdog arm refused"),
+          "the watchdog refusal was logged without a refusal");
+  }
   check(consoleQueued, "the console did not queue its headless requests");
   check(irInit == 1, "IR::init was not called once");
   check(sdInit == 1, "SD::init was not called once");
@@ -133,7 +159,11 @@ void delayHook(void) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  if ((argc > 1) && (std::string(argv[1]) == "watchdog-refused")) {
+    g_WatchdogRefused = true;
+    HeadlessState::watchdogEnableResult.store(false);
+  }
   furbleHostSetDelayHook(delayHook);
   app_main();
   std::cerr << "app_main returned unexpectedly\n";

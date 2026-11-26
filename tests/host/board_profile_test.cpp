@@ -8,6 +8,9 @@
 //   motionWakeGpio(), arm/disarm   GPIO35 direct, GPIO13 through the M5PM1
 //   Platform::canTimedWake()       M5PM1 timer, Plus2 and Tough RTC alarm
 //   knownBatteryBackedRtc()        TimeKeeper RTC backing
+//   Platform::getInstance()        RTC IRQ clear at boot, gated on the
+//                                  reachable RTC chip: only the Plus2 answers
+//                                  at 0x51
 //   pinForBoard()                  IR pin
 //   isCoreBoard()                  SD slot
 //   boardName()                    boot screen name
@@ -117,6 +120,7 @@ struct Expected {
   bool level, voltage, current, charging;
   uint16_t capacity;
   bool rtcBacked;
+  bool rtcBus;
   int irPin;
   MotionWake motion;
   int motionPin;
@@ -140,19 +144,19 @@ struct Expected {
 
 // clang-format off
 const Expected EXPECTED[] = {
-    {m5::board_t::board_M5StickC, "StickC", true, true, true, true, 95, true, 9, MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false, true, false, 10, true, true, true,
+    {m5::board_t::board_M5StickC, "StickC", true, true, true, true, 95, true, false, 9, MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false, true, false, 10, true, true, true,
    GpsPinSource::BOARD_SUPPORT, -1, -1},
-    {m5::board_t::board_M5StickCPlus, "StickC+", true, true, true, true, 120, true, 9, MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48, true, true, false, 10, true, true, true,
+    {m5::board_t::board_M5StickCPlus, "StickC+", true, true, true, true, 120, true, false, 9, MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48, true, true, false, 10, true, true, true,
    GpsPinSource::BOARD_SUPPORT, -1, -1},
-    {m5::board_t::board_M5StickCPlus2, "StickC+2", true, true, false, false, 200, true, 19, MotionWake::NONE, -1, TimedWake::RTC_ALARM, 4, false, false, true, true, false, 32, true, true, false, 19, false, false, false,
+    {m5::board_t::board_M5StickCPlus2, "StickC+2", true, true, false, false, 200, true, true, 19, MotionWake::NONE, -1, TimedWake::RTC_ALARM, 4, false, false, true, true, false, 32, true, true, false, 19, false, false, false,
    GpsPinSource::BOARD_SUPPORT, -1, -1},
-    {m5::board_t::board_M5StickS3, "StickS3", true, true, false, true, 250, false, 46, MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true, 32, true, false, false, -1, true, true, false,
+    {m5::board_t::board_M5StickS3, "StickS3", true, true, false, true, 250, false, false, 46, MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true, 32, true, false, false, -1, true, true, false,
    GpsPinSource::BOARD_SUPPORT, -1, -1},
-    {m5::board_t::board_M5Stack, "Core", true, false, false, false, 110, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true, false, false, -1, false, true, false,
+    {m5::board_t::board_M5Stack, "Core", true, false, false, false, 110, false, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true, false, false, -1, false, true, false,
    GpsPinSource::NONE, -1, -1},
-    {m5::board_t::board_M5StackCore2, "Core2", true, true, true, true, 500, true, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true, false, true, -1, true, true, false,
+    {m5::board_t::board_M5StackCore2, "Core2", true, true, true, true, 500, true, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true, false, true, -1, true, true, false,
    GpsPinSource::BOARD_SUPPORT, -1, -1},
-    {m5::board_t::board_M5Tough, "Tough", true, true, true, true, 390, true, -1, MotionWake::NONE, -1, TimedWake::RTC_ALARM, -1, true, true, true, true, false, 32, true, false, false, -1, true, true, false,
+    {m5::board_t::board_M5Tough, "Tough", true, true, true, true, 390, true, false, -1, MotionWake::NONE, -1, TimedWake::RTC_ALARM, -1, true, true, true, true, false, 32, true, false, false, -1, true, true, false,
    GpsPinSource::BOARD_SUPPORT, -1, -1},
   // The Waveshare ESP32-S3-ETH row has no removed switch to copy from. It pins
   // the board facts recorded in plans/349-waveshare-board-row.md: no PMIC, no
@@ -160,14 +164,14 @@ const Expected EXPECTED[] = {
   // no switchable Port A rail and no software power-off path. The microSD slot
   // exists but no card select is mapped, so the row reports no SD slot while
   // FURBLE_HAS_SD stays 1 for that image.
-  {m5::board_t::board_M5StampS3, "Waveshare", false, false, false, false, 0, false, -1,
+  {m5::board_t::board_M5StampS3, "Waveshare", false, false, false, false, 0, false, false, -1,
    MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, false, false, false, 32,
    false, false, false, -1, false, false, false,
    GpsPinSource::NONE, -1, -1},
   // Every other board the CoreS3 included.
-    {m5::board_t::board_unknown, "M5", false, false, false, false, 0, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false,
+    {m5::board_t::board_unknown, "M5", false, false, false, false, 0, false, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false,
    GpsPinSource::BOARD_SUPPORT, -1, -1},
-    {m5::board_t::board_M5StackCoreS3, "M5", false, false, false, false, 0, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false,
+    {m5::board_t::board_M5StackCoreS3, "M5", false, false, false, false, 0, false, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false,
    GpsPinSource::BOARD_SUPPORT, -1, -1},
 };
 // clang-format on
@@ -184,6 +188,15 @@ int main() {
           n + " battery caps");
     check(p.batteryCapacityMah == e.capacity, n + " capacity");
     check(p.rtcBatteryBacked == e.rtcBacked, n + " rtc backing");
+    check(p.rtcOnBus == e.rtcBus, n + " rtc on the bus");
+    // Platform::getInstance() boots with `rtcOnBus && timedWake != RTC_ALARM`,
+    // which is false for every shipped row because the only board with a
+    // reachable RTC chip is the one that also wakes on its RTC alarm. This
+    // asserts the implication so the compound guard stays deliberate: a new row
+    // with a reachable RTC and another timed wake would reach the call and must
+    // be a reviewed decision, not a silent side effect.
+    check(!p.rtcOnBus || (p.timedWake == TimedWake::RTC_ALARM),
+          n + " rtc on the bus implies an RTC-alarm timed wake");
     check(p.irPin == e.irPin, n + " ir pin");
     check(p.motionWake == e.motion && p.motionWakePin == e.motionPin, n + " motion wake");
     check(p.timedWake == e.timed, n + " timed wake");

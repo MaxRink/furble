@@ -113,6 +113,38 @@ as the reader; do not return the underlying vector without the lock. The
 flag, counters and advertising counters, so a test never inherits the previous
 case's GATT database.
 
+`boundary-feedback` compiles the production feedback driver. Its `sound` mode
+waits out the amplifier settle window (`settleAmplifier()`, plans/363) only when
+the session is cold, and covers the StickS3 battery volume cap end to end: 255 on
+battery reaches the amplifier as 191 with the stored setting untouched, 255 on
+VBUS stays 255, and a zero VBUS reading with the charge flag set still caps to
+191, because a failed PMIC read reports "charging". `setBatteryPower()` in
+`boundary_host.h` is that switch. Its `idle-window` mode is the amplifier-settle
+regression: a pattern that follows a completed one inside the idle window sounds
+its first tone on the next timer pass with no settle wait, a cold session still
+waits, and console mode (no `lv_task_handler()`) plays instead of parking a tone
+nothing would retry. `clearAmplifier()` in that file waits past the window.
+
+`pmic-irq` links `include/FurblePmicIrq.h` and the latching PMIC shim only, so it
+covers the header's clear sequence and the model, not the production call sites.
+`platform-wake` is the production coverage: it compiles `src/FurblePlatform.cpp`
+unchanged against `sim/shim/M5PM1.h` and drives `armMotionWake()`,
+`motionWakeSample()`, `clearMotionWake()` and `disarmMotionWake()`. It reads the
+PMIC through its own `M5PM1` handle because the model's retained state is static.
+Unreferenced platform entry points are dropped by the platform linker's section
+discard (`-Wl,-dead_strip`, `-Wl,--gc-sections`), which is what keeps the target
+from needing Control, SD and TimeKeeper; without it the target stops linking, so
+never remove it. `feedback-volume-policy` covers the cap arithmetic for both
+states.
+
+`boundary-headless-service` compiles the unchanged `src/main.cpp` with
+`FURBLE_NO_DISPLAY` and asserts the boot order and the service loop. Its
+`watchdog-refused` argument runs the same boot with the PMIC platform double
+returning false from `watchdogEnable()`, and asserts the boot still reaches
+every stage and that `M5PM1 watchdog arm refused` reached the log through the
+boundary `esp_log` store. Never make a refused watchdog fatal: it is a degraded
+state, not a boot loop.
+
 `time-keeper-persistence` models the ESP system clock through the weak
 `furble_sim_system_time_us()` hooks: a soft reset keeps it running while
 esp_timer restarts, a power-on loses it. Its `time_keeper_stubs/esp_system.h`

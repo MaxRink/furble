@@ -13437,12 +13437,16 @@ void UI::setDisplayMode(uint8_t mode) {
     // Console mode is a panel-off state too. The PM1 status LED follows the
     // same input as the inactivity sleep, so it must not stay lit.
     Platform::getInstance().setDisplayOff(true);
+    // task() skips lv_task_handler() in console mode, so no feedback timer can
+    // retry a tone parked for the amplifier settle window.
+    Feedback::getInstance().setTimerPathActive(false);
   } else {
     Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
     M5.Display.wakeup();
     M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
     lv_display_trigger_activity(m_Display);
     Platform::getInstance().setDisplayOff(m_DisplayOff);
+    Feedback::getInstance().setTimerPathActive(true);
   }
 
   m_DisplayConsole = console;

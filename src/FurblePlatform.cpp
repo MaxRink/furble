@@ -18,6 +18,7 @@
 #include "FurbleIP5306.h"
 #include "FurblePlatform.h"
 #include "FurblePlatformPolicy.h"
+#include "FurblePmicIrq.h"
 #include "FurblePower.h"
 #include "FurblePowerPolicy.h"
 #include "FurbleSD.h"
@@ -121,7 +122,14 @@ Platform &Platform::getInstance(void) {
       (void)gpio_set_direction(hold, GPIO_MODE_OUTPUT);
       (void)gpio_set_level(hold, 1);
     }
-    if (board.timedWake != Board::TimedWake::RTC_ALARM) {
+    // Only a board with an RTC the driver can reach has a stale RTC IRQ to
+    // clear, so the write is skipped outright when none is on the bus. On the
+    // StickS3 M5Unified's PCF8563 fallback probe at 0x51 is not acknowledged
+    // and no RTC is instantiated, which makes this call at best a no-op and,
+    // if a future M5Unified stops gating on its probe result, an unneeded
+    // NACKing transaction in the boot window. The Plus2 keeps its BM8563 alarm
+    // flag for consumeTimedWake(), so it is excluded by the second test.
+    if (board.rtcOnBus && (board.timedWake != Board::TimedWake::RTC_ALARM)) {
       M5.Rtc.disableIRQ();
     }
     BootTimeline::mark(BootTimeline::DISPLAY_READY);
@@ -206,6 +214,18 @@ bool Platform::unlockDownloadRecovery(void) {
 
   ESP_LOGI(LOG_TAG, "M5PM1 long-press download recovery enabled");
   return true;
+}
+
+bool Platform::clearPmicIrqLatches(void) {
+  // Both latches are cleared, not just the GPIO one the motion path reads. See
+  // include/FurblePmicIrq.h for the register map and why the system status is
+  // cleared rather than masked.
+  return PmicIrq::clearLatched([this](PmicIrq::Status status) {
+    return m5pm1Access([this, status]() {
+      return (status == PmicIrq::Status::SYSTEM) ? m_M5PM1.irqClearSysAll()
+                                                 : m_M5PM1.irqClearGpioAll();
+    });
+  });
 }
 
 bool Platform::prepareFlash(void) {
@@ -613,13 +633,18 @@ bool Platform::armMotionWake(void) {
 #if FURBLE_HAS_M5PM1
     case Board::MotionWake::PMIC_GPIO:
     {
+      // Clear both IRQ status latches before the level wake is armed. The
+      // M5PM1 holds its aggregated IRQ line low until the IRQ Status is
+      // cleared, and Status 2 carries 5VIN insert and remove, which nothing
+      // here consumes. Clearing only Status 1 is what left a USB insert or
+      // removal asserting the line for the rest of the session.
       if (!m5pm1Access([this]() {
             return m_M5PM1.gpioSet(M5PM1_GPIO_NUM_4, M5PM1_GPIO_MODE_INPUT, 0, M5PM1_GPIO_PULL_UP,
                                    M5PM1_GPIO_DRIVE_PUSHPULL);
           })
           || !m5pm1Access(
               [this]() { return m_M5PM1.gpioSetFunc(M5PM1_GPIO_NUM_4, M5PM1_GPIO_FUNC_IRQ); })
-          || !m5pm1Access([this]() { return m_M5PM1.irqClearGpioAll(); }) || !m5pm1Access([this]() {
+          || !clearPmicIrqLatches() || !m5pm1Access([this]() {
                return m_M5PM1.irqSetGpioMask(M5PM1_IRQ_GPIO4, M5PM1_IRQ_MASK_DISABLE);
              })
           || !m5pm1Access([this]() { return m_M5PM1.gpioSetWakeEnable(M5PM1_GPIO_NUM_4, true); })
@@ -685,7 +710,9 @@ void Platform::disarmMotionWake(void) {
       m5pm1Access([this]() { return m_M5PM1.gpioSetWakeEnable(M5PM1_GPIO_NUM_4, false); });
       m5pm1Access(
           [this]() { return m_M5PM1.irqSetGpioMask(M5PM1_IRQ_GPIO4, M5PM1_IRQ_MASK_ENABLE); });
-      m5pm1Access([this]() { return m_M5PM1.irqClearGpioAll(); });
+      // Both latches, so a 5VIN event that arrived while armed does not leave
+      // the line asserted after the wake source is gone.
+      (void)clearPmicIrqLatches();
       break;
 #endif
     default:
@@ -744,6 +771,12 @@ bool Platform::motionWakeSample(void) {
             [this, &status]() { return m_M5PM1.irqGetGpioStatus(&status, M5PM1_CLEAN_ONCE); })) {
       return false;
     }
+    // Status 1 is not the only latch that holds PYG1_IRQ low. A 5VIN insert or
+    // removal latches Status 2, which nothing consumes, and the line then
+    // stays asserted while this poll keeps reporting an idle IMU. Clear it
+    // here as well; Status 1 is left to the read above so an edge that arrives
+    // between the two accesses is not discarded.
+    (void)m5pm1Access([this]() { return m_M5PM1.irqClearSysAll(); });
     if ((status & M5PM1_IRQ_GPIO4) == 0) {
       return false;
     }
@@ -784,7 +817,7 @@ void Platform::clearMotionWake(void) {
     // m5pm1Access retries once, which is the documented behaviour of the first
     // transaction after the PMIC's idle sleep, and a wake is exactly when that
     // first transaction happens.
-    m5pm1Access([this]() { return m_M5PM1.irqClearGpioAll(); });
+    (void)clearPmicIrqLatches();
   }
 #endif
 }

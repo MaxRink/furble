@@ -315,8 +315,10 @@ poll. The platform function returns immediately unless `armMotionWake()`
 succeeded. Only a hardware backend calls `armMotionWake()`, and it does so after
 its engine is configured. With the software backend, which is the default, no
 wake source is armed and no PMIC or GPIO read happens. When a hardware backend
-arms, the sample is one M5PM1 I2C read of the GPIO4 IRQ status on the S3, plus a
-clear when it was asserted, and one GPIO level read on the StickC family.
+arms, the sample is one M5PM1 I2C read of the GPIO4 IRQ status on the S3, which
+clears the bits it returned, plus one clear of IRQ Status 2 so a latched 5VIN
+insert or removal cannot hold the wake line low (plans/363). On the StickC
+family it is one GPIO level read.
 
 ### 3.2 Sensor mode and bus
 

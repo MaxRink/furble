@@ -4,6 +4,5 @@
   "src/FurbleCompanionDebug.cpp": "hardware-bound: FURBLE_BLE_DEBUG only NimBLE bond and reset status dump",
   "src/FurbleOTAPartitionSinkArduino.cpp": "hardware-bound: Arduino OTA partition backend",
   "src/FurbleOTAPartitionSinkESP.cpp": "hardware-bound: ESP-IDF OTA partition backend",
-  "src/FurblePlatform.cpp": "planned: plans/16x simulator coverage",
   "src/FurbleUIAudit.cpp": "hardware-bound: walks the live LVGL widget tree"
 }

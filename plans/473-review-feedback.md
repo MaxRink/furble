@@ -28,7 +28,7 @@ The passages that state the rule at 8ff406ea, all per panel:
 - `src/FurbleUI.cpp:1841`, the Sleep Out to next Sleep In gate, and
   `src/FurbleUI.cpp:1887-1893`, the Sleep In to next Sleep Out wait.
 - `docs/power/display.md:103-120`.
-- `docs/power/board-power.md:799`, `:1079`, `:1481`.
+- `docs/power/board-power.md:799`, `:1083`, `:1485`.
 - `docs/power/soc.md:799-801`.
 - `docs/power/datasheet-register.md:36-38`, the new ST7796S row and the revised
   ILI9342C and ILI9341 rows.

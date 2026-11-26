@@ -93,6 +93,10 @@ void Platform::setCPUMaxFreq(uint8_t) {
 
 bool Platform::watchdogEnable(bool) {
   HeadlessState::watchdogEnables++;
+  if (!HeadlessState::watchdogEnableResult.load()) {
+    HeadlessState::watchdogRefusals++;
+    return false;
+  }
   return true;
 }
 

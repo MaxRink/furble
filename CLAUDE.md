@@ -277,7 +277,7 @@ CLAUDE.md whose directory it touches.
   and the full `sim/scripts/run-permutations.py --compact` before asking for
   hardware. The committed manifests hold 198 modeled hardware entries, 20 crash
   entries, 11 fuzz targets, 6,912 permutations and 13 memory profile scenarios.
-  `sh sim/scripts/run-boundary-conformance.sh` runs the 27 linked boundary ctest
+  `sh sim/scripts/run-boundary-conformance.sh` runs the 29 linked boundary ctest
   cases registered in `tests/host/CMakeLists.txt`. The
   memory dumps are ignored generated evidence, so run
   `python3 sim/scripts/run-memory-profile.py` before the final check. Hardware
@@ -461,6 +461,27 @@ check.
   while entering Download mode (manual, pages 27 and 28). The status LED stays
   lit at display off unless you clear it: `setLedEnLevel(false)` saves PWR_CFG
   bit 4.
+- M5PM1 IRQ status is two latches, not one. The chip manual says a GPIO
+  configured as IRQ is held low until the IRQ Status is cleared, and IRQ
+  Status 2 (0x41) carries 5VIN insert and remove, which furble does not
+  consume. Clearing only Status 1 (0x40) left PYG1_IRQ asserted on GPIO13 for
+  the rest of the session after a USB insert or removal, so `armMotionWake()`
+  armed a level wake on a line that never releases. Both registers go through
+  `Platform::clearPmicIrqLatches()`; do not swap that for a mask write, because
+  the clear is the release the manual documents and mask semantics are not
+  (plans/363).
+- The StickS3 speaker amplifier needs about 1 s after `M5.Speaker.begin()`
+  before the first tone, and its volume must stay at or below 75 percent
+  (`FeedbackPolicy::MAX_BATTERY_VOLUME` = 191) while the device runs on the
+  battery. The settle belongs to the amplifier enable, so the feedback session
+  outlives its last tone by an idle window instead of being power-cycled per
+  pattern; wait the settle on the feedback timer, never delay the caller's task
+  and never rewrite the stored volume. Only a positive VBUS reading counts as
+  mains power (plans/363).
+- M5Unified instantiates an RTC only when its PCF8563 probe at 0x51 is
+  acknowledged, so `M5.Rtc.isEnabled()` is false on every board except the
+  Plus2 and the AXP192's internal RTC is unreachable. Guard RTC writes with
+  `Board::profile().rtcOnBus`, not with the timed-wake kind.
 - S3 native USB Serial/JTAG resets the chip on each host port open: the host
   sets RTS 1 with DTR 0 (ESP32-S3 TRM v1.8, Table 33.3-2 p. 1248), and SRST
   resets the digital system but not the USB Serial/JTAG controller, so the port

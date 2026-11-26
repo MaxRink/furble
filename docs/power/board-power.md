@@ -934,11 +934,12 @@ Estimates are not measurements unless the label says `measured-local`.
 #### RL-08 All boards: speaker, vibration, IR, and LED event rails
 
 - Change: none. The event outputs are already bracketed.
-- Current behavior: the speaker is opened only for a tone and ended after the
-  pattern; the Core2 amp enable is low at boot; the vibration motor is at 0 V
-  except for an event; the IR channel holds `ESP_PM_CPU_FREQ_MAX`, not an APB
-  lock, only for the transmit window, and it is disabled after; the status LED
-  is only driven for a feedback event.
+- Current behavior: the speaker is opened for the first tone of a burst and its
+  session is ended once it has been idle for 10 s, not after each pattern
+  (plans/363); the Core2 amp enable is low at boot; the vibration motor is at
+  0 V except for an event; the IR channel holds `ESP_PM_CPU_FREQ_MAX`, not an
+  APB lock, only for the transmit window, and it is disabled after; the status
+  LED is only driven for a feedback event.
 - Evidence: `code` (`src/FurbleFeedback.cpp`, `src/FurbleIR.cpp`),
   `datasheet` (NS4168 13 mA quiescent, 1 uA shutdown).
 - Estimated saving: 0. The remaining cost is the event itself, which is user
@@ -953,8 +954,11 @@ Estimates are not measurements unless the label says `measured-local`.
 - Change: none recommended beyond verifying that the codec is in its low-power
   state when the speaker is closed.
 - Current behavior: M5Unified opens the speaker for a tone and furble calls
-  `M5.Speaker.end()` after init and after each pattern. The product page says
-  the IR receiver needs the speaker amplifier off, which is the same direction.
+  `M5.Speaker.end()` after init. A session then stays open across a burst and is
+  ended once it has been idle for 10 s, and a cold session waits the documented
+  ~1 s amplifier settle before its first tone, so only the first pattern of an
+  idle device pays the enable latency (plans/363). The product page says the IR
+  receiver needs the speaker amplifier off, which is the same direction.
 - Evidence: `code`, `vendor-doc`.
 - Estimated saving: 0 if the codec is already idle. The ES8311 and AW8737
   quiescent currents are not in the tree, so a closed speaker is an assumption,
@@ -1540,8 +1544,8 @@ given so the next reader does not reopen them without new facts.
 | RL-05 | Cut StickC or Plus LDO3 when the panel sleeps | LDO3 powers the LCD logic; cutting it loses the panel state | 0 | n/a (rejected) | `code`, M5Unified |
 | RL-06 | Cut SD power when logging is off | No load switch on either Core SD slot | 0 | n/a (rejected) | `code`, board docs |
 | RL-07 | Optimize Waveshare peripherals for runtime | No battery; mains node | 0 | n/a (rejected) | `code`, board docs |
-| RL-08 | Change the speaker, vibration, IR, or LED event brackets | Already opened only for the event and closed after | 0 | n/a (rejected) | `code` |
-| RL-09 | Change the StickS3 codec or amplifier policy | The speaker is already ended after init and after each pattern; the remaining current is unmeasured but the policy is correct | 0 | n/a (rejected) | `code` |
+| RL-08 | Change the speaker, vibration, IR, or LED event brackets | Already opened only for the event and ended 10 s after the last tone | 0 | n/a (rejected) | `code` |
+| RL-09 | Change the StickS3 codec or amplifier policy | The speaker is ended after init and closed 10 s after the last tone; the remaining current is unmeasured but the policy is correct | 0 | n/a (rejected) | `code` |
 | RL-10 | Remove the Plus2 battery divider | Board fixture, no firmware control | 0 | n/a (rejected) | `code`, schematic needed |
 | LK-02 | Make the StickC MPU6886 interrupt push-pull | The SYS_INT net is shared with the BM8563 RTC and is open-drain; push-pull can short the RTC | 0 | n/a (rejected) | `code` |
 | LK-03 | Drive every IR pin low at boot | The driven stage polarity is a profile fact on the StickC family (plan 350): the StickC and Plus are active low and the Plus2 is active high, so one blanket level would key one family. The StickS3 polarity is still unverified, and the other boards show no measured leakage | 0 | n/a (rejected) | `code` |

@@ -26,6 +26,15 @@ using esp_err_t = int32_t;
 #ifndef ESP_ERR_NOT_FOUND
 #define ESP_ERR_NOT_FOUND 0x105
 #endif
+#ifndef ESP_ERR_NOT_SUPPORTED
+#define ESP_ERR_NOT_SUPPORTED 0x106
+#endif
+#ifndef ESP_ERROR_CHECK
+#define ESP_ERROR_CHECK(expression) \
+  do {                              \
+    (void)(expression);             \
+  } while (0)
+#endif
 #ifndef ESP_ERR_NVS_NO_FREE_PAGES
 #define ESP_ERR_NVS_NO_FREE_PAGES 0x110a
 #endif

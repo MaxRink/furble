@@ -467,9 +467,16 @@ void app_main() {
       Furble::Settings::load<Furble::Settings::CPU_FREQ>());
 
 #if defined(FURBLE_M5STICKS3)
-  // The watchdog enable lives in NVS and needs the platform up
-  Furble::Platform::getInstance().watchdogEnable(
-      Furble::Settings::load<Furble::Settings::WATCHDOG>());
+  // The watchdog enable lives in NVS and needs the platform up. A refused
+  // change is a degraded state, not a boot failure: the device still runs, it
+  // just keeps the watchdog as it was, so report it and keep going. Both the
+  // arm and the disarm path land here (disarm is the normal path when the
+  // setting is off), and watchdogEnable() has already logged the failing step,
+  // so this is one neutral line naming the state that was refused.
+  const bool watchdog = Furble::Settings::load<Furble::Settings::WATCHDOG>();
+  if (!Furble::Platform::getInstance().watchdogEnable(watchdog)) {
+    ESP_LOGW(LOG_TAG, "M5PM1 watchdog %s refused; continuing", watchdog ? "arm" : "disable");
+  }
 #endif
   Furble::BootTimeline::mark(Furble::BootTimeline::CPU_POLICY_DONE);
   Furble::BootScreen::step("Power");

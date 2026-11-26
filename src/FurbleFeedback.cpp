@@ -5,6 +5,7 @@
 #include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
 #include "FurbleFeedback.h"
+#include "FurbleFeedbackPolicy.h"
 #include "FurblePinShare.h"
 #include "FurbleTime.h"
 
@@ -31,6 +32,24 @@ constexpr uint8_t LOW_BATTERY_LEVEL = 10;
 constexpr uint8_t LOW_BATTERY_SAMPLES = 6;
 constexpr uint8_t VIBRATION_LEVEL = 255;
 constexpr uint32_t TIMER_PERIOD_MS = 10;
+
+// M5PM1 low-power guide, section 1 "SPK AMP": allow about one second after the
+// amplifier is enabled before playback. The rail and the amplifier come up
+// well before the codec can drive them, so a tone started immediately loses
+// its attack. This is the documented settle, not a measured one; the v1 round
+// is 1,000 ms and a hardware sweep can move it.
+constexpr uint32_t AMP_SETTLE_MS = 1000;
+
+// How long the amplifier stays enabled after its last tone. The settle above is
+// paid per amplifier enable, so power-cycling the session after every pattern
+// delayed the first tone of every pattern by the settle window and put the beep
+// a second behind the LED and the vibration. Keeping the session open across a
+// burst of feedback pays the settle once, while an idle device still returns the
+// rail off. The longest burst the UI produces is the intervalometer: it
+// announces its countdown on a one second cadence over the last three seconds
+// and then fires the shutter. Ten seconds spans that and leaves room for a
+// connect or disconnect on the same action.
+constexpr uint32_t AMP_IDLE_TIMEOUT_MS = 10000;
 
 constexpr Feedback::output_t OUTPUTS[] = {
     Feedback::OUTPUT_OFF,     Feedback::OUTPUT_SOUND,       Feedback::OUTPUT_LIGHT,
@@ -145,7 +164,10 @@ void Feedback::initialize(void) {
   reload();
 
   // M5.begin() opens the speaker when internal_spk is enabled. Keep the
-  // amplifier rail off until the first event instead.
+  // amplifier rail off until the first event instead. The stored volume is
+  // handed over unchanged here because nothing is playing: the battery ceiling
+  // is applied where a pattern actually sounds (applyVolume()), and the stored
+  // setting is never rewritten.
   if (m_Capabilities.sound && outputIncludesSound(m_Output)) {
     M5.Speaker.setVolume(m_Volume);
     M5.Speaker.end();
@@ -168,7 +190,7 @@ void Feedback::reload(void) {
 void Feedback::setVolume(uint8_t volume) {
   m_Volume = volume;
   if (m_SpeakerActive) {
-    M5.Speaker.setVolume(volume);
+    applyVolume();
   }
 }
 
@@ -177,6 +199,12 @@ void Feedback::setDisplayOff(bool off) {
   if (off) {
     stopLight();
   }
+}
+
+void Feedback::setTimerPathActive(bool active) {
+  // Console mode skips lv_task_handler(), so no LVGL timer fires and nothing can
+  // retry a parked tone. The UI sets this when the display mode changes.
+  m_TimerPathActive = active;
 }
 
 void Feedback::ensureTimer(void) {
@@ -221,9 +249,17 @@ void Feedback::signal(event_t event, bool force) {
   // open. Ending it here would power-cycle the amplifier for nothing.
   if (m_SpeakerActive) {
     M5.Speaker.stop();
+    if (!m_TimerPathActive) {
+      // Nothing runs update() in console mode, so the idle close there can
+      // never fire and the amplifier would stay enabled for the rest of the
+      // session. The settle is skipped in that mode anyway, so ending the
+      // session here costs no tone and returns the rail.
+      stopSpeaker();
+    }
   }
   m_TonePlaying = false;
   m_ToneGap = false;
+  m_ToneSettlePending = false;
   m_ToneCount = 0;
   m_LightCount = 0;
   m_VibrationCount = 0;
@@ -294,6 +330,14 @@ void Feedback::signal(event_t event, bool force) {
   }
 
   if (sound) {
+    // One power-source reading per pattern, not per tone. The slider can
+    // otherwise drive applyVolume() at menu speed, and every reading is M5PM1
+    // I2C traffic. The sample runs here, on the signalling task, so the timer
+    // path never pays for it and a pattern that reuses the open amplifier still
+    // sees the current source.
+#if FURBLE_HAS_M5PM1
+    m_SessionOnBattery = onBatteryPower();
+#endif
     m_ToneIndex = 0;
     m_TonePlaying = false;
     m_ToneGap = false;
@@ -332,6 +376,16 @@ bool Feedback::beginSpeaker(void) {
   }
 
   m_SpeakerActive = true;
+#if FURBLE_HAS_M5PM1
+  // The M5PM1 low-power guide, section 1 "SPK AMP", is about the StickS3
+  // amplifier, which is the only one this image drives. Record the deadline
+  // and let startTone() wait it out on the feedback timer: nothing blocks this
+  // task and no mutex is held. The window is per amplifier enable, so a session
+  // held open across patterns by AMP_IDLE_TIMEOUT_MS does not pay it again.
+  m_AmpSettleDeadline = Platform::getInstance().tick() + AMP_SETTLE_MS;
+  m_AmpSettlePending = true;
+  m_SpeakerIdleDeadline = m_AmpSettleDeadline + AMP_IDLE_TIMEOUT_MS;
+#endif
   return true;
 }
 
@@ -346,10 +400,30 @@ void Feedback::startTone(void) {
     m_ToneCount = 0;
     return;
   }
-  M5.Speaker.setVolume(m_Volume);
+
+  const uint32_t now = Platform::getInstance().tick();
+  if (m_AmpSettlePending) {
+    if (m_TimerPathActive && !isDue(now, m_AmpSettleDeadline)) {
+      // Still inside the amplifier's settle window. Park the first tone and
+      // let the feedback timer retry: update() keeps running while m_ToneCount
+      // is non-zero, so no delay happens on this task and no mutex is held.
+      m_TonePlaying = false;
+      m_ToneSettlePending = true;
+      m_ToneDeadline = m_AmpSettleDeadline;
+      return;
+    }
+    // Either the window has passed, or the timer path cannot run and a parked
+    // tone would never be retried. Console mode skips lv_task_handler(), so
+    // play now and accept the lost attack: a beep that never sounds is worse
+    // than a beep without its attack.
+    m_AmpSettlePending = false;
+  }
+  m_ToneSettlePending = false;
+
+  applyVolume();
   M5.Speaker.tone(m_Tones[m_ToneIndex].frequency, m_Tones[m_ToneIndex].duration);
   m_TonePlaying = true;
-  m_ToneDeadline = Platform::getInstance().tick() + m_Tones[m_ToneIndex].duration;
+  m_ToneDeadline = now + m_Tones[m_ToneIndex].duration;
 }
 
 void Feedback::stopSpeaker(void) {
@@ -360,6 +434,57 @@ void Feedback::stopSpeaker(void) {
   }
   m_TonePlaying = false;
   m_ToneGap = false;
+  // The amplifier is closed, so the next session enables it again and owes a
+  // fresh settle window. Nothing is owed for a session that never opened.
+  m_ToneSettlePending = false;
+  m_AmpSettlePending = false;
+  m_AmpSettleDeadline = 0;
+  m_SpeakerIdleDeadline = 0;
+}
+
+void Feedback::applyVolume(void) {
+  // M5Stack StickS3 documentation, "Speaker Volume Notice": keep the speaker
+  // volume at or below 75 percent while the device runs from the battery, or
+  // the amplifier's current can brown the supply out and reboot the device.
+  // The notice is about that board's rail, so only the M5PM1 image samples the
+  // power source and only that image can set m_SessionOnBattery.
+  // Only what reaches the amplifier is capped; m_Volume keeps the configured
+  // setting and the NVS record is never rewritten.
+  const uint8_t volume = FeedbackPolicy::effectiveVolume(m_Volume, m_SessionOnBattery);
+  if ((volume != m_Volume) && !m_VolumeClampLogged) {
+    m_VolumeClampLogged = true;
+    ESP_LOGW(TAG, "Volume %u capped to %u on battery (StickS3 speaker notice)", m_Volume, volume);
+  }
+  M5.Speaker.setVolume(volume);
+}
+
+bool Feedback::onBatteryPower(void) {
+  auto &platform = Platform::getInstance();
+  // A board that reports neither VBUS nor a charge state cannot tell its power
+  // source apart, so its configured volume stands. VBUS sense is a compile-time
+  // capability, so the charge-state capability is only asked for when VBUS is
+  // not readable. A single `||` over both stored the capability and then could
+  // not read it on the boards that do sense VBUS, which clang-analyzer reports
+  // as a dead store; asking only when it matters removes both the warning and a
+  // needless platform call.
+  bool telemetry = FURBLE_HAS_VBUS_SENSE != 0;
+  if (!telemetry) {
+    telemetry = platform.getBatteryCaps().charging;
+  }
+
+  // A failed PMIC read must never be read as mains power. M5Unified's
+  // readRegister8 returns value_or(0), so a failed VBUS read is 0 mV, and the
+  // StickS3 charge flag is a GPIO input whose failing read returns false, which
+  // isCharging() maps to is_charging. A failed read therefore looks exactly
+  // like "on USB, charging". Only a positive VBUS reading is evidence of mains
+  // power, and a zero reading is retried whatever the charge flag says: the
+  // first transaction after the PMIC idle sleep only wakes it, and the safe
+  // direction for the amplifier is the cap.
+  int16_t vbus = platform.getBatteryStatus().vbus;
+  if (telemetry && (vbus == 0)) {
+    vbus = platform.getBatteryStatus().vbus;
+  }
+  return FeedbackPolicy::onBatteryPower(telemetry, vbus > 0);
 }
 
 void Feedback::setLight(bool on) {
@@ -440,10 +565,19 @@ void Feedback::update(void) {
             startTone();
           }
         } else {
-          // Final tone of the pattern, now the session may end.
+          // Final tone of the pattern. The session stays open for the idle
+          // window below instead of ending here: ending it now powers the
+          // amplifier down, and every later pattern would then re-pay the
+          // settle window before its first tone.
           m_ToneCount = 0;
-          stopSpeaker();
+          m_SpeakerIdleDeadline = now + AMP_IDLE_TIMEOUT_MS;
         }
+      }
+    } else if (m_ToneSettlePending) {
+      // The first tone was held for the amplifier settle window. startTone()
+      // decides again, and clears the flag when the deadline has passed.
+      if (isDue(now, m_ToneDeadline)) {
+        startTone();
       }
     } else if (m_ToneGap && isDue(now, m_ToneDeadline)) {
       m_ToneGap = false;
@@ -487,8 +621,17 @@ void Feedback::update(void) {
     }
   }
 
-  if ((m_ToneCount == 0) && (m_LightCount == 0) && (m_VibrationCount == 0)
-      && (m_Timer != nullptr)) {
+  if (m_SpeakerActive && (m_ToneCount == 0) && isDue(now, m_SpeakerIdleDeadline)) {
+    // No pattern used the open amplifier inside the idle window. Close it so
+    // the rail is off between bursts, which is the whole reason the session is
+    // not simply left open for the lifetime of the UI.
+    stopSpeaker();
+  }
+
+  if ((m_ToneCount == 0) && (m_LightCount == 0) && (m_VibrationCount == 0) && (m_Timer != nullptr)
+      && !m_SpeakerActive) {
+    // The open session keeps the timer running so the idle close above can
+    // happen. Once the amplifier is closed there is nothing left to service.
     lv_timer_pause(m_Timer);
   }
 }

@@ -44,6 +44,8 @@ inline constexpr uint8_t M5PM1_CLEAN_ONCE = 0x01;
 inline constexpr uint8_t M5PM1_CLEAN_ALL = 0x02;
 // M5PM1.h m5pm1_wake_src_t: REG_WAKE_SRC 0x05 bit 0 is the timer wake.
 inline constexpr uint8_t M5PM1_WAKE_SRC_TIM = 0x01;
+// M5PM1.h REG_PWR_CFG 0x00 bit 4 enables the status LED level.
+inline constexpr uint8_t M5PM1_PWR_CFG_LED_CTRL = (1 << 4);
 // M5PM1.h m5pm1_tim_action_t: REG_TIM_CFG 0x3C [2:0], 011 = power on.
 inline constexpr uint8_t M5PM1_TIM_ACTION_POWERON = 0x03;
 // M5PM1.h REG_IRQ_STATUS2 0x41 system flags. The battery events need charging
@@ -78,7 +80,9 @@ class M5PM1 {
           gpioDrive(0),
           timerArmed(false),
           timerAction(0),
-          timerDeadline(0) {}
+          timerDeadline(0),
+          powerConfig(0),
+          rtcRam {} {}
 
     bool downloadLocked;
     bool watchdogArmed;
@@ -101,6 +105,11 @@ class M5PM1 {
     bool timerArmed;
     uint8_t timerAction;
     uint32_t timerDeadline;
+    // REG_PWR_CFG 0x00: the LED_EN level in bit 4 and the rest of the byte.
+    uint8_t powerConfig;
+    // The RTC RAM the timed-wake marker lives in. A reset keeps it; a power
+    // cycle does not, which is the distinction a timed wake depends on.
+    uint8_t rtcRam[8];
   };
 
   struct Faults {
@@ -359,6 +368,36 @@ class M5PM1 {
     m_Persistent.irqStatus1 = static_cast<uint8_t>(m_Persistent.irqStatus1 | bits);
   }
 
+  /** Latch a system interrupt, which is what a 5VIN insert or removal does. */
+  void raiseSysIrqForTest(uint8_t bits) { injectSysIrq(bits); }
+
+  void raiseGpioIrqForTest(uint8_t bits) { injectGpioIrq(bits); }
+
+  /** The aggregated PYG1_IRQ line, active high while either latch holds a bit. */
+  bool irqLineAssertedForTest(void) const {
+    const std::lock_guard<std::mutex> guard(m_Mutex);
+    return (m_Persistent.irqStatus1 | m_Persistent.irqStatus2) != 0;
+  }
+
+  uint8_t gpioIrqStatusForTest(void) const { return irqStatus1(); }
+
+  uint8_t sysIrqStatusForTest(void) const { return irqStatus2(); }
+
+  uint8_t gpioIrqMaskForTest(void) const {
+    const std::lock_guard<std::mutex> guard(m_Mutex);
+    return m_Persistent.irqMask1;
+  }
+
+  uint8_t gpioFuncForTest(uint8_t pin) const {
+    return pin == M5PM1_GPIO_NUM_4 ? gpioFunc4() : 0xFF;
+  }
+
+  bool gpioWakeEnabledForTest(uint8_t pin) const {
+    const std::lock_guard<std::mutex> guard(m_Mutex);
+    return pin == M5PM1_GPIO_NUM_4
+           && ((m_Persistent.gpioWakeEnable & static_cast<uint8_t>(1u << pin)) != 0);
+  }
+
   // ---- GPIO configuration, M5PM1.cpp gpioSet() and friends ----
 
   int gpioSet(uint8_t pin, uint8_t mode, uint8_t value, uint8_t pull, uint8_t drive) {
@@ -440,6 +479,56 @@ class M5PM1 {
       const bool asserted =
           (pin == M5PM1_GPIO_NUM_4) && ((m_Persistent.irqStatus1 & M5PM1_IRQ_GPIO4) != 0);
       *value = asserted ? 0 : 1;
+    });
+  }
+
+  // ---- Power configuration: REG_PWR_CFG 0x00, LED_EN level in bit 4 ----
+
+  int getPowerConfig(uint8_t *config) {
+    return access([config]() {
+      if (config != nullptr) {
+        *config = m_Persistent.powerConfig;
+      }
+    });
+  }
+
+  int setPowerConfig(uint8_t config) {
+    return access([config]() { m_Persistent.powerConfig = config; });
+  }
+
+  int setLedEnLevel(bool level) {
+    return access([level]() {
+      if (level) {
+        m_Persistent.powerConfig =
+            static_cast<uint8_t>(m_Persistent.powerConfig | M5PM1_PWR_CFG_LED_CTRL);
+      } else {
+        m_Persistent.powerConfig =
+            static_cast<uint8_t>(m_Persistent.powerConfig & ~M5PM1_PWR_CFG_LED_CTRL);
+      }
+    });
+  }
+
+  // ---- RTC RAM: the timed-wake marker the platform writes and reads back ----
+
+  int writeRtcRAM(uint8_t offset, const uint8_t *data, uint8_t len) {
+    if ((data == nullptr) || (static_cast<size_t>(offset) + len > sizeof(m_Persistent.rtcRam))) {
+      return M5PM1_ERROR;
+    }
+    return access([offset, data, len]() {
+      for (uint8_t i = 0; i < len; i++) {
+        m_Persistent.rtcRam[offset + i] = data[i];
+      }
+    });
+  }
+
+  int readRtcRAM(uint8_t offset, uint8_t *data, uint8_t len) {
+    if ((data == nullptr) || (static_cast<size_t>(offset) + len > sizeof(m_Persistent.rtcRam))) {
+      return M5PM1_ERROR;
+    }
+    return access([offset, data, len]() {
+      for (uint8_t i = 0; i < len; i++) {
+        data[i] = m_Persistent.rtcRam[offset + i];
+      }
     });
   }
 

@@ -36,6 +36,10 @@ inline std::atomic<uint32_t> bootSteps {0};
 inline std::atomic<uint32_t> bootFinish {0};
 inline std::atomic<uint32_t> cpuFreqSets {0};
 inline std::atomic<uint32_t> watchdogEnables {0};
+inline std::atomic<uint32_t> watchdogRefusals {0};
+// The production boot must keep going when the PMIC refuses the arm.
+// Default true keeps the ordinary boot unchanged.
+inline std::atomic<bool> watchdogEnableResult {true};
 inline std::atomic<uint32_t> controlTasks {0};
 inline std::atomic<uint32_t> controlConnects {0};
 inline std::atomic<uint32_t> controlDisconnects {0};

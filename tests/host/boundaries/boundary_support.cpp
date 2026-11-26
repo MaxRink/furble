@@ -31,6 +31,8 @@ struct GpioState {
 };
 
 std::vector<GpioState> g_Gpios;
+int16_t g_BatteryVbus = 5000;
+bool g_BatteryCharging = false;
 
 // Virtual microsecond clock. Only esp_rom_delay_us() advances it, so a test can
 // measure a production busy-wait pulse width on a host that has no such clock.
@@ -175,6 +177,11 @@ void setGpioPadPeripheral(int pin) {
   gpioState(pin).pad = GPIO_PAD_PERIPHERAL;
 }
 
+void setBatteryPower(int16_t vbus_millivolts, bool charging) {
+  g_BatteryVbus = vbus_millivolts;
+  g_BatteryCharging = charging;
+}
+
 bool logContains(const char *needle) {
   if (needle == nullptr) {
     return false;
@@ -204,6 +211,22 @@ uint32_t Platform::tick(void) {
 
 void Platform::wakeM5PM1(void) {
   g_WakeCalls++;
+}
+
+Platform::battery_caps_t Platform::getBatteryCaps(void) {
+  // Charging is known, level and voltage are not. The production feedback
+  // volume policy only reads the charging flag and the VBUS millivolts.
+  return {false, false, false, true};
+}
+
+Platform::battery_status_t Platform::getBatteryStatus(void) {
+  Platform::battery_status_t status = {};
+  status.level = -1;
+  status.voltage = -1;
+  status.current = 0;
+  status.vbus = g_BatteryVbus;
+  status.charging = g_BatteryCharging;
+  return status;
 }
 
 void Platform::restart(void) {}
