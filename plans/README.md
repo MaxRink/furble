@@ -101,6 +101,8 @@ the git history. They are no longer ownership rows.
 | [312-review-feedback.md](implemented/312-review-feedback.md) | Review-feedback record for the MQTT queue fix, including the internal fallback gate |
 | [313-sim-only-status.md](313-sim-only-status.md) | Sim-only closeout: exact gate results, hardware-deferred items and resume criteria |
 | [314-memory-resilience.md](314-memory-resilience.md) | Memory resilience: sim heap fidelity and abort parity, load shedding, static and dynamic memory gates |
+| [335-stack-cuts.md](335-stack-cuts.md) | Control stack cut withdrawn: the walk omitted the pure virtual camera connect dispatch, so the gate now resolves it and the NimBLE pairing cycle is a known limit |
+| [335-review-feedback.md](335-review-feedback.md) | Review-feedback record for the withdrawn control cut: the omitted dispatch, the 25 percent line, and the checks that held |
 | [314-review-feedback.md](314-review-feedback.md) | Review-feedback record for the plan 314 memory resilience series |
 | [356-sim-memory-certify.md](356-sim-memory-certify.md) | Simulator memory certification: the four MQTT memory scenarios certified, a `FURBLE_SIM_MQTT=1` coverage build, and the measured `src/FurbleMQTT.cpp` number |
 | [323-plans-refresh-review-feedback.md](323-plans-refresh-review-feedback.md) | Review-feedback record for the plans refresh, PR #441 |

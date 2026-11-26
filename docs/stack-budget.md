@@ -186,7 +186,7 @@ worker; TLS uses 6 KiB.
 | nimble_host | 16,384 | 2,512 | 2,512 | 2,512 | 2,512 | 2,032 | 2,496 | 2,496 |
 | sys_evt | 3,072 (was 2,304) | 2,800 | 2,800 | 2,800 | 2,800 | 2,320 | 2,832 | 2,832 |
 | esp_timer | 3,584 | 3,072 | 3,072 | 3,072 | 3,072 | 2,592 | 3,392 | 3,392 |
-| control | 8,192 | 3,184 | 3,184 | 3,184 | 3,184 | 2,704 | 3,536 | 3,984 |
+| control | 8,192 | 3,184 | 3,184 | 3,184 | 3,184 | 2,704 | 2,704 | 3,968 |
 | camera_target | 4,096 | 2,752 | 2,752 | 2,752 | 2,752 | 2,384 | 3,136 | 3,744 |
 | gps | 4,096 | 3,568 | 3,568 | 3,568 | 3,568 | 3,264 | 3,856 | 3,856 |
 | wifi | 4,096 | 3,440 | 3,440 | 3,440 | 3,440 | 2,960 | 3,760 | 3,760 |
@@ -206,10 +206,25 @@ common tail was the first log call creating its mutex, which allocates, and
 FreeRTOS's `configASSERT` in `vPortExitCritical` on the way out of the heap
 lock. The cut lowers most rows by 112 bytes. `control` and `camera_target`
 also lose the copy-on-write string's length throw, which `infeasible_calls`
-removes with its citation. `mqtt` is about 4,800 bytes lower than under #446
-on every board that has it: the owner now receives each queued event into the
-preallocated `m_Received` copy instead of a `queued_event_t` on its stack, and
-lifecycle events carry only the client and event id.
+removes with its citation.
+
+The `control` row is a lower bound, not a proof of fit. The task spends its
+life in `Camera::connect()`, which calls the pure virtual `Camera::_connect()`,
+and GCC writes an indirect call at that site. `tools/stack_budget.json` names
+every linked implementation, so the walk follows the vendor connect path to its
+deepest end, which on the ESP32 boards is `FujifilmSecure::_connect()` through
+the NimBLE security and NVS store path to the `free()` assert and the panic
+handler. That resolution raises the row by 1,536 bytes on the ESP32 release
+boards and by 1,952 on `m5stick-c-debug`; the per-env numbers are in
+[`plans/335-stack-cuts.md`](../plans/335-stack-cuts.md). More than 200 indirect
+sites are still unresolved with the rule in place (201 on `m5stick-c`), so the
+hardware high-water mark remains the evidence for this task, as it is for
+`main`.
+
+`mqtt` is about 4,800 bytes lower than under #446 on every board that has it:
+the owner now receives each queued event into the preallocated `m_Received`
+copy instead of a `queued_event_t` on its stack, and lifecycle events carry
+only the client and event id.
 
 Three stacks grew to their measured maximum across envs, rounded up to
 256 bytes: the default event loop task (`sys_evt`) from 2,304 to 3,072 in all
@@ -309,12 +324,21 @@ top.
 - Only a panic through `abort` is modelled. A fault in an ISR or a double
   exception enters `panicHandler` from the vector code at an arbitrary depth;
   the port overhead's interrupt frame is all the walk reserves for it.
-- `main` and the NimBLE host run most of their depth through unresolved
-  indirect calls (LVGL widget code, M5GFX virtuals, NimBLE callbacks into
-  vendor classes). Their numbers are not a proof of fit. The 8 KiB StickS3
-  main stack overflowed on hardware with MQTT enabled while the resolved walk
-  stays well below that, so the hardware high-water mark remains the evidence
-  for those two tasks.
+- `main`, the NimBLE host and `control` run most of their depth through
+  unresolved indirect calls (LVGL widget code, M5GFX virtuals, NimBLE callbacks
+  into vendor classes, and the vendor camera implementations behind
+  `Camera::_connect()`). `control`'s row resolves the connect dispatch but
+  still leaves more than 200 indirect sites, so it is a lower bound. Their numbers are
+  not a proof of fit. The 8 KiB StickS3 main stack overflowed on hardware with
+  MQTT enabled while the resolved walk stays well below that, so the hardware
+  high-water mark remains the evidence for those tasks.
+- The NimBLE pairing restart cycle
+  (`ble_sm_pair_initiate -> ble_sm_process_result -> ble_sm_pair_initiate`,
+  `MYNEWT_VAL(BLE_RESTART_PAIR)` in the ESP-IDF port) is a known limit on the
+  `control` path: the walk charges one pass. NimBLE re-initiates pairing only
+  after `ble_sm_process_result` reports app status 518, and it frees the
+  procedure it allocated each time, so a retry loop costs more than the row
+  shows.
 - The debug-only `console` and `bt-explore` tasks are not in the manifest.
 - `main` records every cycle as a known limit. The signature rules let any
   `(lv_event_t*)` callback run under `lv_event_send`, so the walk joins the UI
