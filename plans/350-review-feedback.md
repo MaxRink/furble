@@ -116,4 +116,9 @@ no LED pin. The head this review started from measured 1,739,961 bytes of the
 same lane by compiling it at `ESP_LOG_INFO`; the merge therefore does not trim
 this PR.
 
-RESULT_MERGE
+## Merge
+
+Squash-merged as `b56acc88` on 2026-11-26. The merge gate reported `0` review
+threads and `36` checks, all passed or skipped, on head `b7d70e8f1d3a`. That
+head's `build (m5stack-core-debug)` lane passed in 3m04s, so the Core OTA slot
+needed no trim from this branch and master's #518 headroom was enough.
