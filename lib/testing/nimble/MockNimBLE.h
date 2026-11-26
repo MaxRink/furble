@@ -640,6 +640,13 @@ class NimBLEClient {
   mutable size_t m_ConnInfoReadCount = 0;
   mutable size_t m_PendingConnInfoReads = 0;
   mutable bool m_ConnParamUpdatePending = false;
+  // Negotiated ATT MTU of this link. ATT always starts at the mandatory 23 and
+  // only the exchange changes it. Placed here, in what was alignment padding
+  // between the boolean and m_ConnectTimeout, because the simulator charges a
+  // live client's host size against the modelled device heap: a test-double
+  // field that grew sizeof(NimBLEClient) would lower every calibrated figure in
+  // sim/scenarios/e2e/hw-memory-*.txt by its own size.
+  uint16_t m_AttMtu = 23;
   uint32_t m_ConnectTimeout = 0;
   // The GAP connection handle of the live link, or BLE_HS_CONN_HANDLE_NONE
   // when there is none. Every successful connect takes a fresh value, so the
@@ -647,9 +654,6 @@ class NimBLEClient {
   uint16_t m_Handle = BLE_HS_CONN_HANDLE_NONE;
   uint16_t m_ScanInterval = 16;
   uint16_t m_ScanWindow = 16;
-  // Negotiated ATT MTU of this link. ATT always starts at the mandatory 23 and
-  // only the exchange changes it.
-  uint16_t m_AttMtu = 23;
   bool m_Connected = false;
   bool m_StuckTerminate = false;
   size_t m_DisconnectCount = 0;

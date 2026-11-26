@@ -1234,6 +1234,13 @@ uint16_t Camera::verifyAttMtu(uint16_t floor) {
     if (!isConnected()) {
       break;
     }
+    // Plan 148 cancel contract. This wait runs on the connect path, which holds
+    // Camera::m_Mutex for its whole attempt, so a user disconnect has to be able
+    // to abort it instead of draining the target with the attempt still running.
+    if (connectCancelled()) {
+      ESP_LOGD(LOG_TAG, "%s ATT MTU poll cancelled", m_Name.c_str());
+      break;
+    }
 #if defined(FURBLE_MTU_WAIT_USES_TICKS)
     vTaskDelay(pdMS_TO_TICKS(POLL_MS));
 #else
