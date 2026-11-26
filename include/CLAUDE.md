@@ -22,6 +22,27 @@ Public headers for the app layer in src/, one header per module
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
+- `Control::m_Targets` is owned by `m_Mutex`, and every reader takes it. The
+  1 Hz GPS service is a fourth owner of that vector. It runs on the UI loop,
+  never on `GPS::task()`: the LVGL `gps_service_timer` in display builds and
+  `vUITask()` in headless ones, both from `app_main`'s task, while `GPS::task()`
+  only publishes the fix. `updateGPS()` walks `m_Targets`, so it walks
+  and stores under the same lock, and it releases that lock before posting
+  `CMD_GPS_UPDATE` on the control queue, so that queue's own lock is never taken
+  under `m_Mutex`.
+  `Target::updateGPS()` is therefore a pure member copy with no radio
+  call, allocation or delay, and it must stay one; a snapshot copied out of
+  `m_Targets` to shorten the section would hand that walk ownership of a
+  `Target`, because the vector holds the only reference. `allConnected()` keeps a
+  second, `m_Mutex`-taking entry point for callers that hold nothing, and
+  `allConnectedLocked()` for `connectAll()` and the control task's
+  `STATE_ACTIVE` branch, which also fans commands out under that lock. The lock
+  order inside Control is unchanged: `m_Mutex` stays outermost, then the
+  governor mutex (released), then a hook's own locks. That is Control's order
+  only; the companion order, advertising then `m_Mutex` then `m_BondMutex`, is
+  documented below. The GPS fan-out takes `m_Mutex` under `UI::m_Mutex` on the
+  UI task, the same direction the UI rebuild path already uses; Control never
+  calls into the UI, so that edge stays one-way.
 - `Control::setAdmitHook()` is registered once at boot, before the control
   task starts, with `MemoryPressure::admit()`; host Control harnesses
   register none. `addActive()` calls it under `Control::m_Mutex`, after the

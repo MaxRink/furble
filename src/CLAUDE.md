@@ -13,6 +13,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   wait, and the S3 watchdog shutdown stay together.
   An empty connect target set returns idle, never active. A concurrent cancel
   still takes precedence and returns disconnecting.
+  Every walk of `m_Targets` holds `m_Mutex`, including the control task's
+  `STATE_ACTIVE` liveness check and command fan-out and the 1 Hz GPS service's
+  `updateGPS()` fan-out. That service runs on the UI loop, and it releases the
+  lock before posting the command that reaches the control queue. See
+  include/CLAUDE.md for the ownership and lock-order contract (plan 327).
   The control task's queue wait is a 250 ms idle tick. Work that is not a
   command, such as reaping the drain after a cancel, must wake it: the
   interactive disconnect posts one no-op `CMD_ERROR`, or every cancel holds
