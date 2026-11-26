@@ -1159,6 +1159,8 @@ class UI {
   lv_obj_t *m_LowBatteryMessageBox = nullptr;
   lv_obj_t *m_LowBatteryMessage = nullptr;
   bool m_PoweringOff = false;
+  // tick before which the automatic power-off paths do not retry after a refusal
+  uint32_t m_PowerOffRetryAt = 0;
   uint8_t m_WakeGesture = 0;
   bool m_DoubleTapShutter = false;
   uint32_t m_GestureSettingsSeen = 0;

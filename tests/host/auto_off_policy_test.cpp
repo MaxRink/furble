@@ -20,5 +20,19 @@ int main() {
   // who want auto-off to remain active on external power.
   assert(!shouldPowerOff(1, true, false, 60000, true, false));
   assert(shouldPowerOff(1, true, false, 60000, true, true));
+
+  // A refused power off holds the automatic paths off for its backoff, so a
+  // wedged SD writer cannot stall the UI task on every one-second pass.
+  using Furble::AutoOff::retryAfter;
+  using Furble::AutoOff::retryBlocked;
+  assert(retryBlocked(1000, retryAfter(1000)));
+  assert(retryBlocked(1000 + Furble::AutoOff::POWER_OFF_RETRY_MS - 1, retryAfter(1000)));
+  assert(!retryBlocked(1000 + Furble::AutoOff::POWER_OFF_RETRY_MS, retryAfter(1000)));
+  // No refusal has been recorded yet, so the first attempt is not held off.
+  assert(!retryBlocked(1000, 0));
+  // A retry point past the 32-bit millisecond wrap still holds.
+  const uint32_t wrapped = 0xFFFFFFFFu - 1000u;
+  assert(retryBlocked(wrapped + 1u, retryAfter(wrapped)));
+  assert(!retryBlocked(0u, wrapped));
   return 0;
 }

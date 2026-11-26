@@ -418,7 +418,9 @@ review rework moves all of it to a single owner:
   entry and never mounts from the UI task; leaving the page releases the mount
   hold and unmounts unless logging holds the card.
 - `Platform::powerOff` calls `SD::powerOff()`, which posts POWER_OFF and waits
-  on a semaphore (3 s cap) for the writer to close the track and unmount.
+  on a semaphore for the writer to close the track and unmount. Plan 341 turned
+  that wait into an acknowledged handshake: 3 s, one 5 s extension, then a
+  refusal that keeps the rail up instead of cutting it on an open track.
 - Export and import run on the writer task too. A running track is closed
   cleanly before either transfer, so an export or import in the middle of a
   session ends the current track file; logging reopens a new file on the next
@@ -494,3 +496,15 @@ on device. The test covers schema element order, the rewound-closer invariant
 that keeps the file valid at rest, altitude omission, segment breaks on a time
 gap or a backwards step, and a clean single close. It passes and was confirmed
 load-bearing by mutation.
+
+## Follow-up: SD shutdown acknowledgement
+
+Plan 341 (`plans/341-sd-shutdown-ack.md`) fixes the handshake above. The
+original wait discarded the `xSemaphoreTake` result and `Platform::powerOff()`
+cut the rail anyway, so a slow mount or FAT write lost the GPX tail and left
+FAT dirty. `SD::powerOff()` now returns `bool`, extends the wait once, names the
+writer that did not answer, and refuses; a board with no card slot has no queue
+and no writer task, so that case keeps the plain off path. A writer that has
+stopped draining cannot take the request at all, and that refuses too. State:
+fixed on `fix/sd-writer-ack`, proven by the `boundary-sd-shutdown-refused` and
+`boundary-sd-shutdown-undelivered` host tests, hardware validation pending.

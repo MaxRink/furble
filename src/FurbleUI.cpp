@@ -13162,6 +13162,12 @@ void UI::processAutoOff(void) {
     return;
   }
 
+  // A refused power off blocks the UI task for the whole handshake, so the
+  // automatic path waits for its backoff instead of retrying on the next pass.
+  if (AutoOff::retryBlocked(Platform::getInstance().tick(), m_PowerOffRetryAt)) {
+    return;
+  }
+
   // STATE_IDLE also covers an active discovery scan, do not cut it short
   const auto &caps = Platform::getInstance().getBatteryCaps();
   const bool charging = caps.charging && m_Status.battery.charging;
@@ -13328,10 +13334,13 @@ void UI::processLowBattery(void) {
     }
   }
 
-  // the countdown runs on the one-second path so the deadline holds
+  // the countdown runs on the one-second path so the deadline holds. A refused
+  // power off blocks the UI task for the whole handshake, so the retry waits for
+  // its backoff instead of running on the next one-second pass.
   if (m_LowBatteryPowerOffPending
       && ((Platform::getInstance().tick() - m_LowBatteryPowerOffSince)
-          >= LOW_BATT_POWER_OFF_DELAY_MS)) {
+          >= LOW_BATT_POWER_OFF_DELAY_MS)
+      && !AutoOff::retryBlocked(Platform::getInstance().tick(), m_PowerOffRetryAt)) {
     doPowerOff();
   }
 }
@@ -13370,13 +13379,24 @@ void UI::doPowerOff(void) {
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
 #endif
   if (!Platform::getInstance().powerOff()) {
-    // The PMIC refused. Stay alive rather than latching a half-off state
-    // with a dead UI, and put the watchdog back the way the user set it.
+    // Either the PMIC or the SD writer refused. Stay alive rather than latching
+    // a half-off state with a dead UI, and put the watchdog back the way the
+    // user set it.
     ESP_LOGW("ui", "Power off failed, resuming.");
 #if defined(FURBLE_M5STICKS3)
     Platform::getInstance().watchdogEnable(Settings::load<Settings::WATCHDOG>());
 #endif
     m_PoweringOff = false;
+    // Hold the automatic paths off for the backoff: the writer is still stuck,
+    // and an immediate retry would block this task for another handshake. An
+    // explicit Off or console request is not gated, because the user retrying is
+    // new intent.
+    m_PowerOffRetryAt = AutoOff::retryAfter(Platform::getInstance().tick());
+    if (m_LowBatteryPowerOffPending) {
+      // doPowerOff() closed the critical box for the attempt; the device is
+      // still on, so the user needs to see why.
+      showLowBatteryWarning(true);
+    }
   }
 }
 

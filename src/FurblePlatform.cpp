@@ -442,7 +442,12 @@ bool Platform::hasTicklessIdle(void) {
 bool Platform::powerOff(void) {
   TimeKeeper::getInstance().flush();
   // the SD writer task closes the track and unmounts, wait for it to finish
-  SD::getInstance().powerOff();
+  if (!SD::getInstance().powerOff()) {
+    // Cutting the rail with the track still open loses its tail and leaves the
+    // filesystem dirty. Leave the watchdog as the user set it and stay alive.
+    ESP_LOGW(LOG_TAG, "SD writer did not acknowledge, refusing to power off");
+    return false;
+  }
 
 #if FURBLE_HAS_M5PM1
   const bool wasArmed = m_WatchdogEnabled;

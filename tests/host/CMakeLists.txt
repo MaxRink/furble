@@ -2982,11 +2982,15 @@ if(BUILD_TESTING)
   foreach(family stickc stickc-plus stickc-plus2)
     add_test(NAME boundary-ir-polarity-${family} COMMAND boundary_ir_test polarity ${family})
   endforeach()
-  foreach(mode mount-write mount-fail full removed)
+  # shutdown-refused is the hung-writer case and shutdown-undelivered the one
+  # where the writer stops draining: the production handshake must report the
+  # refusal instead of the rail dropping on an open track.
+  foreach(mode mount-write mount-fail full removed shutdown-refused shutdown-undelivered)
     add_test(NAME boundary-sd-${mode} COMMAND boundary_sd_test ${mode})
   endforeach()
   set_tests_properties(boundary-sd-mount-write boundary-sd-mount-fail
                        boundary-sd-full boundary-sd-removed
+                       boundary-sd-shutdown-refused boundary-sd-shutdown-undelivered
                        PROPERTIES RESOURCE_LOCK boundary-sd)
   foreach(mode sound light overcurrent low-battery vibration)
     add_test(NAME boundary-feedback-${mode} COMMAND boundary_feedback_test ${mode})

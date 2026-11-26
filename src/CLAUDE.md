@@ -263,7 +263,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   another task. The mount point is `/sd` on device. `FURBLE_SD_MOUNT_POINT`
   exists only so the linked host conformance target can redirect the same
   production code to a writable sandbox; firmware leaves it undefined and
-  device behavior is unchanged.
+  device behavior is unchanged. `SD::powerOff()` is a handshake, not a post and
+  forget: it waits 3 s, extends once by 5 s, and returns false when the writer
+  never acknowledged or never even took the request because its queue was full,
+  and `Platform::powerOff()` must then leave the rail up. Never discard the take
+  or the send result; the GPX tail and the FAT state are what they protect. A
+  refusal holds the automatic paths off for `AutoOff::retryBlocked()`, because
+  each attempt blocks the UI task for the whole handshake.
 - `FurbleGPX`: GPX 1.1 track writer. Pure file writer with no SD or settings
   knowledge; every method runs on the SD writer task.
 - `FurbleWiFi`: station lifecycle, remembered access point state and NTP.
