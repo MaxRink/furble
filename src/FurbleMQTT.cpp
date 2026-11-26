@@ -43,6 +43,8 @@
 #include "FurbleGPS.h"
 #include "FurbleMQTTMemory.h"
 #include "FurbleMemoryPressure.h"
+#include "FurbleOTACommand.h"
+#include "FurbleOTAStatus.h"
 #include "FurbleSettings.h"
 #include "FurbleTaskWatchdog.h"
 #include "FurbleTypes.h"
@@ -627,6 +629,14 @@ void MQTT::taskStep(void) {
       publishBattery(false);
       publishGPS(false);
     }
+
+    // The OTA engine has no task of its own. Advance one stage or one
+    // download poll per owner iteration and report the result, so a slow
+    // transfer never blocks the camera or shutter path.
+    if (m_OTAHandler != nullptr) {
+      m_OTAHandler->step();
+      publishOTAStatus();
+    }
   }
 }
 
@@ -788,6 +798,8 @@ void MQTT::loadTopics(void) {
   m_ConnectCommandTopic = m_RootTopic + "/cmd/connect";
   m_DisconnectCommandTopic = m_RootTopic + "/cmd/disconnect";
   m_LocationCommandTopic = m_RootTopic + "/cmd/location";
+  m_OTACommandTopic = m_RootTopic + "/cmd/ota";
+  m_OTAStatusTopic = m_RootTopic + "/state/ota";
   m_HomeAssistantTopic = "homeassistant/device/furble_" + m_ID + "/config";
 }
 
@@ -1239,6 +1251,10 @@ void MQTT::handleData(const queued_event_t &event) {
     publishError("retained MQTT command rejected");
     return;
   }
+  if (topic == m_OTACommandTopic) {
+    handleOTA(event);
+    return;
+  }
   handleCommand(topic, payload);
 }
 
@@ -1447,6 +1463,110 @@ void MQTT::handleLocation(const std::string &payload) {
 
   m_HaveExternalLocation = true;
   ESP_LOGI(MQTT_LOG_TAG, "Accepted external GPS fix.");
+}
+
+void MQTT::attachOTAHandler(OTA::Command::Handler *handler) {
+  m_OTAHandler = handler;
+  m_OTAStatusPayload.clear();
+  m_OTAStatusRevision = 0;
+}
+
+void MQTT::setOTABootReport(const OTA::BootReport &report) {
+  m_OTABootReport = report;
+}
+
+void MQTT::handleOTA(const queued_event_t &event) {
+  if (m_OTAHandler == nullptr) {
+    publishOTAUnavailable();
+    return;
+  }
+
+  OTA::Command::Meta meta;
+  meta.retained = event.retain;
+  meta.duplicate = event.dup;
+
+  const OTA::Command::Handler::Result result =
+      m_OTAHandler->onMessage(meta, event.data, static_cast<size_t>(event.data_len));
+  if (result.refusal != OTA::Refusal::None) {
+    const std::string message = std::string("ota ")
+                                + OTA::actionName(m_OTAHandler->status().command)
+                                + " refused: " + OTA::refusalName(result.refusal);
+    publishError(message);
+  }
+  publishOTAStatus();
+}
+
+void MQTT::publishOTAStatus(void) {
+  if (!m_Connected.load() || (m_OTAHandler == nullptr)) {
+    return;
+  }
+
+  const OTA::Status status = m_OTAHandler->status();
+  OTA::StatusStore::getInstance().set(status);
+
+  const std::string payload = OTA::statusJson(status);
+  const uint32_t revision = m_OTAHandler->revision();
+  if ((payload == m_OTAStatusPayload) && (revision == m_OTAStatusRevision)) {
+    return;
+  }
+
+  // A final result is retained; live progress is not. The handler also marks
+  // the first checking record of a new update retained, which replaces the
+  // previous retained result instead of leaving it on the broker.
+  if (!publish(m_OTAStatusTopic, payload, 1, m_OTAHandler->statusRetained())) {
+    return;
+  }
+  m_OTAStatusPayload = payload;
+  m_OTAStatusRevision = revision;
+}
+
+void MQTT::publishOTAUnavailable(void) {
+  OTA::Status status;
+  status.reason = OTA::Refusal::TransportUnavailable;
+  status.outcome = OTA::Outcome::Refused;
+  status.command = OTA::Action::Update;
+  std::snprintf(status.installedVersion, sizeof(status.installedVersion), "%s", FURBLE_VERSION);
+  status.boot = m_OTABootReport;
+  OTA::StatusStore::getInstance().set(status);
+
+  const std::string payload = OTA::statusJson(status);
+  if (payload == m_OTAStatusPayload) {
+    return;
+  }
+  if (publish(m_OTAStatusTopic, payload, 1, false)) {
+    m_OTAStatusPayload = payload;
+    m_OTAStatusRevision = 0;
+  }
+  publishError("ota transport not linked in this build");
+}
+
+OTA::Conditions MQTT::OTAContext::conditions(void) {
+  OTA::Conditions conditions;
+
+  const Control &control = Control::getInstance();
+  conditions.cameraSessionActive = control.getState() != Control::STATE_IDLE;
+  conditions.intervalometerRunning = UI::getIntervalometerState() != 0;
+  conditions.linkReady = m_Owner.m_Connected.load() && m_Owner.networkReady();
+
+  auto &platform = Platform::getInstance();
+  const Platform::battery_caps_t caps = platform.getBatteryCaps();
+  conditions.batteryKnown = caps.level;
+  conditions.batteryPercent = platform.readBattery().level;
+  conditions.charging = caps.charging;
+
+  // No partition read is linked in this build. The HTTPS adapter checks the
+  // real inactive slot capacity when it opens the image, so this stays true
+  // until the composition supplies a partition-backed answer.
+  conditions.slotAvailable = true;
+  return conditions;
+}
+
+const char *MQTT::OTAContext::installedVersion(void) {
+  return FURBLE_VERSION;
+}
+
+OTA::BootReport MQTT::OTAContext::bootReport(void) {
+  return m_Owner.m_OTABootReport;
 }
 
 bool MQTT::sendCommand(Control::cmd_t command) {

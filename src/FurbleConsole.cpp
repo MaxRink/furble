@@ -57,6 +57,7 @@
 #include "FurbleIMU.h"
 #include "FurbleIR.h"
 #include "FurbleMemoryPressure.h"
+#include "FurbleOTAStatus.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleProvision.h"
@@ -3626,6 +3627,24 @@ int cmdFlash(int argc, char **argv) {
 #endif
 }
 
+/**
+ * Report the last OTA attempt and the boot rollback verdict.
+ *
+ * The update itself is started from `cmd/ota` or a later console subcommand.
+ * This command is read-only: it reports the shared status record, so it works
+ * in every console build even when no transport is linked.
+ */
+int cmdOTA(int argc, char **argv) {
+  if ((argc != 2) || strcmp(argv[1], "status") != 0) {
+    return fail("usage: ota status");
+  }
+
+  const OTA::Status status = OTA::StatusStore::getInstance().get();
+  const std::string report = OTA::formatStatus(status);
+  fputs(report.c_str(), stdout);
+  return 0;
+}
+
 /** Build a command table entry, argtable is unused, every command parses argv. */
 constexpr esp_console_cmd_t command(const char *name,
                                     const char *help,
@@ -3699,6 +3718,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("debug",
             "debug control | camera [idx] | ble | heap | tasks | power | gps | settings | all",
             cmdDebug),
+    command("ota", "ota status, last update and boot rollback state", cmdOTA),
     command("flash", "flash prepare | cancel", cmdFlash),
     command("reboot", "Restart the device", cmdReboot),
 };

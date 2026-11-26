@@ -89,6 +89,7 @@ About page and exposed through companion BLE Device Information.
 | `log` | `log <tag> <level>`, `*` sets all tags. |
 | `debug` | Dump internal state, see below. |
 | `flash` | `prepare` disarms the StickS3 PMIC watchdog and verifies download recovery; `cancel` restores it. |
+| `ota` | `status` reports the last OTA attempt, the available version and the boot rollback verdict. |
 | `reboot` | Restart the device. |
 | `help` | List every command. |
 
@@ -550,6 +551,27 @@ heap_trace: stopped, 3 records held
 
 `debug <target>` dumps internal state for one subsystem: `control`,
 `camera [idx]`, `ble`, `heap`, `tasks`, `power`, `gps`, `settings`, or `all`.
+
+## ota
+
+`ota status` prints the last OTA attempt and the boot rollback verdict:
+
+```
+ota: idle, error none
+progress: 0 percent, 0 of 0 bytes
+command: none, result none, reason none, detail none
+installed: 1.2.0
+available: 1.3.0, update yes
+slot: undefined, boot no_action, failure none
+```
+
+`reason` names a refused precondition and `detail` names a transfer failure,
+so `error verification_failed` with `detail signature_invalid` is one rejected
+signature and not a download problem. `slot` reports `pending_verify` until the
+new image proves healthy and `aborted` after a rollback. The command is
+read-only. Updates are started from the MQTT `cmd/ota` topic; the full topic
+and payload reference is in
+[MQTT and Home Assistant](../protocols/mqtt.md#ota-command-and-status).
 
 ## flash preflight
 

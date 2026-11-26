@@ -12,6 +12,10 @@
 #include "CameraList.h"
 #include "Device.h"
 #include "FurbleMQTTMemory.h"
+#include "FurbleOTA.h"
+#include "FurbleOTACommand.h"
+#include "FurbleOTAHTTPS.h"
+#include "FurbleOTAStatus.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "cJSON.h"
@@ -24,6 +28,83 @@
 namespace {
 
 int g_RawDataEvents = 0;
+
+/** Scripted HTTPS client: open, poll, verify and apply without a network. */
+class OtaClient final: public Furble::OTA::HTTPS::Client {
+ public:
+  struct Step {
+    bool failed = false;
+    bool complete = false;
+    size_t bytes = 0;
+  };
+
+  size_t imageSize = 1000;
+  size_t slotCapacity = 4096;
+  std::vector<Step> plan;
+  Verify verifyResult = Verify::Ok;
+  size_t openCalls = 0;
+  size_t pollCalls = 0;
+  size_t applyCalls = 0;
+  size_t discardCalls = 0;
+
+  bool open(const char *, size_t, Open &result) override {
+    openCalls++;
+    result.imageSize = imageSize;
+    result.slotCapacity = slotCapacity;
+    planIndex = 0;
+    return true;
+  }
+
+  Poll poll() override {
+    pollCalls++;
+    Poll result;
+    if (planIndex >= plan.size()) {
+      result.failed = true;
+      return result;
+    }
+    const Step step = plan[planIndex++];
+    result.failed = step.failed;
+    result.complete = step.complete;
+    result.bytesRetrieved = step.bytes;
+    return result;
+  }
+
+  Verify finish() override { return verifyResult; }
+  bool apply() override {
+    applyCalls++;
+    return true;
+  }
+  void discard() override { discardCalls++; }
+
+ private:
+  size_t planIndex = 0;
+};
+
+class OtaSource final: public Furble::OTA::Command::Source {
+ public:
+  bool succeeds = true;
+  std::string version = "1.3.0";
+  size_t imageSize = 1000;
+  size_t slotCapacity = 4096;
+  size_t calls = 0;
+
+  bool fetch(const char *, Available &available) override {
+    calls++;
+    if (!succeeds) {
+      return false;
+    }
+    std::snprintf(available.version, sizeof(available.version), "%s", version.c_str());
+    available.imageSize = imageSize;
+    available.slotCapacity = slotCapacity;
+    return true;
+  }
+};
+
+class OtaDetail final: public Furble::OTA::Command::Detail {
+ public:
+  std::string value = "none";
+  const char *detail(void) const override { return value.c_str(); }
+};
 
 void rawHandler(void *, esp_event_base_t, int32_t, void *event_data) {
   const auto *event = static_cast<const esp_mqtt_event_t *>(event_data);
@@ -527,6 +608,137 @@ int main(void) {
   require(
       latestPublishedTopic(root_topic + "/state/error").payload == "retained MQTT command rejected",
       "retained shutter command did not publish a rejection");
+
+  // `cmd/ota` end to end over mock MQTT events. The transport is the
+  // production HTTPS adapter over a scripted client, so the topic handler,
+  // preconditions, engine, status record and retained policy all run without a
+  // network or flash access.
+  OtaClient ota_client;
+  Furble::OTA::HTTPS::Adapter ota_adapter(ota_client);
+  Furble::OTA::Engine ota_engine(ota_adapter);
+  OtaSource ota_source;
+  OtaDetail ota_detail;
+  Furble::OTA::Command::Handler ota_handler(ota_engine, ota_source, mqtt.otaContext(), &ota_detail);
+  mqtt.attachOTAHandler(&ota_handler);
+
+  const std::string ota_url = "https://updates.example/furble.bin";
+  const std::string ota_topic = root_topic + "/cmd/ota";
+  const std::string ota_status_topic = root_topic + "/state/ota";
+
+  host_mqtt::deliver(ota_topic, "check " + ota_url);
+  ownerStep(mqtt);
+  require(latestPublishedTopic(ota_status_topic).payload.find("\"available\":\"1.3.0\"")
+              != std::string::npos,
+          "cmd/ota check did not publish the available version");
+  require(
+      latestPublishedTopic(ota_status_topic).payload.find("\"update\":true") != std::string::npos,
+      "cmd/ota check did not publish update availability");
+  require(ota_client.openCalls == 0, "cmd/ota check started a download");
+  require(!latestPublishedTopic(ota_status_topic).retain, "a check result was retained");
+
+  // An active camera session owns the radio, so the URL is refused.
+  Control::setState(Control::STATE_ACTIVE);
+  host_mqtt::deliver(ota_topic, ota_url);
+  ownerStep(mqtt);
+  require(latestPublishedTopic(ota_status_topic).payload.find("\"reason\":\"camera_session\"")
+              != std::string::npos,
+          "cmd/ota did not refuse an active camera session");
+  require(latestPublishedTopic(root_topic + "/state/error").payload
+              == "ota update refused: camera_session",
+          "cmd/ota camera refusal was not published on state/error");
+  require(ota_client.openCalls == 0, "a refused cmd/ota started a download");
+
+  // A gauge below the floor refuses too, and charging exempts it.
+  Furble::Platform::battery_caps_t caps;
+  caps.level = true;
+  Furble::Platform::setBatteryCaps(caps);
+  Furble::Platform::battery_t battery;
+  battery.level = 10;
+  Furble::Platform::setBattery(battery);
+  Control::setState(Control::STATE_IDLE);
+  host_mqtt::deliver(ota_topic, ota_url);
+  ownerStep(mqtt);
+  require(latestPublishedTopic(ota_status_topic).payload.find("\"reason\":\"battery_low\"")
+              != std::string::npos,
+          "cmd/ota did not refuse a low battery");
+  require(ota_client.openCalls == 0, "a low-battery cmd/ota started a download");
+
+  battery.level = 80;
+  Furble::Platform::setBattery(battery);
+  ota_client.plan = {
+      {false, false, 400 },
+      {false, true,  1000}
+  };
+  host_mqtt::deliver(ota_topic, ota_url);
+  ownerStep(mqtt);
+  require(ota_engine.busy(), "an admitted cmd/ota did not start the engine");
+  require(latestPublishedTopic(ota_status_topic).payload.find("\"state\":\"downloading\"")
+              != std::string::npos,
+          "an admitted cmd/ota did not report the download");
+
+  // A duplicate QoS-1 delivery must not start a second download.
+  host_mqtt::deliver(ota_topic, ota_url);
+  ownerStep(mqtt);
+  require(ota_client.openCalls == 1, "a duplicate cmd/ota opened the image twice");
+  require(latestPublishedTopic(ota_status_topic).payload.find("\"result\":\"duplicate\"")
+              != std::string::npos,
+          "a duplicate cmd/ota was not reported as a duplicate");
+
+  // Advance the engine through the mock download to a retained final result.
+  for (size_t step = 0; (step < 16) && ota_engine.busy(); step++) {
+    ownerStep(mqtt);
+  }
+  require(!ota_engine.busy(), "the mock cmd/ota download did not finish");
+  require(ota_engine.snapshot().state == Furble::OTA::State::Done,
+          "the mock cmd/ota download did not report done");
+  const auto done = latestPublishedTopic(ota_status_topic);
+  require(done.retain, "the final cmd/ota result was not retained");
+  require(done.payload.find("\"state\":\"done\"") != std::string::npos,
+          "the final cmd/ota result did not report done");
+  require(ota_handler.status().progress == 100, "the final progress was not 100 percent");
+
+  // Retained OTA commands are refused before the handler.
+  const size_t ota_puts_before_retained = ota_client.openCalls;
+  host_mqtt::deliverRetained(ota_topic, ota_url);
+  ownerStep(mqtt);
+  require(ota_client.openCalls == ota_puts_before_retained,
+          "a retained cmd/ota started a download");
+  require(
+      latestPublishedTopic(root_topic + "/state/error").payload == "retained MQTT command rejected",
+      "a retained cmd/ota did not publish a rejection");
+
+  // A failed health check is reported as a rollback on the status topic.
+  Furble::OTA::BootReport rolledBack;
+  rolledBack.slot = Furble::OTA::RollbackState::Aborted;
+  rolledBack.action = Furble::OTA::BootAction::MarkInvalidRollbackAndReboot;
+  rolledBack.failure = Furble::OTA::BootFailure::Control;
+  mqtt.setOTABootReport(rolledBack);
+  host_mqtt::deliver(ota_topic, "status");
+  ownerStep(mqtt);
+  require(latestPublishedTopic(ota_status_topic).payload.find("\"slot\":\"aborted\"")
+              != std::string::npos,
+          "state/ota did not report the rollback");
+  require(latestPublishedTopic(ota_status_topic)
+                  .payload.find("\"boot\":\"mark_invalid_rollback_and_reboot\"")
+              != std::string::npos,
+          "state/ota did not report the rollback action");
+
+  // Without a linked transport the topic still answers with the documented
+  // refusal, so a dashboard can tell a build without OTA from an idle one.
+  mqtt.attachOTAHandler(nullptr);
+  host_mqtt::deliver(ota_topic, ota_url);
+  ownerStep(mqtt);
+  require(
+      latestPublishedTopic(ota_status_topic).payload.find("\"reason\":\"transport_unavailable\"")
+          != std::string::npos,
+      "cmd/ota without a transport did not report transport_unavailable");
+  require(latestPublishedTopic(root_topic + "/state/error").payload
+              == "ota transport not linked in this build",
+          "cmd/ota without a transport did not publish the reason");
+
+  // Restore the shared doubles for the shutter and interval checks below.
+  Furble::Platform::setBatteryCaps(Furble::Platform::battery_caps_t {});
+  Control::setState(Control::STATE_ACTIVE);
 
   host_mqtt::deliver(root_topic + "/cmd/shutter", "hold 5");
   ownerStep(mqtt);

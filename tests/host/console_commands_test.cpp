@@ -50,6 +50,7 @@
 #include "FurbleCompanion.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
+#include "FurbleOTAStatus.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleRequestState.h"
@@ -141,7 +142,7 @@ const std::vector<std::string> EXPECTED_COMMANDS = {
     "perf",    "heap",    "gps",    "time",   "settings",     "companion",  "provision", "ui",
     "cameras", "connect", "pair",   "delete", "multiconnect", "disconnect", "shutter",   "interval",
     "bulb",    "display", "ir",     "focus",  "scan",         "bt",         "feedback",  "log",
-    "debug",   "flash",   "reboot", "wifi",   "ntp",          "rail",
+    "debug",   "flash",   "reboot", "wifi",   "ntp",          "rail",       "ota",
 };
 
 }  // namespace
@@ -192,6 +193,7 @@ const std::vector<SubcommandContract> SUBCOMMANDS = {
     {"bt",           "expected scan, explore, pair or journal",                                  "",                     {"scan", "explore", "pair", "journal"}},
     {"feedback",     "usage: feedback test",                                                     " shutter",             {"test"}                              },
     {"flash",        "usage: flash prepare | cancel",                                            "",                     {"prepare", "cancel"}                 },
+    {"ota",          "usage: ota status",                                                        "",                     {"status"}                            },
     {"wifi",
      "expected status, set, enable, disable, connect, disconnect or forget",                     " ssid test",
      {"status", "set", "enable", "disable", "connect", "disconnect", "forget"}                                                                                 },
@@ -310,6 +312,58 @@ void testBootTiming(void) {
   checkContains(timing.out, "boot.origin: app_main", "boot timing names its origin");
   checkContains(timing.out, "boot.reset_to_app_ms: ", "boot timing reports the reset estimate");
   checkContains(timing.out, "boot.not_recorded:", "boot timing lists unset marks");
+}
+
+// The OTA report is read-only and must work in a build without a linked
+// transport, and must report a rollback loudly once the boot composition
+// records one.
+void testOTAStatus(void) {
+  std::cerr << "test: ota status reports the last update and the rollback state\n";
+  ConsoleHost::resetDoubles();
+
+  Furble::OTA::Status idle;
+  Furble::OTA::StatusStore::getInstance().set(idle);
+  const Result initial = runDirect("ota status");
+  check(initial.rc == 0, "ota status returns success");
+  checkContains(initial.out, "ota: idle", "ota status reports the idle state");
+  checkContains(initial.out, "progress: 0 percent", "ota status reports progress");
+  checkContains(initial.out, "result none", "ota status reports the command result");
+  checkContains(initial.out, "slot: undefined", "ota status reports an unread slot");
+  checkContains(initial.out, "available: unknown, update unchecked",
+                "ota status reports an unchecked version");
+
+  Furble::OTA::Status failed;
+  failed.state = Furble::OTA::State::Error;
+  failed.error = Furble::OTA::Error::VerificationFailed;
+  failed.progress = 100;
+  failed.bytesDownloaded = 1000;
+  failed.totalBytes = 1000;
+  failed.command = Furble::OTA::Action::Update;
+  failed.outcome = Furble::OTA::Outcome::Accepted;
+  std::snprintf(failed.installedVersion, sizeof(failed.installedVersion), "%s", "1.2.0");
+  std::snprintf(failed.availableVersion, sizeof(failed.availableVersion), "%s", "1.3.0");
+  std::snprintf(failed.detail, sizeof(failed.detail), "%s", "signature_invalid");
+  failed.checked = true;
+  failed.updateAvailable = true;
+  failed.boot.slot = Furble::OTA::RollbackState::Aborted;
+  failed.boot.action = Furble::OTA::BootAction::MarkInvalidRollbackAndReboot;
+  failed.boot.failure = Furble::OTA::BootFailure::Control;
+  Furble::OTA::StatusStore::getInstance().set(failed);
+
+  const Result report = runDirect("ota status");
+  check(report.rc == 0, "a failed ota status returns success");
+  checkContains(report.out, "ota: error", "ota status reports the failed state");
+  checkContains(report.out, "error verification_failed", "ota status reports the engine error");
+  checkContains(report.out, "detail signature_invalid", "ota status reports the transport detail");
+  checkContains(report.out, "installed: 1.2.0", "ota status reports the installed version");
+  checkContains(report.out, "available: 1.3.0, update yes",
+                "ota status reports the available version");
+  checkContains(report.out, "slot: aborted", "ota status reports the rollback");
+  checkContains(report.out, "boot mark_invalid_rollback_and_reboot",
+                "ota status reports the rollback action");
+  checkContains(report.out, "failure control", "ota status reports the failed gate");
+
+  Furble::OTA::StatusStore::getInstance().set(idle);
 }
 
 void testStatusAndVersion(void) {
@@ -2885,6 +2939,7 @@ int main(void) {
   testSubcommandSets();
   testBootTiming();
   testStatusAndVersion();
+  testOTAStatus();
   testSettings();
   testRailStatus();
   testGPS();

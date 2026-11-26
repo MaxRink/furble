@@ -108,6 +108,10 @@ void Platform::setBattery(const battery_t &battery) {
   getInstance().m_Battery = battery;
 }
 
+void Platform::setBatteryCaps(const battery_caps_t &caps) {
+  getInstance().m_Caps = caps;
+}
+
 GPS &GPS::getInstance(void) {
   static GPS gps;
   return gps;

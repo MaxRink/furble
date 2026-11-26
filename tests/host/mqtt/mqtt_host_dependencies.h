@@ -97,12 +97,23 @@ class Platform {
     bool charging = false;
   };
 
+  /** Same shape as PowerBackend::battery_caps_t, which the real board uses. */
+  struct battery_caps_t {
+    bool level = false;
+    bool voltage = false;
+    bool current = false;
+    bool charging = false;
+  };
+
   static Platform &getInstance(void);
   battery_t readBattery(void) const { return m_Battery; }
+  battery_caps_t getBatteryCaps(void) const { return m_Caps; }
   static void setBattery(const battery_t &battery);
+  static void setBatteryCaps(const battery_caps_t &caps);
 
  private:
   battery_t m_Battery;
+  battery_caps_t m_Caps;
 };
 
 class GPS {

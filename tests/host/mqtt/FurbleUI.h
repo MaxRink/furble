@@ -25,10 +25,18 @@ class UI {
 
   static const std::vector<RequestRecord> &requests(void) { return m_Requests; }
 
-  static void reset(void) { m_Requests.clear(); }
+  /** Same protocol values as the production intervalometer status. */
+  static uint8_t getIntervalometerState(void) { return m_IntervalometerState; }
+  static void setIntervalometerState(uint8_t state) { m_IntervalometerState = state; }
+
+  static void reset(void) {
+    m_Requests.clear();
+    m_IntervalometerState = 0;
+  }
 
  private:
   inline static std::vector<RequestRecord> m_Requests;
+  inline static uint8_t m_IntervalometerState = 0;
 };
 
 }  // namespace Furble
