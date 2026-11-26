@@ -266,6 +266,13 @@
         "^(ble_npl_event_fn_wrapper|eth_check_link_timer_cb|phy_track_pll_timer_callback|alarm_cb_handler|btdm_slp_tmr_callback)$"
       ],
       "why": "esp_timer.c timer_process_alarm calls each ESP_TIMER_TASK callback. Furble creates six (src/FurbleCompanion.cpp delayedDisable, src/FurbleCompanionService.cpp timedShutter, src/FurbleMQTT.cpp holdTimerCallback and intervalTimerCallback, src/FurbleWebUI.cpp holdTimerCallback and releaseTimerCallback). The linked ESP-IDF callbacks are the NimBLE callout wrapper, the Ethernet link check, the PHY PLL tracker and the Bluetooth OSI alarm and controller sleep timers. wifi_prov_mgr and touch_element timers are linked but never started: furble calls neither wifi_prov_mgr_start_provisioning nor touch_element_install. The WiFi and coexistence blobs arm ets_timer callbacks whose names the image does not expose; see docs/stack-budget.md"
+    },
+    {
+      "caller": "^bool Furble::Camera::connect\\(",
+      "targets": [
+        "::_connect\\(\\)$"
+      ],
+      "why": "Camera::connect calls the pure virtual Camera::_connect() (lib/furble/Camera.cpp:608), and GCC writes an indirect call there, so without this rule the walk stops at the wrapper and follows none of the vendor connect implementations. The rule names every linked _connect(), which over-approximates the other three indirect sites in the same function (the NimBLEClient virtuals at Camera.cpp:610, 651 and 665) and is the safe direction. The control task spends its life in this path."
     }
   ],
   "panic": {
@@ -380,6 +387,10 @@
         "main"
       ],
       "why": "Known limit. The LVGL dispatcher rules join every UI callback into cycles through lv_event_send, lv_obj_invalidate and the refresh path, which the firmware cannot take as written; the real recursion is LVGL's widget tree walk, bounded by the page depth furble builds. main is already a lower bound behind unresolved virtuals, and its evidence is the hardware high-water mark."
+    },
+    {
+      "function": "^ble_sm_pair_initiate$",
+      "why": "Known limit under the resolved Camera::_connect() path. NimBLE's MYNEWT_VAL(BLE_RESTART_PAIR) branch (framework-espidf components/bt/host/nimble/nimble/nimble/host/src/ble_sm.c:1078-1093, enabled at port/include/esp_nimble_cfg.h:2338) re-initiates pairing when ble_sm_process_result returns app status 518, and ble_sm_pair_initiate (ble_sm.c:2869-2911) calls ble_sm_process_result again. Each pass frees the procedure it allocated, so the cycle is charged one pass and the row is a lower bound."
     }
   ],
   "recursion_bounds_comment": "A cycle on a task's resolved path fails the task unless a member matches one entry here. depth is the number of passes of the cycle; the walk counts one and adds depth - 1 more at every cycle member. An entry without depth records a documented known limit and adds nothing. tasks scopes an entry.",

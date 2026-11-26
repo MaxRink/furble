@@ -1850,3 +1850,28 @@ the numeric value, and `ui.diag.about.heap yes` is a row-presence check, so a
 move would come only from the layout. The work is to point the shim at
 `MALLOC_CAP_DEFAULT` and re-run `page-matrix.txt` on all three panels before
 choosing any expectation to update.
+
+## Follow-up: plan 335 withdrew the control stack cut
+
+State (2026-11-26): the `control` stack stays at 8,192 bytes. Plan 335 was
+opened to cut it to 5,120 and an independent review withdrew the cut: the walk
+it rested on did not follow the pure virtual `Camera::_connect()`, which is the
+task's main job, so the row was a lower bound by 1,536 bytes on the ESP32
+release boards and by 1,952 on `m5stick-c-debug`. The resolved row is 4,720 on
+the ESP32 boards and 6,080 on `m5stick-c-debug`, which is 960 bytes over the
+5,120 the cut created. `tools/stack_budget.json` now resolves that dispatch and
+records the NimBLE pairing restart cycle as a known limit, so the gate measures
+the path. The `control` bullet in this plan's hardware-gated list therefore
+describes open work again: a `perf tasks` reading is still the evidence, and no
+cut is proposed.
+
+`main` was not cut either, and this plan's reason stands unchanged: the only
+reading, the StickS3 in #398, leaves 3,020 bytes of 12,288, 24.58 percent,
+under the 25 percent a cut needs, and it is a StickS3 reading on none of the
+four boards a cut would change.
+
+Nothing moves the derived boot heap, so `sim/coverage/board_heap.json` and the
+`profile-*` floors in `sim/coverage/memory_budget.json` keep the values this
+plan derived. Evidence and the per-env table are in
+[335-stack-cuts.md](335-stack-cuts.md) and
+[335-review-feedback.md](335-review-feedback.md).
