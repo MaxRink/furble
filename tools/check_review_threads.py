@@ -13,10 +13,12 @@ with zero checks is now a hard failure, not a quiet pass.
 
 A head with no checks still passes with --allow-no-checks REASON, but only when
 no pull-request workflow would have run on the changed paths. That decision is
-made from the workflow files at the pull request's base commit, read through
-the contents API at baseRefOid, because a checkout can be stale against that
-commit and a PR's own copy of a workflow is not evidence of what CI should have
-run. covering_workflows() also has a mode-distinct local path: with no workflow
+made from the workflow files at the pull request's base commit, read through the
+contents API at baseRefOid, because a checkout can be stale against that
+commit. A pull request that edits .github/workflows never qualifies: GitHub
+evaluates the pull request's own copy of a workflow for its pull_request run, so
+an edit changes what CI runs and a base-only read cannot see a broadened filter.
+covering_workflows() also has a mode-distinct local path: with no workflow
 texts it reads .github/workflows from the checkout on disk. That path is a
 test-only fallback. --pr is mandatory, so the gate never reaches it, and it
 never decides a pull request. A missing base oid, an API error, an unfetchable
@@ -483,8 +485,7 @@ def main(argv: list[str] | None = None) -> int:
             # not trusted: the override holds only if no workflow's filter at
             # the base commit selects a changed file, so an Actions outage
             # still fails. The filters come from the API at baseRefOid, because
-            # the checkout can be stale against that commit and a PR edits only
-            # its own branch copy of a workflow, never its base.
+            # the checkout can be stale against that commit.
             try:
                 base = run_base_ref_oid(owner, name, args.pr)
                 workflows = fetch_workflows(owner, name, base)
@@ -493,6 +494,20 @@ def main(argv: list[str] | None = None) -> int:
             except ReviewQueryError as error:
                 print(f"review-thread check failed closed: {error}", file=sys.stderr)
                 return 2
+            # A PR that edits a workflow changes what CI runs for its own head:
+            # GitHub evaluates the pull request's copy of a workflow file for its
+            # pull_request run. The base filters cannot see a broadened filter,
+            # so such a PR never qualifies for the override. This is the #450
+            # guard, kept for that reason; a base-only read loses it.
+            edited = [path for path in changed
+                      if path == WORKFLOWS_PATH
+                      or path.startswith(WORKFLOWS_PATH + "/")]
+            if edited:
+                print("--allow-no-checks refused: the pull request edits "
+                      f"{', '.join(edited)}, which changes what CI runs for its own "
+                      "head, so a missing check is an Actions failure.",
+                      file=sys.stderr)
+                return 1
             if covering:
                 print(f"--allow-no-checks refused: {', '.join(covering)} should have run "
                       f"on head {head[:12]} against base {base[:12]}, so a missing check "

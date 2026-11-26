@@ -230,8 +230,11 @@ without it the override fails closed.
 The filters come from the pull request's base commit, named by `baseRefOid` in
 the pull request payload and read through
 `gh api repos/{owner}/{name}/contents/.github/workflows?ref=<oid>`. They never
-come from your checkout, because a clone can be stale against the base and a
-pull request can edit only its own copy of a workflow. The gate fails closed,
+come from your checkout, because a clone can be stale against the base. A pull
+request that edits `.github/workflows/` never qualifies for the override: GitHub
+evaluates the pull request's own copy of a workflow for its pull_request run, so
+the edit changes what CI runs and the base filters cannot see a broadened
+filter. The gate fails closed,
 with exit 2, when the base oid is missing, when the API errors, and when a
 workflow at that commit cannot be fetched or parsed, so a broken base is never
 a pass. The checkout-reading local mode is a test-only fallback: `--pr` is

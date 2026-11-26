@@ -251,20 +251,36 @@ class ReviewThreadGateTest(unittest.TestCase):
         self.assertIn("--allow-no-checks refused", stderr)
         self.assertIn("main.yml", stderr)
 
-    def test_override_holds_when_the_pr_broadens_its_own_workflow_copy(self):
-        # Replaces test_no_checks_override_is_refused_when_the_pr_edits_a_workflow,
-        # which encoded the local-tree rule. A pull request cannot edit its base
-        # commit, so the base filters decide and an edit to the branch copy no
-        # longer disqualifies the override by itself.
+    def test_override_is_refused_when_the_pr_edits_a_workflow(self):
+        # The #450 guard, and the reason a base-only read is not enough. The
+        # stub base covers nothing for these paths, so the base filters alone
+        # would accept. The pull request's own copy of main.yml broadens the
+        # filter to web-installer/**, and GitHub evaluates that copy for its
+        # pull_request run, so a head with no checks is an Actions failure.
         broadened = {"main.yml": workflow_paths(["src/**", "web-installer/**"])}
         self.assertEqual(
             REVIEW.covering_workflows(["web-installer/index.html"], workflows=broadened),
             ["main.yml"])
-        code, stdout, _ = self.run_override(
+        self.assertEqual(
+            REVIEW.covering_workflows(["web-installer/index.html"],
+                                      workflows={"main.yml": workflow_paths(["src/**"])}),
+            [])
+        code, _, stderr = self.run_override(
             ["web-installer/index.html", ".github/workflows/main.yml"],
             "--allow-no-checks", "installer only")
-        self.assertEqual(code, 0)
-        self.assertIn("accepted: installer only", stdout)
+        self.assertEqual(code, 1)
+        self.assertIn("--allow-no-checks refused", stderr)
+        self.assertIn(".github/workflows/main.yml", stderr)
+
+    def test_override_is_refused_for_a_deleted_workflow_and_a_workflow_directory(self):
+        # A deletion and a nested path are both edits to what CI runs.
+        for changed in ([".github/workflows/main.yml"],
+                        [".github/workflows/pages/x.yml"]):
+            with self.subTest(changed=changed):
+                code, _, stderr = self.run_override(
+                    changed, "--allow-no-checks", "installer only")
+                self.assertEqual(code, 1)
+                self.assertIn("--allow-no-checks refused", stderr)
 
     def test_missing_base_oid_fails_closed(self):
         threads = [completed(page([thread(True)]))]

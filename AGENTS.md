@@ -22,8 +22,10 @@ was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
 no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
 That rule reads the workflow path filters at the PR base commit, from
 `baseRefOid`, through the contents API, and never from the checkout: a clone
-can be stale against the base, and a PR can edit only its own copy of a
-workflow. A missing base oid, an API error, or a workflow that cannot be
+can be stale against the base. A PR that edits `.github/workflows/` never
+qualifies for the override, because GitHub evaluates the pull request's own copy
+of a workflow for its pull_request run and a base-only read cannot see a
+broadened filter. A missing base oid, an API error, or a workflow that cannot be
 fetched or parsed fails the gate. The checkout-reading local mode is a
 test-only fallback: `--pr` is mandatory, so the gate never reaches it.
 

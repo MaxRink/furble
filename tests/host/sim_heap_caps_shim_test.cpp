@@ -93,12 +93,16 @@ void checkInfoMatchesQueries(void) {
         "PSRAM total_free_bytes matches heap_caps_get_free_size");
   check(psramInfo.largest_free_block == heap_caps_get_largest_free_block(CAPS_PSRAM),
         "PSRAM largest_free_block matches heap_caps_get_largest_free_block");
-  // minimum_free_bytes is deliberately not asserted against the per-caps
-  // getter: the struct carries the model's internal watermark for either pool,
-  // and heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM) returns the PSRAM
-  // watermark since #472. Plan 337 records the divergence as remaining.
-  check(internalInfo.minimum_free_bytes == psramInfo.minimum_free_bytes,
-        "the model reports its single watermark for both pools");
+  // minimum_free_bytes is the watermark of the pool the query resolved, which
+  // is what multi_heap_get_info() reports for one heap. A PSRAM read must agree
+  // with heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM); before this it
+  // returned the internal watermark for either pool.
+  check(psramInfo.minimum_free_bytes == heap_caps_get_minimum_free_size(CAPS_PSRAM),
+        "PSRAM minimum_free_bytes matches heap_caps_get_minimum_free_size");
+  check(internalInfo.minimum_free_bytes == heap_caps_get_minimum_free_size(CAPS_INTERNAL),
+        "internal minimum_free_bytes matches heap_caps_get_minimum_free_size");
+  check(internalInfo.minimum_free_bytes != psramInfo.minimum_free_bytes,
+        "the two pools report their own watermarks");
   // The seeded pools differ by an order of magnitude, so a caps-blind
   // implementation cannot satisfy both checks above.
   check(internalInfo.total_free_bytes < psramInfo.total_free_bytes,

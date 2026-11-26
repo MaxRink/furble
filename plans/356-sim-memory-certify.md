@@ -1,8 +1,9 @@
 # 356 - Simulator memory certification closeout
 
-Status (2026-11-25): implemented on `test/sim-memory-certify`, branched from
-master `92618bff`. Simulator only: no hardware was flashed or measured, and no
-number below is a device measurement.
+Status: merged in #492 as `9b404837`, branched from master `92618bff`. The
+status line used to say the work was implemented on `test/sim-memory-certify`.
+Simulator only: no hardware was flashed or measured, and no number below is a
+device measurement.
 
 ## Problem
 
@@ -184,13 +185,20 @@ on the compiler.
    deliberately single-stack local run, where the union row prints that one
    stack's 17.15% because the host and panel stacks are unmeasured. From the
    printed rows the new stack costs about 2.2 points on the sim union and about
-   2.4 on the grand union, which both rows absorb. Those two floor values stay
-   unwritten on purpose: the stack floor needs its own ratchet, and the file
-   floor would fail every partial run, which item 2 covers.
-2. **`src/FurbleMQTT.cpp` is still absent from `CRITICAL_FILES`.** Its lines
-   exist only in the MQTT build, so a file floor would fail every partial run
-   that does not measure that stack. Add the file and its 27.43 floor in the
-   same clang-18 ratchet.
+   2.4 on the grand union, which both rows absorb.
+2. **The new stack has a measured number and no floor.** This is not a missing
+   measurement: the clang-18 CI run above reproduces 4,915 of 28,651 under the
+   same pinned compiler the floors are written for, so 16.15 is available. The
+   blocker is the tool: `floor_failures()` treats a floor entry with no
+   measurement as a failure, so a floor on a stack that `--stack host` or
+   `--stack sim` does not measure would fail every partial run. Writing it needs
+   an optional-stack concept in the floor document and in the ratchet, which is
+   its own change. The same limit, not a compiler mismatch, is why
+   `src/FurbleMQTT.cpp` is absent from `CRITICAL_FILES`: its lines exist only in
+   the MQTT build, so a 27.43 file floor would fail every partial run. The first
+   version of this item blamed the floor's absence on "its own ratchet" and item
+   2 on partial runs alone; the review of #492 found the first reason wrong,
+   because the number the item said was missing is in this plan.
 3. **The MQTT stack is not the measured build for the budget scenarios.**
    `hw-memory-post394-budget`, `hw-memory-mqtt-10k-success` and the other
    `hw-memory-mqtt-*` scenarios stay on the default transport, where the

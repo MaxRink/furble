@@ -204,7 +204,7 @@ depends on which of the three is correct.
 | M5Stack Core2 (K010) | 2AN3WM5STACK-CORE2 | 08/20/2020 | vendor-hosted grant, K010 | text layer, read directly |
 | M5Stack Tough (K034) | 2AN3W-M5STACK-TOUGH | 04/19/2021 | vendor-hosted grant, K034 | text layer, read directly |
 | ESP32-S3-WROOM-1 | 2AC7Z-ESPS3WROOM1 | 01/21/2022 | Espressif certification PDF | text layer, plus grantee and module class |
-| Waveshare ESP32-S3-ETH | none found | n/a | Waveshare product page | the page contains zero occurrences of "FCC", so there is no board-level filing claim and the board is certified through the module grant |
+| Waveshare ESP32-S3-ETH | none found | n/a | Waveshare product page | the page contains zero occurrences of "FCC", so the vendor claims no board-level filing and the board is certified through the module grant. A page-level silence is not a database search: the ID search endpoint returned HTTP 403, so the row is a not-found, not a negative. See the 2026-11-26 correction below. |
 
 The grantee for the three M5Stack grants is M5Stack Technology Co.,Ltd, and all
 three are Part 15 spread spectrum or digital transmission system grants. The
@@ -215,9 +215,10 @@ Not recorded as fact: nothing about schematics or internal photos in the FCC
 filings. The FCC exhibit databases returned HTTP 403 to the research agent, so
 no exhibit other than the vendor-hosted grant was read.
 
-Boards without any filing are the ESP32 StickC family, the Core Basic, the
-Waveshare board and the headless development board. For the StickC family and
-the Core Basic the module grant is the only applicable ID, and no vendor page
+Boards without any filing found are the Core Basic, the Waveshare board and the
+headless development board. This paragraph used to name the ESP32 StickC family
+as well; that was wrong and the 2026-11-26 correction below records both IDs.
+For the Core Basic the module grant is the only applicable ID, and no vendor page
 was found that states a board-level ID.
 
 ## 9. Code check: does furble retry the first PM1 transaction after a wake
@@ -301,3 +302,38 @@ here rather than left describing behaviour that no longer exists. The 40 to
 7. **The SX1262 is not on any supported board.** The driver in `lib/hal` has no
    hardware behind it in this tree, so every timing above is document-only and
    no measurement contradicts or confirms it.
+
+## Correction, 2026-11-26: the StickC board IDs exist
+
+Source: the retrospective review of #495 (`plans/357-review-feedback.md`), which
+asked whether the StickC claim was understated the way the Waveshare one was. It
+was.
+
+The FCC ID database serves one page per ID even though its search endpoint
+returns HTTP 403, so every ID above was re-read that way. Two board-level grants
+exist for boards this plan listed as having none:
+
+| Board | FCC ID | Original grant | Grantee | Equipment class |
+| --- | --- | --- | --- | --- |
+| M5Stick | 2AN3WM5STICKC | 2019-06-04 | M5Stack Technology Co.,Ltd | DTS |
+| M5StickC-Plus SE | 2AN3WM5STICKCPLUS | 2026-01-23 | M5Stack Technology Co.,Ltd | DTS |
+
+Read from `https://fccid.io/2AN3WM5STICKC` and
+`https://fccid.io/2AN3WM5STICKCPLUS`, which mirror the FCC database entries,
+grantee code 2AN3W, product codes M5STICKC and M5STICKCPLUS. The 2AN3WM5STICKC
+page lists the original equipment application of 2019-06-04, a Bay Area
+Compliance Laboratories test firm and a 2,402 to 2,480 MHz range.
+
+The same read confirms the four IDs the table above already carried, and dates
+them to their original grants rather than to later permissive changes:
+2AN3WM5STICKS3 2025-12-16, 2AN3WM5STACK-CORE2 2020-08-20 (the page also lists a
+2023-01-10 class II permissive change), 2AN3W-M5STACK-TOUGH 2021-04-19 and
+2AC7Z-ESPS3WROOM1 2022 (the page lists 2022-09-07 and 2022-09-08 class II
+changes and a 2026-02-27 one).
+
+What the method could not do: the fccid.io search endpoint returned HTTP 403 to
+this run as well, so no board was searched by name. Only the two candidate IDs
+that the FCC ID format made guessable were checked, which is why the Plus2, the
+Core Basic and the Waveshare board keep a not-found status rather than a
+negative. The Waveshare row in the FCC table is scoped to the product page for
+the same reason.

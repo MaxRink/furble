@@ -1669,11 +1669,15 @@ remained in the capability handling.
 Priority order of the modelled ESP32-S3, quoted from
 `components/heap/port/esp32s3/memory_layout.c:62-66`: DIRAM carries
 `MALLOC_CAP_DEFAULT` at priority 0, DRAM at priority 1, and SPIRAM carries
-`MALLOC_CAP_DEFAULT` only at priority 2.
+`MALLOC_CAP_DEFAULT` only at priority 2 in that table.
 `components/esp_psram/system_layer/esp_psram.c:470` registers the heap that
 `esp_psram` actually adds as
 `{MALLOC_CAP_SPIRAM | MALLOC_CAP_DEFAULT, 0, MALLOC_CAP_8BIT | MALLOC_CAP_32BIT | MALLOC_CAP_SIMD}`,
-the same union. So:
+so `MALLOC_CAP_DEFAULT` is in PSRAM's first slot too. The priority table governs
+allocation order; the `heap_caps_get_*` queries match differently, through
+`get_ored_caps()` over a heap's whole prioritised set (`heap_private.h`, used at
+`heap_caps.c:73`), which is why a `MALLOC_CAP_DEFAULT` query sums both pools on
+the device. The model reaches the same answer from the priority table. So:
 
 - A set naming `MALLOC_CAP_SPIRAM` is served by PSRAM alone.
 - A set naming `MALLOC_CAP_INTERNAL` is served by internal RAM alone.
@@ -1764,13 +1768,22 @@ unchanged.
 
 ### What the model over-reports
 
-Two different errors. No caller hits either today.
+Three different errors. No caller hits any of them today.
 
 `MALLOC_CAP_RETENTION` is over-reported, not zero on the device. It is a DIRAM
 capability (`components/heap/port/esp32s3/memory_layout.c:45`), and each heap
 takes its type's whole caps array (`components/heap/heap_caps_init.c:139` and
 `:228`), so the device answers with the DIRAM free size. The model answers with
 its one merged internal pool, which is DIRAM plus the DRAM and RTC share.
+
+`MALLOC_CAP_RTCRAM` is over-reported the same way and was missing from this
+list. The S3 registers RTC fast memory as its own type row
+(`memory_layout.c:66`, caps `MALLOC_CAP_RTCRAM`) and its own 8 KiB region
+(`memory_layout.c:106`), so the device answers with that region's free size. The
+model answers with the merged internal pool, which contains none of it. The
+retrospective review of #472 found the omission: `MALLOC_CAP_RTCRAM` is in
+`CAPS_INTERNAL_ONLY`, so it takes the internal branch and never reaches PSRAM,
+but this section claimed two error classes and had three.
 
 A capability set that no heap carries returns zero on the device and resolves
 to a pool here: `MALLOC_CAP_SPIRAM` together with `MALLOC_CAP_INTERNAL`,
@@ -1789,8 +1802,9 @@ appears in that layout at all.
 ### Remaining risk
 
 The caps model still has two pools, not the five memory types the SoC
-registers. `MALLOC_CAP_EXEC`, `MALLOC_CAP_IRAM_8BIT` and `MALLOC_CAP_RETENTION`
-are answered from the internal pool because there is no IRAM or RTC heap to
+registers. `MALLOC_CAP_EXEC`, `MALLOC_CAP_IRAM_8BIT`, `MALLOC_CAP_RETENTION` and
+`MALLOC_CAP_RTCRAM` are answered from the internal pool because there is no IRAM
+or RTC heap to
 answer from, and the S3 boards enable `CONFIG_ESP_SYSTEM_MEMPROT_FEATURE`
 (`sdkconfig.m5stick-s3:1685`), which drops `MALLOC_CAP_EXEC` from DIRAM
 (`memory_layout.c:44-50`). The above determinism argument is a call-site audit,

@@ -376,9 +376,12 @@ was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
 no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
 That rule decides from the workflow files at the pull request's base commit,
 read at `baseRefOid` through `gh api repos/{owner}/{name}/contents/.github/workflows?ref=<oid>`,
-and never from the checkout. A clone can be stale against the base, and a PR
-edits only its own copy of a workflow, so a local tree cannot show what CI
-should have run. The gate fails closed, with exit 2, when the base oid is
+and never from the checkout. A clone can be stale against the base, so a local
+tree cannot show what CI should have run. A pull request that edits
+`.github/workflows/` never qualifies for the override: GitHub evaluates the
+pull request's own copy of a workflow for its pull_request run, so the edit
+changes what CI runs and the base filters cannot see a broadened filter. The
+gate fails closed, with exit 2, when the base oid is
 missing, when the API errors, and when a base workflow cannot be fetched or
 parsed. The checkout-reading local mode is a test-only fallback: `--pr` is
 mandatory, so the gate never reaches it. See `plans/331-merge-gate-base.md`.
