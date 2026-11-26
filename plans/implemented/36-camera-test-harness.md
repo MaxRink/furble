@@ -43,7 +43,7 @@ repository contains 61 receiver-qualified NimBLE method uses across
 ## Current state
 
 `Camera` owns the NimBLE client lifecycle. `Camera::connect()` in
-`lib/furble/Camera.cpp:27-59` creates the client, installs callbacks,
+`lib/furble/Camera.cpp:531` creates the client, installs callbacks,
 configures security, calls the vendor `_connect()`, disconnects on failure,
 and enables client self-deletion. `Scan::onResult()` feeds
 `CameraList::match()`, which de-duplicates addresses and tries vendor

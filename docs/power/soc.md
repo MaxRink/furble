@@ -40,7 +40,7 @@ Hard rules applied in this note:
   active-current number.
 - A developer console build is not a power measurement build. The ESP32 console
   holds `ESP_PM_APB_FREQ_MAX` for its lifetime
-  (`src/FurbleConsole.cpp:2833-2844`) and the S3 console uses the USB Serial/JTAG
+  (`src/FurbleConsole.cpp:3697`) and the S3 console uses the USB Serial/JTAG
   path.
 
 ## The current power architecture
@@ -538,7 +538,8 @@ This is a documentation and build consistency item, not a separate power lever.
   wakes per second used for `reapZombieTargets()`, `sampleAdaptivePower()`, and
   liveness checks. Commands themselves wake the queue immediately.
 - **Evidence:** inferred (code-read). `sampleAdaptivePower()` is rate limited to 5 s
-  (`src/FurbleControl.cpp:22`, `1149`), and the zombie reclaim deadline is a
+  by `RSSI_SAMPLE_INTERVAL_MS` (`src/FurbleControl.cpp:27`) against
+  `m_LastRssiSample` (`src/FurbleControl.cpp:1515`), and the zombie reclaim deadline is a
   timestamp, so the tick is a service cadence, not a correctness deadline.
 - **Estimated saving:** Low. A task wake and context switch is on the order of
   tens of microseconds, so 20 to 4 wakes per second is well below 0.1 mA. The
@@ -551,8 +552,8 @@ This is a documentation and build consistency item, not a separate power lever.
   `control-zombie-cancel`, `control-interleave`, and the simulator connect and
   reconnect scenarios. Confirm the reclaim deadline still fires within its
   documented bound.
-- **Citation:** `src/FurbleControl.cpp:22`, `379-386`, `1149`,
-  `src/FurbleControl.h:88`, `98`.
+- **Citation:** `src/FurbleControl.cpp:27`, `379-386`, `1149`,
+  `include/FurbleControl.h:88`, `98`.
 
 ### OS-03 Lengthen the per-target queue timeout
 
@@ -945,7 +946,7 @@ This is a documentation and build consistency item, not a separate power lever.
   contains the console task, the USB Serial/JTAG driver, and the console
   commands.
 - **Evidence:** inferred (code-read). `FurbleConsole.cpp` is entirely behind
-  `FURBLE_CONSOLE` (`src/FurbleConsole.cpp:3`, `2957`), and the console task is
+  `FURBLE_CONSOLE` (`src/FurbleConsole.cpp:4`, `2957`), and the console task is
   created at 8 KB stack and priority 2 (`src/FurbleConsole.cpp:68-71`,
   `2920-2926`).
 - **Estimated saving:** None for battery life. The board is PoE or USB powered.
@@ -982,7 +983,7 @@ This is a documentation and build consistency item, not a separate power lever.
 
 - **CON-03, ESP32 console APB lock.** The ESP32 console path holds
   `ESP_PM_APB_FREQ_MAX` for the whole console lifetime
-  (`src/FurbleConsole.cpp:2833-2844`). It defeats light sleep entirely. This is
+  (`src/FurbleConsole.cpp:3697`). It defeats light sleep entirely. This is
   deliberate and developer-only. Do not copy it into release and do not use a
   console build for a power claim.
 - **CON-05, measurement tooling.** The S3 console path uses the USB Serial/JTAG
@@ -1012,7 +1013,7 @@ These were examined and do not justify a power change on the current evidence.
 | Speaker, vibration, LED | All three are bracketed on demand and shut down between events. No idle cost found. | `src/FurbleFeedback.cpp:150-170`, `320-360` |
 | IR and SD tasks | Both block on a queue with `portMAX_DELAY`; no periodic polling. | `src/FurbleIR.cpp:219`, `src/FurbleSD.cpp:818` |
 | MQTT task | Waits on a task notification with a computed next-deadline timeout, not a fixed poll. | `src/FurbleMQTT.cpp:306-333` |
-| Disconnect waits | The waits use 20 ms `vTaskDelay` slices and feed the watchdog; no busy spin. | `src/FurbleControl.cpp:771-778`, `844-852`, `src/FurbleControl.h:98` |
+| Disconnect waits | The waits use 20 ms `vTaskDelay` slices and feed the watchdog; no busy spin. | `src/FurbleControl.cpp:771-778`, `844-852`, `include/FurbleControl.h:98` |
 | Manual light sleep | No `esp_light_sleep_start()` call exists. Only `esp_pm` automatic sleep is used. | `plans/06:70-80` |
 | Task watchdog and brownout | The 5 s task watchdog does not panic, and brownout detection is at level 7. These are safety settings, not power levers. Removing them would trade a reset or brownout risk for unmeasured microamps. | `sdkconfig.m5stick-s3:2281-2287`, `3819-3835` |
 | PM_SLP_IRAM_OPT and CPU power-down | Both are already enabled and are worth about 310 us per sleep and about 650 uA respectively. Turning them off would be a regression. | `sdkconfig.m5stick-s3:2114-2118`, IDF `esp_pm/Kconfig:62-70`, `122-135` |

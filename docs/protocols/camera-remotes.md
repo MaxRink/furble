@@ -26,12 +26,12 @@ Support claims and the per-model tested list are in
 
 | Vendor | Match rule | Citation |
 | :--- | :--- | :--- |
-| Nikon | manufacturer data present, or the service UUID advertised. Company id 0x0399 | `lib/furble/protocol/AdvertisementProtocol.h:13,32-33` |
-| Nikon reconnect | a 32-bit device id inside the manufacturer data | `lib/furble/protocol/AdvertisementProtocol.h:34` |
-| Sony | company id 0x012d and camera type 0x0003, plus the model and mode bytes | `lib/furble/protocol/AdvertisementProtocol.h:15-16,36` |
-| Panasonic LUMIX | company id 0x003a with a 5-byte address field | `lib/furble/protocol/AdvertisementProtocol.h:14,47-51` |
-| DJI | its own manufacturer data pattern | `lib/furble/protocol/AdvertisementProtocol.h:58` |
-| Ricoh | the advertised name | `lib/furble/protocol/AdvertisementProtocol.h:59` |
+| Nikon | manufacturer data present, or the service UUID advertised. Company id 0x0399 | `lib/furble/protocol/AdvertisementProtocol.h:12,42` |
+| Nikon reconnect | a 32-bit device id inside the manufacturer data | `lib/furble/protocol/AdvertisementProtocol.h:19,44` |
+| Sony | company id 0x012d and camera type 0x0003, plus the model and mode bytes | `lib/furble/protocol/AdvertisementProtocol.h:14-15,23-34` |
+| Panasonic LUMIX | company id 0x003a with a 5-byte address field | `lib/furble/protocol/AdvertisementProtocol.h:13,36-40` |
+| DJI | its own manufacturer data pattern | `lib/furble/protocol/AdvertisementProtocol.h:52` |
+| Ricoh | the advertised name | `lib/furble/protocol/AdvertisementProtocol.h:53` |
 
 The parsers are byte-exact and pure, so the host tests and the fuzzer exercise
 the same code the firmware runs

@@ -75,7 +75,7 @@ PR05 is not merged yet, put the live page under `Sensors` and move it in a
 follow-up.
 
 `m_Menu` grid coordinates are only meaningful for the Core grid layout
-(`src/FurbleUI.cpp:2065-2069`). Take the next free `{col,row}` on the Settings
+(`src/FurbleUI.cpp:415`). Take the next free `{col,row}` on the Settings
 page. PR01 (Power), PR05 (Diagnostics) and PR08 (Bluetooth) also add cells, so
 the final grid must be settled by whichever of those lands last.
 
@@ -86,7 +86,7 @@ Init order is the critical part. `Platform::getInstance()` runs `M5.config()` an
 `Settings::init()` at `main.cpp:28`. Reading the `IMU` setting inside
 `Platform::getInstance()` therefore requires the swap.
 
-The swap is safe. `Settings::init()` (`src/FurbleSettings.cpp:169-230`) only calls
+The swap is safe. `Settings::init()` (`src/FurbleSettings.cpp:811-984`) only calls
 `nvs_flash_init()`, `nvs_flash_erase()` and the `Preferences` wrapper.
 `lib/preferences/Preferences.cpp:15-21` includes only `esp_log.h`, `nvs.h` and
 `nvs_flash.h`. There is no M5Unified dependency, so NVS can be brought up before

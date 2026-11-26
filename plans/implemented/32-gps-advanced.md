@@ -514,7 +514,7 @@ copies must match each other.
 Three concrete failures today.
 
 Setup is manual and the default is wrong. `Settings::GPS_BAUD` defaults to
-`BAUD_9600` (`src/FurbleSettings.cpp:216-218`). The M5Stack Unit GPS v1.1 ships
+`BAUD_9600` (`src/FurbleSettings.cpp:741`). The M5Stack Unit GPS v1.1 ships
 at 115200 8N1. So a fresh NVS boot with the unit attached produces no fix at
 all, and the only fix is for the user to find Settings, GPS, and flip a switch
 labelled "GPS baud 115200" (`src/FurbleUI.cpp:1521-1546`). There is nothing on

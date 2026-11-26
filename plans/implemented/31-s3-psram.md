@@ -170,8 +170,9 @@ buffers to `M5.Display.pushImageDMA()`. Nothing here changes and nothing here ma
 change. `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768` exists to keep this kind of
 allocation working when the general heap is busy.
 
-`BUFFER_SIZE` is `MAX_WIDTH * (MAX_HEIGHT / 15) * BYTES_PER_PIXEL`
-(`include/FurbleUI.h:196`), so the two buffers are small. They are not the
+`UIMemory::drawBufferBytes()` sizes one buffer as
+`MAX_WIDTH * (MAX_HEIGHT / PARTIAL_LINES) * BYTES_PER_PIXEL`
+(`include/FurbleUIMemory.h:60`), so the two buffers are small. They are not the
 problem and they are not the fix.
 
 ### Module pins

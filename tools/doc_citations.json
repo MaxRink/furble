@@ -1,0 +1,49 @@
+{
+  "externals": [
+    {
+      "prefix": "components/",
+      "reason": "ESP-IDF 5.5.3 component tree, pinned by dependencies.lock and fetched at build time, so it is not tracked in this checkout. Cited by its upstream path. A tracked components/ file still resolves first, so a real repo path is never treated as external."
+    },
+    {
+      "prefix": "esp_hw_support/",
+      "reason": "ESP-IDF component cited without its components/ prefix."
+    },
+    {
+      "prefix": "esp_pm/",
+      "reason": "ESP-IDF component cited without its components/ prefix."
+    },
+    {
+      "prefix": "esp_driver_spi/",
+      "reason": "ESP-IDF component cited without its components/ prefix."
+    },
+    {
+      "prefix": "esp_eth/",
+      "reason": "ESP-IDF component cited without its components/ prefix."
+    },
+    {
+      "prefix": "esptool/",
+      "reason": "esptool, installed as a Python package by the flash helpers and not tracked."
+    },
+    {
+      "prefix": "managed_components/",
+      "reason": "Component manager output. Git-ignored here, so the checkout has no stable copy to read."
+    },
+    {
+      "prefix": "stdlib/",
+      "reason": "newlib source shipped with the ESP-IDF toolchain, cited for the exit path of the coverage harness."
+    },
+    {
+      "prefix": "src/lgfx/",
+      "reason": "M5GFX 0.2.27 source, vendored under .pio/libdeps at build time and not tracked."
+    },
+    {
+      "prefix": "src/utility/",
+      "reason": "M5Unified 0.2.x source, vendored under .pio/libdeps at build time and not tracked. The datasheet corpus cites its RTC classes by their M5Unified-relative path."
+    },
+    {
+      "prefix": "src/lv_conf_internal.h",
+      "reason": "LVGL configuration header generated at build time from Kconfig."
+    }
+  ],
+  "allow": []
+}

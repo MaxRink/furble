@@ -42,7 +42,7 @@ Service `b57f4f5e-087b-4740-b71d-8262cf26ebbc`
 | 1 | `wire_version` | `WIRE_VERSION` = 2 |
 | 2 | `features` | bit 0 settings v2, bit 1 cameras |
 
-The size is pinned by a `static_assert` (`include/FurbleCompanionService.h:169`).
+The size is pinned by a `static_assert` (`include/FurbleCompanionService.h:181`).
 
 ## Status record
 

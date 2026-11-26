@@ -176,9 +176,10 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners,
   clang-format 21 on the changed C and C++ files, the CI workflow and
-  simulator manifest checks, the datasheet citation gate
-  (`tools/check_datasheet_citations.py`), the coupling ratchet, and the
-  scanner unit tests. The ratchet fails when a per-file count of board
+  simulator manifest checks, the coupling ratchet, the datasheet citation gate
+  (`tools/check_datasheet_citations.py`), the documentation citation gate
+  (`tools/check_doc_citations.py`), and the scanner unit tests. The ratchet
+  fails when a per-file count of board
   guards, `M5.` calls, `M5.getBoard()` or ESP/NimBLE public header types
   grows; after a reduction run `python3 tools/check_coupling_ratchet.py
   --update` and commit `tools/coupling_ratchet.json`. pre_review passes its
@@ -191,6 +192,16 @@ CLAUDE.md whose directory it touches.
   every push, against each pushed commit. The tracked `.claude/settings.json`
   sets that hook path for Claude Code sessions through `GIT_CONFIG_COUNT`, so
   a failing gate blocks an agent's push. `git push --no-verify` skips one push.
+- `python3 tools/check_doc_citations.py` checks every `file:line` citation in
+  every non-ignored Markdown file: the path exists, the line is inside the file,
+  and a symbol the citation annotates sits on that line or inside its definition.
+  It reads a symbol only from the code span the citation annotates, so a wrong
+  line inside the same file passes when the sentence names no symbol; see
+  `CONTRIBUTING.md` for the full list of what it cannot see. Citations into an
+  unvendored tree go in `tools/doc_citations.json` with a reason, and an
+  intentionally approximate citation goes in its `allow` list, which fails when
+  an entry suppresses nothing. pre_review runs the full sweep; `--base REV`
+  narrows it to the citations a range could break.
 - Run the fuzz gate before any hardware image build:
   `python3 tools/check_fuzz.py --full --host-build <host-build> --mqtt-binary
   sim/build-mqtt/furble-sim`. `--smoke` is the pull-request budget. It runs
