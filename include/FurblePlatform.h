@@ -16,7 +16,12 @@ namespace Furble {
 #if defined(FURBLE_SIM)
 namespace Sim {
 const char *watchdogState(void);
-}
+const char *motionWakeState(void);
+const char *pmicIrqState(void);
+const char *pmicIrqStatus(void);
+bool pmicInjectSystemIrq(uint8_t bits);
+bool pmicClearSystemIrq(void);
+}  // namespace Sim
 #endif
 /** Board power and platform services; meets the PowerBackend contract. */
 class Platform: public PowerBackend {
@@ -348,7 +353,15 @@ class Platform: public PowerBackend {
 
  private:
 #if defined(FURBLE_SIM)
+  // Simulator observability for the retained PMIC model: the watchdog state
+  // reader, the aggregated IRQ line, the motion wake gate and the two injected
+  // PMIC events. Firmware has no callers for any of them.
   friend const char *Sim::watchdogState(void);
+  friend const char *Sim::motionWakeState(void);
+  friend const char *Sim::pmicIrqState(void);
+  friend const char *Sim::pmicIrqStatus(void);
+  friend bool Sim::pmicInjectSystemIrq(uint8_t bits);
+  friend bool Sim::pmicClearSystemIrq(void);
 #endif
   Platform() {};
 

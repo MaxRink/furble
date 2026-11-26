@@ -35,9 +35,11 @@ int main() {
   // deadline, then expire at the exact boundary. The deadline wraps here.
   const uint32_t deadline = start + Furble::Watchdog::PM1_TIMEOUT_MS;
   setClockMillis(deadline - 1);
-  if (pm1.watchdogExpired()) {
+  pm1.pollDeadlines();
+  if (pm1.watchdogPowerCycles() != 0) {
     return 1;
   }
   setClockMillis(deadline);
-  return pm1.watchdogExpired() ? 0 : 1;
+  pm1.pollDeadlines();
+  return pm1.watchdogPowerCycles() == 1 ? 0 : 1;
 }

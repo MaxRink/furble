@@ -385,6 +385,7 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps_ana",
       "gps_rail_fixed",
       "gps_rail_refused",
+      "pmic_pwr_cfg_stale",
       "gps_m10_unresolved",
       "gps_m10_backup",
       "gps_m10_flash",
@@ -1379,6 +1380,20 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
     *applied = true;
     return true;
   }
+  // Board-level PMIC events the retained model owns rather than the chips the
+  // hardware model aggregates.
+  if (action.name == "pmic-irq-5vin") {
+    // A 5VIN event latches in M5PM1 IRQ Status 2. The motion path only clears
+    // Status 1, so this latch holds the aggregated IRQ line on its own.
+    *applied = pmicInjectSystemIrq(M5PM1_IRQ_SYS_5VIN_OUT);
+    return true;
+  }
+  if (action.name == "pmic-irq-clear") {
+    // Status 2 is write-0-to-clear, so only a write releases the latch.
+    *applied = pmicClearSystemIrq();
+    return true;
+  }
+
   if (hwAction(action.name)) {
     *applied = true;
     return true;
@@ -1926,6 +1941,15 @@ std::string queryValueUnscoped(const std::string &key) {
   }
   if (key == "platform.watchdog") {
     return watchdogState();
+  }
+  if (key == "platform.motion_wake") {
+    return motionWakeState();
+  }
+  if (key == "platform.pmic_irq") {
+    return pmicIrqState();
+  }
+  if (key == "platform.pmic_irq_status") {
+    return pmicIrqStatus();
   }
   if (key == "boot_settings_imu") {
     return bootSettings().imu ? "1" : "0";
@@ -2532,8 +2556,9 @@ void applyScenarioSettings(void) {
     furble_sim_uart_set_fix_chunk(parseUnsigned(fixChunk->second));
   }
   furble_sim_uart_set_noise(scenarioSettingIsTrue("gps_uart_noise"));
-  furble_sim_uart_set_rail_fixed(scenarioSettingIsTrue("gps_rail_fixed"));
-  furble_sim_uart_set_rail_refused(scenarioSettingIsTrue("gps_rail_refused"));
+  hwSetRailFixed(scenarioSettingIsTrue("gps_rail_fixed"));
+  hwSetRailRefused(scenarioSettingIsTrue("gps_rail_refused"));
+  hwSetPwrCfgStale(scenarioSettingIsTrue("pmic_pwr_cfg_stale"));
   const auto model = scenarioSettings.find("gps_model");
   if (model != scenarioSettings.end()) {
     const auto unknown = scenarioSettings.find("gps_m10_unknown_key");

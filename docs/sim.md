@@ -487,7 +487,12 @@ u-blox constellation mask, power save and AssistNow Autonomous settings.
 a refused PMIC request), so `Platform::canCutGpsRail()` reports false.
 `gps_rail_refused` also keeps the rail on but leaves `canCutGpsRail()` true: the
 board can cut the rail, and the PMIC refuses one request (a Core2 on a low
-battery). `gps_m10_unresolved` makes the virtual M10 report a
+battery). Both are decided in the hardware model, which owns the one switched
+5 V output and returns the read-back `Platform::setRail()` answers with.
+`pmic_pwr_cfg_stale` keeps the PWR_CFG byte snapshot taken at boot and uses it
+for the next panel-off read-modify-write, so a rail change that landed in
+between is lost and `pmic.pwr_cfg_lost` records it.
+`gps_m10_unresolved` makes the virtual M10 report a
 3D fix whose time is valid but not fully resolved.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
@@ -794,6 +799,11 @@ action companion-reconnect
 action companion-reject-central
 action audio-overcurrent
 action ir-timeout
+action ir-transmit
+action ir-transmit-end
+action hw-rtc-mismatch
+action pmic-irq-5vin
+action pmic-irq-clear
 action sd-present
 action sd-absent
 action sd-error
@@ -1074,9 +1084,18 @@ The other namespaces are:
 - `hw.*` reports profile identity and capabilities (`hw.profile`, `hw.mcu`,
   `hw.flash_kb`, `hw.psram`, `hw.pmic`, `hw.gauge`, `hw.usb`, `hw.display`,
   `hw.touch`, `hw.wifi`, `hw.ethernet`, `hw.ble`, `hw.ir`, `hw.sd`, `hw.audio`,
-  `hw.rtc`, `hw.battery`). `pmic.*` reports variant, gauge, battery, charging,
-  charger, charge current, watchdog, download lock, power latch, brownouts and
-  battery millivolts/percent.
+  `hw.rtc`, `hw.battery`). `hw.rtc_capability` is `match` when the profile's RTC
+  capability agrees with its verified row and `mismatch` when it does not, and
+  `hw.fail_closed` reports whether the model recorded a defect. `pmic.*` reports
+  variant, gauge, battery, charging, charger, charge current, watchdog, download
+  lock, power latch, brownouts, battery millivolts/percent, `pmic.pwr_cfg` (the
+  one M5PM1 PWR_CFG byte in decimal), `pmic.pwr_cfg_lost` (read-modify-write
+  losses the shared byte allowed) and `pmic.watchdog_cycles` (PMIC-driven system
+  power cycles). `rail.state` is `on` or `off`, `rail.holders` names the
+  consumers currently keeping it on (`none`, `gps`, `ir`, `gps+ir`) and
+  `rail.refusals` counts requests the board could not honour. `ir.state` is
+  `absent`, `idle`, `transmitting`, `unpowered` or `timeout`, with
+  `ir.transmits` and `ir.failures` beside it.
 - `power.*` reports the button state machine and one-event counters:
   `power.state`, `power.clicks`, `power.double_clicks`, `power.long_presses`,
   `power.resets`, `power.offs`, `power.downloads` and `power.recoveries`.
@@ -1308,7 +1327,14 @@ names lose characters, which must be 0. A page with no spin row reports 0 and
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
-- `platform.watchdog`: `armed`, `expired`, or `unsupported`.
+- `platform.watchdog`: `armed`, `cycled`, or `unavailable`. A PMIC watchdog
+  expiry is a system power cycle, so the state names what the chip did rather
+  than a flag it left behind.
+- `platform.motion_wake`: `armed`, `blocked`, `idle` or `unavailable`. `blocked`
+  means an unmasked PM1 interrupt latch is holding the aggregated IRQ line that
+  the motion path shares.
+- `platform.pmic_irq`: `asserted` or `idle`. `platform.pmic_irq_status` reports
+  both latched status registers as `<status1>,<status2>` in decimal.
 - `platform.timed_wake`: `yes` when the simulated board can schedule a timed
   power-on, otherwise `no`.
 

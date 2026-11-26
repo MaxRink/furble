@@ -1,0 +1,49 @@
+# A latched 5VIN event holds the PMIC aggregated IRQ line, so a later motion
+# edge cannot wake anything.
+#
+# M5PM1 v1.0.6 M5PM1.h registers 0x40 and 0x41 are status latches cleared only by
+# a write (write 0 to clear), and both feed the one PYG1_IRQ line into GPIO13.
+# The motion path clears Status 1 (irqClearGpioAll and irqGetGpioStatus with
+# CLEAN_ONCE) and never touches Status 2, so a 5VIN latch survives an arm cycle
+# and keeps the line asserted, which is level active.
+#
+# Teeth: drop the Status 2 term from the aggregated line and the line reads idle
+# with the latch set, so the blocked asserts fail. Clear Status 2 on a read
+# instead of a write and the latch disappears before the second arm, so the
+# status asserts fail.
+seed imu true
+seed imu_chip bmi270
+seed hw_motion 2
+wait 300
+assert ui.motion_wake yes
+assert platform.motion_wake armed
+assert platform.pmic_irq_status 0,0
+assert platform.pmic_irq idle
+
+# A 5VIN removal latches in Status 2 and asserts the aggregated line on its own.
+action pmic-irq-5vin
+assert platform.pmic_irq_status 0,2
+assert platform.pmic_irq asserted
+assert platform.motion_wake blocked
+
+# Re-arming clears Status 1 only, so the system latch survives and the line
+# stays asserted. This is the stuck state a later motion wake cannot escape.
+action motion.arm
+wait 300
+assert platform.pmic_irq_status 0,2
+assert platform.pmic_irq asserted
+assert platform.motion_wake blocked
+
+# A write to Status 2 releases it, and the wake path works again.
+action pmic-irq-clear
+wait 300
+assert platform.pmic_irq_status 0,0
+assert platform.pmic_irq idle
+assert platform.motion_wake armed
+
+# The recovered path is a real one: a re-arm after the clear still reads armed.
+action motion.arm
+wait 300
+assert platform.motion_wake armed
+assert ui.motion_wake yes
+exit

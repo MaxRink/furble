@@ -28,6 +28,15 @@ Provisioning tests cover Legend Off through the production apply path and NVS
 store. Keep `Furble::Settings` qualified outside its namespace; run both the
 ordinary and MQTT-enabled provisioning targets when changing this coverage.
 
+## Simulator shims
+
+`pmic_recovery_test` and `sim_clock_test` include `sim/shim/M5PM1.h`, so they
+cover the host PMIC model: the idle-wake retry, the retained download lock and
+watchdog, the IRQ Status 1 and 2 latches (write 0 to clear, unmasked bits hold
+the aggregated line) and a watchdog expiry as a system power cycle counted by
+`watchdogPowerCycles()`. Keep them aligned with M5PM1 v1.0.6 when the pinned
+driver version in `platformio.ini` changes.
+
 ## Linked boundary conformance
 
 `boundaries/` and `headless/` compile production drivers and the production

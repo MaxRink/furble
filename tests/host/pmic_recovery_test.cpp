@@ -60,10 +60,64 @@ int main() {
   M5PM1 watchdogAfterReset;
   check(watchdogAfterReset.begin(nullptr) == M5PM1_OK, "watchdog PMIC instance begins");
   setClockMillis(1999);
-  check(!watchdogAfterReset.watchdogExpired(), "retained watchdog has not expired early");
+  check(watchdogAfterReset.watchdogPowerCycles() == 0, "retained watchdog has not fired early");
   setClockMillis(2000);
-  check(watchdogAfterReset.watchdogExpired(),
-        "retained watchdog expires while the ESP32 is in download mode");
+  // M5PM1.h REG_WDT_CNT 0x0A resets the system at zero, so an expiry is a power
+  // cycle and not a status flag.
+  watchdogAfterReset.pollDeadlines();
+  check(watchdogAfterReset.watchdogPowerCycles() == 1,
+        "retained watchdog power-cycles the system while the ESP32 is in download mode");
+  watchdogAfterReset.pollDeadlines();
+  check(watchdogAfterReset.watchdogPowerCycles() == 1,
+        "one expiry produces one system power cycle, not one per poll");
+
+  // M5PM1.h REG_IRQ_STATUS1 0x40 and 0x41 are latches cleared only by a write
+  // (write 0 to clear). A read must not clear them, and a masked bit must not
+  // hold the aggregated line. Every other transaction only wakes the idle chip,
+  // so each call goes through the same one-retry wrapper the firmware uses.
+  M5PM1 latches;
+  check(latches.begin(nullptr) == M5PM1_OK, "latch PMIC instance begins");
+  const auto retry = [](auto call) {
+    const int first = call();
+    return first == M5PM1_OK ? first : call();
+  };
+  const auto sysStatus = [&latches, &retry](uint8_t *value) {
+    return retry([&latches, value]() { return latches.irqGetSysStatus(value); });
+  };
+  const auto gpioStatus = [&latches, &retry](uint8_t *value, uint8_t clean) {
+    return retry([&latches, value, clean]() { return latches.irqGetGpioStatus(value, clean); });
+  };
+  const auto setSysMask = [&latches, &retry](uint8_t pin, uint8_t mask) {
+    return retry([&latches, pin, mask]() { return latches.irqSetSysMask(pin, mask); });
+  };
+  const auto clearSys = [&latches, &retry]() {
+    return retry([&latches]() { return latches.irqClearSysAll(); });
+  };
+
+  latches.injectSysIrq(M5PM1_IRQ_SYS_5VIN_OUT);
+  uint8_t status2 = 0;
+  check(latches.irqGetSysStatus(&status2) == M5PM1_ERROR, "first status read wakes an idle PMIC");
+  check(sysStatus(&status2) == M5PM1_OK && status2 == M5PM1_IRQ_SYS_5VIN_OUT,
+        "the 5VIN latch is readable");
+  check(latches.irqLineAsserted(), "an unmasked system latch holds the aggregated line");
+  check(sysStatus(&status2) == M5PM1_OK && status2 == M5PM1_IRQ_SYS_5VIN_OUT,
+        "reading the latch does not clear it");
+  check(setSysMask(M5PM1_IRQ_SYS_5VIN_OUT, M5PM1_IRQ_MASK_ENABLE) == M5PM1_OK,
+        "the 5VIN event can be masked");
+  check(!latches.irqLineAsserted(), "a masked latch releases the aggregated line");
+  check(setSysMask(M5PM1_IRQ_SYS_5VIN_OUT, M5PM1_IRQ_MASK_DISABLE) == M5PM1_OK,
+        "the 5VIN event can be unmasked again");
+  check(latches.irqLineAsserted(), "unmasking the latch asserts the line again");
+  check(clearSys() == M5PM1_OK, "Status 2 clears with a write");
+  check(!latches.irqLineAsserted(), "a cleared latch releases the aggregated line");
+
+  // Status 1 is the motion path's register and clears the same way.
+  latches.injectGpioIrq(M5PM1_IRQ_GPIO4);
+  check(latches.irqLineAsserted(), "a GPIO4 latch holds the aggregated line");
+  uint8_t status1 = 0;
+  check(gpioStatus(&status1, M5PM1_CLEAN_ONCE) == M5PM1_OK && status1 == M5PM1_IRQ_GPIO4,
+        "the GPIO4 latch reads back");
+  check(!latches.irqLineAsserted(), "CLEAN_ONCE clears the GPIO4 latch");
 
   // Every PMIC operation has a negative path. The production wrapper must
   // retry once, and callers such as flash preparation must fail closed when

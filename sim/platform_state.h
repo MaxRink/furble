@@ -29,7 +29,29 @@ bool consumeWatchdogFeedSuppression(void);
 /** Return the virtual M5PM1 long-press download-lock state. */
 const char *downloadLockState(void);
 
-/** Return the last Platform::setDisplayOff input. */
+/**
+ * Whether a latched PMIC interrupt would let a motion edge wake the system.
+ *
+ * The StickS3 IMU interrupt is M5PM1 GPIO4 and the PMIC aggregates it with the
+ * system events onto PYG1_IRQ, which is level active into GPIO13. An unmasked
+ * latch in either status register holds that line asserted, so a later motion
+ * edge cannot wake anything until a write clears it.
+ */
+const char *motionWakeState(void);
+
+/** The aggregated PMIC IRQ line: asserted or idle. */
+const char *pmicIrqState(void);
+
+/** Both latched status registers as "<status1>,<status2>" in decimal. */
+const char *pmicIrqStatus(void);
+
+/** Latch one system interrupt event, M5PM1 IRQ Status 2. */
+bool pmicInjectSystemIrq(uint8_t bits);
+
+/** Write 0 to PM1 IRQ Status 2, the only thing that clears those latches. */
+bool pmicClearSystemIrq(void);
+
+/** Return the panel-off state the PM1 status LED level models. */
 const char *displayOffState(void);
 
 }  // namespace Furble::Sim

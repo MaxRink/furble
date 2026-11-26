@@ -157,8 +157,6 @@ std::string receiverModel = "casic";
 Furble::Sim::VirtualM10 m10;
 Furble::Sim::VirtualM10::Options m10Options;
 bool railOn = true;
-bool railFixed = false;
-bool railRefused = false;
 bool m10Silent = false;
 
 bool isM10Locked(void) {
@@ -811,21 +809,6 @@ bool furble_sim_uart_gps_backup(void) {
   return isM10Locked() && m10Options.vbckp;
 }
 
-bool furble_sim_uart_rail_fixed(void) {
-  std::lock_guard<std::mutex> lock(gpsMutex);
-  return railFixed;
-}
-
-void furble_sim_uart_set_rail_fixed(bool fixed) {
-  std::lock_guard<std::mutex> lock(gpsMutex);
-  railFixed = fixed;
-}
-
-void furble_sim_uart_set_rail_refused(bool refused) {
-  std::lock_guard<std::mutex> lock(gpsMutex);
-  railRefused = refused;
-}
-
 bool furble_sim_uart_rail_on(void) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   return railOn;
@@ -833,9 +816,10 @@ bool furble_sim_uart_rail_on(void) {
 
 void furble_sim_uart_set_rail(bool on) {
   std::lock_guard<std::mutex> lock(gpsMutex);
-  // A rail the board cannot switch, or whose cut the PMIC refuses, stays on
-  // whatever the PMIC was asked.
-  on = on || railFixed || railRefused;
+  // The hardware model owns the switched 5 V output and reports the read-back,
+  // so this is the receiver's view of that answer and not a second authority.
+  // A rail the board cannot switch, or a cut the PMIC refuses, arrives here
+  // already resolved.
   railOn = on;
   if (isM10Locked()) {
     m10.setPower(on, Furble::Sim::clockMillis());

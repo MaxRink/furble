@@ -241,6 +241,11 @@ settings-touching rebase.
   `APPLIED`, `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; malformed direct
   actions fail closed. Keep this overload and result enum simulator-only so
   firmware builds retain the production header surface.
+- Under `FURBLE_SIM`, `FurblePlatform.h` declares and befriends the simulator
+  readers for the retained PMIC model: `watchdogState`, `motionWakeState`,
+  `pmicIrqState`, `pmicIrqStatus` and the two injected PMIC events. They exist
+  only so a scenario can observe the aggregated IRQ line and the watchdog
+  cycle, and firmware has no callers for any of them.
 - FurbleWiFi.h exposes station provisioning and NTP status for the app layer.
   `hasAssignedAddress()` is the live station readiness query: it asks esp-netif
   for an up netif with a non-zero IPv4 address instead of reading the cached
