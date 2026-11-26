@@ -25,11 +25,15 @@ namespace {
 // event", and Platform treats it as either (plan 350). The StickS3 BMI270 INT1
 // goes to M5PM1 GPIO4, and the PMIC drives PYG1_IRQ into GPIO13.
 //
-// GPS rail: M5Unified 0.2.20 Power_Class::setExtOutput() switches the external
+// EXT_5V rail: M5Unified 0.2.20 Power_Class::setExtOutput() switches the external
 // 5 V output: AXP192 EXTEN on the StickC and StickC Plus, the M5PM1 on the
 // StickS3, and AXP192 GPIO0 enabling the SY7088 boost on the Core2 and Tough.
 // It does nothing on the Plus2, the Core or any other board furble supports. On
 // the StickC and Plus the rail is already on before the GPS driver runs, by two
+//
+// The rail column is named for the port, not for one client: on the StickS3
+// the same switch feeds the Grove 5 V output and the infrared circuit, and the
+// rail manager shares it between holders (include/FurbleRail.h).
 // writes during M5.begin(): M5Unified calls Power.setExtOutput(cfg.output_power)
 // with the default output_power = true (M5Unified.cpp), which reaches
 // Axp192.setEXTEN(true) for that board pair, and M5GFX 0.2.27
@@ -85,8 +89,9 @@ namespace {
 // Columns: name, battery {level, voltage, current, charging}, capacity mAh,
 // RTC backed, RTC on the bus, IR pin, motion wake, motion pin, timed wake,
 // hold pin, PMIC click streak, SD slot, power policies, power-off path, modem
-// sleep, brightness floor, feedback sound, light, vibration, LED pin, GPS rail,
-// LED active low, IR mark low, GPS pin source, GPS RX pin, GPS TX pin.
+// sleep, brightness floor, feedback sound, light, vibration, LED pin,
+// switchable EXT_5V rail, LED active low, IR mark low, GPS pin source, GPS RX
+// pin, GPS TX pin.
 //
 // RTC on the bus: only the Plus2 has a chip M5Unified can drive, its BM8563 at
 // 0x51. M5Unified 0.2.x falls back to PCF8563_Class for every board and keeps
@@ -102,6 +107,10 @@ namespace {
 // GpsPinSource::NONE and claims no pin at all: the Core, where Port A is the
 // internal I2C bus, and the Waveshare ESP32-S3-ETH, where it is the W5500 SPI
 // clock. See plans/336-gps-pin-seam.md.
+//
+// The rail column is named for the port, not for one client: on the StickS3
+// the same switch feeds the Grove 5 V output and the infrared circuit, and the
+// rail manager shares it between holders (include/FurbleRail.h).
 //
 // clang-format off
 constexpr Profile STICKC        = {"StickC", {true,  true,  true,  true}, 95, true, false, 9,

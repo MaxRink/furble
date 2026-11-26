@@ -2882,6 +2882,39 @@ int cmdShutter(int argc, char **argv) {
   return fail("expected press, release or hold");
 }
 
+/**
+ * The EXT_5V rail accounting, as the console reports it.
+ *
+ * The refusals are counted separately from the writes, so a bench run can tell
+ * a cut refused for another holder and an output-mode enable refused by the
+ * supply interlock from a PMIC write that did not take. Read only: it takes no
+ * rail action, so it never changes what a firmware client owns.
+ */
+int railStatus(void) {
+  auto &platform = Platform::getInstance();
+  const uint8_t holders = platform.railHolders(PowerBackend::Rail::EXT_5V);
+
+  printf("holders: 0x%02x\n", static_cast<unsigned>(holders));
+  static constexpr RailHolder HOLDERS[] = {RailHolder::GPS, RailHolder::IR, RailHolder::GROVE};
+  static constexpr const char *HOLDER_NAMES[] = {"gps", "ir", "grove"};
+  for (size_t i = 0; i < sizeof(HOLDERS) / sizeof(HOLDERS[0]); i++) {
+    if ((holders & railHolderBit(HOLDERS[i])) != 0) {
+      printf("holder: %s\n", HOLDER_NAMES[i]);
+    }
+  }
+  printf("last_verdict: %s\n", PlatformPolicy::railEnableVerdictName(platform.railLastVerdict()));
+  printf("cuts_refused: %lu\n", static_cast<unsigned long>(platform.railCutRefusals()));
+  printf("enables_refused: %lu\n", static_cast<unsigned long>(platform.railEnableRefusals()));
+  return 0;
+}
+
+int cmdRail(int argc, char **argv) {
+  if ((argc != 2) || (strcmp(argv[1], "status") != 0)) {
+    return fail("usage: rail status");
+  }
+  return railStatus();
+}
+
 int cmdIR(int argc, char **argv) {
   if ((argc < 2) || (strcmp(argv[1], "fire") != 0)) {
     return fail("usage: ir fire [protocol]");
@@ -3635,6 +3668,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("bulb", "bulb start | stop | status, the Bulb page", cmdBulb),
     command("display", "display status | mode gui | console | brightness <value>", cmdDisplay),
     command("ir", "ir fire [protocol], 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s", cmdIR),
+    command("rail", "rail status, EXT_5V holders, last verdict and refusals", cmdRail),
     command("focus", "focus press | release", cmdFocus),
     command("scan", "scan start | stop | list", cmdScan),
     command("bt",

@@ -42,9 +42,18 @@ class PowerBackend {
     bool charging;
   } battery_t;
 
-  /** Switchable supplies, named by what they feed. */
+  /**
+   * Switchable supplies, named by what they feed.
+   *
+   * `EXT_5V` is the Grove 5 V / external 5 V output: M5PM1 PWR_CFG bit 3 on the
+   * StickS3 (the EXT_5V "5VINOUT" port, which also powers the infrared
+   * circuit), AXP192 EXTEN on the StickC family, AXP2101 LDOIO0 on the Core2
+   * and Tough. It is not a GPS-only rail; see include/FurbleRail.h for the
+   * holders that keep it up and plans/364-ext5v-rail.md for the ownership
+   * model.
+   */
   enum class Rail : uint8_t {
-    GPS,
+    EXT_5V,
   };
 };
 
@@ -54,11 +63,12 @@ class PowerBackend {
  *  - battery_caps_t getBatteryCaps(void)
  *  - battery_t readBattery(void): unsupported measurements read as zero
  *  - uint16_t getBatteryCapacity(void): mAh, zero if unknown
- *  - bool setRail(Rail rail, bool on): false when the board has no switch or
- *    the rail does not read back in the requested state. The request is
- *    advisory: the PMIC may refuse an enable. Rail::GPS names the external
- *    5 V output; on the Core2 and Tough that is one BUS_5V net shared by Grove
- *    Port A and the M-Bus.
+ *  - bool setRail(Rail rail, bool on): false when the board has no switch, the
+ *    rail does not read back in the requested state, or the output-mode
+ *    interlock refused the enable. The request is advisory: the PMIC may
+ *    refuse an enable. Rail::EXT_5V names the external 5 V output; on the
+ *    Core2 and Tough that is one BUS_5V net shared by Grove Port A and the
+ *    M-Bus.
  *  - uint8_t getPWRClickCount(void): PMIC key clicks since the last call
  *  - bool powerOff(void): never returns on success
  *  - bool canTimedWake(void)

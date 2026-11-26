@@ -141,7 +141,7 @@ const std::vector<std::string> EXPECTED_COMMANDS = {
     "perf",    "heap",    "gps",    "time",   "settings",     "companion",  "provision", "ui",
     "cameras", "connect", "pair",   "delete", "multiconnect", "disconnect", "shutter",   "interval",
     "bulb",    "display", "ir",     "focus",  "scan",         "bt",         "feedback",  "log",
-    "debug",   "flash",   "reboot", "wifi",   "ntp",
+    "debug",   "flash",   "reboot", "wifi",   "ntp",          "rail",
 };
 
 }  // namespace
@@ -186,6 +186,7 @@ const std::vector<SubcommandContract> SUBCOMMANDS = {
     {"imu",          "usage: imu status",                                                        "",                     {"status"}                            },
     {"shutter",      "expected press, release or hold",                                          "",                     {"press", "release", "hold"}          },
     {"ir",           "usage: ir fire [protocol]",                                                "",                     {"fire"}                              },
+    {"rail",         "usage: rail status",                                                       "",                     {"status"}                            },
     {"focus",        "expected press or release",                                                "",                     {"press", "release"}                  },
     {"scan",         "expected start, stop or list",                                             "",                     {"start", "stop", "list"}             },
     {"bt",           "expected scan, explore, pair or journal",                                  "",                     {"scan", "explore", "pair", "journal"}},
@@ -1045,6 +1046,38 @@ namespace {
 // Test 5. The GPS command tree. The receiver is doubled at its boundary, so
 // every branch of the parsing, the checksum the console computes and the
 // frames it hands the receiver are all asserted.
+// The rail command is the console's view of the EXT_5V accounting: holders,
+// last interlock verdict and both refusal counters. The values are the double's
+// settable state, so the print path is what is under test.
+void testRailStatus(void) {
+  std::cerr << "test: rail status reports the EXT_5V accounting\n";
+
+  auto &platform = Furble::Platform::getInstance();
+  // GPS (bit 0) and GROVE (bit 2).
+  platform.setRailHolders(0x05);
+  platform.setRailCounters(3, 2);
+  platform.setRailVerdict(Furble::PlatformPolicy::RailEnableVerdict::REFUSE_EXTERNAL_SOURCE);
+
+  const Result result = runDirect("rail status");
+  check(result.err == ESP_OK, "rail status dispatches");
+  check(result.rc == 0, "rail status returns success");
+  checkContains(result.out, "holders: 0x05", "rail status prints the holder mask");
+  checkContains(result.out, "holder: gps", "rail status names the GPS hold");
+  checkContains(result.out, "holder: grove", "rail status names the Grove hold");
+  check(!contains(result.out, "holder: ir"), "rail status omits a holder that is not set");
+  checkContains(result.out, "last_verdict: refuse-external-source",
+                "rail status prints the interlock verdict");
+  checkContains(result.out, "cuts_refused: 3", "rail status prints the refused cuts");
+  checkContains(result.out, "enables_refused: 2", "rail status prints the refused enables");
+
+  platform.setRailHolders(0);
+  platform.setRailCounters(0, 0);
+  platform.setRailVerdict(Furble::PlatformPolicy::RailEnableVerdict::ALLOW);
+  const Result idle = runDirect("rail status");
+  checkContains(idle.out, "holders: 0x00", "an idle rail prints an empty mask");
+  checkContains(idle.out, "last_verdict: allow", "an idle rail keeps the allow verdict");
+}
+
 void testGPS(void) {
   std::cerr << "test: the gps command tree parses, formats and dispatches\n";
   ConsoleHost::resetDoubles();
@@ -2588,6 +2621,7 @@ int main(void) {
   testBootTiming();
   testStatusAndVersion();
   testSettings();
+  testRailStatus();
   testGPS();
   testGPSDiagnostics();
   testTimePowerPerf();

@@ -83,6 +83,85 @@ constexpr PowerOffAction powerOffAction(bool hasPath) {
   return hasPath ? PowerOffAction::CUT : PowerOffAction::REFUSE;
 }
 
+/**
+ * The supply the M5PM1 reports for the board, from PWR_SRC 0x04 bits 2:0.
+ *
+ * The register is M5PM1_REG_PWR_SRC 0x04. 0x07 is HOLD_CFG, the power-hold
+ * configuration, and reading it would answer a different question entirely.
+ *
+ * The numbering follows the vendor enumeration (M5PM1 1.0.6, src/M5PM1.h
+ * m5pm1_pwr_src_t), so a mapping error is a static_assert in
+ * src/FurblePlatform.cpp rather than a silent reinterpretation.
+ */
+enum class RailSupply : uint8_t {
+  USB_5V = 0,   // USB/DC 5 V input
+  PORT_5V = 1,  // an external 5 V source driving the bidirectional 5 V port
+  BATTERY = 2,  // battery only
+  UNKNOWN = 3,  // no supply reported
+};
+
+/** Why the EXT_5V output-mode interlock allowed or refused a request. */
+enum class RailEnableVerdict : uint8_t {
+  ALLOW,
+  REFUSE_EXTERNAL_SOURCE,
+  REFUSE_UNKNOWN_SUPPLY,
+};
+
+/**
+ * Interlock for committing the EXT_5V port to output mode.
+ *
+ * The M5Stack documentation for EXT_5V warns that the port defaults to INPUT
+ * and that in output mode power may only be applied through USB or 5VIN,
+ * otherwise there is a risk of short circuit and device damage (quoted in
+ * plans/364-ext5v-rail.md and docs/power/board-power.md). The port cannot be
+ * sensed on this board, so firmware refuses the enable while an external 5 V
+ * source is present at the port (PWR_SRC reports the bidirectional port
+ * powered) or while the supply state cannot be established at all. The failure
+ * direction is closed: a refusal leaves PWR_CFG 0x06 untouched, so EXT_5V keeps
+ * the vendor default of INPUT, and the caller's read-back reports false.
+ *
+ * Switching the port back to input mode is always allowed; it is the vendor
+ * default and the safe direction.
+ *
+ * This is an allowlist: only the two supplies the vendor documents as a source
+ * the board may drive the port from, USB 5 V and the battery, allow output
+ * mode. Every other value refuses, the undefined 4 to 7 that PWR_SRC bits 2:0
+ * can report included, because a supply this firmware cannot name is one it
+ * cannot rule out.
+ */
+constexpr RailEnableVerdict railEnableVerdict(bool supplyKnown, RailSupply supply) {
+  if (!supplyKnown) {
+    return RailEnableVerdict::REFUSE_UNKNOWN_SUPPLY;
+  }
+
+  switch (supply) {
+    case RailSupply::USB_5V:
+    case RailSupply::BATTERY:
+      return RailEnableVerdict::ALLOW;
+    case RailSupply::PORT_5V:
+      return RailEnableVerdict::REFUSE_EXTERNAL_SOURCE;
+    case RailSupply::UNKNOWN:
+      return RailEnableVerdict::REFUSE_UNKNOWN_SUPPLY;
+  }
+
+  // A value outside the enumeration (PWR_SRC bits 2:0 report 0 to 7) refuses
+  // rather than falling through to ALLOW.
+  return RailEnableVerdict::REFUSE_UNKNOWN_SUPPLY;
+}
+
+/** Log text and simulator query text for an interlock verdict. */
+constexpr const char *railEnableVerdictName(RailEnableVerdict verdict) {
+  switch (verdict) {
+    case RailEnableVerdict::ALLOW:
+      return "allow";
+    case RailEnableVerdict::REFUSE_EXTERNAL_SOURCE:
+      return "refuse-external-source";
+    case RailEnableVerdict::REFUSE_UNKNOWN_SUPPLY:
+      return "refuse-unknown-supply";
+  }
+  return "refuse-unknown-supply";
+}
+
 }  // namespace PlatformPolicy
 }  // namespace Furble
 

@@ -151,6 +151,8 @@ whose title carries it, and plan 331 is archived there with it.
 | [354-review-feedback.md](354-review-feedback.md) | Review-feedback record for the Core family hardware and power fixes |
 | [363-pmic-irq-speaker.md](363-pmic-irq-speaker.md) | M5PM1 IRQ Status 2 latch holding the wake line, the RTC IRQ write on a board with no RTC, the StickS3 amplifier settle time and battery volume cap, and the refused watchdog arm log |
 | [363-review-feedback.md](363-review-feedback.md) | Review-feedback record for the PMIC IRQ, RTC and speaker branch, including the platform-wake target that compiles the production call sites |
+| [364-ext5v-rail.md](364-ext5v-rail.md) | StickS3 EXT_5V rail ownership: one writer for `PWR_CFG` 0x06, named holders with a reference count, the output-mode supply interlock and the IR hold around a burst |
+| [364-review-feedback.md](364-review-feedback.md) | Review-feedback record for the EXT_5V rail ownership branch, PR #493 |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [337-sim-mem-shims.md](337-sim-mem-shims.md) | Simulator heap_caps calloc, realloc and get_info shims, and the PSRAM task-stack abort |
 | [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |

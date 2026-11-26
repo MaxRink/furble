@@ -605,6 +605,32 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   EXTEN) in the same boot. `enable()` may not assume a power-on edge. Only the
   `RAIL_OFF` cycle state is a real off-to-on transition. The EXTEN-to-Grove-5V
   routing is UNVERIFIED; see plans/350.
+- `Platform::setRail()` is the rail owner's own switch: it refuses a switch-on
+  with no counted holder, so it can never leave the port powered with nobody
+  accounting for it. The LED/rail byte has one writer,
+  `Platform::updatePowerConfig()`, under the leaf `m_PowerConfigMutex`. Do not
+  add a second `PWR_CFG` 0x06 writer, do not hold that mutex across an event wait
+  or a Control call, and do not take `m_RailMutex` while holding it. The vendor
+  driver retries each transaction with a 50 ms delay, so one update can hold the
+  lock for about 240 ms; that is the bound the header states. `src/FurbleIR.cpp`
+  takes `RailHolder::IR` when the IR task dequeues the request and releases it
+  after `transmit()` returns, so `fire()` never touches the rail or the I2C bus
+  and a queued request cannot cut a burst in flight. `Platform::init()` sets
+  `cfg.output_power = false` under `FURBLE_HAS_M5PM1` only, so M5Unified cannot
+  commit the StickS3 port to output mode before the rail manager and its supply
+  interlock run, while the AXP boards keep M5Unified's own boot-time port
+  control and its low-battery cancel.
+- `Rail::EXT_5V` on the StickS3 is the EXT_5V port, not a GPS rail: it also
+  feeds the Grove 5 V output and the IR circuit. Anything that needs Grove power
+  takes a `RailHolder::GROVE` hold through `Platform::railAcquire()`. The console
+  `rail status` command prints the holders, the last interlock verdict and both
+  refusal counters; keep it read only so a diagnostic never changes ownership.
+  On the StickC and Plus the rail is already on before this runs: M5.begin()
+  calls Power.setExtOutput(cfg.output_power) with the default output_power =
+  true, which reaches AXP192 EXTEN, and M5GFX also writes 0x12 = 0x4D (bit 6
+  is EXTEN) in the same boot. enable() may not assume a power-on edge. Only
+  the RAIL_OFF cycle state is a real off-to-on transition. The
+  EXTEN-to-Grove-5V routing is UNVERIFIED; see plans/350.
 - Under `FURBLE_SIM`, battery policy is exercised through the deterministic
   `Furble::Sim::battery_reading_t` seam. Keep `Platform::readBattery()` as the
   production boundary; scenario seeds/actions may replace its sample and

@@ -33,7 +33,15 @@ class IR {
 
   bool isSupported(void) const;
 
-  /** Queue one IR shutter trigger without blocking the UI task. */
+  /**
+   * Queue one IR shutter trigger without blocking the UI task.
+   *
+   * A queue send with a zero tick timeout and nothing else: no rail mutex, no
+   * I2C bus, no wait. The IR task takes this client's hold on the board's EXT_5V
+   * rail when it dequeues the request and releases it after transmit() returns,
+   * so a GPS duty-cycle RAIL_OFF cannot cut the carrier mid-frame and a queued
+   * request cannot cut a burst already in flight (plans/364).
+   */
   void fire(void);
 
   /** Queue one IR shutter trigger with an explicit protocol. */

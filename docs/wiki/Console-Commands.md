@@ -71,6 +71,7 @@ About page and exposed through companion BLE Device Information.
 | `display` | `display status \| mode gui \| console \| brightness <value>`; the display workflow. |
 | `focus` | `press` or `release`. |
 | `ir` | `ir fire [protocol]`, 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s. |
+| `rail` | `rail status` prints the EXT_5V rail holders as a bit mask and one name per holder, the last output-mode interlock verdict, and the refused-cut and refused-enable counters. Read only: it never takes or drops a hold. |
 | `scan` | `start`, `stop`, or `list`. |
 | `bt` | Bluetooth diagnostics, see below. |
 | `feedback` | `feedback test <shutter\|countdown\|connect\|disconnect\|battery>`. |

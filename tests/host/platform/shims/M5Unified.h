@@ -111,6 +111,9 @@ class config_t {
   bool internal_mic = false;
   bool pmic_button = true;
   bool disable_rtc_irq = false;
+  // Platform::init() clears this under FURBLE_HAS_M5PM1 so the rail
+  // manager, not M5Unified, commits the EXT_5V port.
+  bool output_power = true;
 };
 
 class M5Unified {

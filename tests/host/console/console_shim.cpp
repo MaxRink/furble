@@ -1284,6 +1284,13 @@ bool Platform::cancelFlashPreparation(void) {
   return true;
 }
 
+// The console's `rail status` reads the accounting. The host console target
+// links no rail implementation, so the mask is test settable state that
+// defaults to the boot value.
+uint8_t Platform::railHolders(PowerBackend::Rail) {
+  return m_RailHolders;
+}
+
 }  // namespace Furble
 
 // --- Capture and line feeding ----------------------------------------------

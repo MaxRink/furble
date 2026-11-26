@@ -191,6 +191,28 @@ size_t hwMqttWorkerStack(void);
 const char *hwMqttHaState(void);
 size_t hwMqttBufferBytes(void);
 
+/**
+ * What the modelled M5PM1 PWR_SRC register reports.
+ *
+ * `battery` (the default), `usb`, `port` (an external 5 V source driving the
+ * bidirectional 5 V port) or `unknown` (no supply reported); `unreadable`
+ * makes the register read fail. It drives the EXT_5V output-mode interlock in
+ * the simulated Platform, so a scenario can prove a refusal.
+ */
+void hwSetRailSupply(const std::string &supply);
+/** The modelled PWR_SRC answer, by value: the caller owns its copy. */
+std::string hwRailSupplyName(void);
+
+/**
+ * Window the simulated IR fake holds the EXT_5V rail for one burst.
+ *
+ * Virtual milliseconds, seeded by `ir_burst_ms` (default 100). It models the
+ * ownership overlap only: the production bound on the transmit itself is
+ * RMT_TX_TIMEOUT_MS in src/FurbleIR.cpp, not this value.
+ */
+void hwSetIrBurstMs(uint32_t milliseconds);
+uint32_t hwIrBurstMs(void);
+
 /** Platform/P MIC state changed by production calls. */
 void hwSetWatchdogEnabled(bool enabled);
 void hwSetDownloadLocked(bool locked);

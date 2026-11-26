@@ -202,8 +202,14 @@ feedback outputs. Compile-time facts stay in
 
 `include/FurblePowerBackend.h`: the contract a board's power hardware meets.
 It names battery caps and sample (moved here from `Platform`, which inherits
-the same `battery_caps_t` and `battery_t` names) and the named rail `GPS`,
-the only rail with a caller. `meetsPowerBackend<P>()` checks the nine members
+the same `battery_caps_t` and `battery_t` names) and the named rail `EXT_5V`,
+the only rail with a switch. That rail was called `GPS` until plans/364: the
+M5StickS3 bit it names is the EXT_5V port, which also feeds the Grove 5 V
+output and the infrared circuit, so the name now describes what it powers
+rather than one consumer. Ownership of that rail is not part of this contract:
+`setRail` is the owner's own switch, and clients hold the rail through
+`Platform::railAcquire()`/`railRelease()` with a named `RailHolder`. See
+plans/364-ext5v-rail.md. `meetsPowerBackend<P>()` checks the nine members
 every `Platform` defines (battery caps, read and capacity, `setRail`,
 power-button clicks, power off and the three timed-wake calls) by comparing
 `decltype(&P::member)` with the documented signature and rejecting a
@@ -258,12 +264,17 @@ geometry at `:843`, `:10560`, `:10668` and `:11348`, and two input wiring at
 `sim/FurblePlatformSim.cpp:289`, which is why the census above counts eight. The
 M5PM1
 specific paths still sit under `FURBLE_HAS_M5PM1`; the profile only says which
-path the board takes. The GPS rail goes through `Platform::setRail(GPS)` with
-the same set, read back and single retry. A `gpsRail` profile column names the
+path the board takes. The EXT_5V rail goes through the rail manager with the
+same set, read back and single retry. A `gpsRail` profile column names the
 boards where M5Unified 0.2.20 `setExtOutput()` switches Port A: StickC, StickC
 Plus, StickS3, Core2 and Tough. On every other row, the Plus2, the Core and
-the unknown row included, `setRail(GPS)` returns false without a bus access;
-M5Unified did nothing there before either. `tests/host/board_profile_test.cpp`
+the unknown row included, `setRail()` returns false without a bus access;
+M5Unified did nothing there before either. plans/364 later replaced the
+`M5.Power.setExtOutput()` call on the StickS3 with a direct, serialized M5PM1
+`PWR_CFG` 0x06 write, because the status LED wrote the same byte through
+Furble's own driver and the two could lose each other's update. The AXP rows
+keep the M5Unified path: there is no second writer of EXTEN or LDOIO0, so
+there is nothing to serialize and no `PWR_CFG` interlock to apply. `tests/host/board_profile_test.cpp`
 pins every row to the values the removed switches returned, copied from the
 switches at c4367912, not from the table. The GPS rail values are copied from
 M5Unified.
@@ -443,7 +454,9 @@ Deviations from the brief, with reasons:
   one implementation. They become code with the first non-M5 board.
 - hal-2 is rebased on port-3 (`9dd2dd61`), which made `GPS::setRailPower()`
   the only GPS rail switch and `Platform::getBatteryStatus()` the battery
-  status source. `GPS::setRailPower()` now calls `Platform::setRail(GPS)`.
+  status source. `GPS::setRailPower()` now calls `Platform::setRail(EXT_5V)`,
+  and since plans/364 it calls `Platform::railAcquire()`/`railRelease()` so the
+  receiver is one of three named holders instead of the rail's only client.
 - hal-3 keeps the AXP2101 edge events instead of removing them: they are the
   only way to see the key go down before a short press completes, and enabling
   all four key bits costs two interrupt sources that hold the IRQ line asserted

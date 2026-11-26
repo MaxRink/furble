@@ -46,6 +46,18 @@ inline constexpr uint8_t M5PM1_CLEAN_ALL = 0x02;
 inline constexpr uint8_t M5PM1_WAKE_SRC_TIM = 0x01;
 // M5PM1.h REG_PWR_CFG 0x00 bit 4 enables the status LED level.
 inline constexpr uint8_t M5PM1_PWR_CFG_LED_CTRL = (1 << 4);
+// M5PM1.h REG_PWR_CFG 0x06 bit 3 is BOOST_EN, the BOOST/GROVE 5 V output that
+// is the StickS3 EXT_5V port.
+inline constexpr uint8_t M5PM1_PWR_CFG_BOOST_EN = 0x08;
+
+// M5PM1.h m5pm1_pwr_src_t: REG_PWR_SRC 0x04 bits 2:0. Values 4 to 7 are not
+// named, which is the point: the production clamp maps them to UNKNOWN.
+enum m5pm1_pwr_src_t {
+  M5PM1_PWR_SRC_5VIN = 0,
+  M5PM1_PWR_SRC_5VINOUT = 1,
+  M5PM1_PWR_SRC_BAT = 2,
+  M5PM1_PWR_SRC_UNKNOWN = 3,
+};
 // M5PM1.h m5pm1_tim_action_t: REG_TIM_CFG 0x3C [2:0], 011 = power on.
 inline constexpr uint8_t M5PM1_TIM_ACTION_POWERON = 0x03;
 // M5PM1.h REG_IRQ_STATUS2 0x41 system flags. The battery events need charging
@@ -492,8 +504,21 @@ class M5PM1 {
     });
   }
 
-  int setPowerConfig(uint8_t config) {
-    return access([config]() { m_Persistent.powerConfig = config; });
+  /** M5PM1.cpp setPowerConfig(): one masked read-modify-write of PWR_CFG. */
+  int setPowerConfig(uint8_t mask, uint8_t value) {
+    return access([mask, value]() {
+      m_Persistent.powerConfig =
+          static_cast<uint8_t>((m_Persistent.powerConfig & static_cast<uint8_t>(~mask)) | value);
+    });
+  }
+
+  /** M5PM1.cpp getPowerSource(): REG_PWR_SRC 0x04 bits 2:0, unclamped. */
+  int getPowerSource(m5pm1_pwr_src_t *source) {
+    return access([source]() {
+      if (source != nullptr) {
+        *source = M5PM1_PWR_SRC_BAT;
+      }
+    });
   }
 
   int setLedEnLevel(bool level) {

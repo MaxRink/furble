@@ -71,6 +71,7 @@ About page and exposed through companion BLE Device Information.
 | `display` | `display status \| mode gui \| console \| brightness <value>`; the display workflow. |
 | `focus` | `press` or `release`. |
 | `ir` | `ir fire [protocol]`, 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s. |
+| `rail` | `rail status` prints the EXT_5V rail holders as a bit mask and one name per holder, the last output-mode interlock verdict, and the refused-cut and refused-enable counters. Read only: it never takes or drops a hold. |
 | `scan` | `start`, `stop`, or `list`. |
 | `bt` | Bluetooth diagnostics, see below. |
 | `feedback` | `feedback test <shutter\|countdown\|connect\|disconnect\|battery>`. |
@@ -265,6 +266,29 @@ setting, its default, and when it applies.
 `wifi enable` and `wifi disable` persist the setting and start or stop the
 station. `wifi connect` and `wifi disconnect` act immediately, and
 `wifi forget` clears the SSID and passphrase.
+
+## rail
+
+`rail status` reports the EXT_5V rail accounting of the board, read only:
+
+```
+holders: 0x01
+holder: gps
+last_verdict: allow
+cuts_refused: 0
+enables_refused: 0
+```
+
+`holders` is the bit mask of the named holders (`1` gps, `2` ir, `4` grove), and
+one `holder:` line names each bit that is set. `last_verdict` is what the
+output-mode interlock last decided about the supply: `allow`,
+`refuse-external-source` while an external 5 V source is on the bidirectional
+port, or `refuse-unknown-supply` for an unreported or unreadable supply.
+`cuts_refused` counts cuts refused because another holder still needed the rail,
+and `enables_refused` counts output-mode enables the interlock refused. Both
+counters are cumulative for the boot, so a bench run compares two readings.
+A refusal is logged at WARN when the verdict changes and at DEBUG for repeats.
+See `docs/power/board-power.md` and `plans/364-ext5v-rail.md`.
 
 ## gps
 

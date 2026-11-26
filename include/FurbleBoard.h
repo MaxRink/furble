@@ -78,9 +78,12 @@ struct Profile {
   bool feedbackLight;
   bool feedbackVibration;
   int8_t ledPin;  // -1 when none
-  // M5.Power switches the external 5 V output. On the Core2 and Tough that is
-  // one BUS_5V net shared by Grove Port A and the M-Bus, so Rail::GPS is the
-  // whole external 5 V net. The request is advisory: the PMIC can refuse it.
+  // M5.Power switches the external 5 V output, which is Rail::EXT_5V. On the
+  // Core2 and Tough that is one BUS_5V net shared by Grove Port A and the
+  // M-Bus, so it is the whole external 5 V net. The request is advisory: the
+  // PMIC can refuse it. On the StickS3 the same switch is the EXT_5V port of
+  // include/FurbleRail.h, which the rail manager shares between the receiver,
+  // the infrared circuit and Grove devices.
   bool gpsRail;
   // The two columns below describe driven stages: board facts, not UI
   // geometry. They are the wiring of the LED and emitter, which is why they

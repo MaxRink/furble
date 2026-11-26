@@ -10,7 +10,9 @@
 #include <M5PM1.h>
 
 #include "FurbleBoardCaps.h"
+#include "FurblePlatformPolicy.h"
 #include "FurblePowerBackend.h"
+#include "FurbleRail.h"
 
 namespace Furble {
 #if defined(FURBLE_SIM)
@@ -377,13 +379,88 @@ class Platform: public PowerBackend {
   uint16_t getBatteryCapacity(void);
 
   /**
-   * Switch a named rail. The M5 boards switch only the GPS rail, which is the
-   * Port A 5 V output.
+   * Switch a named rail for a holder that already owns it.
    *
-   * @return true when the rail reads back in the requested state; false when
-   *         the board has no switch or the PMIC did not take the write.
+   * Every client takes and drops the rail through railAcquire()/railRelease().
+   * This entry point exists for the platform's own re-assert and for the
+   * PowerBackend contract, and it is subject to the same accounting: switching
+   * the rail on requires a counted holder and is refused otherwise, so it
+   * cannot leave a rail powered with nobody holding it, and a cut is refused
+   * while any holder remains. Switching the rail on is additionally refused by
+   * the output-mode interlock on the EXT_5V port while an external 5 V source is
+   * present or the supply state cannot be established; see
+   * PlatformPolicy::railEnableVerdict().
+   *
+   * @return true when the rail reads back in the requested state, which an
+   *         already-on rail does without a write; false when the board has no
+   *         switch, no holder owns the rail, a holder keeps the rail up, the
+   *         PMIC did not take the write, or the interlock refused the enable.
    */
   bool setRail(Rail rail, bool on);
+
+  /**
+   * Take a named hold on a rail and switch it on when it is not already up.
+   *
+   * The hold is per holder, so a repeated acquire from the same task is
+   * idempotent. On the StickS3 the rail is EXT_5V, which feeds the Grove 5 V
+   * output and the infrared circuit as well as the receiver, so a successful
+   * acquire does not imply this caller owns the rail exclusively.
+   *
+   * @return true when the rail reads back on; false when the board has no
+   *         switch, the interlock refused the enable, or the PMIC refused the
+   *         write. A false leaves no hold behind.
+   */
+  bool railAcquire(Rail rail, RailHolder holder);
+
+  /**
+   * Drop a named hold. The last holder switches the rail off.
+   *
+   * @return true when the rail reads back off, which is the honest answer to
+   *         "did the cut take". It is false when another holder still needs
+   *         the rail (the cut is refused and the rail stays on) or when the
+   *         PMIC refused the cut. A caller that needs the rail off must retry
+   *         after the other holders release.
+   */
+  bool railRelease(Rail rail, RailHolder holder);
+
+  /**
+   * The holders keeping a rail up, as a RailHolder bit mask.
+   *
+   * Reads the accounting under the rail mutex only: it never touches the PMIC,
+   * so a status reader cannot block a switching task or wait on the bus.
+   */
+  uint8_t railHolders(Rail rail);
+
+  /**
+   * Count of rail cuts refused because another holder still needed the rail.
+   *
+   * Diagnostic only: the console and the simulator report it, and it is the
+   * evidence that a refused cut was a refusal rather than a lost write.
+   */
+  uint32_t railCutRefusals(void) const {
+    const std::lock_guard<std::mutex> guard(m_RailMutex);
+    return m_RailCutRefusals;
+  }
+
+  /** Count of EXT_5V output-mode enables refused by the supply interlock. */
+  uint32_t railEnableRefusals(void) const {
+    const std::lock_guard<std::mutex> guard(m_RailMutex);
+    return m_RailInterlockRefusals;
+  }
+
+  /**
+   * The interlock verdict of the most recent output-mode enable attempt.
+   *
+   * Diagnostic only. It is what the last `railAcquire()`/`setRail()` decided
+   * about the supply, so a log reader, the `rail status` console command or a
+   * scenario can tell a refusal for an external source from one for an
+   * unreadable supply. A refusal is logged at WARN when the verdict changes and
+   * at DEBUG afterwards, so a first refusal in a boot is never swallowed.
+   */
+  PlatformPolicy::RailEnableVerdict railLastVerdict(void) const {
+    const std::lock_guard<std::mutex> guard(m_RailMutex);
+    return m_RailVerdict;
+  }
 
   /**
    * Get the count of PMIC accesses which failed after a retry.
@@ -496,6 +573,70 @@ class Platform: public PowerBackend {
   bool clearPmicIrqLatches(void);
 #endif
 
+  /** True when the board profile switches this rail. */
+  static bool railSwitchable(Rail rail);
+
+  /**
+   * Drive the rail to `on` and read it back. The caller holds m_RailMutex.
+   *
+   * This is the only writer of the rail bit. On the StickS3 it goes through
+   * updatePowerConfig(), which is also the only writer of the LED bit, so the
+   * two cannot lose each other's update.
+   */
+  bool switchRailLocked(bool on);
+
+  /**
+   * Read the rail state from the hardware and cache it. Caller holds
+   * m_RailMutex. Returns false when the PMIC did not answer.
+   */
+  bool readRailState(bool *on);
+
+#if FURBLE_HAS_M5PM1
+  /**
+   * Read PWR_CFG 0x06 through the one serialized path.
+   *
+   * @param value receives the register byte; untouched on failure.
+   * @return false when the PMIC did not answer after the wake retry.
+   */
+  bool readPowerConfig(uint8_t *value);
+
+  /**
+   * Read-modify-write PWR_CFG 0x06, the only write path for that byte.
+   *
+   * Both the rail bit (BOOST_EN, bit 3) and the status LED bit (LED_CTRL,
+   * bit 4) live in this one register. The LED policy used to write it through
+   * Furble's M5PM1 driver while the rail wrote it through M5Unified's PMIC
+   * object, and both are non-atomic read-modify-write, so one could lose the
+   * other's update (plans/364-ext5v-rail.md). Every write now goes through
+   * here, under m_PowerConfigMutex, and the read-back happens inside the same
+   * lock so the verdict cannot be poisoned by another writer.
+   *
+   * m_PowerConfigMutex is a leaf lock: it is never held across an event wait or
+   * a call into Control, so it cannot invert against Control::m_Mutex. It is
+   * held across the PMIC transactions themselves, and the vendor driver retries
+   * each transaction twice with a 50 ms vTaskDelay between the attempts and adds
+   * a 10 ms delay when it has to wake the PMIC first (M5PM1 1.0.6
+   * M5PM1_I2C_RETRY_DELAY_MS, _checkAutoWake()). One updatePowerConfig() is
+   * four transactions, so a PMIC that is failing outright can hold this lock
+   * for about 240 ms. That is the real bound; nothing here waits on an event.
+   *
+   * @param mask bits to change; @param value their new levels.
+   * @param before optional, receives the byte before the write.
+   * @param after optional, receives the byte read back after the write.
+   * @return false when either transaction failed; `after` then holds the last
+   *         read that succeeded, or nothing.
+   */
+  bool updatePowerConfig(uint8_t mask, uint8_t value, uint8_t *before, uint8_t *after);
+
+  /**
+   * The output-mode interlock for the EXT_5V port.
+   *
+   * Reads the M5PM1 supply register and asks
+   * PlatformPolicy::railEnableVerdict(), fail closed when the read fails.
+   */
+  bool railOutputPermitted(void);
+#endif
+
   M5PM1 m_M5PM1;
 
   bool m_Init = false;
@@ -515,6 +656,23 @@ class Platform: public PowerBackend {
   battery_sample_t m_BatterySample = {};
   bool m_BatterySampleInitialized = false;
   bool m_MotionWakeArmed = false;
+  /**
+   * The rail ownership state. m_RailMutex is the leaf lock the PWR_CFG writer
+   * and the accounting share: m_PowerConfigMutex is taken under it, never the
+   * other way round.
+   */
+  mutable std::mutex m_RailMutex;
+  /** Who keeps the switchable rail up. Guarded by m_RailMutex. */
+  RailAccount m_RailAccount;
+  /** Last verified rail state. Guarded by m_RailMutex. */
+  bool m_RailOn = false;
+  /** Refused output-mode enables, and refused cuts. Guarded by m_RailMutex. */
+  uint32_t m_RailInterlockRefusals = 0;
+  uint32_t m_RailCutRefusals = 0;
+  /** The last interlock verdict, for the console and the simulator. */
+  PlatformPolicy::RailEnableVerdict m_RailVerdict = PlatformPolicy::RailEnableVerdict::ALLOW;
+  /** Serialises the PWR_CFG 0x06 read-modify-write. Leaf, under m_RailMutex. */
+  mutable std::mutex m_PowerConfigMutex;
 #if FURBLE_HAS_M5PM1
   bool m_StatusLedLevel = false;
   bool m_StatusLedLevelValid = false;

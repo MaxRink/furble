@@ -36,6 +36,36 @@ namespace {
 using Watchdog::PM1_FEED_PERIOD_MS;
 using Watchdog::PM1_TIMEOUT_S;
 constexpr uint32_t TIMED_WAKE_MARKER = 0x49564c31;
+
+// M5PM1 1.0.6, src/M5PM1.h m5pm1_pwr_cfg_t: PWR_CFG 0x06 bit 3 is
+// BOOST_EN, the BOOST/GROVE (5VINOUT) enable that is the StickS3 EXT_5V port,
+// and bit 4 is LED_CTRL, the status LED level. Both live in one byte, so both
+// writes go through Platform::updatePowerConfig().
+constexpr uint8_t PWR_CFG_EXT_5V = static_cast<uint8_t>(M5PM1_PWR_CFG_BOOST_EN);
+constexpr uint8_t PWR_CFG_LED = static_cast<uint8_t>(M5PM1_PWR_CFG_LED_CTRL);
+
+// Two write-and-read-back attempts: the first access after an I2C idle period
+// only wakes the PMIC, and m5pm1Access() already retries once per transaction.
+constexpr uint8_t RAIL_ATTEMPTS = 2;
+
+// The interlock maps the vendor PWR_SRC enumeration onto the host-tested policy
+// enum, so a vendor renumbering is a compile error rather than a silent
+// reinterpretation. PWR_SRC is M5PM1_REG_PWR_SRC 0x04; 0x07 is HOLD_CFG, the
+// power-hold configuration, so a "fix" that changed the constant would read the
+// hold register, always see its low bits as USB_5V and silently disable this
+// interlock while every test stayed green.
+static_assert(static_cast<uint8_t>(PlatformPolicy::RailSupply::USB_5V)
+                  == static_cast<uint8_t>(M5PM1_PWR_SRC_5VIN),
+              "RailSupply::USB_5V must follow the M5PM1 PWR_SRC enumeration");
+static_assert(static_cast<uint8_t>(PlatformPolicy::RailSupply::PORT_5V)
+                  == static_cast<uint8_t>(M5PM1_PWR_SRC_5VINOUT),
+              "RailSupply::PORT_5V must follow the M5PM1 PWR_SRC enumeration");
+static_assert(static_cast<uint8_t>(PlatformPolicy::RailSupply::BATTERY)
+                  == static_cast<uint8_t>(M5PM1_PWR_SRC_BAT),
+              "RailSupply::BATTERY must follow the M5PM1 PWR_SRC enumeration");
+static_assert(static_cast<uint8_t>(PlatformPolicy::RailSupply::UNKNOWN)
+                  == static_cast<uint8_t>(M5PM1_PWR_SRC_UNKNOWN),
+              "RailSupply::UNKNOWN must follow the M5PM1 PWR_SRC enumeration");
 }  // namespace
 #endif
 
@@ -94,8 +124,22 @@ Platform &Platform::getInstance(void) {
         static_cast<Feedback::output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT)));
     cfg.internal_mic = false;
     cfg.pmic_button = true;
-    // Preserve the BM8563 timer flag until consumeTimedWake() runs on the
-    // boards with a timed wake. Other boards disable the RTC IRQ again below.
+#if FURBLE_HAS_M5PM1
+    // The rail manager owns this board's EXT_5V port. M5Unified's default
+    // output_power is true and _begin() calls setExtOutput(cfg.output_power)
+    // before any Furble code runs, which would commit the port to output mode
+    // with no owner, no accounting and no supply interlock (plans/364). One
+    // PWR_CFG 0x06 writer keeps the port in the vendor default of input mode
+    // until a holder acquires it.
+    //
+    // The AXP boards keep M5Unified's own port control on purpose. Their
+    // setExtOutput() switches EXTEN or LDOIO0 at begin() and refuses external
+    // power on a low battery with no ACIN supply; the Grove 5 V output there has
+    // no other owner, so clearing output_power would leave the port unpowered
+    // from boot with no client that could switch it back on
+    // (plans/364-review-feedback.md, B2).
+    cfg.output_power = false;
+#endif
     cfg.disable_rtc_irq = false;
 #if !FURBLE_HAS_INTERNAL_I2C
     // No internal I2C bus, so M5Unified must not be given one. Its per-board
@@ -118,7 +162,7 @@ Platform &Platform::getInstance(void) {
 
     const auto &board = Board::profile();
     if (board.powerHoldPin >= 0) {
-      const auto hold = static_cast<gpio_num_t>(board.powerHoldPin);
+      const auto hold = static_cast<gpio_num_t>(static_cast<uint8_t>(board.powerHoldPin));
       (void)gpio_set_direction(hold, GPIO_MODE_OUTPUT);
       (void)gpio_set_level(hold, 1);
     }
@@ -323,23 +367,23 @@ void Platform::wakeM5PM1(void) {
 }
 
 void Platform::setDisplayOff(bool off) {
+  // LED_CTRL (PWR_CFG 0x06 bit 4) shares its byte with the EXT_5V rail bit, so
+  // every LED write goes through updatePowerConfig() as well. Reading the old
+  // level and writing the new one used to be two independent driver calls,
+  // which is how the rail and the LED could lose each other's update when the
+  // GPS task switched the rail between them (plans/364).
   if (off) {
     if (m_StatusLedLevelValid) {
       return;
     }
 
-    uint8_t powerConfig = 0;
-    if (!m5pm1Access([this, &powerConfig]() { return m_M5PM1.getPowerConfig(&powerConfig); })) {
-      ESP_LOGW(LOG_TAG, "Unable to read StickS3 status LED level");
-      return;
-    }
-
-    m_StatusLedLevel = (powerConfig & M5PM1_PWR_CFG_LED_CTRL) != 0;
-    if (!m5pm1Access([this]() { return m_M5PM1.setLedEnLevel(false); })) {
+    uint8_t before = 0;
+    if (!updatePowerConfig(PWR_CFG_LED, 0, &before, nullptr)) {
       ESP_LOGW(LOG_TAG, "Unable to turn off StickS3 status LED");
       return;
     }
 
+    m_StatusLedLevel = (before & PWR_CFG_LED) != 0;
     m_StatusLedLevelValid = true;
     return;
   }
@@ -348,8 +392,8 @@ void Platform::setDisplayOff(bool off) {
     return;
   }
 
-  const bool ledLevel = m_StatusLedLevel;
-  if (!m5pm1Access([this, ledLevel]() { return m_M5PM1.setLedEnLevel(ledLevel); })) {
+  const uint8_t ledLevel = m_StatusLedLevel ? PWR_CFG_LED : 0;
+  if (!updatePowerConfig(PWR_CFG_LED, ledLevel, nullptr, nullptr)) {
     ESP_LOGW(LOG_TAG, "Unable to restore StickS3 status LED level");
     return;
   }
@@ -974,7 +1018,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
 
     if (board.powerHoldPin >= 0) {
       // The Plus2 releases the pin that keeps its regulator enabled.
-      const auto hold = static_cast<gpio_num_t>(board.powerHoldPin);
+      const auto hold = static_cast<gpio_num_t>(static_cast<uint8_t>(board.powerHoldPin));
       (void)gpio_set_direction(hold, GPIO_MODE_OUTPUT);
       (void)gpio_set_level(hold, 0);
       return true;
@@ -1058,8 +1102,12 @@ uint16_t Platform::getBatteryCapacity(void) {
   return m_BatteryCapacity;
 }
 
+bool Platform::railSwitchable(Rail rail) {
+  return (rail == Rail::EXT_5V) && Board::profile().gpsRail;
+}
+
 bool Platform::setRail(Rail rail, bool on) {
-  if ((rail != Rail::GPS) || !Board::profile().gpsRail) {
+  if (!railSwitchable(rail)) {
     return false;
   }
   // The external 5 V output. On the Core2 and Tough this is one BUS_5V net
@@ -1070,12 +1118,243 @@ bool Platform::setRail(Rail rail, bool on) {
   // access after that only wakes it, so read back and retry once. The final
   // read tells the GPS driver whether a cut took: a receiver stopped for the
   // cut is restarted when the rail stays on.
+
+  const std::lock_guard<std::mutex> guard(m_RailMutex);
+  if (on && !m_RailAccount.held()) {
+    // A switch-on with no holder would power EXT_5V with nobody accounting for
+    // it, so the rail would stay up until the next boot. Clients take a hold
+    // through railAcquire() instead; this entry point only re-asserts a rail a
+    // holder already owns (plans/364-review-feedback.md, N4).
+    ESP_LOGD(LOG_TAG, "Rail enable refused, no holder owns EXT_5V");
+    return false;
+  }
+
+  if (!on && m_RailAccount.held()) {
+    // Another holder needs the rail: the cut is refused and reported as one.
+    // A GPS duty-cycle RAIL_OFF must not cut the infrared circuit mid-burst or
+    // brown out a Grove device (plans/364).
+    m_RailCutRefusals++;
+    ESP_LOGW(LOG_TAG, "Rail cut refused, holders 0x%02x still need EXT_5V (refusals %lu)",
+             static_cast<unsigned>(m_RailAccount.mask()),
+             static_cast<unsigned long>(m_RailCutRefusals));
+    return false;
+  }
+
+  return switchRailLocked(on);
+}
+
+bool Platform::railAcquire(Rail rail, RailHolder holder) {
+  if (!railSwitchable(rail)) {
+    return false;
+  }
+
+  const std::lock_guard<std::mutex> guard(m_RailMutex);
+  if (m_RailAccount.holds(holder) && m_RailOn) {
+    // Already counted and powered: nothing to write, so a repeated acquire from
+    // one task cannot inflate the count.
+    return true;
+  }
+
+  const bool wasHeld = m_RailAccount.held();
+  const bool added = !m_RailAccount.holds(holder);
+  m_RailAccount.acquire(holder);
+  if (wasHeld && m_RailOn) {
+    // Another holder owns the powered rail. Verify it rather than trusting the
+    // cached state, because a PMIC cut that failed earlier leaves it on with
+    // the cache already updated, and the reverse is what a lost update looks
+    // like.
+    bool on = false;
+    if (readRailState(&on) && on) {
+      return true;
+    }
+  }
+
+  if (!switchRailLocked(true)) {
+    // No power. Drop the hold only when this call added it: a hold that was
+    // already counted belongs to an earlier, still wanted acquire, and dropping
+    // it here would strand the rail off for a caller that never asked again.
+    if (added) {
+      (void)m_RailAccount.release(holder);
+    }
+    return false;
+  }
+  return true;
+}
+
+bool Platform::railRelease(Rail rail, RailHolder holder) {
+  if (!railSwitchable(rail)) {
+    return false;
+  }
+
+  const std::lock_guard<std::mutex> guard(m_RailMutex);
+  const RailAccount::release_t decision = m_RailAccount.release(holder);
+  if (decision.ignored) {
+    // Not a holder: report the rail's real state rather than claiming a cut.
+    return !m_RailOn;
+  }
+
+  if (!decision.cut) {
+    // Another holder still needs the rail, so the cut is refused. The rail
+    // stays on and the caller is told so; the GPS driver restarts a receiver it
+    // stopped for a cut that did not take (include/FurbleGPS.h).
+    m_RailCutRefusals++;
+    ESP_LOGI(LOG_TAG, "Rail held by 0x%02x after holder %u released",
+             static_cast<unsigned>(m_RailAccount.mask()), static_cast<unsigned>(holder));
+    return false;
+  }
+
+  return switchRailLocked(false);
+}
+
+uint8_t Platform::railHolders(Rail rail) {
+  if (!railSwitchable(rail)) {
+    return 0;
+  }
+
+  const std::lock_guard<std::mutex> guard(m_RailMutex);
+  return m_RailAccount.mask();
+}
+
+bool Platform::switchRailLocked(bool on) {
+#if FURBLE_HAS_M5PM1
+  // Off is always allowed: input mode is the vendor default for EXT_5V and the
+  // safe direction. On commits the port to output mode, which the M5Stack
+  // documentation restricts to a board powered through USB or 5VIN, so the
+  // interlock runs first and a refusal leaves PWR_CFG 0x06 untouched.
+  if (on && !railOutputPermitted()) {
+    return false;
+  }
+
+  // Two attempts: the M5PM1 sleeps after an I2C idle period and the first
+  // access after that only wakes it, and m5pm1Access() already retries once
+  // per transaction. The read inside updatePowerConfig() is the verdict.
+  for (uint8_t attempt = 0; attempt < RAIL_ATTEMPTS; attempt++) {
+    uint8_t after = 0;
+    if (updatePowerConfig(PWR_CFG_EXT_5V, on ? PWR_CFG_EXT_5V : 0, nullptr, &after)
+        && (((after & PWR_CFG_EXT_5V) != 0) == on)) {
+      m_RailOn = on;
+      return true;
+    }
+  }
+
+  // Report what the PMIC really holds, never the request. A receiver stopped
+  // for a cut that did not take is restarted by the caller on this false.
+  uint8_t config = 0;
+  m_RailOn = readPowerConfig(&config) && ((config & PWR_CFG_EXT_5V) != 0);
+  ESP_LOGW(LOG_TAG, "EXT_5V %s did not take, PWR_CFG holds it %s", on ? "on" : "off",
+           m_RailOn ? "on" : "off");
+  return false;
+#else
+  // AXP192 EXTEN (StickC family) and AXP2101 LDOIO0 (Core2, Tough) go through
+  // M5Unified, which already owns that register alone and refuses external
+  // power on a low battery with no ACIN supply. There is no second writer of
+  // that byte, so there is nothing to serialize here and no PWR_CFG interlock
+  // to apply. Whether EXTEN reaches the Grove 5 V pin on those boards is
+  // UNVERIFIED; see plans/364-ext5v-rail.md.
   M5.Power.setExtOutput(on, m5::ext_PA);
   if (M5.Power.getExtOutput() != on) {
     M5.Power.setExtOutput(on, m5::ext_PA);
   }
-  return M5.Power.getExtOutput() == on;
+  m_RailOn = M5.Power.getExtOutput() == on;
+  return m_RailOn;
+#endif
 }
+
+#if FURBLE_HAS_M5PM1
+bool Platform::readPowerConfig(uint8_t *value) {
+  const std::lock_guard<std::mutex> guard(m_PowerConfigMutex);
+  return m5pm1Access([this, value]() { return m_M5PM1.getPowerConfig(value); });
+}
+
+bool Platform::updatePowerConfig(uint8_t mask, uint8_t value, uint8_t *before, uint8_t *after) {
+  const std::lock_guard<std::mutex> guard(m_PowerConfigMutex);
+
+  // The read and the write are one critical section: the LED policy and the
+  // rail policy both modify this byte, and an interval that spans another
+  // writer's read-modify-write loses that update (plans/364).
+  uint8_t current = 0;
+  if (!m5pm1Access([this, &current]() { return m_M5PM1.getPowerConfig(&current); })) {
+    return false;
+  }
+  if (before != nullptr) {
+    *before = current;
+  }
+
+  // M5PM1 1.0.6 setPowerConfig() performs its own masked read-modify-write of
+  // PWR_CFG 0x06, so this stays the single write path for the byte.
+  if (!m5pm1Access([this, mask, value]() { return m_M5PM1.setPowerConfig(mask, value); })) {
+    return false;
+  }
+
+  uint8_t written = 0;
+  if (!m5pm1Access([this, &written]() { return m_M5PM1.getPowerConfig(&written); })) {
+    return false;
+  }
+  if (after != nullptr) {
+    *after = written;
+  }
+  return true;
+}
+
+bool Platform::railOutputPermitted(void) {
+  // The M5Stack EXT_5V note: the port defaults to INPUT, and in output mode
+  // power may only be applied through USB or 5VIN, otherwise there is a risk of
+  // short circuit and device damage (plans/364-ext5v-rail.md quotes it). The
+  // port itself cannot be sensed, so the interlock refuses while an external
+  // 5 V source is present at the bidirectional port or while the supply state
+  // cannot be established. The failure direction is closed: a refusal leaves
+  // PWR_CFG untouched and setRail() reports false.
+  m5pm1_pwr_src_t source = M5PM1_PWR_SRC_UNKNOWN;
+  const bool known = m5pm1Access([this, &source]() { return m_M5PM1.getPowerSource(&source); });
+  // M5PM1 1.0.6 getPowerSource() returns PWR_SRC 0x04 bits 2:0 unclamped, so a
+  // register that reports 4 to 7 hands back a value the vendor enumeration does
+  // not define. Clamp everything above BATTERY to UNKNOWN rather than casting an
+  // undefined value into the policy enumeration, whose verdict is an allowlist.
+  const uint8_t reported = static_cast<uint8_t>(source);
+  const PlatformPolicy::RailSupply supply =
+      (known && (reported <= static_cast<uint8_t>(PlatformPolicy::RailSupply::BATTERY)))
+          ? static_cast<PlatformPolicy::RailSupply>(reported)
+          : PlatformPolicy::RailSupply::UNKNOWN;
+  const PlatformPolicy::RailEnableVerdict verdict =
+      PlatformPolicy::railEnableVerdict(known, supply);
+  const PlatformPolicy::RailEnableVerdict previous = m_RailVerdict;
+  m_RailVerdict = verdict;
+  if (verdict != PlatformPolicy::RailEnableVerdict::ALLOW) {
+    m_RailInterlockRefusals++;
+    // WARN when the verdict changes, DEBUG for a repeat. Logging only the first
+    // refusal of a boot hid a refusal that began minutes later, and the counter
+    // is not the same thing: the console `rail status` reports both.
+    if (verdict != previous) {
+      ESP_LOGW(LOG_TAG, "EXT_5V output refused (%s), supply %s, refusals %lu",
+               PlatformPolicy::railEnableVerdictName(verdict), known ? "known" : "unreadable",
+               static_cast<unsigned long>(m_RailInterlockRefusals));
+    } else {
+      ESP_LOGD(LOG_TAG, "EXT_5V output refused (%s), refusals %lu",
+               PlatformPolicy::railEnableVerdictName(verdict),
+               static_cast<unsigned long>(m_RailInterlockRefusals));
+    }
+    return false;
+  }
+
+  return true;
+}
+
+bool Platform::readRailState(bool *on) {
+  uint8_t config = 0;
+  if (!readPowerConfig(&config)) {
+    return false;
+  }
+  *on = (config & PWR_CFG_EXT_5V) != 0;
+  m_RailOn = *on;
+  return true;
+}
+#else
+bool Platform::readRailState(bool *on) {
+  *on = M5.Power.getExtOutput() != 0;
+  m_RailOn = *on;
+  return true;
+}
+#endif
 
 uint32_t Platform::getBatteryFailCount(void) {
   return m_M5PM1FailCount;

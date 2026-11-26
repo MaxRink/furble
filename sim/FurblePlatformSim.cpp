@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include <fstream>
 #include <string>
@@ -13,6 +14,7 @@
 #include "FurbleBatteryStatus.h"
 #include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
+#include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePlatformPolicy.h"
 #include "FurblePower.h"
@@ -139,6 +141,10 @@ void Platform::update(void) {
   // a deadline that a scripted stall skipped.
   m_M5PM1.pollDeadlines();
 #endif
+  // The IR fake holds the EXT_5V rail for a modelled burst window and releases
+  // it here once the window has elapsed, the way the production IR task
+  // releases its hold after transmit() returns.
+  IR::getInstance().poll();
   // The production Scan expires its own deadline from isActive(); the virtual
   // radio delivers advertisements and the scan-end event on its own task, so
   // there is nothing for the platform tick to pump here any more.
@@ -475,8 +481,43 @@ uint16_t Platform::getBatteryCapacity(void) {
   return 250;
 }
 
+namespace {
+
+/** The model holder behind one production holder, for the shared rail. */
+Sim::rail_holder_t simRailHolder(RailHolder holder) {
+  return holder == RailHolder::IR ? Sim::rail_holder_t::IR : Sim::rail_holder_t::GPS;
+}
+
+/**
+ * The production output-mode interlock over the modelled PWR_SRC answer.
+ *
+ * `seed rail_supply` selects what the PMIC reports (`battery`, `usb`, `port`,
+ * `unknown` or `unreadable`), and the decision itself is the production
+ * `PlatformPolicy::railEnableVerdict()`.
+ */
+bool railEnablePermitted(PlatformPolicy::RailEnableVerdict *verdict) {
+  const std::string name = Sim::hwRailSupplyName();
+  const bool known = name != "unreadable";
+  PlatformPolicy::RailSupply supply = PlatformPolicy::RailSupply::UNKNOWN;
+  if (name == "usb") {
+    supply = PlatformPolicy::RailSupply::USB_5V;
+  } else if (name == "port") {
+    supply = PlatformPolicy::RailSupply::PORT_5V;
+  } else if (name == "battery") {
+    supply = PlatformPolicy::RailSupply::BATTERY;
+  }
+  *verdict = PlatformPolicy::railEnableVerdict(known, supply);
+  return *verdict == PlatformPolicy::RailEnableVerdict::ALLOW;
+}
+
+}  // namespace
+
+bool Platform::railSwitchable(Rail rail) {
+  return (rail == Rail::EXT_5V) && Board::profile().gpsRail;
+}
+
 bool Platform::setRail(Rail rail, bool on) {
-  if ((rail != Rail::GPS) || !Board::profile().gpsRail) {
+  if (!railSwitchable(rail)) {
     return false;
   }
   // Same calls as firmware, so the hardware model sees the same rail traffic.
@@ -491,6 +532,91 @@ bool Platform::setRail(Rail rail, bool on) {
     M5.Power.setExtOutput(on, m5::ext_PA);
   }
   const bool readBack = Sim::hwSetRail(Sim::rail_holder_t::GPS, on);
+  furble_sim_uart_set_rail(readBack);
+  return readBack == on;
+}
+
+bool Platform::railAcquire(Rail rail, RailHolder holder) {
+  if (!railSwitchable(rail)) {
+    return false;
+  }
+
+  const std::lock_guard<std::mutex> guard(m_RailMutex);
+  const bool added = !m_RailAccount.holds(holder);
+  const bool switching = !m_RailOn || added;
+  if (switching && !railEnablePermitted(&m_RailVerdict)) {
+    // The production interlock refuses the enable before the register write,
+    // and a refusal leaves the port in the vendor default of input mode. Tell
+    // the model the holder is not on the rail, so no holder is left behind.
+    m_RailInterlockRefusals++;
+    (void)Sim::hwSetRail(simRailHolder(holder), false);
+    return false;
+  }
+
+  m_RailAccount.acquire(holder);
+  const bool readBack = Sim::hwSetRail(simRailHolder(holder), true);
+  m_RailOn = readBack;
+  furble_sim_uart_set_rail(readBack);
+  if (!readBack) {
+    // Only drop a hold this call added; a pre-existing hold belongs to a
+    // caller that still wants the rail.
+    if (added) {
+      (void)m_RailAccount.release(holder);
+    }
+    return false;
+  }
+  return true;
+}
+
+bool Platform::railRelease(Rail rail, RailHolder holder) {
+  if (!railSwitchable(rail)) {
+    return false;
+  }
+
+  const std::lock_guard<std::mutex> guard(m_RailMutex);
+  const RailAccount::release_t decision = m_RailAccount.release(holder);
+  if (decision.ignored) {
+    return !m_RailOn;
+  }
+
+  // Tell the model either way: it keeps the rail on while another holder
+  // still needs it, which is the read-back the refusal is decided from.
+  const bool readBack = Sim::hwSetRail(simRailHolder(holder), false);
+  m_RailOn = readBack;
+  furble_sim_uart_set_rail(readBack);
+  if (readBack) {
+    m_RailCutRefusals++;
+    return false;
+  }
+  return true;
+}
+
+uint8_t Platform::railHolders(Rail rail) {
+  if (!railSwitchable(rail)) {
+    return 0;
+  }
+
+  const std::lock_guard<std::mutex> guard(m_RailMutex);
+  return m_RailAccount.mask();
+}
+
+bool Platform::readRailState(bool *on) {
+  *on = Sim::hwRailOn();
+  m_RailOn = *on;
+  return true;
+}
+
+bool Platform::switchRailLocked(bool on) {
+  // The host has no PMIC rail to observe, so the hardware model is the switch
+  // and its read-back is the answer. `gps_rail_fixed` and `gps_rail_refused`
+  // keep the rail on whatever the caller asked for.
+  if (on && !railEnablePermitted(&m_RailVerdict)) {
+    m_RailInterlockRefusals++;
+    return false;
+  }
+
+  const bool readBack = Sim::hwSetRail(Sim::rail_holder_t::GPS, on);
+  m_RailOn = readBack;
   furble_sim_uart_set_rail(readBack);
   return readBack == on;
 }

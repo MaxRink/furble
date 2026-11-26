@@ -13,6 +13,7 @@
 #include "FurbleBoard.h"
 #include "FurbleIR.h"
 #include "FurblePinShare.h"
+#include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 
@@ -207,6 +208,10 @@ void IR::fire(protocol_t protocol) {
     return;
   }
 
+  // The rail hold belongs to the burst, not to the request, so it is taken and
+  // released on the IR task (plans/364). fire() stays a queue send with a zero
+  // tick timeout: it never takes the rail mutex, never waits on the I2C bus and
+  // never blocks the UI task, which include/FurbleIR.h promises.
   if (xQueueSend(m_Queue, &protocol, 0) != pdTRUE) {
     ESP_LOGW(LOG_TAG, "IR trigger already pending.");
   }
@@ -220,7 +225,19 @@ void IR::task(void) {
   protocol_t protocol;
   while (true) {
     if (xQueueReceive(m_Queue, &protocol, portMAX_DELAY) == pdTRUE) {
+      // The infrared emitter and receiver are powered from the board's EXT_5V
+      // rail, which the GPS duty cycle cuts. Both halves of the hold live here,
+      // around transmit(), so it covers the burst and nothing else: a queued
+      // request cannot cut a burst already in flight, and the UI task never
+      // touches the rail mutex (plans/364).
+      Platform &platform = Platform::getInstance();
+      const bool held = platform.railAcquire(PowerBackend::Rail::EXT_5V, RailHolder::IR);
       transmit(protocol);
+      if (held) {
+        // The last holder switches the rail off, and a refused cut is normal:
+        // another holder still wants it, or the PMIC refused the write.
+        (void)platform.railRelease(PowerBackend::Rail::EXT_5V, RailHolder::IR);
+      }
     }
   }
 }
