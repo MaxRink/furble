@@ -240,7 +240,7 @@ implemented.
 | [118-sim-ethernet-coverage.md](implemented/118-sim-ethernet-coverage.md) | Host Ethernet netif coverage for the transport-neutral MQTT seam |
 | [119-companion-gatt-sim.md](implemented/119-companion-gatt-sim.md) | Companion GATT host coverage, implemented by the companion harness |
 | [121-sim-usage-fault-docs.md](implemented/121-sim-usage-fault-docs.md) | Simulator usage and fault-injection reference, implemented |
-| [355-sim-cmake-entry-point.md](355-sim-cmake-entry-point.md) | Finding: the documented CMake entry point builds a simulator that aborts in the M5GFX SDL panel while the sim/build.sh binary runs the same scenario, with the exact reproduction |
+| [355-sim-cmake-entry-point.md](355-sim-cmake-entry-point.md) | The CMake simulator entry point's macOS abort: the SDL3-before-SDL2 link order behind it, the #506 fix, the two differences that remain against sim/build.sh, and the missing smoke step |
 | [343-apple-ui-snapshot.md](343-apple-ui-snapshot.md) | First Apple UI snapshot: the shipped Status section body compared to a committed 1x baseline in the existing `swift test` target |
 | [343-review-feedback.md](343-review-feedback.md) | Review-feedback record for PR 480: baseline provenance on the `macos-15` image, the comparison the CI job reports, and the List row-flattening test |
 
