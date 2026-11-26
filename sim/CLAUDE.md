@@ -350,7 +350,10 @@ reads `mqtt.retry_delay`.
 ## Determinism caveats
 
 - The virtual clock makes scripted runs reproducible: two smoke runs produce
-  byte-identical PNGs.
+  byte-identical PNGs. That holds per binary. The Device info and About pages
+  render the modelled allocator's free and minimum figures, so a binary rebuilt
+  from a different revision prints different numbers on those rows and nowhere
+  else in the picture.
 - Fuzzer reproducibility is not total. `run-fuzz.sh` requires byte-identical
   `FUZZ EVENTS` and `FUZZ COVERAGE` lines when it replays one guarded seed, so
   the event stream and the pages it reaches are deterministic. The connect-long
@@ -959,6 +962,18 @@ reads `mqtt.retry_delay`.
   behavior remains a supplemental scenario lane, not a Core Basic screenshot.
   It also captures a Text size gallery on the StickS3 Default theme, one set per
   size, under `docs/img/textsize/<size>/` via `docs-textsize.txt`.
+- `docs-screenshots.txt` ends with the pages that had no capture before: the IR
+  page, the Cameras list, the Intervalometer and Bulb run pages, and every GPS
+  and Timer submenu. They come last because the pages above them render a
+  virtual-clock value, and waits inserted before those would change their
+  images. The Feedback Volume page only exists while the selected output
+  includes sound, so it has its own pass, `docs-screenshots-volume.txt`. Each
+  name in the `ui.page` map is either captured or listed in
+  `docs/ui-walkthrough.md` under "Pages that are actions, not screens".
+- No gate compares a fresh render with the committed bytes. The heap rows in the
+  determinism caveats above make that equality binary-dependent, so
+  `ui-screenshots.yml` compares only the committed GPS satellite pair with its
+  `docs/wiki/img` mirrors.
 - Every script that captures a Connected frame gates the capture with
   `assert-eventually-virtual 60000 ui.connected yes`. The query is a composite readiness
   check for the Connected page, a hidden progress box, and

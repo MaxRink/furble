@@ -87,3 +87,28 @@ different case. There `display-settings-pages.txt` cannot run at all, because
 navigation bar, the Legend child page is never built, and `action nav legend`
 has no route. The other seven are untested on the Core; nothing in this plan
 excludes them there.
+
+## Follow-up: the walkthrough capture matrix
+
+The evidence line above ("Screenshots are not part of this plan ... it already
+covers the pages a walkthrough shows") was wrong. The capture matrix covered 32
+of the 58 `ui.page` names (57 entries in the map plus `main`), so the walkthrough
+described twenty pages in words only.
+
+`docs/screenshot-coverage` closes the gap: 20 new captures, the eight
+heap-row-dependent images re-rendered, the 21 missing `docs/wiki/img` mirrors
+copied, and a separate `docs-screenshots-volume.txt` pass for the Feedback
+Volume page, which only exists while the selected output includes sound. The
+matrix now covers 52 of the 58 names.
+
+The six that no capture shows are `power_off`, `remote_disconnect`,
+`remote_timer` and `remote_gps`, entries that act or load a shared page rather
+than a screen of their own, and `level` and `imu`, which stay on the plan 28
+scenario set under `docs/img/pending-28/`. `docs/ui-walkthrough.md` records
+that split under "Pages that are actions, not screens".
+
+Re-run evidence is in the PR body: the capture reproduced all 20 new images and
+seven of the eight heap-row images byte for byte, and the eighth differed only
+in the two heap figures on Device info, which is the binary dependence
+`sim/CLAUDE.md` documents. No gate compares a fresh render with the committed
+bytes.

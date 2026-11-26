@@ -232,6 +232,172 @@ assert ui.page shutter
 capture remote
 print ui.page
 
+# ---------------------------------------------------------------------------
+# Remaining pages, captured here so the images above stay byte-identical. Two of
+# them (gps-data, gps-nmea) render virtual-clock values, so waits inserted before
+# those captures would change them; every capture below runs after the last
+# clock-sensitive page. The session is up from the connect flow above.
+# ---------------------------------------------------------------------------
+
+# Connected menu entries with no nav route, then the two run pages. Cameras lists
+# the active target set, so it only has rows with a live connection. The Interval
+# and Bulb run pages are opened through their real Start buttons, so the run state
+# and the countdown are the production ones rather than seeded text.
+# ui.connected is only "yes" while the Connected page itself is showing, so the
+# live link is checked through control.state here.
+assert ui.page shutter
+assert-eventually-virtual 8000 control.state active
+action page cameras
+wait 500
+assert ui.page cameras
+capture cameras
+print ui.page
+
+action page timer
+wait 350
+assert ui.page timer
+action intervalometer
+wait 700
+assert ui.page timer_run
+capture timer-run
+print ui.page
+print ui.interval_state
+action stop
+wait 350
+
+action page connected
+wait 350
+assert ui.page connected
+
+# The Bulb page itself: the Duration row, the camera bulb-mode hint and Start.
+# The duration spinner behind the row is captured as bulb.png earlier, and the
+# run page is captured below.
+action nav bulb
+wait 350
+assert ui.page bulb
+capture bulb-menu
+print ui.page
+action bulb-start
+wait 700
+assert ui.page bulb_run
+capture bulb-run
+print ui.page
+action bulb-stop
+wait 400
+assert ui.page bulb
+
+# Settings subpages. Each parent page is opened first, so the capture walks the
+# same route a user does.
+home
+wait 300
+action nav settings
+wait 350
+assert ui.page settings
+
+# Bluetooth > TX Power: the Adaptive switch and the transmit-power slider.
+action nav bluetooth
+wait 350
+action nav tx_power
+wait 350
+assert ui.page tx_power
+capture tx-power
+print ui.page
+
+# Feedback > per-event mask. The Volume page next to it is captured by
+# docs-screenshots-volume.txt, because it only exists while the selected output
+# includes sound and this pass keeps the shipped default output.
+action nav feedback
+wait 350
+action nav feedback_events
+wait 350
+assert ui.page feedback_events
+capture feedback-events
+print ui.page
+
+# GPS receiver configuration submenus, in the order the GPS page lists them:
+# Baud, Update rate, Sentences, Constellation, Power saving, Assisted start, Fix
+# Hold, Platform. Motion Adaptive and Extrapolate are switches on the GPS page
+# itself, so they have no page of their own.
+action nav gps
+wait 350
+action nav gps_baud
+wait 350
+assert ui.page gps_baud
+capture gps-baud
+print ui.page
+action nav gps_rate
+wait 350
+assert ui.page gps_rate
+capture gps-rate
+print ui.page
+action nav gps_sentences
+wait 350
+assert ui.page gps_sentences
+capture gps-sentences
+print ui.page
+action nav gps_constellation
+wait 350
+assert ui.page gps_constellation
+capture gps-constellation
+print ui.page
+action nav gps_power
+wait 350
+assert ui.page gps_power
+capture gps-power
+print ui.page
+action nav gps_assist
+wait 350
+assert ui.page gps_assist
+capture gps-assist
+print ui.page
+action nav gps_hold
+wait 350
+assert ui.page gps_hold
+capture gps-hold
+print ui.page
+action nav gps_platform
+wait 350
+assert ui.page gps_platform
+capture gps-platform
+print ui.page
+
+# Timer submenu: one spinner page per value. The Timer page lists the four rows
+# and each opens its own page holding the value and unit spinner.
+action nav timer
+wait 350
+action nav interval_count
+wait 350
+assert ui.page interval_count
+capture timer-count
+print ui.page
+action nav interval_delay
+wait 350
+assert ui.page interval_delay
+capture timer-delay
+print ui.page
+action nav interval_shutter
+wait 350
+assert ui.page interval_shutter
+capture timer-shutter
+print ui.page
+action nav interval_wait
+wait 350
+assert ui.page interval_wait
+capture timer-wait
+print ui.page
+
+# IR page. The nav action has no ir target, so this loads the page the main menu's
+# IR entry opens with the sim page action and reads the identity back from
+# ui.page. The entry only exists when the board reports an IR LED, which the
+# harness sets.
+home
+wait 300
+action page ir
+wait 350
+assert ui.page ir
+capture ir
+print ui.page
+
 # Camera numeric-comparison prompt. The FauxNY seam injects a deterministic
 # request on the active camera, so this captures the production modal without
 # requiring a Ricoh body or a live BLE security callback.
