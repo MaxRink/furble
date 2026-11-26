@@ -27,11 +27,13 @@ protocol core.
   `connectCancelled()` in the same loop body (plan 148).
 - A vendor behaviour that depends on a discovered characteristic, rather than on
   an advertisement, is decided from the GATT profile. Sony's location gate is the
-  example: DD30 plus DD31 present means `Strict`, absent means `BestEffort`, and
-  the advertised generation only breaks the tie (`Sony::geoGate()`). A saved
-  record carries no advertisement, so it is `Generation::Unknown` and the profile
-  decides; there is no per-body model table, because Sony's model codes are not
-  documented and would need maintaining per firmware release.
+  example: DD30 plus DD31 present means `Strict`, both absent means `BestEffort`,
+  and a profile with only one of the two keeps `Strict` because half a gate is
+  not an absent one. The advertised generation only breaks the tie
+  (`Sony::geoGate()`). A saved record carries no advertisement, so it is
+  `Generation::Unknown` and the profile decides; there is no per-body model
+  table, because Sony's model codes are not documented and would need
+  maintaining per firmware release.
 - New camera types get a new `Camera::Type` enum value. Values are persisted
   in NVS: never renumber or reuse existing ones (MOBILE_DEVICE is deprecated
   but its value stays reserved).

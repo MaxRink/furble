@@ -164,7 +164,8 @@ SonyVirtualCamera::Config SonyVirtualCamera::legacyBody() {
   config.legacy_bit1 = false;
   config.location_supported = true;
   config.location_enabled = false;
-  config.location_lock_characteristics_present = false;
+  config.location_allow_present = false;
+  config.location_enable_present = false;
   config.protocol_version = 0x6400;
   config.timezone_supported = true;
   return config;
@@ -674,9 +675,9 @@ bool SonyVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
            || matches(characteristic, CC13_CHARACTERISTIC);
   }
   if (matches(service, LOCATION_SERVICE) && m_Config.location_service_present) {
-    const bool lockCharacteristics = m_Config.location_lock_characteristics_present
-                                     && (matches(characteristic, DD30_CHARACTERISTIC)
-                                         || matches(characteristic, DD31_CHARACTERISTIC));
+    const bool lockCharacteristics =
+        (m_Config.location_allow_present && matches(characteristic, DD30_CHARACTERISTIC))
+        || (m_Config.location_enable_present && matches(characteristic, DD31_CHARACTERISTIC));
     return matches(characteristic, DD01_CHARACTERISTIC)
            || matches(characteristic, DD11_CHARACTERISTIC)
            || matches(characteristic, DD21_CHARACTERISTIC) || lockCharacteristics
@@ -714,9 +715,9 @@ bool SonyVirtualCamera::canWrite(const NimBLEUUID &service,
            || matches(characteristic, CC13_CHARACTERISTIC);
   }
   if (matches(service, LOCATION_SERVICE) && m_Config.location_service_present) {
-    const bool lockCharacteristics = m_Config.location_lock_characteristics_present
-                                     && (matches(characteristic, DD30_CHARACTERISTIC)
-                                         || matches(characteristic, DD31_CHARACTERISTIC));
+    const bool lockCharacteristics =
+        (m_Config.location_allow_present && matches(characteristic, DD30_CHARACTERISTIC))
+        || (m_Config.location_enable_present && matches(characteristic, DD31_CHARACTERISTIC));
     return matches(characteristic, DD11_CHARACTERISTIC) || lockCharacteristics
            || matches(characteristic, DD32_CHARACTERISTIC)
            || matches(characteristic, DD33_CHARACTERISTIC);
@@ -879,17 +880,17 @@ bool SonyVirtualCamera::handleLocationUpdate(const std::vector<uint8_t> &value) 
     noteAttError(ATT_LOCATION_UNAVAILABLE);
     return false;
   }
-  if (m_Config.location_lock_characteristics_present) {
-    // The bodies that expose DD30/DD31 refuse a location packet until the lock
-    // is taken and the transfer is enabled.
-    if (!m_LocationTransferEnabled) {
-      noteAttError(ATT_LOCATION_UNAVAILABLE);
-      return false;
-    }
-    if (m_LockOwner != 1) {
-      noteAttError(ATT_LOCATION_NOT_LOCKED);
-      return false;
-    }
+  // A body that exposes DD30/DD31 refuses a location packet until the lock is
+  // taken and the transfer is enabled. The checks follow the characteristic the
+  // profile actually exposes, so a body with only DD30 or only DD31 is modelled
+  // as the partial gate it is.
+  if (m_Config.location_enable_present && !m_LocationTransferEnabled) {
+    noteAttError(ATT_LOCATION_UNAVAILABLE);
+    return false;
+  }
+  if (m_Config.location_allow_present && (m_LockOwner != 1)) {
+    noteAttError(ATT_LOCATION_NOT_LOCKED);
+    return false;
   }
 
   const bool is95 = value.size() == 95;

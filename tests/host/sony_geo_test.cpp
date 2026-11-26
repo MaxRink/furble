@@ -124,8 +124,9 @@ bool run(const Case &item) {
     passed &= check(afterFirst == before, "no location write is attempted");
   }
 
-  // The allow/enable handshake runs only on a body that exposes the pair.
-  if (item.config.location_lock_characteristics_present) {
+  // The allow/enable handshake runs only on a body that exposes both halves of
+  // the pair. A profile with one half keeps the strict gate and sends nothing.
+  if (item.config.location_allow_present && item.config.location_enable_present) {
     passed &=
         check(hasCommand(peer, "DD30 location lock"), "the strict path asks for the location lock");
     passed &= check(hasCommand(peer, "DD31 location enable"),
@@ -198,6 +199,19 @@ int main() {
   narrowPeer.expectNoRetry = true;
   passed &= run(narrowPeer);
 
+  // 3b. Half a gate is not an absent one: a body that exposes only DD30 keeps
+  //     the strict gate, so a short discovery never becomes an ungated write.
+  Case partialPair;
+  partialPair.label = "a body with only DD30 keeps the strict gate";
+  partialPair.config = SonyVirtualCamera::legacyBody();
+  partialPair.config.location_allow_present = true;
+  partialPair.local_preferred_mtu = 0;
+  partialPair.expectGeneration = Furble::Sony::Generation::Legacy;
+  partialPair.expectGate = Furble::Sony::GeoGate::Strict;
+  partialPair.expectLocationWrite = false;
+  partialPair.expectNoRetry = true;
+  passed &= run(partialPair);
+
   // 4. A host whose preferred MTU is the ATT minimum: the connect path raises
   //    the request to the floor before the link, so the packet still fits.
   Case lowPreferred;
@@ -216,7 +230,8 @@ int main() {
   Case currentWithoutPair;
   currentWithoutPair.label = "a current body without the pair keeps the strict gate";
   currentWithoutPair.config = SonyVirtualCamera::Config {};
-  currentWithoutPair.config.location_lock_characteristics_present = false;
+  currentWithoutPair.config.location_allow_present = false;
+  currentWithoutPair.config.location_enable_present = false;
   currentWithoutPair.local_preferred_mtu = 0;
   currentWithoutPair.expectGeneration = Furble::Sony::Generation::Current;
   currentWithoutPair.expectGate = Furble::Sony::GeoGate::Strict;
@@ -229,7 +244,8 @@ int main() {
   Case legacyWithPair;
   legacyWithPair.label = "a legacy body with the pair keeps the strict gate";
   legacyWithPair.config = SonyVirtualCamera::legacyBody();
-  legacyWithPair.config.location_lock_characteristics_present = true;
+  legacyWithPair.config.location_allow_present = true;
+  legacyWithPair.config.location_enable_present = true;
   legacyWithPair.local_preferred_mtu = 0;
   legacyWithPair.expectGeneration = Furble::Sony::Generation::Legacy;
   legacyWithPair.expectGate = Furble::Sony::GeoGate::Strict;
@@ -237,8 +253,33 @@ int main() {
   legacyWithPair.expectNoRetry = false;
   passed &= run(legacyWithPair);
 
-  // 7. Best effort does not retry a body that refuses DD11: the first refusal
-  //    ends the attempts for the session, without surfacing an error state.
+  // 7. A retryable refusal is not a capability gap. One busy answer must not
+  //    end the session's attempts: the next tick writes again and succeeds.
+  {
+    NimBLEDevice::resetMock();
+    SonyVirtualCamera peer(SonyVirtualCamera::legacyBody());
+    NimBLEDevice::setMockPeer(&peer);
+    const auto advertisement = peer.advertisement();
+    Furble::Sony camera(&advertisement);
+    if (check(camera.connect(Furble::TxPower::P3, 1000), "the busy body connects")) {
+      peer.setNextFault(SonyVirtualCamera::Fault::Busy);
+      camera.updateGeoData(gps(), timesync());
+      const size_t refused = locationWrites(peer);
+      passed &= check(refused == 1, "the busy write was attempted once");
+      passed &= check(camera.isConnected(), "a busy location write keeps the session");
+      camera.updateGeoData(gps(), timesync());
+      passed &=
+          check(locationWrites(peer) == refused + 1, "a busy write is retried on the next tick");
+      passed &= check(peer.lastLocation().size() == 95, "the retried write delivers the location");
+      camera.disconnect();
+    } else {
+      passed = false;
+    }
+  }
+
+  // 8. A body that refuses every write stops after GEO_FAILURE_LIMIT attempts,
+  //    so a capability refusal costs a bounded number of writes rather than one
+  //    per GPS tick.
   {
     NimBLEDevice::resetMock();
     SonyVirtualCamera peer(SonyVirtualCamera::legacyBody());
@@ -246,14 +287,17 @@ int main() {
     const auto advertisement = peer.advertisement();
     Furble::Sony camera(&advertisement);
     if (check(camera.connect(Furble::TxPower::P3, 1000), "the refusing body connects")) {
-      peer.setNextFault(SonyVirtualCamera::Fault::Reject);
-      camera.updateGeoData(gps(), timesync());
+      for (uint8_t attempt = 0; attempt < Furble::Sony::GEO_FAILURE_LIMIT; attempt++) {
+        peer.setNextFault(SonyVirtualCamera::Fault::Reject);
+        camera.updateGeoData(gps(), timesync());
+      }
       const size_t refused = locationWrites(peer);
-      passed &= check(refused == 1, "the refused write was attempted once");
+      passed &= check(refused == Furble::Sony::GEO_FAILURE_LIMIT,
+                      "the refusing body was tried the bounded number of times");
       passed &= check(camera.isConnected(), "a refused location write keeps the session");
       camera.updateGeoData(gps(), timesync());
-      passed &=
-          check(locationWrites(peer) == refused, "a refused best-effort write is not retried");
+      passed &= check(locationWrites(peer) == refused,
+                      "a body that refuses every write is not retried past the bound");
       camera.disconnect();
     } else {
       passed = false;

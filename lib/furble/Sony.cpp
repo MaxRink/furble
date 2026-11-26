@@ -64,6 +64,7 @@ bool Sony::_connect(void) {
   m_GeoGate = GeoGate::Strict;
   m_GeoReported = false;
   m_GeoUnsupported = false;
+  m_GeoFailures = 0;
 
   // The location packet is 91 or 95 bytes in one DD11 write, so the link has to
   // carry 98 bytes of MTU. The preferred value is proposed by the exchange the
@@ -122,7 +123,7 @@ bool Sony::_connect(void) {
     // keeps today's strict path even if discovery comes back short.
     const bool allow = m_GeoSvc->getCharacteristic(GEO_ALLOW_CHR_UUID) != nullptr;
     const bool enable = m_GeoSvc->getCharacteristic(GEO_ENABLE_CHR_UUID) != nullptr;
-    if (!allow || !enable) {
+    if (!allow && !enable) {
       if (m_Generation == Generation::Current) {
         m_GeoGate = GeoGate::Strict;
         ESP_LOGW(LOG_TAG, "Current generation without DD30/DD31 (allow=%d enable=%d)", allow,
@@ -132,6 +133,14 @@ bool Sony::_connect(void) {
         ESP_LOGI(LOG_TAG, "No DD30/DD31 (allow=%d enable=%d), generation %s: best-effort DD11",
                  allow, enable, m_Generation == Generation::Legacy ? "legacy" : "saved");
       }
+    } else if (!allow || !enable) {
+      // Half a gate is not an absent one. A profile that exposes only DD30 or
+      // only DD31 still describes a body with the handshake, so a short
+      // discovery must not turn into an ungated DD11 write. Keep the strict
+      // path, which sends nothing while the missing characteristic is missing.
+      m_GeoGate = GeoGate::Strict;
+      ESP_LOGW(LOG_TAG, "Only one of DD30/DD31 found (allow=%d enable=%d): keeping the strict gate",
+               allow, enable);
     }
   }
 
@@ -306,14 +315,24 @@ void Sony::updateGeoData(const gps_t &gps, const timesync_t &timesync) {
     if (!gattWrite(pChr, reinterpret_cast<const uint8_t *>(&geo), length, true)) {
       // A body without the DD30/DD31 handshake may still refuse DD11. That is
       // not an error the user should see, and retrying a refused write on every
-      // GPS tick would only spend radio time, so this session stops trying.
+      // GPS tick would only spend radio time. A single refusal is not proof of
+      // a capability gap though: an application error such as busy clears by
+      // itself, so only GEO_FAILURE_LIMIT consecutive refusals end the attempts.
       if (m_GeoGate == GeoGate::BestEffort) {
-        m_GeoUnsupported = true;
+        if (m_GeoFailures < UINT8_MAX) {
+          m_GeoFailures++;
+        }
+        if (m_GeoFailures >= GEO_FAILURE_LIMIT) {
+          m_GeoUnsupported = true;
+        }
       }
       if (!m_GeoReported) {
         m_GeoReported = true;
-        ESP_LOGI(LOG_TAG, "Location update rejected by the camera, no location for this session");
+        ESP_LOGI(LOG_TAG, "Location update rejected by the camera, retrying up to %u times",
+                 static_cast<unsigned>(GEO_FAILURE_LIMIT));
       }
+    } else {
+      m_GeoFailures = 0;
     }
   }
 }

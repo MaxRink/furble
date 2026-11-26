@@ -1,6 +1,8 @@
 #ifndef SONY_H
 #define SONY_H
 
+#include <cstdint>
+
 #include "Camera.h"
 #include "Device.h"
 #include "protocol/AdvertisementProtocol.h"
@@ -68,6 +70,16 @@ class Sony: public Camera {
   /** Location gate selected from the discovered DD00 profile. */
   GeoGate geoGate(void) const { return m_GeoGate; }
 
+  /**
+   * Consecutive refused DD11 writes before a best-effort session stops trying.
+   *
+   * A refusal can be an application error the body clears by itself, so one
+   * failure must not end the session's attempts. A body that lacks the packet
+   * format refuses every write, so the attempt still ends well below one write
+   * per GPS tick.
+   */
+  static constexpr uint8_t GEO_FAILURE_LIMIT = 3;
+
  private:
   typedef struct _sony_t {
     char name[MAX_NAME];    /** Human readable device name. */
@@ -127,6 +139,8 @@ class Sony: public Camera {
   bool m_GeoReported = false;
   /** Set when this body refused DD11 without an enable step, so it is not retried. */
   bool m_GeoUnsupported = false;
+  /** Consecutive refused DD11 writes in this session, see GEO_FAILURE_LIMIT. */
+  uint8_t m_GeoFailures = 0;
 
   Device::uuid128_t m_Uuid;
 

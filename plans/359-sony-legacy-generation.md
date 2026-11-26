@@ -102,10 +102,11 @@ picks a gate:
 
 | DD30 + DD31 | Generation | Gate | Behaviour |
 | --- | --- | --- | --- |
-| present | any | `Strict` | The existing allow/enable handshake, unchanged. The 7RM5 firmware confirms the pair. |
-| absent | `Legacy` | `BestEffort` | DD11 is written directly. |
-| absent | `Unknown` (saved record) | `BestEffort` | DD11 is written directly. |
-| absent | `Current` | `Strict` | Today's behaviour, plus a warning. A current body is expected to expose the pair; a short discovery does not become an unproven write. |
+| both present | any | `Strict` | The existing allow/enable handshake, unchanged. The 7RM5 firmware confirms the pair. |
+| both absent | `Legacy` | `BestEffort` | DD11 is written directly. |
+| both absent | `Unknown` (saved record) | `BestEffort` | DD11 is written directly. |
+| both absent | `Current` | `Strict` | Today's behaviour, plus a warning. A current body is expected to expose the pair; a short discovery does not become an unproven write. |
+| exactly one present | any | `Strict` | Half a gate is not an absent one. A profile that exposes only DD30 or only DD31 still describes a body with the handshake, so a short discovery keeps the strict path, which sends nothing while the missing characteristic is missing, and logs a warning. Review finding 7 fixed this; only the both-absent rows reach `BestEffort`. |
 
 Why not a per-body flag:
 
@@ -130,9 +131,13 @@ Why not a per-body flag:
   validated by `sizeof` on load and cannot gain a field without a migration. It
   is recorded as follow-up 4.
 
-`BestEffort` is honest about failure. A refused DD11 write sets `m_GeoUnsupported`
-for the session so the GPS path stops retrying, and both the too-narrow link and
-the refusal are logged once per session (`ESP_LOGW` for the MTU, `ESP_LOGI` for a
+`BestEffort` is honest about failure. A refusal is not treated as a capability
+gap on the first answer: `m_GeoFailures` counts consecutive refused DD11 writes,
+the count clears on a successful write, and `m_GeoUnsupported` is set only after
+`GEO_FAILURE_LIMIT` (3) refusals, so an application error such as a busy body is
+retried on the next GPS tick while a body that refuses the packet format stops
+after three writes instead of one per tick. Both the too-narrow link and the
+refusal are logged once per session (`ESP_LOGW` for the MTU, `ESP_LOGI` for a
 camera refusal). Nothing reaches the user as an error, and the shutter is
 unaffected. The release writes on disconnect are skipped in best-effort mode
 because the body has no DD30/DD31 state to release.
@@ -174,7 +179,9 @@ without a body, so the model was extended:
   `legacyGeneration()` reports the modelled generation.
 - `SonyVirtualCamera::legacyBody()` is the 7RM4 shape: tag `0x22` bit 1 clear,
   DD00 with DD11 and DD21, no DD30 and no DD31, and DD11 accepted without a lock
-  or an enable step (`Config::location_lock_characteristics_present`).
+  or an enable step (`Config::location_allow_present` and
+  `Config::location_enable_present`, both clear). The two are separate flags so
+  a partial profile can be modelled and tested.
 - `Config::max_att_mtu` (default 517) is the server-side MTU the peer answers an
   exchange with. `negotiateAttMtu`, `requestedAttMtu`, `negotiatedAttMtu`,
   `mtuExchangeCount` and `maxWriteLength` let a test see the request and the
@@ -269,16 +276,15 @@ covers this change.
 4. The generation is not persisted, so the saved-record row takes `BestEffort`
    where the first pairing took `Strict` (see "Why not a per-body flag"). Closing
    it needs a versioned vendor record rather than a longer `sony_t`.
-5. A retryable ATT failure is treated as a capability refusal. `updateGeoData`
-   sets `m_GeoUnsupported` on any failed DD11 write in `BestEffort`, so one
-   application error, a busy body or a single ATT timeout suppresses location for
-   the rest of the session, not just a body that refuses the packet. `gattWrite`
-   returns only a bool, so the distinction needs the ATT status. The cheap version
-   is to latch after two consecutive failures and to clear the count on a
-   successful read of DD21; the precise version needs the error code plumbed
-   through `Camera::gattWrite`. Review finding 4 records the reproduction.
-6. The image is 1,028 bytes larger, measured as the difference between the
-   `m5stack-core-debug` flash figure on this branch and on its base, and that lane
-   has no headroom on master. Size work belongs to the tree-wide Core debug
+5. The precise ATT status is still not available. `Camera::gattWrite` returns a
+   bool, so the bounded-retry fix cannot tell a retryable application error from
+   a permanent one and treats both the same for `GEO_FAILURE_LIMIT` attempts.
+   Plumb the ATT status through `Camera::gattWrite` and latch on a permanent
+   class only. Review finding 4 was fixed short of this.
+6. The image is 1,212 bytes larger in CI, measured as the difference between the
+   `m5stack-core-debug` flash figure on this branch's merge build (1,741,293 at
+   `48fe3096`) and the same job on its base `7caf0468` (1,740,081). That lane has
+   719 bytes of slack at the base and 535 on master at `c644f39e`, so the branch
+   is over the slot on its own. Size work belongs to the tree-wide Core debug
    recovery, not to a partial trim of this feature, so the branch stays whole and
    waits for that recovery. Review finding 6 records the arithmetic.

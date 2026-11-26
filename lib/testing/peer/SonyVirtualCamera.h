@@ -152,8 +152,11 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
     // DD30 (allow) and DD31 (enable) gate the location transfer on the bodies
     // whose firmware exposes them: the ILCE-7RM5 4.00 image confirms both. The
     // 2019 generation in upstream issue 316 does not expose them, and DD11
-    // then accepts the packet without a lock or an enable step.
-    bool location_lock_characteristics_present = true;
+    // then accepts the packet without a lock or an enable step. The two are
+    // separate so a profile that exposes only one can be modelled: production
+    // keeps the strict gate for that shape rather than writing DD11 ungated.
+    bool location_allow_present = true;
+    bool location_enable_present = true;
     // ATT MTU this body answers an MTU exchange with. The default is the
     // largest value the ATT field carries, so the link settles at the central's
     // 256-byte local preference. 23 models the ATT minimum, where the 91 or 95
