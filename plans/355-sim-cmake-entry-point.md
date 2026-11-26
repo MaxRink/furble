@@ -1,18 +1,23 @@
-# 355: the documented CMake entry point builds a simulator that aborts
+# 355: the documented CMake entry point aborted on macOS, and what fixed it
 
-State: finding recorded, build path unfixed. The false doc sentence is
-corrected in this PR: `docs/sim.md` now names `sh sim/build.sh` as the only
-supported entry point. Repairing `sim/CMakeLists.txt` and adding the smoke step
-remain open.
+State: resolved. The abort was the link-order defect PR 506 fixed in
+`sim/CMakeLists.txt` (`b549d36c`). At `588e2d36` the documented CMake entry
+point builds a binary that runs this plan's three stock scenarios with exit
+status 0 on macOS arm64. What remains is coverage, not a defect: no workflow
+builds or runs that target, so a regression in it is still invisible to CI.
+`docs/sim.md` names `sh sim/build.sh` as the supported entry point and records
+the CMake target's status without claiming it aborts.
 
 ## What two agents reported
 
 Two independent agents observed the documented CMake entry point building a
-`furble-sim` that aborts in `lgfx::v1::Panel_sdl::_event_proc()` on pristine
-master, while the `sim/build.sh` binary runs the same script cleanly. Both
-halves reproduce.
+`furble-sim` that aborted in `lgfx::v1::Panel_sdl::_event_proc()` on pristine
+master, while the `sim/build.sh` binary ran the same script cleanly. Both halves
+reproduced, and the observation was correct. The cause was not the one this plan
+first chased: it was the order of the two SDL libraries on the link line, and
+PR 506 fixed it before this plan merged.
 
-## Reproduction on pristine master
+## Reproduction, tree before #506
 
 Tree: `git archive origin/master` (a5cb2e14) extracted to
 `/tmp/s3sim-align-cmake-finding`, with the PlatformIO dependency cache
@@ -28,10 +33,10 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
   ./sim/build-cmake/furble-sim --script sim/scenarios/e2e/hw-psram-octal-sticks3.txt
 ```
 
-Configure exits 0, the build exits 0, the run exits 134 (SIGABRT). Nothing is
-printed to stdout or stderr; the process dies right after four
+Configure exited 0, the build exited 0, the run exited 134 (SIGABRT). Nothing
+was printed to stdout or stderr; the process died right after four
 `M5PM1 access failed, retrying (n)` lines. The macOS crash report
-(`~/Library/Logs/DiagnosticReports/furble-sim-*.ips`) records:
+(`~/Library/Logs/DiagnosticReports/furble-sim-*.ips`) recorded:
 
 ```
 asi: {'libsystem_c.dylib': ['stack buffer overflow']}
@@ -41,7 +46,8 @@ __stack_chk_fail
 lgfx::v1::Panel_sdl::_event_proc()
 ```
 
-Two more stock scenarios abort the same way, so it is not scenario-specific:
+Two more stock scenarios aborted the same way, so it was not
+scenario-specific:
 
 ```sh
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
@@ -50,67 +56,92 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
   ./sim/build-cmake/furble-sim --script sim/scenarios/e2e/watchdog-feed.txt       # 134
 ```
 
-## Same tree, the other build path
+## The cause: SDL3 ahead of SDL2 on the link line
 
-In `/tmp/furble-s3sim` (branch `fix/sticks3-sim-align`; same M5GFX, same LVGL
-9.4.0, same SDL libraries) two binaries were built from the same working tree:
+The stack buffer overflow in the SDL panel was an SDL ABI mismatch, not a
+simulator defect. PR 445 linked SDL3 directly so that macOS stops showing
+sdl2-compat's blocking dialog, but it passed the flag to `target_link_options`:
 
-```sh
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
-  ./sim/build-cmake/furble-sim --script sim/scenarios/e2e/hw-profile-stickc.txt
-# exit 134
-
-sh sim/build.sh
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
-  ./sim/build/furble-sim --script sim/scenarios/e2e/hw-profile-stickc.txt
-# exit 0, asserts print, clean shutdown
+```cmake
+target_link_options(furble-sim PRIVATE
+                    "LINKER:-needed_library,${FURBLE_SDL3_LIBRARY}")
 ```
 
-Same scenario, same tree, one binary per build system: the crash tracks the
-build path, not the source.
+CMake emits link options ahead of the target's libraries, so `-needed_library
+libSDL3.dylib` landed before `libSDL2-2.0.0.dylib`. ld64 binds an undefined
+symbol to the first input that exports it, so every SDL2 API call in the panel
+resolved to SDL3. SDL3's `SDL_Event` is 128 bytes where the SDL panel compiles
+against 56, so `SDL_PollEvent` wrote 128 bytes into a 56-byte frame and
+`__stack_chk_fail` aborted with 134. `sim/build.sh` already ordered the two
+libraries the other way, which is why one build path worked and the other did
+not.
 
-## What differs, and what does not
+PR 506 moved the same flag into `target_link_libraries` after `SDL2::SDL2`:
 
-Checked, so nobody re-derives it:
+```cmake
+target_link_libraries(furble-sim PRIVATE
+                      "-Wl,-needed_library,${FURBLE_SDL3_LIBRARY}")
+```
 
-- Every define matches `sim/build.sh`: `FURBLE_M5STICKS3`, `FURBLE_RIG`,
-  `FURBLE_SIM`, `FURBLE_VERSION="sim"`, `FURBLE_TEST_VERSION=1`,
-  `FURBLE_BATTERY_DEBUG=0`, `M5GFX_SCALE=2`, `M5GFX_BOARD=board_M5StickS3`,
-  `LV_CONF_INCLUDE_SIMPLE`, `LV_LVGL_H_INCLUDE_SIMPLE`, `LV_KCONFIG_IGNORE`,
-  `_THREAD_SAFE` (read from `sim/build-cmake/compile_commands.json`, generated
-  with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`).
-- `-include sdkconfig_sim.h` is applied to firmware and simulator translation
-  units and not to the M5GFX and M5Unified dependencies, which is build.sh's
-  contract too (`sdkconfig_flags_for`).
-- Both binaries link the same SDL pair in the same direction. `otool -L` shows
-  `libSDL2-2.0.0.dylib` (sdl2-compat 3201.74.0) and `libSDL3.0.dylib`
-  (401.20.0). The CMake binary additionally carries `LC_RPATH /opt/homebrew/lib`.
-- The CMake binary prints `M5PM1 access failed, retrying (n)` four times before
-  the abort; the build.sh binary prints none of those lines. So the two builds
-  also differ in the modelled PMIC access path. That is a second symptom, and
-  probably the first thing to chase.
-- The CMake target builds LVGL through LVGL's own `CMakeLists.txt`, including
-  its examples and demos (`liblvgl_examples.a`, `liblvgl_demos.a`, and a link
-  warning about duplicate libraries). build.sh compiles `LVGL_DIR/src/**/*.c`
-  directly with the simulator's flag set and builds neither. That is the
-  largest structural difference between the two paths.
+The binding is visible in the binary, so this is the check that tells a bound
+build from an unbound one:
 
-## Which one is wrong
+```sh
+nm -m sim/build-cmake/furble-sim | grep _SDL_PollEvent
+#                  (undefined) external _SDL_PollEvent (from libSDL2-2)
+```
 
-The build path is wrong. The docs sentence is wrong in consequence.
+## Verified after #506
 
-- `docs/sim.md` said the CMake entry point has "the same source and board
-  defaults" as the direct build, with `sim/CMakeLists.txt` as that entry point.
-  For sources and defines that holds. It does not hold in effect: the binary
-  this path produces aborts on its first scenario on unmodified master.
-- No workflow builds or runs that binary. `.github/workflows/static-analysis.yml`
-  runs `cmake -S sim -B build-sim-static` only to obtain a compile database; it
-  never compiles the target, so every gate stays green while the path is broken.
-- The only build any gate exercises is `sh sim/build.sh` (CI `sim-e2e`, the
-  plan 348 gates, `sim/scripts/*.sh`), and that binary works.
+This plan's correction was re-run on `588e2d36` with the same dependency cache
+symlinked into the worktree, macOS 27.2.1 arm64, cmake 4.5.1, Apple clang
+21.0.0, the default generator and no `CMAKE_BUILD_TYPE`:
 
-Fix: repair `sim/CMakeLists.txt` (start with the LVGL sub-build and the PMIC
-access difference above) and add a smoke step that builds the CMake target and
-runs one scenario through it. Until that passes, `docs/sim.md` names
-`sh sim/build.sh` as the only entry point rather than presenting both as
-equivalent, which this PR changed.
+```sh
+cmake -S sim -B sim/build-cmake
+cmake --build sim/build-cmake --parallel 6
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  ./sim/build-cmake/furble-sim --script sim/scenarios/e2e/hw-psram-octal-sticks3.txt   # exit 0
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  ./sim/build-cmake/furble-sim --script sim/scenarios/e2e/hw-profile-stickc.txt       # exit 0
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  ./sim/build-cmake/furble-sim --script sim/scenarios/e2e/watchdog-feed.txt           # exit 0
+```
+
+The run prints its asserts and its orderly shutdown, the four
+`M5PM1 access failed, retrying (n)` lines are still there, and no abort, no
+`__stack_chk_fail` and no crash report appear. `otool -L` shows the same SDL
+pair as `sim/build.sh` in the same order, `libSDL2-2.0.0.dylib` (sdl2-compat
+3201.74.0) then `libSDL3.0.dylib` (401.20.0), and both binaries bind the SDL2
+entry points to libSDL2-2 in `nm -m`.
+
+## What still differs from sim/build.sh
+
+Two differences remain after the #506 fix, and neither breaks the binary:
+
+- LVGL: the CMake target builds LVGL through LVGL's own `CMakeLists.txt`,
+  including its examples and demos, plus thorvg. `sim/build.sh` compiles
+  `LVGL_DIR/src/**/*.c` with the simulator's flag set and builds none of those.
+  The link step reports `ld: warning: ignoring duplicate libraries` for
+  `liblvgl.a`, `liblvgl_demos.a`, `liblvgl_examples.a` and `liblvgl_thorvg.a`.
+  This is the largest remaining difference between the two paths.
+- The CMake binary carries `LC_RPATH /opt/homebrew/lib`; the `sim/build.sh`
+  binary does not. Both resolve libSDL2-2 and libSDL3 from the Homebrew prefix
+  without it.
+
+One claim in the first version of this plan did not reproduce on the corrected
+tree: it said the `sim/build.sh` binary prints none of the four
+`M5PM1 access failed, retrying (n)` lines the CMake binary prints before boot.
+Both binaries print all four here, so the modelled PMIC access path does not
+differ between the two builds, and the abort was never a PMIC symptom. That
+observation came from a different worktree (`/tmp/furble-s3sim`, branch
+`fix/sticks3-sim-align`) with its own dependency cache.
+
+## What remains open
+
+A smoke step that builds the CMake target and runs one scenario through it. No
+workflow builds or runs the binary: `.github/workflows/static-analysis.yml`
+runs `cmake -S sim -B build-sim-static` only to obtain a compile database, so
+every gate stays green while the target is unbuilt and unrun. Until that step
+exists, `docs/sim.md` names `sh sim/build.sh` as the supported entry point
+rather than presenting the two as equivalent.
