@@ -148,6 +148,7 @@ whose title carries it, and plan 331 is archived there with it.
 | [358-resilience-round3.md](358-resilience-round3.md) | Resiliency round three: the SD settings backup that never completed and destroyed the last good copy, the refused companion notification that stayed lost for the session, and the ranked findings left open |
 | [358-review-feedback.md](358-review-feedback.md) | Review-feedback record for PR 516: the FatFs rename that refused the existing backup, the keepalive stamp that never advanced, the boundary case count and the peer double race |
 | [354-core-family-fixes.md](354-core-family-fixes.md) | Core family hardware and power fixes: Tough SD/speaker/RTC, capacities, IP5306 keep-on, honest power off, GPS rail scope |
+| [354-review-feedback.md](354-review-feedback.md) | Review-feedback record for the Core family hardware and power fixes |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [337-sim-mem-shims.md](337-sim-mem-shims.md) | Simulator heap_caps calloc, realloc and get_info shims, and the PSRAM task-stack abort |
 | [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |

@@ -8449,8 +8449,11 @@ void UI::serviceRequests(void) {
         // board would clear the boost keep-on bit, deep sleep with no wake
         // source and leave the 5 V boost up.
         if (!Platform::canPowerOff()) {
+          // The console command is the only requester and it refuses before
+          // queueing, so this branch catches a request that raced the gate.
+          // No extra string fits the Core OTA slot; doPowerOff() logs the
+          // refusal if the request ever reaches it.
           m_ConsoleResult = "unsupported";
-          consolePrint("error: power off is not supported on this board\n");
           break;
         }
         m_ConsoleResult = "ok";
@@ -13114,7 +13117,7 @@ void UI::processInactivity(void) {
   // under the PMIC's 45 mA cutoff. Force the dim-only mode for this boot
   // rather than powering the unit off. Working units keep their setting.
   if (!Platform::canTurnDisplayOff() && (m_DisplayOffMode != 0)) {
-    ESP_LOGW(LOG_TAG, "IP5306 keep-on is not set, using Dim instead of display-off");
+    ESP_LOGW(LOG_TAG, "IP5306 keep-on unset, forcing Dim");
     m_DisplayOffMode = 0;
   }
 
@@ -13384,7 +13387,7 @@ void UI::doPowerOff(void) {
   // its own power; entering deep sleep would leave the boost up and need a
   // reset. Log it rather than silently doing nothing.
   if (!Platform::canPowerOff()) {
-    ESP_LOGW(LOG_TAG, "Power off is not available on %s", Board::profile().name);
+    ESP_LOGW(LOG_TAG, "%s cannot power off", Board::profile().name);
     return;
   }
 

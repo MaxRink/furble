@@ -137,11 +137,11 @@ bit 1.
 and `holdBoostOn()`, a template over the M5Unified `IP5306_Class` surface:
 `setPowerBoostKeepOn(true)` followed by a `SYS_CTL0` readback. It is the same
 code the firmware runs, not a parallel implementation.
-`Platform::keepIp5306BoostOn()` calls it at boot on `pmic_ip5306`, logs the
-value, and logs an error if the readback lacks bit 1. The bit stays set for the
-session: there is no later shutdown path to clear it in, and the IP5306 has no
-shutdown command. The Core display-off default is now Off like every other
-board; the old Dim default existed only to dodge this cut.
+`Platform::keepIp5306BoostOn()` calls it at boot on `pmic_ip5306`, logs the raw
+`SYS_CTL2` value, and logs an error if the readback lacks bit 1. The bit stays
+set for the session: there is no later shutdown path to clear it in, and the
+IP5306 has no shutdown command. The Core display-off default is now Off like
+every other board; the old Dim default existed only to dodge this cut.
 
 If the write cannot be made (a non-I2C IP5306 Core, or a bus fault), the boot
 logs the failure, `Platform::canTurnDisplayOff()` returns false, and
@@ -152,7 +152,25 @@ runs when the readback failed.
 **Why not SYS_CTL2.** M5Unified already selects the longest window (64 s), so
 the firmware does not rewrite it. The register document, not the M5Unified
 comment, is the authority for the field encoding. The keep-on bit makes the
-window irrelevant for the cut, and the boot log prints the decoded value.
+window irrelevant for the cut, so the boot log prints the raw register value
+and the 8/32/16/64 s decode stays pinned by the host test.
+
+**Size.** The first CI run failed this change on the `m5stack-core-debug`
+profile, which shares the 1,740,800-byte OTA slot:
+`Error: The program size (1741009 bytes) is greater than maximum allowed
+(1740800 bytes)`, 209 bytes over. That profile had 400 bytes of headroom before
+this change, and the new refusal paths and boot log cost about 600. The log
+lines in `Platform::keepIp5306BoostOn()`, `Platform::powerOff()`,
+`Platform::powerOffUntil()`, `UI::processInactivity()` and `UI::doPowerOff()`
+were shortened, the IP5306 defence in `Platform::powerOff()` keeps its silent
+`return false` instead of a second string, and `UI::serviceRequests()` reports
+`unsupported` without printing its own sentence, because the console command
+already refuses before queueing. The refusal string is now one literal shared
+with `Platform::powerOff()`. The profile measures 1,740,629 bytes, 171 bytes
+under the slot, and `tools/size_budget.json` keeps its 1,740,800 entry. The
+squeeze is why the boot log prints the raw `SYS_CTL2` value rather than the
+decoded window, and why a 30 minute soak run has to read the decoded window
+from the host test rather than the log.
 
 **Evidence.** New host `ip5306-policy` test: all 256 SYS_CTL0 values preserve
 every other bit, `0x31` maps to `0x33`, the 8/32/16/64 s decode is pinned, and

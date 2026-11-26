@@ -460,16 +460,17 @@ void Platform::keepIp5306BoostOn(void) {
   // power-off path that should clear the bit: hold the boost on for the whole
   // session. Register meanings are from the Injoinic IP5306 register document
   // V1.21 (revision V1.4), SYS_CTL0 bit 1 and SYS_CTL2 bits 3:2.
+  // Both log lines are short on purpose: this profile shares a 1,740,800-byte
+  // OTA slot with the debug build of the same image, and the boot log is not
+  // worth a build failure. The SYS_CTL2 window decode stays pinned by the
+  // ip5306-policy host test rather than printed here.
   if (!IP5306::holdBoostOn(M5.Power.Ip5306)) {
     m_Ip5306BoostHeld = false;
-    ESP_LOGE(LOG_TAG, "IP5306 boost keep-on did not read back, display-off is gated to Dim");
+    ESP_LOGE(LOG_TAG, "IP5306 keep-on failed, display-off gated to Dim");
     return;
   }
-  const uint8_t sysCtl0 = M5.Power.Ip5306.readRegister8(IP5306::REG_SYS_CTL0);
   const uint8_t sysCtl2 = M5.Power.Ip5306.readRegister8(IP5306::REG_SYS_CTL2);
-  ESP_LOGI(LOG_TAG, "IP5306 boost keep-on set (SYS_CTL0=0x%02x, light-load=%us)",
-           static_cast<unsigned>(sysCtl0),
-           static_cast<unsigned>(IP5306::lightLoadSeconds(sysCtl2)));
+  ESP_LOGI(LOG_TAG, "IP5306 keep-on set (SYS_CTL2=0x%02x)", static_cast<unsigned>(sysCtl2));
 #endif
 }
 
@@ -530,7 +531,8 @@ bool Platform::powerOff(void) {
   // own power, and calling M5.Power.powerOff() would clear the boost keep-on
   // bit first and then deep sleep without a wake source.
   if (M5.Power.getType() == m5::Power_Class::pmic_ip5306) {
-    ESP_LOGW(LOG_TAG, "IP5306 has no shutdown command, staying alive");
+    // Reached only if the profile row and the detected PMIC disagree. The
+    // callers log; a second string here does not fit the Core OTA slot.
     return false;
   }
 #endif
@@ -911,8 +913,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
       // BM8563 INT only reaches the PMIC power key, not an ESP32 wake pin.
       // Stay awake instead of stranding the unit on USB power.
       if (M5.Power.getVBUSVoltage() > 0) {
-        ESP_LOGW(LOG_TAG, "%s is on VBUS, keeping the RTC alarm from cutting power",
-                 Board::profile().name);
+        ESP_LOGW(LOG_TAG, "%s on VBUS, RTC cut refused", Board::profile().name);
         clearBm8563Timer();
         M5.Rtc.disableIRQ();
         return false;
@@ -945,7 +946,6 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     // the vendor pinmap and BT1 keeping the RTC counting while the PMIC is off.
     // M5Unified's AXP192 path cuts the rail and then deep sleeps, so this only
     // returns when the PMIC refused.
-    ESP_LOGI(LOG_TAG, "%s RTC armed, cutting PMIC power", board.name);
     M5.Power.powerOff();
 
     // M5Unified returned, so no cut happened and the device is still awake with
