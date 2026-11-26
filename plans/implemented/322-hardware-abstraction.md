@@ -76,7 +76,7 @@ at `sim/FurblePlatformSim.cpp:289`. The audit below is the state at `e66e8807`.
 | Battery read | `Platform::readBattery()` | `M5.Power` everywhere except the StickS3, which reads M5PM1 VBAT and GPIO0 charge (active low). Headless `main.cpp` and the UI also read `M5.Power` directly (port-3 moves these behind Platform). |
 | Charging | same | `M5.Power.isCharging()` or M5PM1 GPIO0. |
 | GPS rail | `FurbleGPS.cpp`, `main.cpp`, `FurbleUI.cpp` | `M5.Power.setExtOutput(…, ext_PA)` (port-3 routes it through GPS). |
-| Power off | `Platform::powerOff()` | M5PM1 `shutdown()` on the StickS3, `M5.Power.powerOff()` elsewhere. UI hides power policies on the Core (IP5306). |
+| Power off | `Platform::powerOff()` | M5PM1 `shutdown()` on the StickS3, `M5.Power.powerOff()` elsewhere, refused when the row has no power-off path (plan 349). UI hides power policies on the Core (IP5306). |
 | Timed wake | `Platform::canTimedWake()`, `powerOffUntil()`, `consumeTimedWake()` | StickS3 M5PM1 timer plus RTC RAM marker; Plus2 BM8563 alarm plus GPIO4 hold. |
 | PMIC button | `Platform::update()` | StickS3 polls M5PM1 at 50 Hz; StickC, StickC Plus and Tough fake a click streak (`m_PMICHack`). |
 | Motion wake | `armMotionWake()` and friends | GPIO35 on StickC and StickC Plus, M5PM1 GPIO4 to GPIO13 on the StickS3. |
@@ -621,3 +621,25 @@ Still unsettled by the documents, and left as open items rather than guessed:
 whether BAT1 is populated, which RTC part is fitted (PCF8563 or PCF85063ATL),
 what supplies the M10S module's V_IO, which radio band maps to the VHF and UHF
 straps, and the panel's column offset.
+
+## Follow-up: the Waveshare board row (plan 349)
+
+`src/FurbleBoard.cpp` gained a dedicated row for the Waveshare ESP32-S3-ETH,
+keyed on `m5::board_t::board_M5StampS3`, so the board no longer resolves to the
+unknown-board row. That row and the platform refusal are specified in
+[349-waveshare-board-row.md](349-waveshare-board-row.md).
+
+The row needed one column this plan did not have. `canPowerOff` reads as "the
+board can power off", but its consumers are the UI policy gates: the Auto off and
+Low battery rollers and their timers. The Core reports false there because its
+IP5306 gives a coarse level and no charging state, while M5Unified still powers
+that board down through the IP5306 boost keep-off. Gating `Platform::powerOff()`
+on the same column would have refused the Core's manual Off, and the two
+`m5stack-core` power-off scenarios assert that it succeeds (through the
+simulator seam, so they pin the intent and the regression surface, not the
+silicon). The new `powerOffPath` column answers "the platform can remove power",
+is true for every existing row including the unknown-board row, and is false
+only on the Waveshare row.
+
+`Board::profile()` is still not cached. The row is a constant table entry and the
+lookup is the same switch it was.

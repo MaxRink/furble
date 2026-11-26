@@ -339,6 +339,12 @@ These decide whether the hardware works in the hand, not just on the datasheet.
   and an APB power lock.
 - Touch. Capacitive touch is poor with gloves. A device that will be used
   outdoors in winter needs at least one physical shutter button.
+- Mains and PoE nodes. A displayless node such as the Waveshare ESP32-S3-ETH
+  has no battery, no PMIC, no RTC part and no software power-off path, and its
+  optional PoE module feeds POE_5V, the same net as USB VBUS. Plan a fixed
+  supply and a switched outlet or a USB switch, because firmware can neither
+  cut the rail nor report which source is present. See
+  [plans/349](../plans/349-waveshare-board-row.md).
 
 ## Buying notes
 

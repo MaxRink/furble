@@ -20,7 +20,20 @@ boards' probes and display drivers. Every environment also has a matching
 | `m5stick-s3` | ESP32-S3 | 8 MB | Yes | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
 | `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
 | `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | PSRAM enabled. On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
-| `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet profile pinned to the display-less StampS3, so no M5 probe touches the W5500 pins; hardware verification remains outstanding. |
+| `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet node pinned to the display-less StampS3, so no M5 probe touches the W5500 pins. Wi-Fi and BLE 5 on the SoC, W5500 for wired Ethernet. No PMIC, battery, RTC part, IMU or IR, and no software power-off path. Hardware verification remains outstanding. |
+
+The Waveshare ESP32-S3-ETH is a mains or PoE node rather than a handheld. Its
+board row reports no battery and no PMIC, so `status` shows battery level and
+voltage as unknown and never infers USB or PoE power. It reports no software
+power-off path: there is no PMIC, no battery and no switchable rail, so
+`Platform::powerOff()` logs a refusal and returns failure instead of falling
+through to a deep sleep start, which arms no wake source on this board and
+would leave the node asleep until a power cycle rather than remove power. The
+board has no RTC part, no IR emitter and no IMU. A microSD slot is wired to
+GPIO 4 to 7, but no card-select pin is mapped, so the profile reports no SD
+slot while the image still compiles the SD stack. Wi-Fi and BLE 5 are
+available on the SoC alongside the wired link. PoE is an optional module that
+feeds POE_5V, the same net as VBUS, so firmware cannot claim either source.
 
 The opt-in HTTPS WebUI is compiled for the four 8 MB/16 MB profiles. The
 M5StickS3 is **not yet a supported WebUI target**. With WiFi connected, the

@@ -75,6 +75,8 @@ struct board_caps_t {
   // off, and which wake path the board has.
   bool rtcBatteryBacked;
   const char *timedWake;  // "none", "pmic-timer" or "rtc-alarm"
+  bool vbus;
+  bool poe;
 };
 
 const board_caps_t STICKC = {.mcu = "esp32",
@@ -96,7 +98,9 @@ const board_caps_t STICKC = {.mcu = "esp32",
                              .audio = true,
                              .rtc = true,
                              .rtcBatteryBacked = true,
-                             .timedWake = "none"};
+                             .timedWake = "none",
+                             .vbus = true,
+                             .poe = false};
 const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .flashKb = 4096,
                                   .pmic = "axp192",
@@ -116,7 +120,9 @@ const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .audio = true,
                                   .rtc = true,
                                   .rtcBatteryBacked = true,
-                                  .timedWake = "none"};
+                                  .timedWake = "none",
+                                  .vbus = true,
+                                  .poe = false};
 const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
                                    .flashKb = 4096,
                                    .pmic = "none",
@@ -136,7 +142,9 @@ const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
                                    .audio = true,
                                    .rtc = true,
                                    .rtcBatteryBacked = false,
-                                   .timedWake = "rtc-alarm"};
+                                   .timedWake = "rtc-alarm",
+                                   .vbus = true,
+                                   .poe = false};
 const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .flashKb = 8192,
                               .pmic = "m5pm1",
@@ -158,7 +166,9 @@ const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               // RTC_FACTS; hwRtcCapability() asserts the pair.
                               .rtc = false,
                               .rtcBatteryBacked = false,
-                              .timedWake = "pmic-timer"};
+                              .timedWake = "pmic-timer",
+                              .vbus = true,
+                              .poe = false};
 const board_caps_t CORE = {.mcu = "esp32",
                            .flashKb = 4096,
                            .pmic = "ip5306",
@@ -178,7 +188,9 @@ const board_caps_t CORE = {.mcu = "esp32",
                            .audio = true,
                            .rtc = false,
                            .rtcBatteryBacked = false,
-                           .timedWake = "none"};
+                           .timedWake = "none",
+                           .vbus = true,
+                           .poe = false};
 const board_caps_t CORE2 = {.mcu = "esp32",
                             .flashKb = 16384,
                             .pmic = "axp192",
@@ -198,7 +210,9 @@ const board_caps_t CORE2 = {.mcu = "esp32",
                             .audio = true,
                             .rtc = true,
                             .rtcBatteryBacked = true,
-                            .timedWake = "none"};
+                            .timedWake = "none",
+                            .vbus = true,
+                            .poe = false};
 const board_caps_t TOUGH = {.mcu = "esp32",
                             .flashKb = 16384,
                             .pmic = "axp192",
@@ -218,7 +232,9 @@ const board_caps_t TOUGH = {.mcu = "esp32",
                             .audio = true,
                             .rtc = true,
                             .rtcBatteryBacked = false,
-                            .timedWake = "none"};
+                            .timedWake = "none",
+                            .vbus = true,
+                            .poe = false};
 const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .flashKb = 8192,
                                .pmic = "none",
@@ -238,7 +254,9 @@ const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .audio = false,
                                .rtc = false,
                                .rtcBatteryBacked = false,
-                               .timedWake = "none"};
+                               .timedWake = "none",
+                               .vbus = true,
+                               .poe = false};
 const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .flashKb = 16384,
                                 .pmic = "none",
@@ -250,15 +268,17 @@ const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .height = 0,
                                 .touch = false,
                                 .battery = false,
-                                .wifi = false,
+                                .wifi = true,
                                 .ethernet = true,
                                 .ble = true,
                                 .ir = false,
-                                .sd = true,
+                                .sd = false,
                                 .audio = false,
                                 .rtc = false,
                                 .rtcBatteryBacked = false,
-                                .timedWake = "none"};
+                                .timedWake = "none",
+                                .vbus = false,
+                                .poe = false};
 
 struct pmic_state_t {
   std::string variant;
@@ -1968,6 +1988,14 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "timed_wake") {
       return hw.caps.timedWake;
+    }
+    // Supply sense. The Waveshare node has none: POE_5V and VBUS are one net,
+    // so a scenario can assert that no later change invents a sense pin.
+    if (sub == "vbus") {
+      return hw.caps.vbus ? "yes" : "no";
+    }
+    if (sub == "poe") {
+      return hw.caps.poe ? "yes" : "no";
     }
   }
   if (prefixed("pmic.")) {

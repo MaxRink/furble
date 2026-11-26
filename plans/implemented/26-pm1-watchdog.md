@@ -200,7 +200,7 @@ change beyond the two declarations.
 
 ### Where to feed
 
-Feed from `Platform::update()` (`src/FurblePlatform.cpp:1022-1050`), rate limited
+Feed from `Platform::update()` (`src/FurblePlatform.cpp:1032-1060`), rate limited
 to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:338-340`).
 
 `Platform::update()` is called from `UI::task` at `src/FurbleUI.cpp:2125`, once
@@ -242,7 +242,7 @@ with `light_sleep_enable` at lines 65-72. `CONFIG_PM_ENABLE=y`
 Automatic light sleep does not break the feed. The ESP-IDF power management
 documentation states that sleep duration is computed from FreeRTOS tasks blocked
 with finite timeouts, and the chip wakes before the nearest one. `UI::task`
-blocks on a 5 ms `vTaskDelay` (`src/FurbleUI.cpp:13494`), so today the longest
+blocks on a 5 ms `vTaskDelay` (`src/FurbleUI.cpp:13497`), so today the longest
 the chip can sleep between two feeds is 5 ms. The 10 s timeout has enormous
 margin.
 

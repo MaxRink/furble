@@ -14,6 +14,7 @@
 #include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
 #include "FurblePlatform.h"
+#include "FurblePlatformPolicy.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
 #include "FurbleWatchdog.h"
@@ -158,6 +159,15 @@ void Platform::restart(void) {
 }
 
 bool Platform::powerOff(void) {
+  // Mirror the production refusal so a board row without a power-off path reads
+  // the same here as on hardware. `platform.power_off` then stays "no" and a
+  // scenario can assert that the request was refused rather than accepted.
+  if (PlatformPolicy::powerOffAction(Board::profile().powerOffPath)
+      == PlatformPolicy::PowerOffAction::REFUSE) {
+    ESP_LOGW("platform", "Power off refused, the %s profile has no power-off path",
+             Board::profile().name);
+    return false;
+  }
   Sim::notePowerOff();
   return true;
 }

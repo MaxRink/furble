@@ -2,6 +2,13 @@
 #
 # The SDL simulator still brings up a panel, so this scenario asserts the
 # Waveshare profile identity and wired-network model without asserting display.
+#
+# Capability values follow the board, not the M5 reference design. The vendor
+# wiki and plans/42 record Wi-Fi and BLE 5 on the ESP32-S3, and no RTC part
+# appears on any schematic sheet, so wifi is yes and rtc is no. "rtc" is an
+# ambiguous field name: on some boards it means the SoC RTC domain, which every
+# ESP32-S3 has; here it reports a separate RTC part with a backup cell, and this
+# board has none. See plans/349-waveshare-board-row.md.
 seed hw_profile waveshare-s3-eth
 wait 100
 assert hw.profile waveshare-s3-eth
@@ -12,7 +19,7 @@ assert hw.pmic none
 assert hw.display none
 assert hw.touch no
 assert pmic.watchdog unavailable
-assert hw.wifi no
+assert hw.wifi yes
 assert hw.ethernet yes
 assert hw.battery absent
 assert net.ethernet down
@@ -27,14 +34,23 @@ assert mem.psram_total 8388608
 assert mem.component.main_stack 16384
 assert mem.component.lvgl_draw 0
 assert hw.usb serial_jtag
-assert hw.wifi no
+assert hw.wifi yes
 assert hw.ethernet yes
 assert hw.ble yes
 assert hw.gauge none
 assert hw.ir no
-assert hw.sd yes
+# The board has a microSD slot on GPIO 4 to 7, but no card-select pin is mapped,
+# so the firmware profile reports no SD slot and the image keeps FURBLE_HAS_SD.
+# This assertion records the disabled slot on purpose: a later change that
+# enables mounting without mapping CS fails here.
+assert hw.sd no
 assert hw.audio no
-# The StampS3 on this board adds no RTC.
+# No RTC part and no backup cell, so the wall clock lives only in RAM and NVS.
 assert hw.rtc no
 assert hw.rtc_capability match
+# No software-readable supply: the optional PoE module feeds POE_5V, which is
+# the same net as VBUS, so firmware cannot claim either source. These two lines
+# exist so a later change cannot invent a PoE or VBUS sense pin.
+assert hw.vbus no
+assert hw.poe no
 exit

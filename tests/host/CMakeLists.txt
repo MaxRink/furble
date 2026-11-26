@@ -2973,8 +2973,20 @@ target_include_directories(board_profile_test PRIVATE ${BOUNDARY_SHIM_DIR}
                            ${FURBLE_ROOT}/include)
 target_compile_options(board_profile_test PRIVATE -Wall -Wextra -Werror)
 
+# Platform::powerOff() refuses a board row without a power-off path. The
+# decision is PlatformPolicy::powerOffAction(), so the test links the real board
+# table and pins the refusal per row.
+add_executable(platform_power_off_test
+               platform_power_off_test.cpp
+               ${BOUNDARY_DIR}/m5_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp)
+target_include_directories(platform_power_off_test PRIVATE ${BOUNDARY_SHIM_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_options(platform_power_off_test PRIVATE -Wall -Wextra -Werror)
+
 if(BUILD_TESTING)
   add_test(NAME board-profile COMMAND board_profile_test)
+  add_test(NAME platform-power-off COMMAND platform_power_off_test)
   foreach(mode protocols psram-fallback queue-timeout unsupported)
     add_test(NAME boundary-ir-${mode} COMMAND boundary_ir_test ${mode})
   endforeach()

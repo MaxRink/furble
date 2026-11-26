@@ -11697,7 +11697,10 @@ void UI::addPowerMenu(const menu_t &parent) {
     addSettingItem(menu.page, NULL, Settings::SLEEP_CONN);
   }
 
-  // IP5306 boards do not have a reliable software power-off path.
+  // canPowerOff gates the automatic policies, never the manual Off. The Core
+  // row reports a coarse level and no charging state, so the Auto off and Low
+  // battery rollers have nothing to act on there while its power-off path
+  // stays. See include/FurbleBoard.h.
   const bool policies = Board::profile().canPowerOff;
 
   lv_obj_t *cont = lv_menu_cont_create(menu.page);

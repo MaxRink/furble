@@ -105,6 +105,7 @@ struct Expected {
   bool clickStreak;
   bool sd;
   bool canPowerOff;
+  bool powerOffPath;
   bool modemSleep;
   int minBrightness;
   bool sound, light, vibration;
@@ -116,34 +117,25 @@ struct Expected {
 
 // clang-format off
 const Expected EXPECTED[] = {
-  {m5::board_t::board_M5StickC,      "StickC",   true,  true,  true,  true,  95,  true,  9,
-   MotionWake::DIRECT,    35, TimedWake::NONE,       -1, true,  false, true,  false, 48,
-   false, true,  false, 10, true,  true,  true},
-  {m5::board_t::board_M5StickCPlus,  "StickC+",  true,  true,  true,  true,  120, true,  9,
-   MotionWake::DIRECT,    35, TimedWake::RTC_ALARM,  -1, true,  false, true,  false, 48,
-   true,  true,  false, 10, true,  true,  true},
-  {m5::board_t::board_M5StickCPlus2, "StickC+2", true,  true,  false, false, 200, true,  19,
-   MotionWake::NONE,      -1, TimedWake::RTC_ALARM,  4,  false, false, true,  false, 32,
-   true,  true,  false, 19, false, false, false},
-  {m5::board_t::board_M5StickS3,     "StickS3",  true,  true,  false, true,  250, false, 46,
-   MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true,  true,  32,
-   true,  false, false, -1, true,  true,  false},
-  {m5::board_t::board_M5Stack,       "Core",     true,  false, false, false, 0,   false, -1,
-   MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, true,  false, false, 32,
-   true,  false, false, -1, false, true,  false},
-  {m5::board_t::board_M5StackCore2,  "Core2",    true,  true,  true,  true,  390, true,  -1,
-   MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, true,  true,  false, 32,
-   true,  false, true,  -1, true,  true,  false},
-  {m5::board_t::board_M5Tough,       "Tough",    true,  true,  true,  true,  390, false, -1,
-   MotionWake::NONE,      -1, TimedWake::NONE,       -1, true,  false, true,  false, 32,
-   false, false, false, -1, true,  true,  false},
-  // Every other board, the Waveshare ESP32-S3-ETH and the CoreS3 included.
-  {m5::board_t::board_unknown,       "M5",       false, false, false, false, 0,   false, -1,
-   MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  false, 32,
-   false, false, false, -1, false, true,  false},
-  {m5::board_t::board_M5StackCoreS3, "M5",       false, false, false, false, 0,   false, -1,
-   MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  false, 32,
-   false, false, false, -1, false, true,  false},
+    {m5::board_t::board_M5StickC, "StickC", true, true, true, true, 95, true, 9, MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false, true, false, 10, true, true, true},
+    {m5::board_t::board_M5StickCPlus, "StickC+", true, true, true, true, 120, true, 9, MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48, true, true, false, 10, true, true, true},
+    {m5::board_t::board_M5StickCPlus2, "StickC+2", true, true, false, false, 200, true, 19, MotionWake::NONE, -1, TimedWake::RTC_ALARM, 4, false, false, true, true, false, 32, true, true, false, 19, false, false, false},
+    {m5::board_t::board_M5StickS3, "StickS3", true, true, false, true, 250, false, 46, MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true, 32, true, false, false, -1, true, true, false},
+    {m5::board_t::board_M5Stack, "Core", true, false, false, false, 0, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true, false, false, -1, false, true, false},
+    {m5::board_t::board_M5StackCore2, "Core2", true, true, true, true, 390, true, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true, false, true, -1, true, true, false},
+    {m5::board_t::board_M5Tough, "Tough", true, true, true, true, 390, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, true, false, true, true, false, 32, false, false, false, -1, true, true, false},
+  // The Waveshare ESP32-S3-ETH row has no removed switch to copy from. It pins
+  // the board facts recorded in plans/349-waveshare-board-row.md: no PMIC, no
+  // battery, no RTC part, no IR emitter, no IMU, no speaker, no vibration motor,
+  // no switchable Port A rail and no software power-off path. The microSD slot
+  // exists but no card select is mapped, so the row reports no SD slot while
+  // FURBLE_HAS_SD stays 1 for that image.
+  {m5::board_t::board_M5StampS3, "Waveshare", false, false, false, false, 0, false, -1,
+   MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, false, false, false, 32,
+   false, false, false, -1, false, false, false},
+  // Every other board the CoreS3 included.
+    {m5::board_t::board_unknown, "M5", false, false, false, false, 0, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false},
+    {m5::board_t::board_M5StackCoreS3, "M5", false, false, false, false, 0, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false, false, false, -1, false, true, false},
 };
 // clang-format on
 
@@ -166,6 +158,7 @@ int main() {
     check(p.pmicClickStreak == e.clickStreak, n + " click streak");
     check(p.sdSlot == e.sd, n + " sd slot");
     check(p.canPowerOff == e.canPowerOff, n + " power off");
+    check(p.powerOffPath == e.powerOffPath, n + " power off path");
     check(p.modemSleep == e.modemSleep, n + " modem sleep");
     check(p.minBrightness == e.minBrightness, n + " brightness floor");
     check(p.minBrightness % 16 == 0, n + " brightness floor is a slider step multiple");

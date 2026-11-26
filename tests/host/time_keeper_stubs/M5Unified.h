@@ -14,6 +14,7 @@ enum class board_t {
   board_M5StickCPlus2,
   board_M5StickS3,
   board_M5Tough,
+  board_M5StampS3,
 };
 
 struct rtc_date_t {

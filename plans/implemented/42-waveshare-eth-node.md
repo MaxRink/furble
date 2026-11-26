@@ -130,7 +130,8 @@ on. Do not add a second path.
 - If `sim/build.sh` keeps an explicit source list, add `FurbleEthernet.cpp`
   there too.
 - Console: add an `eth status` command that prints link, IP, speed and duplex,
-  mirroring `wifi status`.
+  mirroring `wifi status`. Not implemented as of plan 349; no console command
+  and no doc claims one.
 
 ## PlatformIO env
 

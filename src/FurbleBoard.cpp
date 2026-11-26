@@ -58,38 +58,51 @@ namespace {
 
 // Columns: name, battery {level, voltage, current, charging}, capacity mAh,
 // RTC backed, IR pin, motion wake, motion pin, timed wake, hold pin, PMIC
-// click streak, SD slot, can power off, modem sleep, brightness floor,
-// feedback sound, light, vibration, LED pin, GPS rail, LED active low, IR mark
-// low.
+// click streak, SD slot, power policies, power-off path, modem sleep,
+// brightness floor, feedback sound, light, vibration, LED pin, GPS rail, LED
+// active low, IR mark low.
 //
 // clang-format off
-constexpr Profile STICKC       = {"StickC",   {true,  true,  true,  true},  95,  true,  9,
-    MotionWake::DIRECT,    35, TimedWake::NONE,       -1, true,  false, true,  false, 48,
-    false, true,  false, 10, true,  true,  true};
-constexpr Profile STICKC_PLUS  = {"StickC+",  {true,  true,  true,  true},  120, true,  9,
-    MotionWake::DIRECT,    35, TimedWake::RTC_ALARM,  -1, true,  false, true,  false, 48,
-    true,  true,  false, 10, true,  true,  true};
-constexpr Profile STICKC_PLUS2 = {"StickC+2", {true,  true,  false, false}, 200, true,  19,
-    MotionWake::NONE,      -1, TimedWake::RTC_ALARM,  4,  false, false, true,  false, 32,
-    true,  true,  false, 19, false, false, false};
-constexpr Profile STICKS3      = {"StickS3",  {true,  true,  false, true},  250, false, 46,
-    MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true,  true,  32,
-    true,  false, false, -1, true,  true,  false};
-constexpr Profile CORE         = {"Core",     {true,  false, false, false}, 0,   false, -1,
-    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, true,  false, false, 32,
-    true,  false, false, -1, false, true,  false};
-constexpr Profile CORE2        = {"Core2",    {true,  true,  true,  true},  390, true,  -1,
-    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, true,  true,  false, 32,
-    true,  false, true,  -1, true,  true,  false};
-constexpr Profile TOUGH        = {"Tough",    {true,  true,  true,  true},  390, false, -1,
-    MotionWake::NONE,      -1, TimedWake::NONE,       -1, true,  false, true,  false, 32,
-    false, false, false, -1, true,  true,  false};
+constexpr Profile STICKC        = {"StickC", {true,  true,  true,  true}, 95, true, 9,
+    MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false,
+    true, false, 10, true, true, true};
+constexpr Profile STICKC_PLUS   = {"StickC+", {true,  true,  true,  true}, 120, true, 9,
+    MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48,
+    true, true, false, 10, true, true, true};
+constexpr Profile STICKC_PLUS2  = {"StickC+2", {true,  true,  false, false}, 200, true, 19,
+    MotionWake::NONE, -1, TimedWake::RTC_ALARM, 4, false, false, true, true, false, 32,
+    true, true, false, 19, false, false, false};
+constexpr Profile STICKS3       = {"StickS3", {true,  true,  false, true}, 250, false, 46,
+    MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true,
+    32, true, false, false, -1, true, true, false};
+constexpr Profile CORE          = {"Core", {true,  false, false, false}, 0, false, -1,
+    MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true,
+    false, false, -1, false, true, false};
+constexpr Profile CORE2         = {"Core2", {true,  true,  true,  true}, 390, true, -1,
+    MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true,
+    false, true, -1, true, true, false};
+constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, false, -1,
+    MotionWake::NONE, -1, TimedWake::NONE, -1, true, false, true, true, false, 32, false,
+    false, false, -1, true, true, false};
+// The Waveshare ESP32-S3-ETH is a mains or PoE node. It has no PMIC, no
+// battery and no switchable rail, so there is nothing for a software power off
+// to switch: with no PMIC, M5Unified's Power_Class::powerOff() arms no wake
+// source and ends at esp_deep_sleep_start(), leaving the node asleep until a
+// power cycle while the call reports success. The board also has no RTC part,
+// no IR emitter, no IMU, no speaker, no vibration motor and no Port A rail. Its
+// microSD slot (GPIO 4 to 7) exists, but no card-select pin is mapped for it, so
+// the profile reports no SD slot even though the image is built with
+// FURBLE_HAS_SD. M5Unified detects the board as board_M5StampS3; see
+// plans/349-waveshare-board-row.md.
+constexpr Profile WAVESHARE    = {"Waveshare", {false, false, false, false}, 0, false, -1,
+    MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, false, false, false, 32,
+    false, false, false, -1, false, false, false};
 // An unrecognized board has no trustworthy battery backend. The Waveshare
 // ESP32-S3-ETH in particular is a mains/PoE node with no battery or PMIC, so
 // M5Unified's fallback values must not become a fake battery percentage.
-constexpr Profile UNKNOWN      = {"M5",       {false, false, false, false}, 0,   false, -1,
-    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  false, 32,
-    false, false, false, -1, false, true,  false};
+constexpr Profile UNKNOWN       = {"M5", {false, false, false, false}, 0, false, -1,
+    MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false,
+    false, false, -1, false, true, false};
 // clang-format on
 }  // namespace
 
@@ -109,6 +122,8 @@ const Profile &profileFor(m5::board_t board) {
       return CORE2;
     case m5::board_t::board_M5Tough:
       return TOUGH;
+    case m5::board_t::board_M5StampS3:
+      return WAVESHARE;
     default:
       return UNKNOWN;
   }
