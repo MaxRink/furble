@@ -330,6 +330,44 @@ void testEpoch() {
   check(polled.value(Ubx::Key::MSGOUT_NAV_SAT_UART1) == 0, "the poll left the rate alone");
 }
 
+void testB1cConfigOrder() {
+  // A power save mode an earlier session stored in BBR is active when this
+  // session starts. The receiver rejects a signal configuration that includes
+  // BeiDou B1C while a power save mode is in use (RN 7.2 page 15), which the
+  // model enforces, so the order of the two writes decides whether the
+  // constellation change lands at all.
+  constexpr uint8_t LAYERS = Ubx::LAYER_RAM | Ubx::LAYER_BBR;
+  Ubx::Request request = {200, 3, 0x0f, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, true};
+  const Ubx::Plan plan = Ubx::plan(request);
+  const std::vector<Ubx::KeyValue> psm_on = {
+      {Ubx::Key::PM_OPERATEMODE, 2}
+  };
+
+  VirtualM10 signals_first;
+  signals_first.reset({}, 0);
+  check(acked(send(signals_first, Ubx::valSet(Ubx::LAYER_RAM, psm_on), 10), true),
+        "a stored power save mode is active");
+  check(acked(send(signals_first, Ubx::valSet(LAYERS, plan.signals), 20), false),
+        "the signal write is refused while power save is on");
+  check(acked(send(signals_first, Ubx::valSet(LAYERS, plan.power), 30), true),
+        "leaving power save afterwards is accepted but too late");
+
+  check(plan.power_before_signals, "the plan leaves power save before the signal write");
+  VirtualM10 plan_order;
+  plan_order.reset({}, 0);
+  check(acked(send(plan_order, Ubx::valSet(Ubx::LAYER_RAM, psm_on), 10), true),
+        "a stored power save mode is active");
+  check(acked(send(plan_order, Ubx::valSet(LAYERS, plan.power), 20), true),
+        "leaving power save is accepted first");
+  check(acked(send(plan_order, Ubx::valSet(LAYERS, plan.signals), 30), true),
+        "the signal write is then accepted");
+  check(plan_order.value(Ubx::Key::PM_OPERATEMODE) == 0
+            && plan_order.value(Ubx::Key::SIGNAL_BDS_B1C) == 1
+            && plan_order.value(Ubx::Key::SIGNAL_GLO_ENA) == 1
+            && plan_order.value(Ubx::Key::SIGNAL_BDS_B1) == 0,
+        "the receiver ends on full power with B1C and GLONASS, B1I off");
+}
+
 }  // namespace
 
 int main() {
@@ -338,6 +376,7 @@ int main() {
   testValidity();
   testStartsAndPower();
   testEpoch();
+  testB1cConfigOrder();
   if (g_Failures != 0) {
     std::cout << "gps ubx m10 model: FAIL (" << g_Failures << " of " << g_Checks << " checks)\n";
     return 1;

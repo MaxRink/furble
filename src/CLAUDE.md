@@ -148,7 +148,14 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   pin back: a second 100 us assertion would be the last one and under the
   datasheet minimum.
 - The duty cycle waits until the receiver is identified and the configuration
-  queue is idle. Standby sends `$PCAS12` only on the NMEA backend and
+  queue is idle. The NMEA sentence prune is `Casic::sentenceCommand()`, never a
+  hand-written `$PCAS03`: an empty field keeps the receiver's rate, so a short
+  sentence cannot turn a sentence off. On UBX the driver follows
+  `Ubx::PlanSummary`: when the plan enables BeiDou B1C it sends the
+  `OPERATEMODE=FULL` write before the signal batch, because a power save mode
+  an earlier session left behind makes the receiver reject B1C (ROM release
+  notes 7.2), and it reports the ANA value the plan actually wrote, which is
+  false with B1C (RN 5.1.5). Standby sends `$PCAS12` only on the NMEA backend and
   RXM-PMREQ (force flag) on UBX. A duty request seen in STANDBY or RAIL_OFF
   is stale (the UI pushed a fix the cycle already parked for) and is dropped;
   a resent PMREQ would wake a UART-wake receiver at once. Rail cycling on UBX without a backup supply

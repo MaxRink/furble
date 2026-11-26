@@ -1849,6 +1849,24 @@ std::string queryValueUnscoped(const std::string &key) {
       }
       return std::to_string(count);
     }
+    if (sub == "pcas03") {
+      // The last $PCAS03 sentence the driver wrote, CRLF stripped, or empty.
+      // The sentence prune reaches the wire only as the fallback for a CFG-MSG
+      // write the receiver did not acknowledge, and the fake CASIC receiver
+      // acknowledges every CFG-MSG frame by default, so a scenario reads this
+      // only with `gps_uart_mode nack`. `uart.last` cannot stand in for it: the
+      // prune's own binary frames follow the fallback on the wire.
+      for (auto write = writes.rbegin(); write != writes.rend(); ++write) {
+        if (write->rfind("$PCAS03,", 0) == 0) {
+          std::string sentence = *write;
+          while (!sentence.empty() && (sentence.back() == '\r' || sentence.back() == '\n')) {
+            sentence.pop_back();
+          }
+          return sentence;
+        }
+      }
+      return "";
+    }
     // Binary traffic the write count cannot see: replayed assistance frames and
     // MON-HW polls, plus the rate the driver has the port set to.
     if (sub == "baud") {

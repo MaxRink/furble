@@ -161,6 +161,11 @@ protocol core.
   a furble feature rather than an ESP one, so a Nordic port carries it, and the
   file already satisfies the portable contract unchanged. It is used by
   `src/FurbleGPS`, by no camera, and is covered by the `gps-casic` host test.
+  `Casic::sentenceCommand()` owns the `$PCAS03` bodies. A field that is left
+  empty keeps the receiver's rate, so every body writes all fourteen rate
+  fields the V6.3.2 section 2.7.4 and V4.2.0.3 section 1.6.4 formats share;
+  never go back to a short sentence, and never write one by hand in the
+  driver.
 - `GpsUbx` (`Furble::Ubx`) is the u-blox M10 codec: framing, Fletcher
   checksum, `scan()`, the resynchronising `Stream`, every message furble uses,
   `Detect`, the tick-wrap-safe `Settle` gate and `plan()`, which turns the GPS
@@ -170,7 +175,15 @@ protocol core.
   pieces and is the only demultiplexer; the driver dispatches its pieces.
   Both are covered by `gps-ubx` and fuzzed by `gps_ubx_fuzz`. `plan()` builds
   the signal keys from one table, and the driver keeps only its
-  `PlanSummary`; the 4 MB Core debug image has little flash to spare.
+  `PlanSummary`; the 4 MB Core debug image has little flash to spare. `plan()`
+  also decides what the receiver will refuse: BeiDou B1C is what a BeiDou plus
+  GLONASS request gets, because B1I cannot run beside GLONASS L1OF (M10Q data
+  sheet table 4 note 13, ROM release notes 4.3.6), and B1C refuses power save
+  (RN 7.2) and AssistNow Autonomous (RN 5.1.5). `PlanSummary::ana` reports the
+  value actually written, and `power_before_signals` says the
+  `OPERATEMODE=FULL` write has to precede the signal write, because a power
+  save mode an earlier session left behind would reject the B1C batch (RN 7.2,
+  IFD 4.6).
 - The `GpsUbx` receiver encoders (`encodeNavPvt`, `encodeNavSat`,
   `encodeMonVer`) refuse a payload above `MAX_PAYLOAD`, so every frame the
   simulator receiver emits passes `scan()`. `frame()` keeps the 65,535-byte

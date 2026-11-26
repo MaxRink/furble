@@ -648,7 +648,13 @@ shortens that host retry cadence for a bounded scenario.
   followed STANDBY or RAIL_OFF, which isolates the wake from that baseline.
   Neither is a coherent delivered-geotag claim. Total UART write count,
   exact `$PCAS12,5*1B` command count, and the last command are available as
-  `uart.count`, `uart.standby_5s_commands`, and `uart.last`. `camera.count` reports
+  `uart.count`, `uart.standby_5s_commands`, and `uart.last`. `uart.pcas03`
+  reports the last `$PCAS03` sentence the driver sent, without its line ending,
+  and reads empty until a scenario seeds `gps_uart_mode nack`: the sentence
+  prune reaches the port only as the fallback for an unacknowledged `CFG-MSG`
+  frame, and the fake receiver acknowledges every one of those by default.
+  `uart.last` cannot stand in for it because the prune's own binary frames
+  follow the fallback. `camera.count` reports
   the current simulated camera-list row count, allowing scan-result
   de-duplication scenarios to assert that a repeated fake advertisement does not
   add a second row.

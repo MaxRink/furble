@@ -158,11 +158,14 @@ void GPS::configureUbx(void) {
   if (plan.psm_refused) {
     ESP_LOGW(LOG_TAG, "GPS power save is refused with BeiDou B1C, left at full power");
   }
+  if (request.ana && !plan.ana) {
+    ESP_LOGW(LOG_TAG, "GPS AssistNow Autonomous is not supported with BeiDou B1C, left off");
+  }
 
   constexpr uint8_t LAYERS = Ubx::LAYER_RAM | Ubx::LAYER_BBR;
   constexpr uint16_t SIGNAL_SETTLE_MS = 500;
-  // Every value written, in order, for the closing read-back. A plain loop
-  // instead of a range insert keeps one vector growth path in the image.
+  // Every value written, for the closing read-back. A plain loop instead of a
+  // range insert keeps one vector growth path in the image.
   m_UbxExpected.clear();
   for (const auto *items : {&plan.base, &plan.signals, &plan.power}) {
     for (const auto &item : *items) {
@@ -170,10 +173,18 @@ void GPS::configureUbx(void) {
     }
   }
   enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.base));
+  // Entering power save keeps OPERATEMODE last, but leaving it for BeiDou B1C
+  // has to come first: the receiver rejects a signal configuration that
+  // includes B1C while a power save mode is active (RN 7.2 page 15).
+  if (plan.power_before_signals) {
+    enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.power));
+  }
   if (!plan.signals.empty()) {
     enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.signals), SIGNAL_SETTLE_MS);
   }
-  enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.power));
+  if (!plan.power_before_signals) {
+    enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.power));
+  }
   if (!plan.unset.empty()) {
     enqueueUbxConfig(Ubx::ID_CFG_VALDEL, Ubx::valDel(Ubx::LAYER_BBR, plan.unset));
   }
@@ -197,7 +208,7 @@ void GPS::configureUbx(void) {
     const std::lock_guard<std::mutex> lock(m_UbxMutex);
     m_UbxVerified = 0;
     m_UbxPlan = static_cast<const Ubx::PlanSummary &>(plan);
-    m_UbxAna = request.ana;
+    m_UbxAna = plan.ana;
     m_UbxConfigured = true;
   }
 
