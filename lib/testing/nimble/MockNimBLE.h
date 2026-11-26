@@ -199,6 +199,22 @@ class NimBLEMockPeer {
                                       uint16_t latency,
                                       uint16_t timeout) = 0;
   virtual int getRssi() const = 0;
+
+  /**
+   * Answer an ATT MTU exchange with the server-side MTU for this peer, in bytes.
+   *
+   * `requested` is the client's local preferred MTU. The client negotiates
+   * min(requested, the value returned here). The default 517 is the largest
+   * value the ATT field can carry, so a peer that does not model a small body
+   * keeps every existing test at the negotiated local preference of 256. A peer
+   * that answers 23 models a body whose link stays at the ATT minimum, where a
+   * write above 20 bytes cannot be carried at all. Peers override this to
+   * record the request and return their own preference.
+   */
+  virtual uint16_t negotiateAttMtu(uint16_t requested) {
+    (void)requested;
+    return 517;
+  }
 };
 
 class NimBLERemoteCharacteristic {
@@ -459,7 +475,30 @@ class NimBLEClient {
   /** Last initiator scan parameters, in 0.625 ms units. */
   uint16_t scanIntervalUnits() const { return m_ScanInterval; }
   uint16_t scanWindowUnits() const { return m_ScanWindow; }
-  bool connect(const NimBLEAddress &address);
+  bool connect(const NimBLEAddress &address,
+               bool delete_attributes = true,
+               bool async_connect = false,
+               bool exchange_mtu = true);
+  /**
+   * Request an ATT MTU exchange on the live link.
+   *
+   * Mirrors NimBLEClient::exchangeMTU() in the pinned esp-nimble-cpp 2.5.0: it
+   * reports whether the request could be sent, and the negotiated value shows
+   * up through getMTU() afterwards. The mock completes the exchange inline, so
+   * a caller that tolerates the asynchronous hardware path (poll getMTU()) also
+   * works here. A peer whose maxAttMtu() is the 23-byte ATT minimum answers the
+   * exchange and leaves the link at 23, which is what a body without ATT MTU
+   * support does.
+   */
+  bool exchangeMTU();
+  /** Negotiated ATT MTU of the live link, 23 before any exchange completes. */
+  uint16_t getMTU() const;
+  /**
+   * Largest value a single write can carry: the MTU less the three-byte ATT
+   * write header. Zero when no link is up, mirroring the host rejecting the
+   * write with BLE_HS_EMSGSIZE before it reaches the peer.
+   */
+  uint16_t maxWriteLength() const;
   void disconnect();
   bool isConnected() const;
   // The peer this client is connected to, so an unpair can terminate only the
@@ -608,6 +647,9 @@ class NimBLEClient {
   uint16_t m_Handle = BLE_HS_CONN_HANDLE_NONE;
   uint16_t m_ScanInterval = 16;
   uint16_t m_ScanWindow = 16;
+  // Negotiated ATT MTU of this link. ATT always starts at the mandatory 23 and
+  // only the exchange changes it.
+  uint16_t m_AttMtu = 23;
   bool m_Connected = false;
   bool m_StuckTerminate = false;
   size_t m_DisconnectCount = 0;
@@ -731,6 +773,18 @@ class NimBLEDevice {
   static void setMockIdAddress(const NimBLEAddress &address);
   static size_t deleteBondCount();
   static bool setMTU(uint16_t mtu);
+  /** Local preferred ATT MTU, the value a local exchange proposes. */
+  static uint16_t getMTU();
+  /**
+   * Number of writes the mock's ATT layer refused to frame because the value did
+   * not fit the negotiated MTU.
+   *
+   * The real host fails such a write with BLE_HS_EMSGSIZE before any PDU leaves
+   * the device, so the peer never sees it and its write journal cannot show the
+   * attempt. This counter is the only observable, and it is what proves a
+   * production path checks the MTU instead of writing into the failure.
+   */
+  static size_t mockAttWriteRejections();
   static void injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey);
   static void injectConfirmPasskey(NimBLEConnInfo &connInfo, bool accept);
   // Register the peer that a pending injectConfirmPasskey or injectPassKey

@@ -149,7 +149,25 @@ bool SonyVirtualCamera::vendorPairingGate() const {
 }
 
 bool SonyVirtualCamera::centralModelGate() const {
-  return m_Config.pairing_supported && m_Config.pairing_enabled && m_Config.legacy_bit1;
+  // Mirrors AdvertisementProtocol::matchesSonyAdvertisement(): bits 7 and 6 are
+  // required, bit 1 only selects the generation.
+  return m_Config.pairing_supported && m_Config.pairing_enabled;
+}
+
+bool SonyVirtualCamera::legacyGeneration() const {
+  return !m_Config.legacy_bit1;
+}
+
+SonyVirtualCamera::Config SonyVirtualCamera::legacyBody() {
+  Config config;
+  config.name = "ILCE-7RM4";
+  config.legacy_bit1 = false;
+  config.location_supported = true;
+  config.location_enabled = false;
+  config.location_lock_characteristics_present = false;
+  config.protocol_version = 0x6400;
+  config.timezone_supported = true;
+  return config;
 }
 
 NimBLEAdvertisedDevice SonyVirtualCamera::advertisement() const {
@@ -346,6 +364,31 @@ const std::vector<uint8_t> &SonyVirtualCamera::lastLocation() const {
 
 const std::vector<uint8_t> &SonyVirtualCamera::lastClock() const {
   return m_LastClock;
+}
+
+uint16_t SonyVirtualCamera::requestedAttMtu() const {
+  return m_RequestedAttMtu;
+}
+
+uint16_t SonyVirtualCamera::negotiatedAttMtu() const {
+  return (m_Client != nullptr) ? m_Client->getMTU() : 23;
+}
+
+size_t SonyVirtualCamera::mtuExchangeCount() const {
+  return m_MtuExchangeCount;
+}
+
+uint16_t SonyVirtualCamera::maxWriteLength() const {
+  return (m_Client != nullptr) ? m_Client->maxWriteLength() : 0;
+}
+
+uint16_t SonyVirtualCamera::negotiateAttMtu(uint16_t requested) {
+  // The server answers with its own preference; the client keeps the smaller of
+  // the two. A body whose preference is the 23-byte ATT minimum leaves the link
+  // unable to carry the 91 or 95 byte DD11 packet in one write.
+  m_RequestedAttMtu = requested;
+  m_MtuExchangeCount++;
+  return m_Config.max_att_mtu;
 }
 
 uint8_t SonyVirtualCamera::lastAttError() const {
@@ -569,6 +612,8 @@ bool SonyVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddre
   m_StaleBond = false;
   m_LastAttError = 0;
   m_SavedPairHandleAccepted = false;
+  m_RequestedAttMtu = 0;
+  m_MtuExchangeCount = 0;
   resetSession();
   return true;
 }
@@ -629,11 +674,12 @@ bool SonyVirtualCamera::hasCharacteristic(const NimBLEUUID &service,
            || matches(characteristic, CC13_CHARACTERISTIC);
   }
   if (matches(service, LOCATION_SERVICE) && m_Config.location_service_present) {
+    const bool lockCharacteristics = m_Config.location_lock_characteristics_present
+                                     && (matches(characteristic, DD30_CHARACTERISTIC)
+                                         || matches(characteristic, DD31_CHARACTERISTIC));
     return matches(characteristic, DD01_CHARACTERISTIC)
            || matches(characteristic, DD11_CHARACTERISTIC)
-           || matches(characteristic, DD21_CHARACTERISTIC)
-           || matches(characteristic, DD30_CHARACTERISTIC)
-           || matches(characteristic, DD31_CHARACTERISTIC)
+           || matches(characteristic, DD21_CHARACTERISTIC) || lockCharacteristics
            || matches(characteristic, DD32_CHARACTERISTIC)
            || matches(characteristic, DD33_CHARACTERISTIC);
   }
@@ -668,9 +714,10 @@ bool SonyVirtualCamera::canWrite(const NimBLEUUID &service,
            || matches(characteristic, CC13_CHARACTERISTIC);
   }
   if (matches(service, LOCATION_SERVICE) && m_Config.location_service_present) {
-    return matches(characteristic, DD11_CHARACTERISTIC)
-           || matches(characteristic, DD30_CHARACTERISTIC)
-           || matches(characteristic, DD31_CHARACTERISTIC)
+    const bool lockCharacteristics = m_Config.location_lock_characteristics_present
+                                     && (matches(characteristic, DD30_CHARACTERISTIC)
+                                         || matches(characteristic, DD31_CHARACTERISTIC));
+    return matches(characteristic, DD11_CHARACTERISTIC) || lockCharacteristics
            || matches(characteristic, DD32_CHARACTERISTIC)
            || matches(characteristic, DD33_CHARACTERISTIC);
   }
@@ -828,13 +875,21 @@ bool SonyVirtualCamera::handleLocationEnable(const std::vector<uint8_t> &value) 
 }
 
 bool SonyVirtualCamera::handleLocationUpdate(const std::vector<uint8_t> &value) {
-  if (!m_Config.location_supported || !m_LocationTransferEnabled) {
+  if (!m_Config.location_supported) {
     noteAttError(ATT_LOCATION_UNAVAILABLE);
     return false;
   }
-  if (m_LockOwner != 1) {
-    noteAttError(ATT_LOCATION_NOT_LOCKED);
-    return false;
+  if (m_Config.location_lock_characteristics_present) {
+    // The bodies that expose DD30/DD31 refuse a location packet until the lock
+    // is taken and the transfer is enabled.
+    if (!m_LocationTransferEnabled) {
+      noteAttError(ATT_LOCATION_UNAVAILABLE);
+      return false;
+    }
+    if (m_LockOwner != 1) {
+      noteAttError(ATT_LOCATION_NOT_LOCKED);
+      return false;
+    }
   }
 
   const bool is95 = value.size() == 95;

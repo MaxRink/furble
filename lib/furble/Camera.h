@@ -306,6 +306,16 @@ class Camera: public NimBLEClientCallbacks {
   virtual bool isConnected(void) const;
 
   /**
+   * ATT MTU floor every vendor path may rely on, in bytes.
+   *
+   * The largest vendor packet is Sony's 95-byte DD11 location update, which
+   * needs 98 bytes of MTU once the three-byte ATT write header is counted. 158
+   * is the smallest value a central can request that carries it with room to
+   * spare, and it is the floor the location path and its tests use.
+   */
+  static constexpr uint16_t ATT_MTU_FLOOR = 158;
+
+  /**
    * Get the latest connection RSSI in dBm.
    *
    * @return RSSI in dBm, or 0 when no sample is available.
@@ -600,6 +610,43 @@ class Camera: public NimBLEClientCallbacks {
                      gatt_notify_cb callback,
                      bool indicate = false,
                      bool response = true);
+
+  /**
+   * Ask the local ATT layer to offer at least `floor` bytes to the next peer.
+   *
+   * Call this before connecting. NimBLEDevice::getMTU() is the local preferred
+   * value the ATT exchange proposes and the pinned esp-nimble-cpp issues that
+   * exchange from the connect-established path (NimBLEClient::connect's
+   * exchangeMTU argument, true by default), so raising it here is what makes a
+   * body negotiate more than the 23-byte ATT default. Raise only: a vendor that
+   * asks for more, DJI Osmo's 517, keeps its request.
+   *
+   * @return true when the preferred value is at least `floor`
+   */
+  bool requestAttMtu(uint16_t floor = ATT_MTU_FLOOR);
+
+  /**
+   * Report the ATT MTU the live link actually settled on, waiting briefly.
+   *
+   * Call this after the link is up and before a payload that needs more than 20
+   * bytes. The exchange is asynchronous on hardware: esp-nimble-cpp queues the
+   * request and the response arrives on the host task, so the value is polled
+   * in short slices instead of being read once. A body that never answers keeps
+   * the 23-byte default and is reported as below the floor; the caller decides
+   * whether that is fatal. The bounded wait costs nothing when the link is
+   * already wide enough, which is the normal case.
+   *
+   * @return the negotiated MTU, 23 when there is no link
+   */
+  uint16_t verifyAttMtu(uint16_t floor = ATT_MTU_FLOOR);
+
+  /**
+   * Negotiated ATT MTU of the live link, 23 when no exchange has completed.
+   *
+   * Read it again at each use instead of caching it: a late exchange completion
+   * raises the value mid-session.
+   */
+  uint16_t attMtu(void) const;
 
   std::atomic<PairType> m_PairType;
   NimBLEAddress m_Address = NimBLEAddress {};

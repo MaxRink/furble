@@ -109,6 +109,11 @@ std::vector<NimBLEAddress> g_WhiteList;
 NimBLEAddress g_OwnAddress {};
 uint8_t g_OwnAddressType = 0;
 size_t g_StartSecurityCount = 0;
+// Local preferred ATT MTU. The six sdkconfig files pin
+// CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=256, and the ATT exchange proposes this
+// value to the peer, so the mock starts from the same number.
+uint16_t g_PreferredAttMtu = 256;
+size_t g_AttWriteRejections = 0;
 NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::pair<NimBLEAddress, NimBLEMockPeer *>> g_Peers;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
@@ -410,6 +415,15 @@ bool NimBLERemoteCharacteristic::writeValue(const uint8_t *data, size_t length, 
   if ((m_Client == nullptr) || (m_Client->getPeer() == nullptr)) {
     return false;
   }
+  if (length > m_Client->maxWriteLength()) {
+    // The host cannot frame this in one ATT write, so it fails with
+    // BLE_HS_EMSGSIZE before the peer sees anything. The mock holds the same
+    // limit so a write that is too large for the link fails where it would fail
+    // on a device, not inside the peer.
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    g_AttWriteRejections++;
+    return false;
+  }
   std::vector<uint8_t> value;
   if ((data != nullptr) && (length > 0)) {
     value.assign(data, data + length);
@@ -620,7 +634,12 @@ void NimBLEClient::setConnectionParams(uint16_t min_interval,
   }
 }
 
-bool NimBLEClient::connect(const NimBLEAddress &address) {
+bool NimBLEClient::connect(const NimBLEAddress &address,
+                           bool delete_attributes,
+                           bool async_connect,
+                           bool exchange_mtu) {
+  (void)delete_attributes;
+  (void)async_connect;
   if (g_ConnectDelayMs > 0) {
     // Model the seconds-long block a reconnect spends inside NimBLEClient::connect
     // on device. One-shot: consume it so only the targeted reconnect blocks. This
@@ -656,6 +675,10 @@ bool NimBLEClient::connect(const NimBLEAddress &address) {
   m_Address = address;
   g_LinkPeerAddress = address;
   m_Connected = true;
+  // ATT starts every new link at the mandatory minimum, exactly as the
+  // controller does, so a payload larger than 20 bytes only fits after the
+  // exchange below raises it.
+  m_AttMtu = 23;
   {
     const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
     m_Handle = g_NextConnHandle++;
@@ -663,10 +686,41 @@ bool NimBLEClient::connect(const NimBLEAddress &address) {
       g_NextConnHandle = 1;
     }
   }
+  if (exchange_mtu) {
+    // The pinned esp-nimble-cpp issues the exchange from the connect-established
+    // path whenever exchangeMTU is true, which is its default (NimBLEClient.h).
+    exchangeMTU();
+  }
   if (m_Callbacks != nullptr) {
     m_Callbacks->onConnect(this);
   }
   return true;
+}
+
+bool NimBLEClient::exchangeMTU() {
+  if (!m_Connected || (m_Peer == nullptr)) {
+    return false;
+  }
+  const PeerAllocScope peerScope;
+  // The exchange settles on the smaller of the two preferences. A peer that
+  // answers with the 23-byte ATT minimum leaves the link unusable for a payload
+  // above 20 bytes, which is the honest model of a body without MTU support.
+  const uint16_t local = NimBLEDevice::getMTU();
+  const uint16_t remote = m_Peer->negotiateAttMtu(local);
+  const uint16_t negotiated = (local < remote) ? local : remote;
+  m_AttMtu = (negotiated < 23) ? 23 : negotiated;
+  return true;
+}
+
+uint16_t NimBLEClient::getMTU() const {
+  return m_AttMtu;
+}
+
+uint16_t NimBLEClient::maxWriteLength() const {
+  if (!m_Connected || (m_AttMtu <= 3)) {
+    return 0;
+  }
+  return static_cast<uint16_t>(m_AttMtu - 3);
 }
 
 void NimBLEClient::disconnect() {
@@ -958,6 +1012,12 @@ bool NimBLEClient::setValue(const NimBLEUUID &service,
                             const NimBLEAttValue &value,
                             bool response) {
   if ((m_Peer == nullptr) || !m_Connected) {
+    return false;
+  }
+  if (value.size() > maxWriteLength()) {
+    // Same host-side ATT size gate as NimBLERemoteCharacteristic::writeValue.
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    g_AttWriteRejections++;
     return false;
   }
   const PeerAllocScope peerScope;
@@ -1368,8 +1428,26 @@ size_t NimBLEDevice::deleteBondCount() {
   return g_DeleteBondCount;
 }
 
-bool NimBLEDevice::setMTU(uint16_t) {
+bool NimBLEDevice::setMTU(uint16_t mtu) {
+  // Mirrors ble_att_set_preferred_mtu(): the value is the size a local exchange
+  // proposes, it does not resize an existing link, and ATT rejects anything
+  // below the mandatory 23.
+  if (mtu < 23) {
+    return false;
+  }
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  g_PreferredAttMtu = mtu;
   return true;
+}
+
+uint16_t NimBLEDevice::getMTU() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_PreferredAttMtu;
+}
+
+size_t NimBLEDevice::mockAttWriteRejections() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_AttWriteRejections;
 }
 
 void NimBLEDevice::injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey) {
@@ -1593,6 +1671,8 @@ void NimBLEDevice::resetMock() {
   g_Initialised = false;
   g_Power = 0;
   g_SecurityIOCaps.clear();
+  g_PreferredAttMtu = 256;
+  g_AttWriteRejections = 0;
 }
 
 void NimBLEDevice::setScanAbsentAddress(const NimBLEAddress &address, bool absent) {
