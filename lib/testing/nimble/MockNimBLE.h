@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 // Angle include on purpose. The host suite resolves this to the no-op
@@ -789,6 +790,18 @@ class NimBLEDevice {
    * production path checks the MTU instead of writing into the failure.
    */
   static size_t mockAttWriteRejections();
+
+  /**
+   * Threads that asked for a connection-parameter update, oldest first.
+   *
+   * The real host blocks the calling task on the HCI transport for a central
+   * update, so which task issues the request is what decides whether a slow
+   * request stalls the UI. A host test cannot measure that block, but it can
+   * assert the caller: production code that must not run the request on the
+   * LVGL task shows up here as the test thread's id.
+   */
+  static std::vector<std::thread::id> mockConnParamThreads();
+  static void mockClearConnParamThreads();
   static void injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey);
   static void injectConfirmPasskey(NimBLEConnInfo &connInfo, bool accept);
   // Register the peer that a pending injectConfirmPasskey or injectPassKey

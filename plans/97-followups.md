@@ -1,11 +1,15 @@
 # 97: Consolidated follow-up backlog
 
-Status: docs-only. This is the single deduplicated backlog for the whole
+Status: active backlog. This is the single deduplicated backlog for the whole
 engineering program. It consolidates every outstanding follow-up from the
 radio-hardening audit, the plan gap-analysis deferrals, the review-flagged
-fixes still owed, and the in-tree code markers. Nothing here is a firmware
-change. Each item carries a one-line description, a source reference, a
-severity, and a readiness tag.
+fixes still owed, and the in-tree code markers. Each item carries a one-line
+description, a source reference, a severity, a readiness tag, and now a state
+line. The first tranche, Group 1 batches 1 to 3, was audited item by item
+against master at 253d9cbe: most of it had already landed under other PRs, two
+items were still open and are fixed here, and the rest carry the reason they
+stay open. The state lines are the backlog's audit trail, so a reader can tell
+a settled item from an untried one without re-reading the code.
 
 ## Motivation
 
@@ -42,22 +46,51 @@ remediation batches. The batch is named in each GATED-ON tag.
   std::atomic<bool>, drop the client double-check, serve companion status from
   a cached snapshot. Source: plan 96 B1, `lib/furble/Camera.cpp:760-767`,
   `src/FurbleCompanionService.cpp`. READY-NOW.
+  State: already fixed before this tranche, ce710521 (#109). `isConnected()`
+  returns the cached `std::atomic<bool> m_Connected` with no mutex and no
+  client dereference (`lib/furble/Camera.cpp:1533`,
+  `lib/furble/Camera.h:660`). The companion status read reaches it through
+  `Control::getConnectedTargetCount()`, which takes only Control's own mutex,
+  so the cached-snapshot half became unnecessary once the camera read stopped
+  taking Camera::m_Mutex. No work was invented for it here.
 - Non-droppable CMD_DISCONNECT plus bounded disconnect. High. Send disconnect
   with a timeout or queue-reset-then-send-to-front so a full queue cannot drop
   it and spin disconnect() forever on the UI task. Source: plan 96 B2,
   `src/FurbleControl.cpp:53-58, 360-364`. READY-NOW.
+  State: already fixed before this tranche. `Target::sendCommand()` drains the
+  queue and posts the disconnect at the front, so a full queue cannot drop it
+  (`src/FurbleControl.cpp:104`, 332f711a, #62), and `Control::disconnect()`
+  waits on the target tasks with the caller's own bound instead of spinning on
+  the link (`src/FurbleControl.cpp:1056`, 633fd8f4, #128).
+  `control_disconnect_test` covers the dead-camera and clean-disconnect paths.
 - Force-complete on disconnect timeout. High. On timeout mark targets stopped,
   clear m_Targets under the mutex, setState(IDLE), log loudly. Never leave
   STATE_DISCONNECTING without an exit edge. Source: plan 96 B3 (C1/C2 pairing
   in the task brief), `src/FurbleControl.cpp:290-291`. GATED-ON: fix inside
   feat/68-reconnect-restart (#62) before it merges, or immediate follow-up.
+  State: already fixed, in #62 itself (332f711a). The restart path
+  force-completes on its timeout and moves any target whose task has not
+  stopped into the drain set rather than freeing it, and both paths publish
+  STATE_IDLE on every exit, so STATE_DISCONNECTING always has an exit edge.
+  `control_teardown_wedge_test` and `control_disconnect_test` cover the
+  wedge it prevented.
 - Destroy targets outside the Control mutex. Medium. Swap the vector out under
   the lock, run the blocking BLE terminations outside it. Source: plan 96 B4,
   `src/FurbleControl.cpp:42-47, 371-372`. READY-NOW.
+  State: already fixed before this tranche, 633fd8f4 (#128). `disconnect()`
+  moves the targets into the drain set under the mutex without running a
+  destructor, and `reapZombieTargets()` (`src/FurbleControl.cpp:1216`) frees
+  only a target whose task has published m_Stopped, so the destructor skips
+  its radio call while the lock is held. `control_zombie_cancel_test` and
+  `control_reclaim_uaf_test` pin the drain and the reclaim.
 - Cancel and disconnect checks in waitForRegistration (#93). High. Poll
   m_Connected plus a cancel flag each slice, return false fast instead of
   spinning up to 25 s under Camera::m_Mutex. Source: plan 96 A3a. GATED-ON:
   fix inside feat/75-false-connected (#93) before merge.
+  State: already fixed, bca68c2a. `Fujifilm::waitForRegistration()` polls the
+  link, the cancel token and the active flag on every slice
+  (`lib/furble/Fujifilm.cpp:120`), and `fujifilm_registration_cancel_test`
+  covers the cancel that lands mid-wait.
 
 ### Batch 2: Fujifilm registration and bonds
 
@@ -66,22 +99,46 @@ remediation batches. The batch is named in each GATED-ON tag.
   null service is dereferenced (crash) and a null shutter still returns
   connected. Source: plan 96 A1, `lib/furble/FujifilmBasic.cpp:151-168`.
   READY-NOW. Also present upstream, see the upstream section.
+  State: already fixed before this tranche, a79bdae0 (#126). A null shutter
+  service and a null shutter characteristic both return false
+  (`lib/furble/FujifilmBasic.cpp:170`, `lib/furble/FujifilmBasic.cpp:179`),
+  with `fujifilm_missing_shutter_service_test` and
+  `fujifilm_missing_shutter_char_test` as the regressions.
 - m_Configured as std::atomic<bool>. Low. Replace the volatile bool that
   crosses tasks. Source: plan 96 A3d. GATED-ON: feat/75-false-connected (#93).
+  State: already fixed, bca68c2a. `lib/furble/Fujifilm.h:112` holds the
+  atomic, read by the registration wait and written by the notification
+  callback.
 - Stale-bond delete-and-retry. High. On a fresh Ricoh pairing security failure
   for a bonded address, delete only the matching local bond and return failure;
   the next bounded control retry performs numeric comparison. Saved reconnect
   failures preserve their bond. The retry stays outside the security callback
   so NimBLE client/callback lifetime ownership remains safe. Source: plan 96
   A2. READY-NOW.
+  State: already fixed, 01e97e3d. A failed secure handshake on a fresh
+  live-scan pairing deletes only the matching bond and returns failure
+  (`lib/furble/Ricoh.cpp:202`); saved reconnects keep theirs.
+  `fujifilm_stale_bond_test` covers the Fujifilm shape and
+  `ricoh_control_flap_test` the Ricoh one.
 - FujifilmSecure address update from rescan. Medium. Mirror Nikon: update
   m_Address from the advertisement before connecting, re-serialize on success.
   Source: plan 96 A7a, `lib/furble/FujifilmSecure.cpp:69-88, 123-124`.
   READY-NOW.
+  State: fixed in this tranche, 39400b25, PR #530. The scan match carries the advertised
+  address across the queue instead of a bare success flag, and the saved path
+  adopts it before connecting (`lib/furble/FujifilmSecure.cpp:212`), then
+  serialises the new address. `fujifilm_secure_address_test` is the red-first
+  regression. Deviation from the item text: no NVS write was added to the
+  connect task, because a saved reconnect re-derives the address on every
+  attempt and the record is rewritten by the existing STATE_ACTIVE save path
+  when the session came from the scan menu.
 - Decide the Basic registration-gate scope. Medium, suspected. Verify a Basic
   body notifies on hardware, or scope the mandatory gate to Secure and
   log-only on Basic until verified. Source: plan 96 A3b. GATED-ON:
   feat/75-false-connected (#93) plus hardware.
+  State: still gated. Nothing in the host harness can settle whether a Basic
+  body notifies, so the decision waits for a Basic-protocol device or the
+  scoped log-only fallback.
 
 ### Batch 3: Control concurrency hygiene (code-only)
 
@@ -90,25 +147,64 @@ remediation batches. The batch is named in each GATED-ON tag.
   from different tasks while mutations happen under the mutex. Source: plan 96
   B5, `src/FurbleControl.cpp:272-317, 360-364`. READY-NOW. Also present
   upstream, see the upstream section.
+  State: already fixed before this tranche, bbe4d22c (#487). updateGPS, the
+  ACTIVE fan-out and allConnected all take Control's mutex, and
+  `control_gps_race` plus its unsanitized twin walk the GPS path against
+  addActive and disconnect.
 - Atomics for m_State and m_ConnectCamera, clear on failure, failcount reset.
   Low now, high once #63 lands. m_ConnectCamera is written unlocked and left
   dangling on failed connects. Source: plan 96 B7, `src/FurbleControl.cpp:182,
   187, 397-399`. READY-NOW, coordinate with feat/66-pairing-code (#63).
+  State: already fixed before this tranche. m_State is atomic (cbb61ce9),
+  m_ConnectCamera is published under the mutex through a generation-stamped
+  setter and cleared on both connect outcomes (5e1ac1dd), and the failure
+  count resets at each user cycle, on success, and when the last cancelled
+  target retires.
 - Synthesized shutter release on leaving STATE_ACTIVE. Medium. Track a held
   flag in Control and release still-connected targets when one camera drops,
   so a multi-connect reconnect does not strand a held shutter. Source: plan 96
   B6 (C4 in the task brief). READY-NOW.
+  State: still open, not taken in this tranche. The UI releases a held bulb
+  exposure at session teardown and when the bulb page is left, but a
+  mid-session drop still has no Control-side release. Landing it needs the
+  multi-connect session plus a device answer for what a dropped body does with
+  an open bulb exposure, and guessing at that is what the hardware trap in
+  CLAUDE.md warns about.
 - setConnSaver fan-out moved off the LVGL task. High leverage. Move the up-to
   18 s HCI fan-out to the control task via a command; document the watchdog
   feeder decision. Source: plan 96 B9, `src/FurbleControl.cpp:640-645`.
   READY-NOW.
+  State: fixed in this tranche, d08621e2, PR #530. setConnSaver() publishes the value
+  and wakes the control task, which applies it before any state work
+  (`src/FurbleControl.cpp:1691`, `src/FurbleControl.cpp:1708`), so the LVGL
+  task never enters NimBLE for the toggle. `control_conn_saver_test` is the
+  red-first regression. Deviation from the item text: a pending flag applied
+  every tick replaces a new command, which keeps the request from being
+  dropped when the command queue is full.
+  Watchdog feeder decision: the PM1 feed stays on the UI task
+  (`src/FurblePlatform.cpp:341-348`). Moving the fan-out removes the only
+  multi-second UI-task block this item named, so a second feeder would hide
+  the next such block rather than prevent it. PM1 liveness as its own item
+  stays in batch 7, unchanged.
 - Single cancel-callback registration. Low. Register the cancel event callback
   once at UI build time instead of per connect. Source: plan 96 B10,
   `src/FurbleUI.cpp:1952-1953`. READY-NOW.
+  State: already fixed before this tranche, b90d5666 (#114). The handler is
+  registered once when the connect message box is built
+  (`src/FurbleUI.cpp:9558`), and the cancel-single-disconnect simulator
+  scenario pins one disconnect per click.
 - Small library correctness. Low. gattRead returns true on failed reads;
   FujifilmSecure scan-end race loses a success; Scan::onResult unlocked
   check-then-invoke. Source: plan 96 A8, `lib/furble/Camera.cpp:530-546`,
   `lib/furble/Scan.cpp:44-93`. READY-NOW.
+  State: two of the three are already fixed before this tranche. gattRead
+  treats an empty read as a failure (13653c24), and Scan dispatches through a
+  state mutex with an in-flight count that stop() waits for
+  (`lib/furble/Scan.cpp:117`). The scan-end success race is still open: the
+  loss window is the few instructions between a one-second receive timeout
+  returning and the scan reporting inactive, the harness has no seam there,
+  and adding the two-line drain without a failing test is the kind of
+  unproven fix this backlog exists to avoid.
 
 ### Batch 4: pairing UX and vendor gates
 
@@ -286,8 +382,17 @@ Do first, brick-class, all READY-NOW or gated only on the in-flight BLE PRs
 they fix: Group 1 batch 1 and 2 (B1, B2, B3, B4, A3a, A1, A2, A7a). These are
 the highest severity and unblock #62 and #93.
 
+That first tranche is now settled. Every batch 1 item, A1, A2, A3a and A3d
+landed under the PRs cited above, and A7a landed with this tranche's plan
+update. Reading the code again before fixing was the whole point: the plan
+described the state of master when it was written, not today's.
+
 Do next, code-only and READY-NOW: Group 1 batch 3 (B5, B7, B6, B9, B10, A8),
-plus the RMT XTAL note (P1) and the two UI @todo cleanups.
+plus the RMT XTAL note (P1) and the two UI @todo cleanups. Five of the six
+batch 3 items are settled. What remains is the Control-side shutter release
+(B6), which needs the multi-connect session and a device answer, and the
+FujifilmSecure scan-end drain (part of A8), which needs a queue seam before it
+can carry a failing test.
 
 Gated on the wifi restack (#53 to #66 to #90): all of Group 1 batches 5, 6, 7
 and the esp32-s3-headless CI addition. The restack (C1) is the single
