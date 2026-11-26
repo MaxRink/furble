@@ -1,9 +1,11 @@
 # 350 - Review feedback for the StickC family fixes
 
 Implementation state: reviewed at `75ec29ad` on `fix/stickc-family`, with the
-findings below fixed in the follow-up commit on the same branch. Hardware gates
-stay where plan [350](350-stickc-family-fixes.md) puts them, because this review
-had no board, scope or analyzer.
+findings below fixed in the follow-up commits on the same branch. The branch was
+then rebased onto `81139818` and re-verified, which added the citation repairs
+recorded under "Rebase onto master". Hardware gates stay where plan
+[350](350-stickc-family-fixes.md) puts them, because this review had no board,
+scope or analyzer.
 
 ## Scope
 
