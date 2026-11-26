@@ -1472,12 +1472,14 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
     return true;
   }
 
-  // The Port A rail, through the production call, so the model sees the same
-  // switch traffic the GPS driver produces. A board whose profile has no GPS
-  // rail reports no effect rather than failing the step.
+  // The shared EXT 5 V output, through the production call, so the model sees
+  // the same switch traffic the GPS driver produces. #493 gave that rail one
+  // owner and a reference count, so the step takes the GPS holder and releases
+  // it again, which is exactly what the receiver does. A board whose profile
+  // has no switchable rail reports no effect rather than failing the step.
   if (action.name == "gps-rail-on" || action.name == "gps-rail-off") {
     const bool on = action.name == "gps-rail-on";
-    *applied = Platform::getInstance().setRail(PowerBackend::Rail::GPS, on);
+    *applied = Platform::getInstance().setRail(PowerBackend::Rail::EXT_5V, on);
     return true;
   }
   if (hwAction(action.name)) {
@@ -2137,6 +2139,34 @@ std::string queryValueUnscoped(const std::string &key) {
     }
     if (field == "gps_rail") {
       return profile.gpsRail ? "yes" : "no";
+    }
+    if (field == "rtc_on_bus") {
+      return profile.rtcOnBus ? "yes" : "no";
+    }
+    if (field == "power_off_path") {
+      return profile.powerOffPath ? "yes" : "no";
+    }
+    if (field == "led_active_low") {
+      return profile.ledActiveLow ? "yes" : "no";
+    }
+    if (field == "ir_mark_low") {
+      return profile.irMarkLow ? "yes" : "no";
+    }
+    if (field == "gps_pin_source") {
+      switch (profile.gpsPinSource) {
+        case Board::GpsPinSource::BOARD_SUPPORT:
+          return "board-support";
+        case Board::GpsPinSource::PROFILE:
+          return "profile";
+        default:
+          return "none";
+      }
+    }
+    if (field == "gps_rx_pin") {
+      return std::to_string(profile.gpsRxPin);
+    }
+    if (field == "gps_tx_pin") {
+      return std::to_string(profile.gpsTxPin);
     }
     if (field == "timed_wake") {
       switch (profile.timedWake) {

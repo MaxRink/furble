@@ -1238,7 +1238,10 @@ The other namespaces are:
   `hw.ir`, `hw.sd`, `hw.audio` and `hw.touch` are the capabilities the firmware
   reads, so a scenario can hold each against the `Board::profile()` row:
   `hw.audio` is a speaker or amplifier the firmware drives for feedback sound,
-  and `hw.rtc_backed` is the profile's battery-backed column next to `hw.rtc`.
+  `hw.rtc_backed` is the profile's battery-backed column next to `hw.rtc`,
+  `hw.can_power_off` is the UI policy gate, and `hw.rtc_on_bus`,
+  `hw.led_active_low`, `hw.ir_mark_low`, `hw.gps_pin_source`, `hw.gps_rx_pin`
+  and `hw.gps_tx_pin` mirror the row columns of the same name.
 - `pmic.reg.<0xNN>` reads a modelled PMIC register byte and
   `pmic.reg.<0xNN>.writes` its write count. `pmic.reg.<0xNN>.meaning` names what
   that address is on the modelled part, because the AXP192 and AXP2101 reuse the
@@ -1268,8 +1271,12 @@ The other namespaces are:
 - `board.*` reports the firmware `Board::profile()` row for the selected board:
   `board.name`, `board.sd`, `board.audio`, `board.rtc_backed`,
   `board.can_power_off`, `board.battery_mah`, `board.battery_charging`,
-  `board.battery_voltage`, `board.ir`, `board.gps_rail` and
-  `board.timed_wake`. A board-row scenario
+  `board.battery_voltage`, `board.ir`, `board.gps_rail`, `board.timed_wake`,
+  `board.rtc_on_bus`, `board.power_off_path`, `board.led_active_low`,
+  `board.ir_mark_low`, `board.gps_pin_source`, `board.gps_rx_pin` and
+  `board.gps_tx_pin`. `board.can_power_off` is the UI policy gate and
+  `board.power_off_path` the platform path; the model twins are
+  `hw.can_power_off` and `power.can_off`. A board-row scenario
   asserts the same literal against `board.*` and against the hardware model, so a
   row that drifts from the model fails. `platform.battery.capacity` is the value
   `Platform::getBatteryCapacity()` returns, and `platform.battery.caps.level`,

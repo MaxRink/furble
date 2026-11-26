@@ -55,10 +55,26 @@ assert board.battery_voltage yes
 # Power-off path.
 assert power.off_path axp192-off
 assert power.can_off yes
+assert hw.can_power_off yes
 assert board.can_power_off yes
 
 # GPS rail.
 assert board.gps_rail yes
 assert power.rail.gps off
 assert power.rail.ext5v n/a
+# The remaining row columns, each pinned on both sides.
+# The model twin of the row's power-off path is power.can_off, above.
+assert board.power_off_path yes
+assert hw.rtc_on_bus no
+assert board.rtc_on_bus no
+assert hw.led_active_low yes
+assert board.led_active_low yes
+assert hw.ir_mark_low yes
+assert board.ir_mark_low yes
+assert hw.gps_pin_source board-support
+assert board.gps_pin_source board-support
+assert hw.gps_rx_pin -1
+assert board.gps_rx_pin -1
+assert hw.gps_tx_pin -1
+assert board.gps_tx_pin -1
 exit

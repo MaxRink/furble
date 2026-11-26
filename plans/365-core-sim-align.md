@@ -247,6 +247,12 @@ number moved twice for the same reason: master took 355 for
 [363-pmic-irq-speaker.md](363-pmic-irq-speaker.md) while this review was open, so
 the plan and this record are 365.
 
+The final rebase is onto `79df13a7`. That base only conflicted in three files:
+#493 replaced `PowerBackend::Rail::GPS` with `Rail::EXT_5V` behind a
+reference-counted `RailAccount`, so the `gps-rail-on/off` action moved to the
+new rail and `Platform::tick()` keeps both the IR fake's poll and the IP5306
+timer. Every merge before it is covered below.
+
 The rebase then landed on `535ad7d6`, which merged
 [354](354-core-family-fixes.md) (#497) while this review was running. That
 commit took over the firmware half of four rows this branch had changed:

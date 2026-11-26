@@ -97,6 +97,15 @@ struct board_caps_t {
   const char *timedWake;  // "none", "pmic-timer" or "rtc-alarm"
   bool vbus;
   bool poe;
+  // The columns the firmware row carries that the model now checks beside its
+  // own capabilities, so `board-row-*` can pin each pair to one literal.
+  bool rtcOnBus;
+  bool canPowerOff;
+  bool ledActiveLow;
+  bool irMarkLow;
+  const char *gpsPinSource;  // "board-support", "profile" or "none"
+  int8_t gpsRxPin;           // PROFILE source, -1 when none
+  int8_t gpsTxPin;           // PROFILE source, -1 when none
   const char *powerOff;
   // The platform can cut power: `Profile::powerOffPath`. It is a different
   // question from `Profile::canPowerOff`, the UI policy gate, and the Core is
@@ -127,6 +136,13 @@ const board_caps_t STICKC = {.mcu = "esp32",
                              .timedWake = "none",
                              .vbus = true,
                              .poe = false,
+                             .rtcOnBus = false,
+                             .canPowerOff = true,
+                             .ledActiveLow = true,
+                             .irMarkLow = true,
+                             .gpsPinSource = "board-support",
+                             .gpsRxPin = -1,
+                             .gpsTxPin = -1,
                              .powerOff = "axp192-off",
                              .powerOffPath = true,
                              .ext5vShared = false};
@@ -154,6 +170,13 @@ const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .timedWake = "rtc-alarm",
                                   .vbus = true,
                                   .poe = false,
+                                  .rtcOnBus = false,
+                                  .canPowerOff = true,
+                                  .ledActiveLow = true,
+                                  .irMarkLow = true,
+                                  .gpsPinSource = "board-support",
+                                  .gpsRxPin = -1,
+                                  .gpsTxPin = -1,
                                   .powerOff = "axp192-off",
                                   .powerOffPath = true,
                                   .ext5vShared = false};
@@ -182,6 +205,13 @@ const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
                                    .timedWake = "rtc-alarm",
                                    .vbus = true,
                                    .poe = false,
+                                   .rtcOnBus = true,
+                                   .canPowerOff = true,
+                                   .ledActiveLow = false,
+                                   .irMarkLow = false,
+                                   .gpsPinSource = "board-support",
+                                   .gpsRxPin = -1,
+                                   .gpsTxPin = -1,
                                    .powerOff = "hold-latch",
                                    .powerOffPath = true,
                                    .ext5vShared = false};
@@ -209,6 +239,13 @@ const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .timedWake = "pmic-timer",
                               .vbus = true,
                               .poe = false,
+                              .rtcOnBus = false,
+                              .canPowerOff = true,
+                              .ledActiveLow = true,
+                              .irMarkLow = false,
+                              .gpsPinSource = "board-support",
+                              .gpsRxPin = -1,
+                              .gpsTxPin = -1,
                               .powerOff = "pm1-off",
                               .powerOffPath = true,
                               .ext5vShared = false};
@@ -234,6 +271,13 @@ const board_caps_t CORE = {.mcu = "esp32",
                            .timedWake = "none",
                            .vbus = true,
                            .poe = false,
+                           .rtcOnBus = false,
+                           .canPowerOff = false,
+                           .ledActiveLow = true,
+                           .irMarkLow = false,
+                           .gpsPinSource = "none",
+                           .gpsRxPin = -1,
+                           .gpsTxPin = -1,
                            .powerOff = "ip5306-light-load",
                            .powerOffPath = true,
                            .ext5vShared = false};
@@ -262,6 +306,13 @@ const board_caps_t CORE_16MB = {.mcu = "esp32",
                                 .timedWake = "none",
                                 .vbus = true,
                                 .poe = false,
+                                .rtcOnBus = false,
+                                .canPowerOff = false,
+                                .ledActiveLow = true,
+                                .irMarkLow = false,
+                                .gpsPinSource = "none",
+                                .gpsRxPin = -1,
+                                .gpsTxPin = -1,
                                 .powerOff = "ip5306-light-load",
                                 .powerOffPath = true,
                                 .ext5vShared = false};
@@ -287,6 +338,13 @@ const board_caps_t CORE2 = {.mcu = "esp32",
                             .timedWake = "none",
                             .vbus = true,
                             .poe = false,
+                            .rtcOnBus = false,
+                            .canPowerOff = true,
+                            .ledActiveLow = true,
+                            .irMarkLow = false,
+                            .gpsPinSource = "board-support",
+                            .gpsRxPin = -1,
+                            .gpsTxPin = -1,
                             .powerOff = "axp192-off",
                             .powerOffPath = true,
                             .ext5vShared = true};
@@ -312,6 +370,13 @@ const board_caps_t TOUGH = {.mcu = "esp32",
                             .timedWake = "rtc-alarm",
                             .vbus = true,
                             .poe = false,
+                            .rtcOnBus = false,
+                            .canPowerOff = true,
+                            .ledActiveLow = true,
+                            .irMarkLow = false,
+                            .gpsPinSource = "board-support",
+                            .gpsRxPin = -1,
+                            .gpsTxPin = -1,
                             .powerOff = "axp192-off",
                             .powerOffPath = true,
                             .ext5vShared = true};
@@ -337,6 +402,13 @@ const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .timedWake = "none",
                                .vbus = true,
                                .poe = false,
+                               .rtcOnBus = false,
+                               .canPowerOff = true,
+                               .ledActiveLow = true,
+                               .irMarkLow = false,
+                               .gpsPinSource = "none",
+                               .gpsRxPin = -1,
+                               .gpsTxPin = -1,
                                .powerOff = "deep-sleep",
                                .powerOffPath = true,
                                .ext5vShared = false};
@@ -362,6 +434,13 @@ const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .timedWake = "none",
                                 .vbus = false,
                                 .poe = false,
+                                .rtcOnBus = false,
+                                .canPowerOff = false,
+                                .ledActiveLow = false,
+                                .irMarkLow = false,
+                                .gpsPinSource = "none",
+                                .gpsRxPin = -1,
+                                .gpsTxPin = -1,
                                 .powerOff = "none",
                                 .powerOffPath = false,
                                 .ext5vShared = false};
@@ -2421,6 +2500,28 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "rtc") {
       return hw.caps.rtc ? "yes" : "no";
+    }
+    if (sub == "can_power_off") {
+      // The UI policy gate (`Profile::canPowerOff`), not the platform path.
+      return hw.caps.canPowerOff ? "yes" : "no";
+    }
+    if (sub == "rtc_on_bus") {
+      return hw.caps.rtcOnBus ? "yes" : "no";
+    }
+    if (sub == "led_active_low") {
+      return hw.caps.ledActiveLow ? "yes" : "no";
+    }
+    if (sub == "ir_mark_low") {
+      return hw.caps.irMarkLow ? "yes" : "no";
+    }
+    if (sub == "gps_pin_source") {
+      return hw.caps.gpsPinSource == nullptr ? "none" : hw.caps.gpsPinSource;
+    }
+    if (sub == "gps_rx_pin") {
+      return std::to_string(hw.caps.gpsRxPin);
+    }
+    if (sub == "gps_tx_pin") {
+      return std::to_string(hw.caps.gpsTxPin);
     }
     if (sub == "rtc_backed") {
       // The profile column itself, not the runtime RTC mode `hw.rtc_battery`
