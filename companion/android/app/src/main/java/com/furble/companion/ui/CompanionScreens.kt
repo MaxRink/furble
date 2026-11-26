@@ -138,8 +138,11 @@ private fun PermissionRationaleScreen(
     }
 }
 
+// Internal rather than private so CompanionScreenGalleryTest can render the
+// shipped shell and each tab with a device state, instead of capturing them by
+// hand on an emulator.
 @Composable
-private fun CompanionShell(
+internal fun CompanionShell(
     state: CompanionUiState,
     viewModel: MainViewModel,
 ) {
@@ -243,15 +246,37 @@ private fun CamerasScreen(
     ) {
         item {
             Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Text("Cameras", style = MaterialTheme.typography.headlineSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { onConnect(0xFF) }, enabled = ready) {
+                // Refresh sits beside the title, as it does on the settings
+                // screen. Three labelled buttons in one unwrapped row do not fit
+                // a 360 dp phone: the third collapsed to one character per line
+                // in the committed screenshot.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("Cameras", style = MaterialTheme.typography.headlineSmall)
+                    Button(onClick = onRefresh, enabled = ready && !state.camerasLoading) {
+                        Text("Refresh")
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = { onConnect(0xFF) },
+                        enabled = ready,
+                        modifier = Modifier.weight(1.4f),
+                    ) {
                         Text("Connect selected")
                     }
-                    OutlinedButton(onClick = onDisconnect, enabled = ready && canDisconnect) {
+                    OutlinedButton(
+                        onClick = onDisconnect,
+                        enabled = ready && canDisconnect,
+                        modifier = Modifier.weight(1f),
+                    ) {
                         Text("Disconnect")
                     }
-                    Button(onClick = onRefresh, enabled = ready && !state.camerasLoading) { Text("Refresh") }
                 }
             }
             Text("Saved cameras are identified by stable IDs. Select cameras for the device's multi-connect set.")

@@ -348,17 +348,21 @@ void checkSettings(const std::string &root, const fs::path &golden) {
 void checkTriggers(const fs::path &golden) {
   const char *names[] = {"release", "shutter-press", "focus-press", "focus-release", "timed"};
   for (uint8_t operation = 0; operation <= 4; ++operation) {
-    const uint16_t holdMs = operation == 4 ? 300 : 0;
-    expectBytes(fixture(golden, "trigger/" + std::string(names[operation]) + ".bin"),
-                {1, operation, static_cast<uint8_t>(holdMs & 0xff),
-                 static_cast<uint8_t>((holdMs >> 8) & 0xff)},
-                "trigger operation " + std::to_string(operation));
+    const Bytes bytes = fixture(golden, "trigger/" + std::string(names[operation]) + ".bin");
+    if (operation == 4) {
+      expectBytes(bytes, {1, 4, 0x2c, 0x01}, "trigger operation 4");
+    } else {
+      expectBytes(bytes, {1, operation}, "trigger operation " + std::to_string(operation));
+      require(bytes.size() == 2, "a press, release or focus packet carries no hold field");
+    }
   }
   expectBytes(fixture(golden, "trigger/timed-max.bin"), {1, 4, 0xff, 0xff},
               "trigger/timed-max.bin");
-  require(fixture(golden, "trigger/invalid-version.bin") == Bytes({0, 0, 0, 0}),
+  require(fixture(golden, "trigger/invalid-version.bin") == Bytes({0, 0}),
           "invalid trigger version fixture changed");
-  require(fixture(golden, "trigger/short.bin").size() < 4, "short trigger fixture changed");
+  require(fixture(golden, "trigger/short.bin").size() == 1, "short trigger fixture changed");
+  require(fixture(golden, "trigger/overlong-release.bin") == Bytes({1, 0, 0, 0}),
+          "the overlong release fixture has to stay rejected");
   require(fixture(golden, "trigger/timed-short.bin").size() < 4,
           "short timed trigger fixture changed");
   require(fixture(golden, "trigger/unknown-op.bin")[1] == 5,

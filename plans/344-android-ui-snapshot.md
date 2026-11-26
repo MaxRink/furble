@@ -188,3 +188,39 @@ review findings and their resolutions are in
   that belongs to `.github/workflows/android.yml` in a follow-up.
 - Only the main screen is covered. Cameras, Settings and Trigger stay untested
   until a second baseline is added the same way.
+
+## Follow-up: gallery, CI visibility and the golden corpus (plan 474)
+
+The lane this plan built stayed a single screen. Plan 474 extends it with the
+five screens this plan left untested and closes three gaps the first CI runs
+exposed. Every change below is in the same `./gradlew test` step this plan
+added.
+
+- **Five more baselines.** `CompanionScreenGalleryTest` renders the permission
+  rationale through the public `FurbleCompanionApp`, and the connected status,
+  cameras, settings and trigger screens through the shipped `CompanionShell`,
+  which is now `internal` instead of `private` for that reason. It selects each
+  tab by clicking the navigation bar, so the capture is the screen the app
+  shows after that interaction. Both snapshot classes share one comparator in
+  `app/src/test/java/com/furble/companion/ui/UiSnapshot.kt`, so the tolerance,
+  the failure text and the regeneration command cannot drift apart.
+- **The comparison is now visible in CI.** Gradle hides test stdout unless the
+  task asks for it, so the merge commit's Android run (`45726215825`) contains
+  zero occurrences of the word "screenshot": the test passed silently and no
+  runner-side render had ever been observed. `testLogging { showStandardStreams
+  = true }` makes each comparison print `... with N differing pixels`. This
+  host prints 0 for all six baselines on macOS arm64.
+- **A camera screen layout defect.** The first render of the Cameras baseline
+  showed the `Refresh` button collapsed to one character per line: three
+  labelled buttons in one unwrapped row do not fit 360 dp. `Refresh` now sits
+  beside the title, as it already does on the settings screen, and the two
+  remaining actions share the row. The baseline is the evidence.
+- **A contract test against the shared corpus.** `FurbleGoldenCorpusTest`
+  checks the Android codec against all 384 fixtures in
+  `tests/protocol/golden/`, not the six inline copies this plan inherited. See
+  [474-companion-coverage.md](474-companion-coverage.md) for the corpus defect
+  it found in the trigger fixtures.
+
+The regeneration command changed to `--tests '*Companion*Test*'` so it covers
+both snapshot classes. The `docs/screenshots/` emulator set this plan predates
+was removed; the baselines are the gallery now.

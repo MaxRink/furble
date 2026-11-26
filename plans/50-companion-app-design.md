@@ -807,9 +807,17 @@ Implemented in PR #18 on the fork, under `companion/android`. Notes:
 - `FurbleProtocol.kt` carries the frozen `b57f4f5e` UUID base and the 42 and
   20 byte packet sizes from `include/FurbleCompanion.h`. The first app draft
   used the design placeholder UUIDs, fixed before merge.
-- Emulator verified on a Pixel 7 profile, API 35: every screen renders, no
-  crashes, pairing without BLE degrades to a dismissable error card.
-  Screenshots live in `companion/android/docs/screenshots/`.
+- Emulator verified on a Pixel 7 profile, API 35 on 2026-08-16: every screen
+  rendered, no crashes, pairing without BLE degraded to a dismissable error
+  card. That run predates the auth gate, the metadata settings editors and the
+  Cameras tab, so it is a record of that build and not of the current one.
+  The nine hand-captured PNGs it produced under
+  `companion/android/docs/screenshots/` were removed in plan 474: their
+  navigation bar rendered placeholder letters instead of icons and they showed
+  screens three UI changes old. The current screenshots are the committed test
+  baselines in `companion/android/app/src/test/screenshots/`, rendered by
+  `CompanionScreenshotTest` and `CompanionScreenGalleryTest`; see
+  [docs/companion-test-coverage.md](../docs/companion-test-coverage.md).
 - End to end BLE against the firmware service is still pending.
 
 ## Hardware verification, 2026-08-17

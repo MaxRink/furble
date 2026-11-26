@@ -195,6 +195,23 @@ policy state, device selection, CLI parsing, monitor stop policy, CSV rows and
 markers. `tests/test_plot_companion_power.py` separately covers CSV parsing and
 SVG generation for the plotter.
 
+### Where each test runs
+
+| Suite | Contents | `swift test` (`swift-package` job) | `xcodebuild test` (`apple-project` job) |
+| --- | --- | --- | --- |
+| `FurbleCompanionCoreTests`, 44 tests | Codecs, auth state machine, Keychain policy, connection state machine, device selection, error mapping | Yes | Yes, on both the iOS simulator and macOS targets |
+| `FurbleCompanionCLIKitTests`, 59 tests | CLI parsing, monitor policy and CSV, USB recovery, ROM banner, password resolution | Yes | No: the Xcode project does not build this target |
+
+The iOS simulator lane builds and unit-tests the app but never touches its UI;
+there is no UI test target. Nothing in either lane exercises CoreBluetooth,
+Keychain entitlements, BLE pairing, or real location delivery, so a green Apple
+workflow is not evidence that the app works against a device. This app has no
+committed screenshot gallery: the pixel snapshots live with the test that
+renders them and are described where they are added. See
+[the companion coverage matrix](../../docs/companion-test-coverage.md) for the
+full layer-by-layer matrix across both apps and for the list of flows no
+automated test reaches.
+
 On a Command Line Tools-only host the package manifest loads that toolchain's
 matching Swift Testing macro plugin explicitly, so `swift test` works without a
 full Xcode install. A full Xcode install keeps SwiftPM's normal plugin

@@ -87,6 +87,14 @@ with `FURBLE_APPLE_SNAPSHOT_UPDATE=1` and review the PNG; the flag refuses to
 run on CI, and a passing run prints the baseline path with the pixel deltas it
 measured. `CompanionStatusListRowTests` counts the rows the app's `List` builds
 for that section, because the snapshot renders the view outside a List.
+Companion test coverage per app, per layer and per CI job is
+`docs/companion-test-coverage.md`; it also lists the flows no automated test
+reaches, so do not claim one of those is tested. The Android companion's
+snapshot baselines under `companion/android/app/src/test/screenshots/` are its
+only screenshots, and `FurbleGoldenCorpusTest` fails when
+`tests/protocol/golden/` changes without the Android codec, so run
+`make -C tests/protocol generate` and commit the fixtures with a firmware packet
+change.
 Release tags beginning with `companion-test-` skip firmware publication and
 are reserved for companion testing; other release tags retain normal behavior.
 All simulator scenarios are owned in `sim/scenarios/manifest.json`; run

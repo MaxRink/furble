@@ -229,6 +229,7 @@ implemented.
 | [142-bt-journal-memory.md](implemented/142-bt-journal-memory.md) | Compact, capability-aware Bluetooth journal storage and loss accounting |
 | [344-android-ui-snapshot.md](344-android-ui-snapshot.md) | Robolectric UI snapshot test for the Android companion main screen: pinned rendering inputs, committed baseline, runs inside `./gradlew test` |
 | [344-review-feedback.md](344-review-feedback.md) | Review-feedback record for PR 483: the gate's real detection envelope, node assertions, locale restore, exported test activity, resolved Compose UI test versions, uncacheable regeneration and the platform jar download |
+| [474-companion-coverage.md](474-companion-coverage.md) | Companion coverage audit: the layer matrix both apps are documented against, five more Android baselines, visible snapshot results in CI, the golden-corpus contract test and the trigger fixture defect it found |
 
 ## Network, companion, and simulator follow-ups
 
