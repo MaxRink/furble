@@ -453,6 +453,9 @@ void testCompanionSecretRedaction(void) {
           "a cleared passphrase reads back as unset");
   }
 
+  // Release the shutter timer init() created, so this case leaves nothing for
+  // LeakSanitizer to find.
+  service.deinit();
   central.disconnect();
   NimBLEDevice::resetMock();
 }
