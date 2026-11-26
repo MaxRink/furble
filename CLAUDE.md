@@ -14,6 +14,10 @@ CLAUDE.md whose directory it touches.
   releases build the six release envs and their matching debug profiles.
 - The three 4 MB debug envs use size-optimized debug flags (`-Os -g2 -ggdb2`)
   to keep dual-OTA slots while retaining symbols, logs and assertions; stepping is less exact.
+  `m5stack-core-debug` is the one debug env that also compiles furble at
+  `ESP_LOG_INFO` rather than `ESP_LOG_VERBOSE`: its 4 MB slot leaves 431 bytes
+  of slack with the VERBOSE strings and 25,807 without them, and plan 106
+  group A already caps every component at INFO (plans/347).
 - `m5stack-core-usb-debug` is a developer-only USB-UART fallback with one
   factory app partition. It is not part of the six-board release or web
   installer matrices and has no wireless update or rollback path. Normal CI

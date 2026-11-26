@@ -235,6 +235,7 @@ implemented.
 | [344-android-ui-snapshot.md](344-android-ui-snapshot.md) | Robolectric UI snapshot test for the Android companion main screen: pinned rendering inputs, committed baseline, runs inside `./gradlew test` |
 | [344-review-feedback.md](344-review-feedback.md) | Review-feedback record for PR 483: the gate's real detection envelope, node assertions, locale restore, exported test activity, resolved Compose UI test versions, uncacheable regeneration and the platform jar download |
 | [474-companion-coverage.md](474-companion-coverage.md) | Companion coverage audit: the layer matrix both apps are documented against, five more Android baselines, visible snapshot results in CI, the golden-corpus contract test and the trigger fixture defect it found |
+| [347-core-debug-flash-headroom.md](347-core-debug-flash-headroom.md) | Core dual-OTA debug headroom: compile furble at `ESP_LOG_INFO` on `m5stack-core-debug`, 431 bytes of slot slack to 25,807, and why the other debug envs keep VERBOSE |
 
 ## Network, companion, and simulator follow-ups
 
