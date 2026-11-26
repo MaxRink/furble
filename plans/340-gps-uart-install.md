@@ -1,8 +1,10 @@
 # 340 - GPS UART install failure
 
 Status: implemented on branch `fix/gps-uart-install`, rebased onto fork master at
-`f1fa36a0` and pushed for review. Simulator evidence only; no hardware run is
-claimed.
+`81139818` on top of the #518 Core OTA log-level change and pushed for review.
+Simulator evidence only; no hardware run is claimed. The independent review
+record, including the publish-order and fake-error-code fixes, is
+[340-review-feedback.md](340-review-feedback.md).
 
 ## Motivation
 
@@ -15,10 +17,12 @@ boot with no way to reach the menu. The simulator's FreeRTOS shim returns
 `pdFALSE` for a null queue instead of asserting, so the simulator showed a busy
 loop on the disabled and running paths rather than a panic.
 
-The install can fail for reasons the firmware cannot influence: internal DMA
-capability memory is already held by WiFi, BLE, the display buffers or the
-WebUI, and `uart_driver_install()` allocates its ring buffer and event queue
-from it.
+The install can fail for reasons the firmware cannot influence: internal RAM is
+already held by WiFi, BLE, the display buffers or the WebUI, and
+`uart_driver_install()` allocates the driver object, its ring buffers and its
+event queue from `MALLOC_CAP_INTERNAL`, because every board sets
+`CONFIG_UART_ISR_IN_IRAM` (esp_driver_uart `UART_MALLOC_CAPS`). It reports
+`ESP_FAIL` when any of those allocations returns NULL.
 
 ## Design
 
@@ -71,7 +75,7 @@ ladder, the absent retry, the UBX/NMEA backend logic and the task-create abort.
 
 ## Simulator evidence
 
-- `sim/fake_uart.cpp`: `uart_driver_install()` returns `ESP_ERR_INVALID_STATE`
+- `sim/fake_uart.cpp`: `uart_driver_install()` returns `ESP_FAIL`
   and writes no queue handle when the new `furble_sim_uart_set_install_failure()`
   flag is set. The flag is off by default, so every existing scenario is
   unchanged.
@@ -103,22 +107,21 @@ ladder, the absent retry, the UBX/NMEA backend logic and the task-create abort.
 
 ## Gates
 
-The gate set below was rerun after the third rebase, onto `f1fa36a0`, ten master
-commits after the original base `a5cb2e14`. The only conflict was
-`plans/README.md`, which master filled with the 327, 332, 334, 337, 342 and 343
-rows in the meantime: every one of them is kept, and the 340 row sits after the
-328 row and before the 342 rows. `src/FurbleGPS.cpp` merged without a conflict
-on top of the CASIC and UBX audit and the locked target-set walk, and
-`docs/sim.md`,
-`docs/console-commands.md`, `sim/CLAUDE.md` and `sim/scenarios/manifest.json`
-keep every master row as well.
+The gate set below was rerun after the fourth rebase, onto `81139818`, the
+commit that carries #511's citation gate and #518's Core OTA log level. Two
+files conflicted: `plans/README.md`, where every master row is kept and the 340
+rows sit after the 332 rows and before the 342 rows, and `sim/CLAUDE.md`, whose
+GPS/UART row master rewrote for the shared EXT 5 V rail: the resolved row is
+master's text plus the seed sentence. `src/FurbleGPS.cpp` merged without a
+conflict, and `docs/sim.md`, `docs/console-commands.md` and
+`sim/scenarios/manifest.json` keep every master row as well.
 
 Host simulator builds (clang 21.0.0, `sim/build.sh`) for the two certified
 panels: StickS3 135x240 and M5Stack Core 320x240.
 
 `e2e/gps-uart-install-failure.txt`, final source, exit 0 on both panels. Every
 assertion passes, and each log carries one `Failed to install gps uart:
-ESP_ERR_INVALID_STATE (0x103)` line. The fixed StickS3 log has no `gps`
+ESP_FAIL (0xffffffff)` line. The fixed StickS3 log has no `gps`
 `no_light_sleep` acquire line at all, so `power.no_light_sleep 0` is the
 absence of the lock and not a released one.
 
@@ -139,14 +142,17 @@ Neighbouring GPS scenarios on both panel binaries, all exit 0:
 
 `sh sim/scripts/check-doc-tokens.sh`: `sim documentation tokens are present`.
 
-`python3 tools/pre_review.py --base origin/master`: `PASS: 10 gates`
-(diff hygiene, settings contracts, clang-format on the 5 changed C and C++
-files, C++ safety, CI workflow contract, scenario manifest, hardware coverage
-and coupling ratchet, plus the 140 scanner unit tests).
+`python3 tools/pre_review.py --base origin/master`: `PASS: 13 gates`
+(whitespace, diff hygiene, settings contracts, clang-format on the 5 changed C
+and C++ files, C++ safety, CI workflow contract, scenario manifest, hardware
+coverage, coupling ratchet, datasheet citations, M5GFX board pinning and
+documentation citations, plus the 213 scanner unit tests). The citation gate is
+what caught the nine citations this rebase made stale; see
+[340-review-feedback.md](340-review-feedback.md).
 
 ## Remaining gate
 
 No hardware run. A board check would force an install failure (for example by
-exhausting internal DMA memory before GPS start) and confirm the menu and the
+exhausting internal RAM before GPS start) and confirm the menu and the
 console `gps` row. The simulator covers the firmware decision path, not the
 ESP-IDF allocator behaviour that triggers the failure.

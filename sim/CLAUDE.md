@@ -1214,7 +1214,8 @@ reads `mqtt.retry_delay`.
   `gps_receiver`, `gps_sats`, `gps_fix_date`, `gps-receiver`, `gps-sats`,
   `gps-monhw` and `gps-eph-corrupt` in docs/sim.md.
 - `seed gps_uart_install fail` fails the install instead of the receiver. The
-  fake then returns `ESP_ERR_INVALID_STATE` and leaves the queue handle alone,
+  fake then returns `ESP_FAIL`, as the driver's allocation path does, and leaves
+  the queue handle alone,
   so the production no-driver boot is exercised: no GPS task, an absent
   receiver from the shared status word, and no crash record.
   `e2e/gps-uart-install-failure.txt` is the contract scenario.

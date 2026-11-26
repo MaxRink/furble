@@ -498,7 +498,8 @@ between is lost and `pmic.pwr_cfg_lost` records it.
 `gps_m10_unresolved` makes the virtual M10 report a
 3D fix whose time is valid but not fully resolved.
 `gps_uart_install` takes `ok` (the default) or `fail`. `fail` makes the fake
-`uart_driver_install()` return `ESP_ERR_INVALID_STATE` and hand back no queue
+`uart_driver_install()` return `ESP_FAIL`, the code the driver's internal-RAM
+allocation path reports, and hand back no queue
 before the first GPS task exists, which is the boot a failed install leaves
 behind: no receive queue, no task, and the receiver reported absent by the
 same status word the console and the GPS Data page read. The port is not

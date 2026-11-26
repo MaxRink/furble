@@ -199,8 +199,13 @@ GPS &GPS::getInstance() {
       // table and esp_err_to_name() then returns "UNKNOWN ERROR" (plan 106).
       ESP_LOGE(LOG_TAG, "Failed to install gps uart: %s (0x%x)", esp_err_to_name(uartErr),
                static_cast<unsigned>(uartErr));
-      instance.m_UartInstallFailed.store(true);
+      // Clear the handle before the flag publishes the failure. The driver
+      // writes the event queue into *uart_queue and then deletes it when the
+      // interrupt allocation fails, so a failed install can leave a dangling
+      // handle. A task that saw the flag first could otherwise reach reset()
+      // and xQueueReset() a queue that no longer exists.
       instance.m_Queue = NULL;
+      instance.m_UartInstallFailed.store(true);
       instance.m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::ABSENT));
       return instance;
     }
@@ -234,6 +239,9 @@ void GPS::setIcon(lv_obj_t *icon) {
 }
 
 void GPS::reset(void) {
+  // The parser buffer does not depend on the driver.
+  m_RxBuffer.clear();
+
   // A failed uart_driver_install() leaves no queue to reset, and xQueueReset()
   // on a null handle is an assert on hardware.
   if (m_Queue == NULL) {
@@ -242,7 +250,6 @@ void GPS::reset(void) {
 
   uart_flush(m_UART);
   xQueueReset(m_Queue);
-  m_RxBuffer.clear();
 }
 
 void GPS::task(void) {

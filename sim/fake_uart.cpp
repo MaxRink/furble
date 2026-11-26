@@ -512,9 +512,10 @@ void queueGpsEvent(QueueHandle_t queue) {
 
 esp_err_t uart_driver_install(uart_port_t, int, int, int, QueueHandle_t *uart_queue, int) {
   if (uartInstallFails) {
-    // A failed install allocates no queue and writes no handle, exactly as
-    // ESP-IDF leaves a caller that asked for a port the driver cannot take.
-    return ESP_ERR_INVALID_STATE;
+    // The allocation path this models writes no queue handle and reports
+    // ESP_FAIL, which is what esp_driver_uart returns when its internal-RAM
+    // allocations fail and what a release build logs.
+    return ESP_FAIL;
   }
   gpsQueue = xQueueCreate(32, sizeof(uart_event_t));
   if (uart_queue != nullptr) {

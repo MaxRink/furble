@@ -81,8 +81,8 @@ std::vector<std::string> furble_sim_uart_writes_snapshot(void);
 std::vector<std::string> furble_sim_uart_take_writes(void);
 void furble_sim_uart_clear_writes(void);
 void furble_sim_uart_set_mode(const char *mode);
-// Make uart_driver_install() fail with ESP_ERR_INVALID_STATE and hand back no
-// queue, which is the boot path where the firmware has no receiver at all.
+// Make uart_driver_install() fail with ESP_FAIL and hand back no queue, which
+// is the boot path where the firmware has no receiver at all.
 void furble_sim_uart_set_install_failure(bool fail);
 
 /** Select the stationary canned NMEA track instead of the moving one. */

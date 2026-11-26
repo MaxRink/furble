@@ -89,7 +89,7 @@ furble drives the unit's 5 V rail directly. `src/FurbleGPS.cpp:118` calls
 `M5.Power.setExtOutput(true, m5::ext_PA)` on enable and
 `src/FurbleGPS.cpp:128` calls `setExtOutput(false, m5::ext_PA)` on disable.
 There is no UART transmit path at all. `uart_set_pin` is called at
-`src/FurbleGPS.cpp:192` with the TX pin wired, but nothing in the tree calls
+`src/FurbleGPS.cpp:214` with the TX pin wired, but nothing in the tree calls
 `uart_write_bytes`. Experiment B needs a temporary TX path.
 
 ### Procedure, part 1: backup rail
@@ -121,7 +121,7 @@ Expected outcomes:
    GPS Data page. The NMEA checksum is the XOR of all characters between `$` and
    `*`. Send exactly `$PCAS12,10*<CS>\r\n`.
 2. Log every received NMEA line for 60 s around the send. `GPS::serviceSerial` at
-   `src/FurbleGPS.cpp:3019-3023` is the hook. Add an `ESP_LOGI` of the raw buffer.
+   `src/FurbleGPS.cpp:3061-3065` is the hook. Add an `ESP_LOGI` of the raw buffer.
 3. Observe the receive stream.
 
 Expected outcomes:
