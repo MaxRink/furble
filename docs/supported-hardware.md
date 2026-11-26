@@ -113,6 +113,11 @@ documents are listed in `plans/321-ublox-m10-driver.md`.
 
 ## Related references
 
+- [Component reference](components/README.md). One page per chip with the bus, address,
+  registers and timing the firmware relies on, and [the board map](components/board-map.md)
+  for every pin and address.
+- [Protocol reference](protocols/README.md). UBX, CASIC and `$PCAS`, NMEA, the camera
+  remote services, IR, MQTT and the companion GATT service.
 - [Settings and controls reference](settings-and-controls.md)
 - [Console commands reference](console-commands.md)
 - [UI walkthrough](ui-walkthrough.md)

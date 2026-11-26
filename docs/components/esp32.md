@@ -7,6 +7,8 @@ ESP32-U4WDH) is a board fact and is UNVERIFIED on this page.
 **Role in furble.** The SoC on the StickC family and the Core. This page holds the
 peripheral facts the hardware traps depend on: UART, RMT, LEDC, SPI and I2C.
 
+**Status.** shipped. Every ESP32 image runs on this SoC.
+
 **Documents.** [ESP32-DS], [ESP32-TRM]
 
 ## Documents used

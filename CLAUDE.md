@@ -325,6 +325,9 @@ Doc surface to change-type mapping:
 | Supported camera or vendor | `README.md` Supported Cameras and the feature table, and `docs/supported-hardware.md` |
 | Supported GPS unit | `README.md` GPS section, `docs/supported-hardware.md`, and `docs/wiki/` |
 | Any UI change (a page, a menu entry, a label) | regenerate `docs/ui-walkthrough.md` screenshots with `sim/scripts/docs-capture.sh`, then apply the rows above that also match |
+| A chip, its register use, a bus address, a pin or a timing constant | the matching page under `docs/components/`, and `docs/components/board-map.md` when a pin, address or bus changes |
+| A protocol frame, message, key, topic or characteristic | the matching page under `docs/protocols/`, then `docs/protocols/README.md` when a protocol is added or removed |
+| A new `docs/` page, or a page moved or renamed | `docs/README.md` and the `README.md` of its directory, so the index stays complete |
 | Contributor workflow, build, or CI | `CONTRIBUTING.md`, `CLAUDE.md`, and `AGENTS.md` |
 
 The wiki is in-repo under `docs/wiki/`. The GitHub wiki repo

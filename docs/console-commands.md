@@ -348,6 +348,35 @@ resets keep it; an RTC watchdog system reset clears the clock and falls back to
 NVS. A power-on, brownout or unknown reset still restores the NVS value. Boards
 with a calendar RTC chip still seed from it on every boot.
 
+## ntp
+
+- `ntp status` reports whether the client is enabled, the configured server, the
+  last sync result and its age.
+- `ntp set server <host>` stores the server name.
+- `ntp enable | disable` turns the client on or off.
+- `ntp sync` requests an immediate sync.
+
+`ntp sync` fails with `NTP needs WiFi, an IP address and an enabled setting`
+when the WiFi station is not up, so a board on Ethernet only cannot sync this way
+(`src/FurbleConsole.cpp:2405-2413`).
+
+## provision
+
+`provision <blob>` applies a provisioning batch built by the companion tooling.
+The blob is a tag, type, length, value record sequence, in hex or base64. An
+explicit `hex:` or `base64:` prefix selects the encoding; without a prefix an
+even all-hex string is read as hex and anything else as padded or unpadded
+standard base64.
+
+On success the command prints `provision: decoded <n> bytes as hex` or
+`base64`, then one line per applied field. On failure it prints
+`error: provision: <code> at offset <n>` for a text or record decode error, or
+`error: provision: <reason>` with the failing wire id for an apply error, and
+returns 1 (`src/FurbleConsole.cpp:1169-1215`).
+
+The record layout, the tag numbers, the size limits and every error code are in
+[the companion GATT page](protocols/companion-gatt.md#provisioning-tlv).
+
 ## imu
 
 - `imu status` performs a read-only probe: it reports the persisted opt-in,

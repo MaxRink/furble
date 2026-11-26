@@ -23,6 +23,12 @@ mixed with camera parity work.
 | `datasheet-register.md` | Every cited document plus the per-board component and document coverage in section 13 |
 | `measurement-plan.md` | Bench plan and the blocked-versus-actionable register in section 1.1 |
 
+Chip-level register, address and timing detail is **not** here. It lives in
+[the component reference](../components/README.md), one page per part, and
+the bus and pin map is [the board map](../components/board-map.md). This
+directory holds the power model, the measurement plan and the document
+register.
+
 ## Rules
 
 1. Every row is labeled measured, modeled, inferred, or unknown.
