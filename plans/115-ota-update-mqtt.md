@@ -229,6 +229,13 @@ Deviations from the plan text:
   independent review caught it; see
   [115-review-feedback.md](115-review-feedback.md). `OTA::externalPowerPresent()`
   is the rule, and a board without VBUS sense keeps the floor.
+- `waveshare-s3-eth-debug` raises its static DRAM budget from 55 KiB to 56 KiB.
+  The slice links the handler, the admission policy and the status store into
+  the firmware, which costs 288 bytes of static DRAM on that image, and the env
+  kept only 224 bytes of headroom on master, so `check_size_budget.py` failed
+  while every host suite passed. The new value is what `--write` records:
+  measured plus the 512-byte headroom, rounded up to a KiB, which leaves 960
+  bytes. No other env moved. See [115-review-feedback.md](115-review-feedback.md).
 - The engine advances once per MQTT owner iteration whether or not the broker is
   connected. Gating the step on the connection froze a running transfer in
   `busy()` during an outage, with no command able to abort it. Only the publish
