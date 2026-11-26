@@ -36,8 +36,8 @@ recorded with the evidence that closed it.
 | 10 | PinShare | Can the arbiter leave the pad owned by nobody, or deadlock? | False. `endIr()` is the only transition back and always sets `Owner::LED`, so the pad is never ownerless after a frame. Every path after `beginIr()` in `IR::transmitSymbols()` reaches `releasePin()`, which calls `endIr()`: the reattach failure, the carrier failure, the enable failure and the final path. There is one IR task and a queue depth of one, so no second frame can hold the pin. | `src/FurbleIR.cpp` `transmitSymbols()`, `include/FurblePinShare.h:85-97`, `src/FurbleIR.cpp` queue creation |
 | 11 | PinShare | Is the mutex held across a transfer? | False. `beginIr()` and `endIr()` each take the lock and return; `rmt_transmit()` and `rmt_tx_wait_all_done()` run between them with no lock held. A blink during a frame returns from `requestLed()` without blocking. | `src/FurblePinShare.cpp:45-57`, `src/FurbleIR.cpp` `transmitSymbols()`, `tests/host/boundaries/shared_pin_test.cpp` |
 | 12 | PinShare | Does an unrecorded level fall back to input safely? | It no longer falls back to input; row 2 is the fix. As shipped it did not key the emitter, but it floated an NPN base, did not match the boot state and would have made a later level write inert. | Rows 2 and 9 |
-| 13 | IR polarity | Is the inversion applied exactly once? | Yes. `m_MarkLow` feeds `rmt_tx_channel_config_t.flags.invert_out` at channel creation and the same flag on `rmt_tx_switch_gpio()`, which re-runs the GPIO matrix connection with that inversion instead of adding a second one. The reattach only runs on the shared pin, which is the Plus2 row where the flag is 0. | ESP-IDF 5.5.3 `rmt_tx.c:1135-1175` (`esp_rom_gpio_connect_out_signal(..., invert_out, ...)`), `include/driver/rmt_tx.h:197` |
-| 14 | IR polarity | Does the electrical duty still produce the optical duty the protocol needs? | Yes, and the flip is required. The carrier modulates the high level (`@param level Which level to modulate on`), so a mark is high for `duty_cycle` of the carrier period. On an inverted row the pad is low, and therefore lit, for `1 - duty_cycle`. Duty 2/3 on the StickC and Plus rows yields an optical 1/3, which is what the un-inverted Plus2 row produces with 1/3. | ESP-IDF 5.5.3 `hal/esp32/include/hal/rmt_ll.h:337-342`, `rmt_tx.c:897-905` (high and low tick counts), `src/FurbleIR.cpp` carrier block |
+| 13 | IR polarity | Is the inversion applied exactly once? | Yes. `m_MarkLow` feeds `rmt_tx_channel_config_t.flags.invert_out` at channel creation and the same flag on `rmt_tx_switch_gpio()`, which re-runs the GPIO matrix connection with that inversion instead of adding a second one. The reattach only runs on the shared pin, which is the Plus2 row where the flag is 0. | ESP-IDF 5.5.3 `rmt_tx.c:1135-1175` (`esp_rom_gpio_connect_out_signal(..., invert_out, ...)`), `components/esp_driver_rmt/include/driver/rmt_tx.h:197` |
+| 14 | IR polarity | Does the electrical duty still produce the optical duty the protocol needs? | Yes, and the flip is required. The carrier modulates the high level (`@param level Which level to modulate on`), so a mark is high for `duty_cycle` of the carrier period. On an inverted row the pad is low, and therefore lit, for `1 - duty_cycle`. Duty 2/3 on the StickC and Plus rows yields an optical 1/3, which is what the un-inverted Plus2 row produces with 1/3. | ESP-IDF 5.5.3 `components/hal/esp32/include/hal/rmt_ll.h:337-342`, `rmt_tx.c:897-905` (high and low tick counts), `src/FurbleIR.cpp` carrier block |
 | 15 | IR polarity | Is the Plus2 NPN path right rather than inverted twice? | Yes. The Plus2 row is `irMarkLow = false`, so the matrix does not invert, and the NPN stage supplies the single inversion that turns a high pad into light. `ledActiveLow = false` on the same row is the same fact for the LED, and M5Unified's own LED driver agrees (`invert = false` on G19). | `src/FurbleBoard.cpp` `STICKC_PLUS2`, M5Unified `Power_Class.cpp:1225-1250` |
 | 16 | RTC | Does the 2 s uncertainty hide a real clock loss? | No. A calendar that lost its supply raises the voltage-low flag, and a backed row rejects the read instead of seeding the clock. The flag is also self-healing: `setDateTime()` writes the seconds register with bit 7 clear, so the next trusted NTP or GPS write clears the latch. The 2 s window only covers the read and the one-second register resolution, which is the same policy the three existing backed rows use. | M5Unified `PCF8563_Class.cpp:34-37` (`getVoltLow`), `:96-119` (`setDateTime` writes register `0x02`), `src/FurbleTimeKeeper.cpp:128-152`, `include/FurbleTimeKeeper.h` |
 | 17 | RTC | Does the timed wake work on a board whose hold pin is absent? | The code path does. `powerOffUntil()` arms the countdown, verifies it by register readback, rejects an early wake and then calls `powerOff()` instead of driving a hold pin, and `consumeTimedWake()` reads the timer flag on the next boot. `Platform::getInstance()` already skips `M5.Rtc.disableIRQ()` for `RTC_ALARM` rows, so the flag survives boot. The remaining risk is not code: the BM8563 rail during an AXP192 shutdown and the R401/C401 coupling into the power key. Both stay the hardware gate plan 350 records. | `src/FurblePlatform.cpp:724-838`, `:842-860`; M5Unified `AXP192_Class.cpp:212-215` (`powerOff` is `0x32` bit 7, a soft shutdown); `Power_Class.cpp:1728-1733` |
@@ -60,19 +60,48 @@ now recorded in plan 350. Nothing else changed outside the eight defects:
   or log-string only, except the `powerHoldPin < 0` branch, which is defect 7.
 - No setting, default, wire id or NVS key changed.
 
+## Rebase onto master
+
+The branch was two master moves behind when this review started. It was rebased
+onto `81139818` (`docs: gate the file:line citations and fix the drift it
+found`, #511) before the final run, and the rebase produced a tree identical to
+`git merge-tree --write-tree origin/master HEAD`, so no manual conflict
+resolution was needed.
+
+That rebase exposed one new gate. #511 checks every `file:line` citation in the
+Markdown docs. This PR adds lines to `src/FurbleGPS.cpp`, `src/FurblePlatform.cpp`
+and `src/FurbleBoard.cpp`, and adds the two profile columns to
+`include/FurbleBoard.h`, so eight master citations with a named symbol moved and
+the gate failed closed (`check_doc_citations: 12 errors`). Fixed:
+
+- `docs/components/at6668.md` `FALLBACK` range, `docs/components/board-map.md`
+  field and row ranges and the `minBrightness` line,
+  `plans/50-companion-app-design.md`, `plans/implemented/14-gps-pcas.md` (two),
+  `plans/implemented/15-gps-power.md`,
+  `plans/implemented/21-imu-dead-reckoning.md` and
+  `plans/implemented/26-pm1-watchdog.md` now point at the moved symbols.
+- The new citations in this file and in plan 350 name ESP-IDF headers under
+  the declared `components/` external prefix and the M5Unified and M5GFX
+  sources by bare filename, which is how the gate expects a vendored library to
+  be cited.
+
+`python3 tools/check_doc_citations.py` now reports `0 errors of 2799 citations
+in 149 files`, and `pre_review` reports `PASS: 13 gates` on the rebased tree.
+
 ## Verification
 
-Every command below ran on the reviewed tree after the fixes, on macOS with the
-pinned M5Unified 0.2.20 and M5GFX 0.2.27 trees.
+Every command below ran on the reviewed tree after the fixes and after the
+rebase onto `81139818`, on macOS with the pinned M5Unified 0.2.20 and M5GFX
+0.2.27 trees.
 
 | Check | Command | Result |
 | :--- | :--- | :--- |
-| Host suite | `cmake -S tests/host -B /tmp/furble-505-host -DCMAKE_BUILD_TYPE=Debug && cmake --build /tmp/furble-505-host -j8 && ctest --test-dir /tmp/furble-505-host -j4 --output-on-failure` | `100% tests passed out of 207`, 155.01 s |
+| Host suite | `cmake -S tests/host -B /tmp/furble-505-host -DCMAKE_BUILD_TYPE=Debug && cmake --build /tmp/furble-505-host -j8 && ctest --test-dir /tmp/furble-505-host -j4 --output-on-failure` | `100% tests passed out of 207`, 121.04 s |
 | Pin share | `ctest --test-dir /tmp/furble-505-host -R 'pin-share-policy\|boundary-shared-pin' -V` | `100% tests passed out of 4`. `pin-share-policy: PASS`, `pin.shared frame=blocked blink=suppressed level=0 invert_out=0`, `pin.shared handover=returned restored_level=1`, `pin.shared frames=2 switch_gpio=1 restored=1`, `pin.shared-off handover=returned direction=output parked_level=0` |
 | IR polarity | `ctest --test-dir /tmp/furble-505-host -R 'boundary-ir-polarity\|boundary-ir-' -V` | `100% tests passed out of 3`. `ir.polarity family=stickc invert_out=1 mark_level=1 emitter_mark=0 duty_permille=667`; `family=stickc-plus` the same; `family=stickc-plus2 invert_out=0 mark_level=1 emitter_mark=1 duty_permille=333` |
 | Board profile | `ctest --test-dir /tmp/furble-505-host -R 'board-profile' -V` | `board-profile` passed. The Plus2 row is backed, the Plus row is `RTC_ALARM`, and the polarity columns match the expected table. |
 | Time keeper | `ctest --test-dir /tmp/furble-505-host -R 'time-keeper' -V` | `time-keeper-policy` and `time-keeper-persistence` passed, with `pm1-poll-policy` in the same run, 4 of 4. |
-| Pre-review | `python3 tools/pre_review.py --base origin/master` | `PASS: 11 gates` |
+| Pre-review | `python3 tools/pre_review.py --base origin/master` | `PASS: 13 gates` |
 | Doc tokens | `sh sim/scripts/check-doc-tokens.sh` | `sim documentation tokens are present` |
 | Merge gate | `python3 tools/check_review_threads.py --repo MaxRink/furble --pr 505` | RESULT_GATE |
 

@@ -185,13 +185,13 @@ also remove power from any other device on Port A.
 | :--- | :--- |
 | `rmt_disable()` does not detach the pad; `rmt_new_tx_channel()` muxes it | ESP-IDF 5.5.3 `components/esp_driver_rmt/src/rmt_tx.c` (`rmt_tx_disable`, `tx_channel->base.gpio_num` set in `rmt_new_tx_channel`) |
 | `gpio_output_enable()` re-selects the default output signal | ESP-IDF 5.5.3 `components/esp_driver_gpio/src/gpio.c:215-222` (`gpio_hal_matrix_out_default`, `gpio_hal_func_sel`) |
-| `rmt_tx_switch_gpio()` re-selects a channel's TX signal and needs the channel in the init state | ESP-IDF 5.5.3 `rmt_tx.c:1135-1178`, `include/driver/rmt_tx.h:197` |
+| `rmt_tx_switch_gpio()` re-selects a channel's TX signal and needs the channel in the init state | ESP-IDF 5.5.3 `rmt_tx.c:1135-1178`, `components/esp_driver_rmt/include/driver/rmt_tx.h:197` |
 | The carrier gates the high level, so an inverted output keeps a mark-high encoder correct | ESP-IDF RMT carrier enable (`rmt_ll_tx_enable_carrier_modulation`) plus `rmt_new_tx_channel`'s `esp_rom_gpio_connect_out_signal(..., invert_out, ...)` |
 | BM8563/PCF8563 voltage-low is `0x02` bit 7 | M5Unified 0.2.20 `src/utility/rtc/PCF8563_Class.cpp:34-37` |
 | AXP192 power-key IRQ is enabled and its status is `0x46` | M5Unified 0.2.20 `Power_Class.cpp` AXP192 register block (`0x42, 0x03`), `AXP192_Class.cpp:275-280` |
 | `setExtOutput()` reads VBUS current on Core2/Tough only | M5Unified 0.2.20 `Power_Class.cpp:951-981` |
 | AXP192 ADC mask registers and the all-on default | M5Unified 0.2.20 `Power_Class.cpp` (`0x82, 0xFF`, `0x83, 0x80`, `0x84, 0x32`) |
-| EXTEN is register `0x12` bit 6, and both M5Unified and M5GFX set it at boot | M5Unified 0.2.20 `AXP192_Class.cpp:228-240`; `M5Unified.cpp` `Power.setExtOutput(cfg.output_power)` with `output_power = true` (`M5Unified.hpp:133`) and `Power_Class.cpp`'s StickC/Plus `Axp192.setEXTEN(enable)`; M5GFX 0.2.27 `src/M5GFX.cpp:465` (`Light_M5StickC::init`, `0x12 = 0x4D`) |
+| EXTEN is register `0x12` bit 6, and both M5Unified and M5GFX set it at boot | M5Unified 0.2.20 `AXP192_Class.cpp:228-240`; `M5Unified.cpp` `Power.setExtOutput(cfg.output_power)` with `output_power = true` (`M5Unified.hpp:133`) and `Power_Class.cpp`'s StickC/Plus `Axp192.setEXTEN(enable)`; M5GFX 0.2.27 `M5GFX.cpp:465` (`Light_M5StickC::init`, `0x12 = 0x4D`) |
 | The status LED polarity per board | M5Unified 0.2.20 `Power_Class.cpp:1216-1246`: `Light_PWM` config uses `invert = true` on GPIO10 for the StickC and Plus and `invert = false` on GPIO19 for the Plus2, and `Power_Class.cpp:577-585` puts GPIO19 on the output path for the Plus2 at `Power.begin()` |
 | StickC and Plus emitter cathode on GPIO9, anode on 3.3 V; Plus2 NPN stage on GPIO19 | StickC Plus schematic page supplied by the second audit pass (`LED1`, `LED_IR`), and the Plus2 NPN stage from the same pass. Not confirmed against a vendor PDF in this tree, and the StickC row follows the Plus page because both boards put the emitter on G9 |
 
