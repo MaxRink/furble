@@ -68,9 +68,39 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   sample can correct it; never restore it as GPS or NTP. Its uncertainty is an
   estimate of RC slow-clock drift, not a bound. The intervalometer does not
   trust an `RTC` sample when no RTC chip is present (plan 139).
+- `Platform::getInstance()` clears the RTC IRQ at boot only when
+  `Board::profile().rtcOnBus` is set and the board's timed wake is not
+  `RTC_ALARM`. Only the Plus2 sets `rtcOnBus`, and its timed wake is
+  `RTC_ALARM`, so the compound guard is unreachable for every shipped row: it
+  is a contract guard, not a live branch. `board-profile` asserts the
+  implication (`rtcOnBus` means an `RTC_ALARM` timed wake), so a new row that
+  breaks it fails the test instead of silently reaching the call. Keep both
+  tests: the chip fact says an RTC answers on the bus, and the timed-wake kind
+  says `consumeTimedWake()` needs the flag left alone. M5Unified probes 0x51 on
+  every board, so on the StickS3 no RTC instance exists; gate on the chip,
+  never on the timed-wake kind alone.
+- Every M5PM1 IRQ status clear goes through `Platform::clearPmicIrqLatches()`:
+  arm, disarm, `clearMotionWake()` and, for Status 2 only,
+  `motionWakeSample()`. The PMIC holds PYG1_IRQ low until both latches are
+  cleared, and a 5VIN latch left behind arms a level wake on a line that never
+  releases. `PmicIrq::clearLatched()` clears Status 1 first and Status 2 second,
+  so an edge that lands between the two writes survives for the motion poll;
+  Status 1 is the register that poll consumes. `armMotionWake()` returns false
+  when either clear fails, because an unproven release is not an armed wake.
+  The clear is defensive: no hardware run has shown the 5VIN latch actually
+  holding the line (plans/implemented/20-imu-hw-motion.md leaves the physical
+  event path uncertified), and `tests/host/platform-wake` proves the sequence
+  against the PMIC shim only. See plans/363.
 - The StickS3 M5PM1 watchdog is armed for 45 seconds through the shared
   `Watchdog` constants. Keep `watchdogFeed()` at its one second cadence and
   preserve verified disarm and readback before flash or power-off paths.
+  `watchdogEnable()` already logs the failing step at ERROR, and
+  `m5pm1Access()` logs a WARN, so `app_main()` adds one neutral WARN naming the
+  requested state (`arm` or `disable`) and keeps booting. That covers both
+  paths: the disarm is the normal call when the setting is off, so it must not
+  be reported as a refused arm. A refused change is a degraded state, not a
+  boot loop. `boundary-headless-service-watchdog-refused` in tests/host covers
+  the arm case.
 - `FurbleGPS`: TinyGPSPlus over UART2. Mind the UART clock source trap. The
   parser is owned by GPS and guarded by its mutex; UI and console consumers use
   `getStatusSnapshot()` and must not retain parser references. GPX logging only
@@ -143,6 +173,21 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   unset so pads hold through light sleep. Vibration is I2C, whose divider is
   recomputed per transaction. The output selection is frozen at boot (it
   decides `cfg.internal_spk`), only the event mask and volume reload live.
+  `beginSpeaker()` records the amplifier settle deadline (`AMP_SETTLE_MS`) and
+  `startTone()` parks the first tone on it; the LVGL feedback timer retries, so
+  never add a delay or a mutex here. The settle belongs to an amplifier enable,
+  not to a pattern: the session stays open for `AMP_IDLE_TIMEOUT_MS` after its
+  last tone, so a pattern that follows a completed one inside that window
+  sounds immediately, and only a cold session waits. Do not end the session at
+  the final tone again, and do not park a tone when
+  `setTimerPathActive(false)` reports that console mode skips
+  `lv_task_handler()`: nothing would retry it and the beep would be lost.
+  `applyVolume()` is the only volume write while a session is open: it caps at
+  `FeedbackPolicy::MAX_BATTERY_VOLUME` when the pattern started on battery,
+  logs the cap once, and leaves the stored setting alone. The power source is
+  sampled once per pattern for that reason. Only a positive VBUS reading counts
+  as mains power; never let the charge flag stand in for it, because a failed
+  PMIC read reports "charging".
 - The touch Remote shutter page keeps its 64 px controls intact. Measure the
   page content width through native flex row wrapping so the full-size
   content-sized controls stay in one row when they fit and wrap into scrolling

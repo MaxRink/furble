@@ -1264,6 +1264,28 @@ add_executable(battery_status_test battery_status_test.cpp)
 target_include_directories(battery_status_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(battery_status_test PRIVATE -Wall -Wextra -Werror)
 
+# The StickS3 speaker notice: at or below 75 percent volume on battery, full
+# volume on VBUS, and the stored setting never rewritten. Pure arithmetic from
+# include/FurbleFeedbackPolicy.h.
+add_executable(feedback_volume_policy_test feedback_volume_policy_test.cpp)
+target_include_directories(feedback_volume_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(feedback_volume_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME feedback-volume-policy COMMAND feedback_volume_policy_test)
+
+# The M5PM1 IRQ status latches behind the StickS3 wake line. The production
+# clear sequence in include/FurblePmicIrq.h runs against the latching PMIC model
+# in sim/shim/M5PM1.h, including the 5VIN event that the old status-1-only
+# clear left asserting PYG1_IRQ.
+add_executable(pmic_irq_test
+               pmic_irq_test.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp)
+target_include_directories(pmic_irq_test PRIVATE
+                           ${FURBLE_ROOT}/sim/shim
+                           ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/include)
+target_compile_options(pmic_irq_test PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
+add_test(NAME pmic-irq COMMAND pmic_irq_test)
+
 add_executable(sim_clock_test sim_clock_test.cpp ${FURBLE_ROOT}/sim/clock.cpp)
 target_include_directories(sim_clock_test PRIVATE ${FURBLE_ROOT}/include ${FURBLE_ROOT}/sim
                                                   ${FURBLE_ROOT}/sim/shim)
@@ -2972,6 +2994,52 @@ target_compile_options(boundary_headless_service_test PRIVATE
                        -Wall -Wextra -Wno-unused-parameter -Wno-format)
 target_link_libraries(boundary_headless_service_test PRIVATE Threads::Threads)
 
+# The production platform wake path. Unlike pmic-irq, which drives the clear
+# sequence from the header alone, this target compiles src/FurblePlatform.cpp
+# unchanged against sim/shim/M5PM1.h and calls the four production call sites:
+# armMotionWake(), motionWakeSample(), clearMotionWake() and disarmMotionWake().
+# Delete the Status 2 clear in any of them and this target fails.
+set(PLATFORM_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/platform)
+add_executable(platform_wake_test
+               ${PLATFORM_TEST_DIR}/motion_wake_test.cpp
+               ${PLATFORM_TEST_DIR}/platform_test_support.cpp
+               ${BOUNDARY_SETTINGS_SOURCES}
+               ${FURBLE_ROOT}/src/FurblePlatform.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp
+               ${FURBLE_ROOT}/src/FurblePower.cpp
+               ${FURBLE_ROOT}/src/FurbleFeedback.cpp
+               ${FURBLE_ROOT}/sim/clock.cpp)
+# The platform shims come first so they win over the boundary copies of the
+# same names, then the boundary shims for esp_log, esp_err and lvgl. sim/ supplies
+# clock.h; the platform shims/M5PM1.h forwards to sim/shim/M5PM1.h, so the
+# settings stubs placeholder never shadows the latching model.
+target_include_directories(platform_wake_test BEFORE PRIVATE
+                           ${PLATFORM_TEST_DIR}/shims
+                           ${BOUNDARY_SHIM_DIR}
+                           ${BOUNDARY_DIR}
+                           ${CONTROL_E2E_DIR}
+                           ${FURBLE_ROOT}/sim
+                           ${SETTINGS_TEST_STUB_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble
+                           ${HOST_NIMBLE_DIR})
+target_compile_options(platform_wake_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
+                                                  -Wall -Wextra -Wno-unused-parameter)
+target_compile_definitions(platform_wake_test PRIVATE FURBLE_M5STICKS3)
+# Unreferenced platform entry points (prepareRestart, powerOff, powerOffUntil,
+# consumeTimedWake) pull in Control, SD and TimeKeeper, which are the whole
+# application. The linker drops them, so the target links only what the wake
+# path reaches. Never drop the section discard here: without it the target stops
+# linking and silently stops being the production translation unit.
+if(APPLE)
+  target_link_options(platform_wake_test PRIVATE -Wl,-dead_strip)
+else()
+  target_compile_options(platform_wake_test PRIVATE -ffunction-sections -fdata-sections)
+  target_link_options(platform_wake_test PRIVATE -Wl,--gc-sections)
+endif()
+target_link_libraries(platform_wake_test PRIVATE Threads::Threads)
+
 # Board::Profile rows against the values of the board switches they replaced,
 # compiled against the boundary M5Unified shim, which declares every board.
 add_executable(board_profile_test
@@ -2996,6 +3064,7 @@ target_compile_options(platform_power_off_test PRIVATE -Wall -Wextra -Werror)
 if(BUILD_TESTING)
   add_test(NAME board-profile COMMAND board_profile_test)
   add_test(NAME platform-power-off COMMAND platform_power_off_test)
+  add_test(NAME platform-wake COMMAND platform_wake_test)
   foreach(mode protocols psram-fallback queue-timeout unsupported)
     add_test(NAME boundary-ir-${mode} COMMAND boundary_ir_test ${mode})
   endforeach()
@@ -3015,7 +3084,7 @@ if(BUILD_TESTING)
                        boundary-sd-shutdown-refused boundary-sd-shutdown-undelivered
                        boundary-sd-export-full
                        PROPERTIES RESOURCE_LOCK boundary-sd)
-  foreach(mode sound light overcurrent low-battery vibration)
+  foreach(mode sound light overcurrent low-battery vibration idle-window)
     add_test(NAME boundary-feedback-${mode} COMMAND boundary_feedback_test ${mode})
   endforeach()
   foreach(mode shared shared-off separate)
@@ -3027,6 +3096,11 @@ if(BUILD_TESTING)
                        "FURBLE_SIM_PREFS=${CMAKE_CURRENT_BINARY_DIR}/boundary-companion-prefs.bin")
   add_test(NAME boundary-webui-tls COMMAND boundary_webui_tls_test)
   add_test(NAME boundary-headless-service COMMAND boundary_headless_service_test)
+  # The same production boot with the PMIC double refusing the watchdog arm.
+  # A refusal is a degraded state, not a boot failure: the boot must finish and
+  # the log must say so.
+  add_test(NAME boundary-headless-service-watchdog-refused
+           COMMAND boundary_headless_service_test watchdog-refused)
 endif()
 
 # One raw profile per test, named after the test. Keep this block last: it

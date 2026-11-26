@@ -40,6 +40,9 @@ int gpioPad(int pin);
 // and rmt_tx_switch_gpio() do on the device.
 void setGpioPadPeripheral(int pin);
 bool logContains(const char *needle);
+// Power source the production Feedback sees through Platform. The default is
+// VBUS present, which is the unclamped case.
+void setBatteryPower(int16_t vbus_millivolts, bool charging);
 
 }  // namespace BoundaryHost
 

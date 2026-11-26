@@ -83,10 +83,17 @@ namespace {
 // its row keeps the previous non-inverted image and is UNVERIFIED.
 
 // Columns: name, battery {level, voltage, current, charging}, capacity mAh,
-// RTC backed, IR pin, motion wake, motion pin, timed wake, hold pin, PMIC
-// click streak, SD slot, power policies, power-off path, modem sleep,
-// brightness floor, feedback sound, light, vibration, LED pin, GPS rail, LED
-// active low, IR mark low, GPS pin source, GPS RX pin, GPS TX pin.
+// RTC backed, RTC on the bus, IR pin, motion wake, motion pin, timed wake,
+// hold pin, PMIC click streak, SD slot, power policies, power-off path, modem
+// sleep, brightness floor, feedback sound, light, vibration, LED pin, GPS rail,
+// LED active low, IR mark low, GPS pin source, GPS RX pin, GPS TX pin.
+//
+// RTC on the bus: only the Plus2 has a chip M5Unified can drive, its BM8563 at
+// 0x51. M5Unified 0.2.x falls back to PCF8563_Class for every board and keeps
+// the instance only when those register writes are acknowledged, so the AXP192
+// internal RTC on the StickC family, the Core2 and the Tough is not reachable
+// and the StickS3 has no RTC at all. The column is separate from the backed
+// one: it says a write reaches a chip, not that the chip keeps time.
 //
 // A row with a GPS UART leaves the pins to M5Unified: its pin table describes
 // Port A per SoC target and reports -1 for a board it does not know. A board
@@ -97,31 +104,31 @@ namespace {
 // clock. See plans/336-gps-pin-seam.md.
 //
 // clang-format off
-constexpr Profile STICKC        = {"StickC", {true,  true,  true,  true}, 95, true, 9,
+constexpr Profile STICKC        = {"StickC", {true,  true,  true,  true}, 95, true, false, 9,
     MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false,
     true, false, 10, true, true, true,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
-constexpr Profile STICKC_PLUS   = {"StickC+", {true,  true,  true,  true}, 120, true, 9,
+constexpr Profile STICKC_PLUS   = {"StickC+", {true,  true,  true,  true}, 120, true, false, 9,
     MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48,
     true, true, false, 10, true, true, true,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
-constexpr Profile STICKC_PLUS2  = {"StickC+2", {true,  true,  false, false}, 200, true, 19,
+constexpr Profile STICKC_PLUS2  = {"StickC+2", {true,  true,  false, false}, 200, true, true, 19,
     MotionWake::NONE, -1, TimedWake::RTC_ALARM, 4, false, false, true, true, false, 32,
     true, true, false, 19, false, false, false,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
-constexpr Profile STICKS3       = {"StickS3", {true,  true,  false, true}, 250, false, 46,
+constexpr Profile STICKS3       = {"StickS3", {true,  true,  false, true}, 250, false, false, 46,
     MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true,
     32, true, false, false, -1, true, true, false,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
-constexpr Profile CORE          = {"Core", {true,  false, false, false}, 110, false, -1,
+constexpr Profile CORE          = {"Core", {true,  false, false, false}, 110, false, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true,
     false, false, -1, false, true, false,
     GpsPinSource::NONE, -1, -1};
-constexpr Profile CORE2         = {"Core2", {true,  true,  true,  true}, 500, true, -1,
+constexpr Profile CORE2         = {"Core2", {true,  true,  true,  true}, 500, true, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true,
     false, true, -1, true, true, false,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
-constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, true, -1,
+constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, true, false, -1,
     MotionWake::NONE, -1, TimedWake::RTC_ALARM, -1, true, true, true, true, false, 32, true,
     false, false, -1, true, true, false,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
@@ -135,14 +142,14 @@ constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, tr
 // the profile reports no SD slot even though the image is built with
 // FURBLE_HAS_SD. M5Unified detects the board as board_M5StampS3; see
 // plans/349-waveshare-board-row.md.
-constexpr Profile WAVESHARE    = {"Waveshare", {false, false, false, false}, 0, false, -1,
+constexpr Profile WAVESHARE    = {"Waveshare", {false, false, false, false}, 0, false, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, false, false, false, 32,
     false, false, false, -1, false, false, false,
     GpsPinSource::NONE, -1, -1};
 // An unrecognized board has no trustworthy battery backend. The Waveshare
 // ESP32-S3-ETH in particular is a mains/PoE node with no battery or PMIC, so
 // M5Unified's fallback values must not become a fake battery percentage.
-constexpr Profile UNKNOWN       = {"M5", {false, false, false, false}, 0, false, -1,
+constexpr Profile UNKNOWN       = {"M5", {false, false, false, false}, 0, false, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false,
     false, false, -1, false, true, false,
     GpsPinSource::BOARD_SUPPORT, -1, -1};

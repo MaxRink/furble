@@ -428,7 +428,7 @@ boot:
    `Platform::getInstance().m_Init` is true, meaning `M5.begin()` completed at
    `src/FurblePlatform.cpp:22`. On the StickS3 this also covers the M5PM1 PMIC
    bring-up at `src/FurblePlatform.cpp:34-38`.
-3. **BLE host up.** `Device::init()` (`src/main.cpp:477`) returned and the NimBLE
+3. **BLE host up.** `Device::init()` (`src/main.cpp:484`) returned and the NimBLE
    stack reports initialised. This is the one that catches a broken NimBLE
    component update.
 4. **Control task alive.** The task created at `src/main.cpp:517` is running and
@@ -437,7 +437,7 @@ boot:
    queue means the control task is not draining, which means the shutter will
    not work.
 5. **UI loop ticking**, in a GUI build. `UI::task`
-   (`src/FurbleUI.cpp:13460-13520`) has completed at least 100 iterations, which
+   (`src/FurbleUI.cpp:13464-13524`) has completed at least 100 iterations, which
    at the 5 ms `LOOP_ACTIVE_MS` delay is about half a second of a live LVGL handler.
    In a `FURBLE_NO_DISPLAY` build from `plans/33-wifi-hub.md`, substitute the
    headless loop.

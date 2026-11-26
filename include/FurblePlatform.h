@@ -150,6 +150,15 @@ class Platform: public PowerBackend {
   /**
    * Arm the IMU interrupt as a light-sleep wake source.
    *
+   * On the M5StickS3 both M5PM1 IRQ status registers are cleared first. The
+   * PMIC holds its aggregated IRQ line, PYG1_IRQ on GPIO13, low until the IRQ
+   * Status is cleared, and Status 2 carries 5VIN insert and remove, which
+   * nothing in furble consumes. A latch left in either register therefore arms
+   * this level-triggered wake source on a line that never releases. Clearing
+   * rather than masking is deliberate: the clear is the release the vendor
+   * manual documents, while what a mask does to the aggregated line is not.
+   * See include/FurblePmicIrq.h.
+   *
    * @return true when this board has a configured interrupt path.
    */
   bool armMotionWake(void);
@@ -175,9 +184,13 @@ class Platform: public PowerBackend {
    *
    * Called once per motion poll. On the M5StickS3 this reads and clears the
    * PMIC's latched GPIO4 interrupt flag, which is the only place the BMI270's
-   * INT1 activity is visible without touching the wake pin. On the StickC
-   * family the MPU6886 interrupt is latched in the sensor and holds the line,
-   * so the pin level is read directly.
+   * INT1 activity is visible without touching the wake pin, and then clears
+   * IRQ Status 2 as well. Status 2 is not a motion signal and nothing here
+   * consumes it, but a 5VIN insert or removal latches it and the PMIC holds
+   * PYG1_IRQ low until it is cleared, so leaving it set would report an idle
+   * IMU on a line that never goes quiet. On the StickC family the MPU6886
+   * interrupt is latched in the sensor and holds the line, so the pin level is
+   * read directly.
    *
    * Nothing here configures a GPIO interrupt. gpio_set_intr_type and
    * gpio_wakeup_enable write the same field and the IDF refuses an edge type on
@@ -213,6 +226,11 @@ class Platform: public PowerBackend {
    * its IRQ status. A latched status holds PYG1_IRQ asserted, and a level-
    * triggered wake source that never releases stops light sleep entirely, which
    * is the opposite of the point. Call this after consuming an event.
+   *
+   * IRQ Status 1 and Status 2 are both cleared. Only Status 1 carries motion,
+   * but the aggregated line stays low while either latch is set, so a 5VIN
+   * insert or removal during a wake would otherwise keep it asserted after the
+   * motion event was consumed.
    */
   void clearMotionWake(void);
 
@@ -410,8 +428,13 @@ class Platform: public PowerBackend {
    */
   static bool isCPUMaxFreqValid(uint8_t mhz);
 
-  // Power button click streak threshold
+#if !FURBLE_HAS_M5PM1
+  // Power button click streak threshold. The streak exists only for boards
+  // whose PMIC button level is not readable; the M5PM1 image reads the button
+  // directly, so the mechanism is compiled out there and clang's
+  // unused-private-field check keeps it that way.
   const uint8_t PWR_CLICK_THRESHOLD_MS = 20;
+#endif
 
   /**
    * Perform an M5PM1 access, retrying once on failure.
@@ -459,6 +482,18 @@ class Platform: public PowerBackend {
 #if FURBLE_HAS_M5PM1
   /** Ensure the PMIC long-press download recovery path is not locked. */
   bool unlockDownloadRecovery(void);
+
+  /**
+   * Clear both M5PM1 IRQ status latches, retried per register.
+   *
+   * The two writes release PYG1_IRQ: the vendor manual holds a GPIO configured
+   * as IRQ low until the IRQ Status is cleared, and nothing in furble consumes
+   * a Status 2 bit. Register order and the mask-versus-clear decision live in
+   * include/FurblePmicIrq.h.
+   *
+   * @return true when both writes were accepted.
+   */
+  bool clearPmicIrqLatches(void);
 #endif
 
   M5PM1 m_M5PM1;
@@ -468,7 +503,9 @@ class Platform: public PowerBackend {
   uint8_t m_CPUMaxFreqMHz = CPU_MAX_FREQ_DEFAULT_MHZ;
   uint32_t m_LastPm1PollMs = 0;
   uint8_t m_PMICClickCount = 0;
+#if !FURBLE_HAS_M5PM1
   uint32_t m_PMICClickTime = 0;
+#endif
 
   battery_caps_t m_BatteryCaps = {false, false, false, false};
   uint16_t m_BatteryCapacity = 0;

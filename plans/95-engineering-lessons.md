@@ -90,6 +90,47 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
 - M5PM1 green LED at display off. The status LED stays lit when the display is
   off unless you clear it explicitly. The fix is `setLedEnLevel(false)`, which
   saves PWR_CFG bit 4. Set it as part of the display-off path, not just at boot.
+- M5PM1 IRQ status is two latches, and both hold the aggregated line. IRQ
+  Status 1 (0x40) carries GPIO0..GPIO4 edge flags; IRQ Status 2 (0x41) carries
+  5VIN insert and remove (bits 0 and 1), 5VINOUT insert and remove (bits 2 and
+  3) and battery insert and remove (bits 4 and 5). The chip manual's status note
+  says a GPIO configured as IRQ is held low until the IRQ Status is cleared, and
+  the registers are write-0-to-clear. Masks 0x43 and 0x44 power up unmasked and
+  nothing in furble wrote 0x44, so a USB insert or removal latched a Status 2
+  bit that stayed set. furble consumed only Status 1, which left PYG1_IRQ
+  asserted on ESP32-S3 GPIO13 for the rest of the session: `armMotionWake()`
+  then armed a level-triggered light-sleep source on a line that never releases,
+  which is exactly the failure `motionWakeSample()` exists to prevent. The fix
+  clears Status 2 alongside Status 1 in arm, disarm, the 1 Hz sample and
+  `clearMotionWake()`, through `PmicIrq::clearLatched()` in
+  `include/FurblePmicIrq.h`. Clearing was chosen over masking the 5VIN bits
+  because the clear is the release the manual documents, while what a mask does
+  to the aggregated output is undocumented, a masked latch stays set for
+  whatever reads the register next, and nothing writes the mask registers today
+  so a boot mask would be the only thing standing between a stale event and the
+  line.
+- M5Unified always instantiates its RTC fallback. `RTC_Class::begin()` creates
+  a `PCF8563_Class` at 0x51 for any board it has no dedicated class for, and
+  keeps the instance only when the probe writes are acknowledged. On the StickS3
+  nothing answers at 0x51, so `M5.Rtc.isEnabled()` is false and an RTC call is a
+  no-op; on the StickC family, the Core2 and the Tough the AXP192's internal RTC
+  is not reachable through M5Unified at all. Only the Plus2's BM8563 works, and
+  that is the board whose alarm flag `consumeTimedWake()` must preserve. Gate
+  RTC writes on the `rtcOnBus` profile column, not on the timed-wake kind: the
+  old `timedWake != RTC_ALARM` test was true on every board with no RTC.
+- The StickS3 speaker amplifier needs about 1 s after it is enabled before
+  playback, and its volume must stay at or below 75 percent on battery. The
+  M5PM1 low-power guide, section 1 "SPK AMP", gives the settle time; the M5Stack
+  StickS3 documentation's Speaker Volume Notice gives the volume ceiling,
+  because the amplifier's current can brown the supply out and reboot the
+  device. A tone started immediately after `M5.Speaker.begin()` loses its
+  attack. Wait the settle on the feedback LVGL timer, never with a delay on the
+  calling task and never while holding a mutex; cap only what reaches the
+  amplifier, because the stored volume is a user setting. The settle is paid per
+  amplifier enable, so keep the session open across a burst of patterns with an
+  idle window instead of power-cycling it after every pattern: the old code
+  delayed the first tone of every pattern by the settle window and put the beep
+  a second behind the LED and the vibration.
 - GPS unit v1.1 (AT6668) has no backup supply. Cutting its power rail costs a
   cold start of roughly 108 s. `$PCAS12` timed standby keeps ephemeris and is
   the way to save power without paying the cold start. `$PCAS02` only accepts
@@ -452,7 +493,7 @@ below is a hypothesis to test on hardware, not a documented fact.
   `ESP_PM_APB_FREQ_MAX` while the panel is on (`src/FurbleUI.cpp:511`).
   Unproven: that releasing the lock produces visible flicker at any brightness.
   Bench: brightness sweep with the lock released plus a camera flicker check, as
-  `docs/power/board-power.md:1059` already requires.
+  `docs/power/board-power.md:1063` already requires.
 - Chip reset on a USB Serial/JTAG host port open. Source: none in furble. The
   behaviour belongs to the USB Serial/JTAG peripheral and the host driver, and
   no source file asserts it: this document's USB section and the root

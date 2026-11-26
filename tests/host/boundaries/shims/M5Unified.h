@@ -79,6 +79,7 @@ enum pin_name_t {
 class Speaker_Class {
  public:
   bool begin() {
+    begins++;
     if (beginFailures > 0) {
       beginFailures--;
       return false;
@@ -96,6 +97,7 @@ class Speaker_Class {
   void stop() { playing = false; }
   bool isPlaying() const { return playing; }
 
+  size_t begins = 0;
   size_t beginFailures = 0;
   bool active = false;
   bool playing = false;

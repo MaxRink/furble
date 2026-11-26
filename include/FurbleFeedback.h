@@ -68,6 +68,10 @@ class Feedback {
   /** Suppress app-controlled light feedback while the display is off. */
   void setDisplayOff(bool off);
 
+  /** Report whether the LVGL feedback timer can run. Console mode skips
+   * lv_task_handler(), so nothing retries a parked tone there. */
+  void setTimerPathActive(bool active);
+
   /** Signal an enabled feedback event without blocking the caller.
    * With force set the event mask is bypassed, for console testing. */
   void signal(event_t event, bool force = false);
@@ -104,6 +108,8 @@ class Feedback {
   bool beginSpeaker(void);
   void startTone(void);
   void stopSpeaker(void);
+  void applyVolume(void);
+  bool onBatteryPower(void);
   void startLight(uint16_t on, uint16_t off, uint8_t count);
   void stopLight(void);
   void startVibration(uint16_t on, uint8_t count);
@@ -120,6 +126,15 @@ class Feedback {
   uint8_t m_Volume = 0;
   bool m_DisplayOff = false;
 
+  // The fields below carry pattern state from signal() to the LVGL feedback
+  // timer, and from the timer back, with no lock between them. They are plain
+  // bytes and words written whole on one task and read on the next timer pass;
+  // a stale read can drop one tone or one settle retry, never corrupt a
+  // pattern. Do not turn them into a cross-task protocol: keeping the UI task
+  // out of the timer callback's business is what makes this delay and
+  // mutex-free.
+  bool m_TimerPathActive = true;
+
   std::array<tone_step_t, 3> m_Tones = {};
   uint8_t m_ToneCount = 0;
   uint8_t m_ToneIndex = 0;
@@ -127,6 +142,20 @@ class Feedback {
   bool m_ToneGap = false;
   bool m_SpeakerActive = false;
   uint32_t m_ToneDeadline = 0;
+  // Amplifier settle window: set when M5.Speaker.begin() enables the amplifier
+  // and consumed by the first tone. m_ToneSettlePending is the first tone
+  // parked on that deadline, retried from the feedback timer rather than
+  // blocking the caller.
+  uint32_t m_AmpSettleDeadline = 0;
+  bool m_AmpSettlePending = false;
+  bool m_ToneSettlePending = false;
+  // The open amplifier session outlives its last tone for this deadline, so a
+  // following pattern does not pay the settle window again.
+  uint32_t m_SpeakerIdleDeadline = 0;
+  // Power source sampled once per pattern, so the battery volume ceiling costs
+  // one battery read per pattern instead of one per tone.
+  bool m_SessionOnBattery = false;
+  bool m_VolumeClampLogged = false;
 
   std::array<pulse_step_t, 3> m_Vibrations = {};
   uint8_t m_VibrationCount = 0;

@@ -41,6 +41,22 @@ void completeTone(void) {
   M5.Speaker.playing = false;
 }
 
+// plans/363: the amplifier needs about one second after it is enabled before it
+// can play, so the first tone of a session is parked on the feedback timer.
+// Every check that expects a tone from a freshly opened session waits it out.
+void settleAmplifier(void) {
+  BoundaryHost::advanceTick(1000);
+  BoundaryHost::serviceTimers();
+}
+
+// The open session outlives its last tone by the amplifier idle window, so a
+// pattern that follows soon after reuses it and its first tone is not parked.
+// This waits past that window so the next pattern pays the settle again.
+void closeAmplifier(void) {
+  BoundaryHost::advanceTick(10000);
+  BoundaryHost::serviceTimers();
+}
+
 void runSound(void) {
   using Furble::Feedback;
 
@@ -58,6 +74,8 @@ void runSound(void) {
 
   feedback.signal(Feedback::SHUTTER_FIRED);
   check(M5.Speaker.active, "the speaker was not opened");
+  check(M5.Speaker.lastFrequency == 0, "the first tone started before the amplifier settled");
+  settleAmplifier();
   check(M5.Speaker.volume == 77, "the production volume did not reach the speaker");
   check(M5.Speaker.lastFrequency == 4000 && M5.Speaker.lastDuration == 40,
         "the shutter tone is wrong");
@@ -66,10 +84,13 @@ void runSound(void) {
   completeTone();
   BoundaryHost::advanceTick(50);
   BoundaryHost::serviceTimers();
-  check(!M5.Speaker.active, "the speaker session stayed open after the final tone");
+  check(M5.Speaker.active, "the speaker session closed before the amplifier idle window");
+  closeAmplifier();
+  check(!M5.Speaker.active, "the speaker session stayed open past the amplifier idle window");
   std::cout << "feedback.sound end=1\n";
 
   feedback.signal(Feedback::CONNECTED);
+  settleAmplifier();
   check(M5.Speaker.lastFrequency == 2000 && M5.Speaker.lastDuration == 60,
         "the connected first tone is wrong");
   completeTone();
@@ -86,10 +107,11 @@ void runSound(void) {
   completeTone();
   BoundaryHost::advanceTick(70);
   BoundaryHost::serviceTimers();
-  check(!M5.Speaker.active, "the connected pattern did not end the speaker session");
+  check(M5.Speaker.active, "the connected pattern closed the speaker session early");
   std::cout << "feedback.sound event=connected tones=2 volume_live=42\n";
 
   feedback.signal(Feedback::COUNTDOWN);
+  settleAmplifier();
   check(M5.Speaker.lastFrequency == 2000 && M5.Speaker.lastDuration == 40,
         "the countdown tone is wrong");
   completeTone();
@@ -97,17 +119,19 @@ void runSound(void) {
   BoundaryHost::serviceTimers();
 
   feedback.signal(Feedback::DISCONNECTED);
+  settleAmplifier();
   check(M5.Speaker.lastFrequency == 3000, "the disconnected first tone is wrong");
-  for (int step = 0; step < 6 && M5.Speaker.active; step++) {
+  for (int step = 0; step < 6; step++) {
     completeTone();
     BoundaryHost::advanceTick(70);
     BoundaryHost::serviceTimers();
   }
-  check(!M5.Speaker.active, "the disconnected pattern did not end the speaker session");
   check(M5.Speaker.lastFrequency == 2000, "the disconnected second tone is wrong");
+  check(M5.Speaker.active, "the disconnected pattern closed the speaker session early");
   std::cout << "feedback.sound event=disconnected tones=2\n";
 
   feedback.signal(Feedback::COUNTDOWN);
+  settleAmplifier();
   completeTone();
   BoundaryHost::advanceTick(50);
   BoundaryHost::serviceTimers();
@@ -118,10 +142,128 @@ void runSound(void) {
   feedback.signal(Feedback::SHUTTER_FIRED);
   check(BoundaryHost::timerFireCount() == before, "an event outside the mask started a pattern");
   feedback.signal(Feedback::SHUTTER_FIRED, true);
+  settleAmplifier();
   check(M5.Speaker.lastFrequency == 4000, "a forced event bypassing the mask was ignored");
+  completeTone();
+  BoundaryHost::advanceTick(50);
+  BoundaryHost::serviceTimers();
   Furble::Settings::save<uint8_t>(Furble::Settings::FB_EVENTS, events);
   feedback.reload();
   std::cout << "feedback.sound mask=filtered force=applied\n";
+
+  // StickS3 speaker notice: full volume on battery reaches the amplifier as 191
+  // while the stored setting is untouched, and the same setting on VBUS stays
+  // 255. The stored value was 77 from initialize().
+  BoundaryHost::setBatteryPower(0, false);
+  feedback.setVolume(255);
+  feedback.signal(Feedback::SHUTTER_FIRED);
+  settleAmplifier();
+  check(M5.Speaker.volume == 191, "full volume was not capped to 191 on battery");
+  check(Furble::Settings::load<uint8_t>(Furble::Settings::FB_VOLUME) == 77,
+        "the battery volume cap rewrote the stored setting");
+  std::cout << "feedback.sound power=battery stored=255 applied=191\n";
+  completeTone();
+  BoundaryHost::advanceTick(50);
+  BoundaryHost::serviceTimers();
+
+  BoundaryHost::setBatteryPower(5000, false);
+  feedback.signal(Feedback::SHUTTER_FIRED);
+  settleAmplifier();
+  check(M5.Speaker.volume == 255, "full volume was capped while VBUS was present");
+  std::cout << "feedback.sound power=vbus stored=255 applied=255\n";
+  completeTone();
+  BoundaryHost::advanceTick(50);
+  BoundaryHost::serviceTimers();
+
+  // A failed PMIC read looks exactly like "on USB, charging": M5Unified returns
+  // 0 mV for a failed VBUS read and the charge-status input reads false, which
+  // isCharging() maps to is_charging. Charging must not stand in for a VBUS
+  // reading, so the safe direction is the cap.
+  BoundaryHost::setBatteryPower(0, true);
+  feedback.setVolume(255);
+  feedback.signal(Feedback::SHUTTER_FIRED);
+  settleAmplifier();
+  check(M5.Speaker.volume == 191,
+        "a zero VBUS reading with the charge flag set was taken for mains power");
+  std::cout << "feedback.sound power=zero-vbus-charging stored=255 applied=191\n";
+  completeTone();
+  BoundaryHost::advanceTick(50);
+  BoundaryHost::serviceTimers();
+}
+
+// B1 regression: the settle window belongs to an amplifier enable, not to every
+// pattern. A pattern started while the session is still open must sound its
+// first tone on the next feedback timer pass, and a pattern after the idle
+// window must still wait the settle out.
+void runIdleWindow(void) {
+  using Furble::Feedback;
+
+  initialize(Feedback::OUTPUT_SOUND, 0x0f, 77);
+  M5.board = m5::board_t::board_M5StackCore2;
+  M5.Speaker = m5::Speaker_Class {};
+  M5.Power = m5::Power_Class {};
+
+  Feedback::init();
+  auto &feedback = Feedback::getInstance();
+
+  // First pattern after boot: the amplifier enable still owes its settle.
+  feedback.signal(Feedback::SHUTTER_FIRED);
+  check(M5.Speaker.active, "the speaker was not opened");
+  check(M5.Speaker.lastFrequency == 0, "the first tone ignored the amplifier settle window");
+  settleAmplifier();
+  check(M5.Speaker.lastFrequency == 4000, "the first tone did not start after the settle window");
+  completeTone();
+  BoundaryHost::advanceTick(50);
+  BoundaryHost::serviceTimers();
+  check(M5.Speaker.active, "the session closed before the amplifier idle window");
+  std::cout << "feedback.idle first_pattern=settled\n";
+
+  // The regression. This pattern follows a completed one inside the idle
+  // window, so the amplifier is still enabled and the tone must not wait.
+  feedback.signal(Feedback::COUNTDOWN);
+  BoundaryHost::advanceTick(10);
+  BoundaryHost::serviceTimers();
+  check(M5.Speaker.lastFrequency == 2000,
+        "a tone in a pattern after a completed pattern was delayed by the settle window");
+  std::cout << "feedback.idle second_pattern=immediate\n";
+  completeTone();
+  BoundaryHost::advanceTick(50);
+  BoundaryHost::serviceTimers();
+  check(M5.Speaker.active, "the session closed before the amplifier idle window");
+
+  // Past the idle window the amplifier is powered down, so the next pattern owes
+  // the settle again. Without this the one-shot would be a boot-only timer and
+  // the vendor's enable settle would never be honoured again.
+  closeAmplifier();
+  check(!M5.Speaker.active, "the amplifier stayed open past the idle window");
+  const float before = M5.Speaker.lastFrequency;
+  feedback.signal(Feedback::SHUTTER_FIRED);
+  check(M5.Speaker.lastFrequency == before,
+        "a cold amplifier played without waiting the settle window");
+  settleAmplifier();
+  check(M5.Speaker.lastFrequency == 4000, "the tone did not start after the settle window");
+  std::cout << "feedback.idle idle_close=1 recold=settled\n";
+
+  // Console mode skips lv_task_handler(), so nothing can retry a parked tone.
+  // The driver must play instead of parking, or the beep is lost.
+  completeTone();
+  BoundaryHost::advanceTick(50);
+  BoundaryHost::serviceTimers();
+  closeAmplifier();
+  check(!M5.Speaker.active, "the amplifier stayed open past the idle window");
+  feedback.setTimerPathActive(false);
+  M5.Speaker.lastFrequency = 0;
+  const size_t begins = M5.Speaker.begins;
+  feedback.signal(Feedback::SHUTTER_FIRED);
+  check(M5.Speaker.lastFrequency == 4000,
+        "console mode parked a tone with no timer path to retry it");
+  // No timer runs to close the session, so the next pattern must end it rather
+  // than leave the amplifier enabled for the rest of the session.
+  feedback.signal(Feedback::COUNTDOWN);
+  check(M5.Speaker.begins == begins + 2,
+        "console mode left the speaker session open with no timer to close it");
+  feedback.setTimerPathActive(true);
+  std::cout << "feedback.idle console_mode=played_and_closed\n";
 }
 
 void runLight(void) {
@@ -187,6 +329,7 @@ void runOvercurrent(void) {
 
   M5.Speaker.beginFailures = 0;
   feedback.signal(Feedback::SHUTTER_FIRED);
+  settleAmplifier();
   check(M5.Speaker.active && M5.Speaker.lastFrequency == 4000,
         "the speaker did not recover after the overcurrent condition cleared");
   completeTone();
@@ -260,6 +403,8 @@ int main(int argc, char **argv) {
     runLowBattery();
   } else if (mode == "vibration") {
     runVibration();
+  } else if (mode == "idle-window") {
+    runIdleWindow();
   } else {
     std::cerr << "unknown feedback boundary mode: " << mode << '\n';
     return 2;

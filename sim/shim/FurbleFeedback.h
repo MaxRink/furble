@@ -92,6 +92,11 @@ class Feedback {
 
   void setDisplayOff(bool off) { (void)off; }
 
+  // The real driver parks a tone while the amplifier settles unless the LVGL
+  // timer path runs, and the UI reports the console mode here. The simulator
+  // has no speaker, so the flag changes nothing.
+  void setTimerPathActive(bool active) { (void)active; }
+
   void signal(event_t event, bool force = false) {
     (void)event;
     (void)force;

@@ -194,9 +194,10 @@ serves several boards: the StickC Plus image also boots on a Plus2, the Core2
 image on a Tough and both Core2 PMIC variants. `profileFor()` is a switch that
 returns a reference to a constant row, so `profile()` costs what the old
 switches cost and needs no init order. Rows carry the short name, battery caps
-and capacity, RTC backing, IR pin, motion wake path and pin, timed-wake kind,
-power hold pin, PMIC click streak, SD slot, `canPowerOff`, `modemSleep`, the
-brightness floor and the feedback outputs. Compile-time facts stay in
+and capacity, RTC backing, whether an RTC chip is reachable on the internal bus,
+IR pin, motion wake path and pin, timed-wake kind, power hold pin, PMIC click
+streak, SD slot, `canPowerOff`, `modemSleep`, the brightness floor and the
+feedback outputs. Compile-time facts stay in
 `FurbleBoardCaps.h` from port-2; UI geometry stays in the UI.
 
 `include/FurblePowerBackend.h`: the contract a board's power hardware meets.
@@ -272,17 +273,21 @@ M5Unified.
 The row it would get (columns as in `src/FurbleBoard.cpp`):
 
 ```
-constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true,  true,  false, true},  0,   true,  -1,
+constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true,  true,  false, true},  0,   true,  false, -1,
     MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  true,  32,
     false, false, false, -1, false};
 ```
 
-The row has all 19 columns of `include/FurbleBoard.h:36-54`, and
-`rtcBatteryBacked` is the only value that changed in the 2026-11-25 pass. Plan
-350 later appended two more columns, `ledActiveLow` and `irMarkLow`, so this row
-needs them before it compiles; both describe a driven stage and neither has a
-value for a board with no LED or emitter. The trailing `false` is `gpsRail`:
-`M5.Power` does not switch this board's GPS rail, the AXP2101 does.
+The row has all 22 columns of `include/FurbleBoard.h:46-81`, and
+`rtcBatteryBacked` is the only value that changed in the 2026-11-25 pass.
+`rtcOnBus` is the column after it: it says whether M5Unified can reach an RTC
+chip on the internal bus, and this row leaves it `false` because M5Unified has no
+board row to run a probe for the T-Beam Supreme. Plan 363 reads that column for
+its boot guard. Plan 350 later appended two more columns, `ledActiveLow` and
+`irMarkLow`, so this row needs them before it compiles; both describe a driven
+stage and neither has a value for a board with no LED or emitter. The trailing
+`false` is `gpsRail`: `M5.Power` does not switch this board's GPS rail, the
+AXP2101 does.
 
 Battery level, voltage and charging come from the AXP2101 E-gauge and status
 registers; it has no current sense. Capacity is 0 because the 18650 is the

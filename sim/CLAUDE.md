@@ -291,6 +291,29 @@ including empty strings and failed-save rollback.
   report setup failure without consuming a persisted intervalometer resume.
 - Console-only firmware modules that have no simulator behavior still get a
   no-capability shadow in `sim/shim`, such as `FurbleBtDebug.h`.
+- `sim/shim` comes before `include/` on the simulator's include path, so
+  `src/FurbleUI.cpp` compiles against `sim/shim/FurbleFeedback.h`, not
+  `include/FurbleFeedback.h`. Every `Feedback` method the UI calls must exist in
+  that shim, or the simulator stops compiling while the firmware build and the
+  host tests stay green. `setTimerPathActive()` was missed once that way and
+  only the simulator compile database caught it. A shim method that changes
+  nothing gets a body that names the reason, not a comment above a missing
+  declaration.
+- `sim/shim/M5PM1.h` models IRQ Status 1 and 2 as latches and reports the
+  aggregated IRQ line through `irqLineAssertedForTest()`. The manual (V1.9)
+  states the hold rule, that a GPIO configured as IRQ stays low until the status
+  is cleared; the zero write that performs the clear is the vendor driver's own
+  (`irqClearGpioAll()`, `irqClearSysAll()`), not a manual claim. Keep the two
+  citations apart. The simulator's platform double does not arm the motion wake.
+  Two host targets use this model: `pmic-irq` drives the header's clear sequence
+  alone, and `platform-wake` compiles the real `src/FurblePlatform.cpp` and calls
+  the four production call sites. The shim therefore models the GPIO
+  configuration the arm path writes (`gpioSet`, `gpioSetFunc`,
+  `gpioSetWakeEdge`, `gpioSetWakeEnable`), the power source, LED level, timed
+  wake and RTC RAM, and holds them in a static so a second instance in a test
+  observes what production did. Keep the latch, mask and GPIO-configuration
+  semantics in the class comment. Do not make a mask release the line: the hold
+  rule is about the status clear.
 
 ## Dependency resolution
 
