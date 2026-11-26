@@ -1,0 +1,80 @@
+# The three root-menu pages the certified suite never asserted: Delete, Power
+# Off and the IR remote. All three hang off addMainMenu (addDeleteMenu at
+# src/FurbleUI.cpp:3393, addIRMenu at 3394, the inline Power Off menu at 3410)
+# and only bughunt's page-matrix visited them, so a root route could break
+# with every end-to-end run still green.
+#
+# Delete is entered with "action nav delete", which clicks the production menu
+# button and runs its refreshDelete() handler (src/FurbleUI.cpp:9646-9662). The
+# seed gives that handler a saved camera to list, so the page renders a row
+# instead of an empty page, and the row is asserted on the name the client
+# derived rather than printed. With no saved camera the entry is merely DISABLED
+# (src/FurbleUI.cpp:3534-3540), so an empty list would still pass a page check
+# while proving nothing about the row layout.
+#
+# Power Off has no navigation route on purpose. Its menu entry is created inline
+# with a CLICKED handler that calls doPowerOff() (src/FurbleUI.cpp:3410-3418),
+# so clicking it powers the modelled device off mid-run rather than loading a
+# page. The page is therefore entered with "action page power_off", which sets
+# the menu page without dispatching the handler. page-matrix uses the same form.
+#
+# The IR entry is hidden unless IR::isSupported() and Settings::IR are both true
+# (src/FurbleUI.cpp:12434-12444), and Settings::IR defaults to false
+# (src/FurbleSettings.cpp:714-723). It also has no entry in the nav action map
+# (src/FurbleUI.cpp:4415-4463), so "action page ir" is the only route. The
+# scenario turns the setting on first, which is what makes the menu entry
+# visible on a build whose IR shim reports an LED (sim/shim/FurbleIR.h:37,
+# driven by FURBLE_SIM_IR), though nothing this file does consults that
+# capability: "action page ir" sets the page directly, addIRMenu builds it
+# unconditionally (src/FurbleUI.cpp:3394), and "action toggle ir" drives the
+# Settings::IR switch that addIRSettingsMenu adds unconditionally
+# (src/FurbleUI.cpp:12857, switch at 12415). This file therefore asserts the
+# page and its layout, not the visibility of the menu entry that leads to it.
+# It declares no capability in the manifest: it passes with every
+# FURBLE_SIM_IR/FURBLE_SIM_FEEDBACK/FURBLE_SIM_SD variable unset.
+seed saved_camera true
+wait 400
+
+home
+wait 200
+assert ui.page main
+
+# --- Delete ----------------------------------------------------------------
+action nav delete
+wait 300
+assert ui.page delete
+assert ui.back visible
+assert ui.focus_on_page yes
+# The simulator's esp_random() steps a counter that starts at 0x28
+# (sim/shim/esp_random.h:14-19), so the seeded FauxNY camera is deterministic:
+# FauxNY names itself "FauxNY-" plus id % 42 (lib/furble/FauxNY.cpp:23-25),
+# which is FauxNY-40 here.
+assert ui.row_text FauxNY-40
+print ui.overflow
+
+# --- Power Off -------------------------------------------------------------
+home
+wait 200
+assert ui.page main
+action page power_off
+wait 200
+assert ui.page power_off
+assert ui.back visible
+print ui.overflow
+
+# --- IR remote -------------------------------------------------------------
+# Turn the IR setting on through its real switch, then load the page it gates.
+home
+wait 200
+assert ui.page main
+action toggle ir
+wait 300
+assert setting.ir 1
+action page ir
+wait 300
+assert ui.page ir
+assert ui.overflow no
+assert ui.label_overlaps 0
+assert ui.cut_labels 0
+
+exit

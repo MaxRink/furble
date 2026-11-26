@@ -1,0 +1,60 @@
+# The Power settings page, never asserted by the certified suite. page-matrix
+# reached it; nothing else did. It is also the page that owns the Battery Saver
+# switch, which bundles connection saver, screen off, reconnect backoff, scan
+# mode and light sleep, so a route regression here hides a whole power profile.
+#
+# The page is built by addPowerMenu (src/FurbleUI.cpp:11671-11851): the Battery
+# Saver switch, a static hint label that is deliberately outside the input
+# group, a connection-saver switch on boards with modem sleep, then the CPU
+# speed and power-policy rollers whose presence depends on the board profile
+# (Platform::CPU_MAX_FREQ_MHZ and Board::profile().canPowerOff). The row count
+# therefore differs per panel, which is why this file asserts identity, focus
+# and scroll reachability rather than a fixed fit, and prints ui.overflow so the
+# per-panel result stays in the log. ui.cut_labels is the one layout value this
+# page does fail on the narrow panel, and it is carried as an xassert below.
+#
+# Battery Saver is deliberately not asserted through a Battery Saver query,
+# because there is none. What is asserted is setting.conn_saver, the individual
+# setting the profile bundles, whose stored value must still read its default
+# while the profile is off: Battery Saver is applied through the effective
+# accessors and does not rewrite the stored settings
+# (src/FurbleSettings.cpp:230-236). The switch itself is left untouched. It has no
+# entry in the toggle action map (src/FurbleUI.cpp:4272-4289), so pressing it
+# would need a focus-dependent key walk, which is the flake scan-already-saved.txt
+# documents for focus-driven activation.
+wait 400
+
+home
+wait 200
+assert ui.page main
+
+action nav settings
+wait 200
+assert ui.page settings
+action nav power
+wait 250
+assert ui.page power
+assert ui.back visible
+assert ui.focus_on_page yes
+assert setting.conn_saver 0
+print ui.overflow
+print ui.scroll_labels
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+assert ui.label_overlaps 0
+# One label is cut on the 135x240 panel. No scenario asserted it: the bughunt
+# sweeps that visit this page assert its identity and both scroll endpoints and
+# stop there (sim/scenarios/bughunt/page-matrix.txt:285-291), so the cut-label
+# property is the one layout value they leave unasserted, and overflow-sweep.txt
+# prints ui.overflow without asserting it
+# (sim/scenarios/bughunt/overflow-sweep.txt:244-247). xassert keeps the run
+# green while the gap is on record, and it flips to a hard failure (XPASS) the
+# moment the layout is fixed, which is the signal to promote the line to assert
+# (sim/CLAUDE.md:533-540).
+xassert ui.cut_labels 0
+
+exit

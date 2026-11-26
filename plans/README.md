@@ -272,6 +272,7 @@ implemented.
 | [297-gps-improvement-roadmap.md](297-gps-improvement-roadmap.md) | GPS power/accuracy findings, the implemented fixes, and the ranked remaining GPS work with bench gates |
 | [298-pre-review-gate.md](implemented/298-pre-review-gate.md) | Pre-review scanners for diff hygiene, settings contracts, C++ safety, and a sanitized host subset, wired into pull-request CI |
 | [178-sim-startup-settings-order.md](implemented/178-sim-startup-settings-order.md) | Apply simulator settings before platform construction while preserving panel, environment, watchdog, and profiler boundaries |
+| [338-e2e-page-coverage.md](338-e2e-page-coverage.md) | End-to-end scenarios for the 23 UI pages the certified suite never asserted |
 
 ## Additional plan documents
 

@@ -1,0 +1,76 @@
+# The two appearance pages the certified suite never asserted: Legend and Theme.
+# Only bughunt's page-matrix and the legend-* sweeps reached them, so a
+# regression on either page could not have failed an end-to-end run.
+#
+# Legend is not a settings-root page. addDisplayMenu builds it as a child of the
+# Display page, after the title control, and only when UI::legendSelectable()
+# says the board floats its legends over the page (src/FurbleUI.cpp:11335-11337,
+# the gate itself at 11340-11357). That gate is false whenever the panel has
+# touch and true only for the Stick boards, so the scenario seeds no_touch and
+# asserts the buttons layout the Stick ships with. Without those two lines the
+# entry is absent and "action nav legend" is unavailable.
+#
+# Theme is a settings-root page: a roller over Dark, Default and Mono Furble plus
+# a Restart button (src/FurbleUI.cpp:12027-12072).
+#
+# On both pages the roller only persists through the Restart button, and that
+# handler saves the selection and then reboots the modelled device: the Legend
+# handler at src/FurbleUI.cpp:11433-11440, the Theme handler at
+# src/FurbleUI.cpp:12063-12068. Pressing it would end the run, so persistence
+# across the restart is left to the restart-driven bughunt files
+# legend-setting-135.txt, legend-setting-80.txt and legend-bottom-135.txt. This
+# scenario stops at the route, the rendered controls and the navigation contract.
+#
+# Pages are separated with "home" and re-walked from the root rather than with
+# "back", because Back from these sub-pages leaves the encoder focus off the
+# visible page and the next focus assertion would measure that instead.
+seed no_touch true
+seed legend 1
+wait 400
+
+home
+wait 200
+assert ui.page main
+assert ui.nav_layout buttons
+
+# --- Legend (child of Display) ---------------------------------------------
+action nav settings
+wait 200
+assert ui.page settings
+action nav display
+wait 200
+assert ui.page display
+action nav legend
+wait 250
+assert ui.page legend
+assert ui.back visible
+assert ui.focus_on_page yes
+print ui.overflow
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+
+# --- Theme -----------------------------------------------------------------
+home
+wait 200
+assert ui.page main
+action nav settings
+wait 200
+assert ui.page settings
+action nav theme
+wait 250
+assert ui.page theme
+assert ui.back visible
+assert ui.focus_on_page yes
+print ui.overflow
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+
+exit
