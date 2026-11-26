@@ -10,6 +10,8 @@ SoC where the picture is not a straight ESP32 port: no REF_TICK source, USB
 Serial/JTAG instead of a UART bridge, and PSRAM. This page holds the peripheral
 facts the hardware traps depend on.
 
+**Status.** shipped. Every S3 image runs on this SoC.
+
 **Documents.** [S3-DS], [S3-TRM]
 
 ## Documents used

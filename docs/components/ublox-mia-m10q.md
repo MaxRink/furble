@@ -7,6 +7,9 @@ weight of 0.07 g, so the outline dimensions and the pad count are UNVERIFIED.
 Data sheet page 2 lists four order codes, -00B-01, -01B-01, -00B-02 and -01B-02,
 all in initial production.
 
+**Status.** shipped in firmware, hardware untested. The UBX path is built into
+every image and the receiver is autodetected; no physical MIA-M10Q has been run.
+
 **Role in furble.** The second M10 receiver furble drives. It shares the UBX
 codec with the MAX-M10S and differs in module settings, most visibly the default
 baud rate (`lib/furble/protocol/GpsUbx.h:6` to `:16`).
@@ -73,6 +76,14 @@ set is the section 1.3 text on the same page and Table 4, which is what rows 5
 and 6 cite. The same revision claimed that B1I is off at the SPG 5.10 default,
 which the module documents contradict and the ROM defaults table happens to
 support, as row 6 separates.
+
+## Open rows
+
+| ID | Missing | Document and section needed | State |
+| :--- | :--- | :--- | :--- |
+| C-28e | The 38400 baud default, which an earlier version of this page attributed to Table 21 | DS-MIA interface section, the UART default row | open, the page and table cited did not carry it |
+| C-28f | The MIA-M10Q current consumption in each mode | DS-MIA current consumption table | open, read for the default configuration only |
+| C-28g | Whether the module ships with the same feature set as the MAX-M10S | DS-MIA feature table and IM-MIA | open, only the constellation default was compared |
 
 ## Redistribution
 

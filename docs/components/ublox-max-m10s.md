@@ -5,6 +5,10 @@ factor, 10.1 x 9.7 mm, 2.5 mm high, 0.5 g, ROM firmware SPG 5.10 (data sheet
 Table 21 page 17, the typical column of dimensions A, B and C, and the document
 information page 2). The pad count was not counted and is UNVERIFIED.
 
+**Status.** shipped in firmware, hardware untested. The UBX path is built into
+every image and the receiver is autodetected; `sim/ubx_m10.cpp` is the only
+receiver this code has been run against so far.
+
 **Role in furble.** One of the two M10 receivers furble drives. The protocol is
 UBX over UART, with the same codec for both modules
 (`lib/furble/protocol/GpsUbx.h`, `src/FurbleGPSUbx.cpp`).
@@ -45,6 +49,20 @@ describe the receiver as shipped, which is not always the ROM default.
 | 12 | The key `MSGOUT_NAV_PVT_UART1` is 0x20910007 and defaults to 0, so UBX-NAV-PVT is not sent on UART1 until furble enables it | IFD 4.9.11, Table 19 page 138 for the key, and the CFG-MSGOUT defaults in Table 69 page 166 with its caption on page 168 | `lib/furble/protocol/GpsUbx.h:106` | VERIFIED |
 | 13 | ROM SPG 5.10 refuses power save combined with BeiDou B1C: a PSM configuration, both cyclic tracking and on/off, that includes B1C is rejected by the receiver, which answers with an explanatory ERROR message. The workaround the note gives is B1I with PSM. The same section also records that the CS pin is not a wake-up source in PSM | RN-M10 section 7 page 15, and section 7.2 page 15 in particular | `lib/furble/protocol/GpsUbx.h:430` `psm_refused`, set in `GpsUbx.cpp` and reported at `src/FurbleGPSUbx.cpp:158` | VERIFIED |
 
+## What the module adds over the protocol
+
+The frame layout, the checksum, the message ids, the configuration layers, the
+constellation mask and the detection rule are protocol facts and live on the
+[UBX protocol page](../protocols/gnss-ubx.md). What belongs here is the module:
+
+| Item | Value | Citation |
+| :--- | :--- | :--- |
+| Detection | A u-blox receiver answers MON-VER whatever its configuration, and a receiver that is not u-blox ignores the frame. After two unanswered polls, 1000 ms each, the receiver is treated as something else and keeps the NMEA path | `lib/furble/protocol/GpsUbx.h:456-486` |
+| Why a whole second per poll | The answer is about 190 bytes queued behind up to a second of NMEA at 9600 baud | `lib/furble/protocol/GpsUbx.h:459-465` |
+| Flash | The module has no external flash, so UPD-SOS create is expected to be refused and a configuration that must survive a power cycle has to live in the backup domain or be reapplied | `lib/furble/protocol/GpsUbx.h:270-274`, IFD 4.3 |
+| Power save and BeiDou B1C | PSM plus BeiDou B1C is rejected by the ROM, which is item 7.2 of the release notes and the reason `psm_refused` exists | RN-M10 section 7.2, page 15, `lib/furble/protocol/GpsUbx.h:401-405` |
+| Default baud | 9600 | IM-MAX 2.1.4 |
+
 ## Where the code implements it
 
 - `lib/furble/protocol/GpsUbx.h:1` to `:60`: frame constants and every message
@@ -79,6 +97,15 @@ describe the receiver as shipped, which is not always the ROM default.
   leaving BDS B1C and GLO L1 enabled, which is not a set the data sheet
   describes, and the module level default is the other module's business
   (`ublox-mia-m10q.md`).
+
+## Open rows
+
+| ID | Missing | Document and section needed | State |
+| :--- | :--- | :--- | :--- |
+| C-28a | The complete NAV-PVT and NAV-SAT field tables beyond the fields decoded | IFD R03 sections 3.15.11 and 3.15.13, read field by field | open, the pages cite the section list only |
+| C-28b | The acquisition, tracking and power-save current figures | DS-MAX UBX-20035208 current consumption tables | open, the datasheet was read for its revision only |
+| C-28c | The AssistNow Offline and Online sequences | IFD R03 AssistNow sections plus the AssistNow service description | open, only AssistNow Autonomous is used |
+| C-28d | Whether UPD-SOS create is refused on this module | DS-MAX flash file system section, and a bench attempt | open, recorded as an expectation |
 
 ## Redistribution
 
