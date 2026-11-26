@@ -101,6 +101,7 @@ jobs:
           python3 patches/test_ble_gap_patch.py
           python3 patches/test_build_version.py
           python3 patches/test_m5gfx_board.py
+          python3 patches/test_m5unified_bmi270.py
           python3 patches/test_reproducible.py
           python3 patches/test_repro_prefix_map.py
           python3 tests/test_reproducible_paths.py

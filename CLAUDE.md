@@ -13,11 +13,18 @@ CLAUDE.md whose directory it touches.
   development. CI builds the six release envs and mandatory debug profiles;
   releases build the six release envs and their matching debug profiles.
 - The three 4 MB debug envs use size-optimized debug flags (`-Os -g2 -ggdb2`)
-  to keep dual-OTA slots while retaining symbols, logs and assertions; stepping is less exact.
-  `m5stack-core-debug` is the one debug env that also compiles furble at
-  `ESP_LOG_INFO` rather than `ESP_LOG_VERBOSE`: its 4 MB slot leaves 431 bytes
-  of slack with the VERBOSE strings and 25,807 without them, and plan 106
-  group A already caps every component at INFO (plans/347).
+  to keep dual-OTA slots while retaining debug symbols, the assert() check and
+  abort, the full `ESP_LOG_VERBOSE` log maximum and the `sdkconfig.debug`
+  diagnostics; stepping is less exact. The assertions are
+  `CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT`, so the check and the abort
+  stay and only the message strings go. `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`
+  raises the compiled log maximum of every translation unit in the image, not
+  just furble's, so it overrides the image-wide `CONFIG_LOG_MAXIMUM_LEVEL=3`
+  cap from plan 106 group A and every component's DEBUG and VERBOSE format
+  strings are linked. `m5stack-core-debug` pays for them with the BMI270 init
+  blob and driver it no longer links, 8,633 to 9,120 bytes depending on the
+  build (plans/347), and it is the
+  one debug env that omits the stack protector.
 - `m5stack-core-usb-debug` is a developer-only USB-UART fallback with one
   factory app partition. It is not part of the six-board release or web
   installer matrices and has no wireless update or rollback path. Normal CI

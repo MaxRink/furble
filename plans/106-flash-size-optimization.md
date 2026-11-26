@@ -344,10 +344,11 @@ same 13 line changes are applied identically to all five board configs.
    at runtime; only their format strings are dropped from `.flash.rodata`.
    Deviation from the plan: there is no separate `sdkconfig.debug`. The debug
    envs share the release sdkconfig by design (see CLAUDE.md and
-   platformio.ini) and already force full logging in furble's own translation
-   units through the existing `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE` build flag, so
-   the `*-debug` builds keep their console debug logging without a second
-   config file.
+   platformio.ini) and already force full logging through the existing
+   `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE` build flag. That flag is a compiler flag
+   in `build_flags`, so it raises the compiled maximum of every translation unit
+   in the image and not just furble's, and the `*-debug` builds keep their
+   console debug logging without a second config file (plans/347).
 
 2. Item 2, silence release assertions. Set
    `CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y` and
