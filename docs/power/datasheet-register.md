@@ -297,7 +297,7 @@ not verified for this register.
    datasheet line.** It is a whole-chip average, not a delta, and the clock is
    not stated.
 9. **The display and touch documents may not be redistributed.** Sitronix and
-   ILITEK print the same sentence on every page: the document "shall not be
+   ILITEK print the same sentence in every page footer: the document "shall not be
    distributed, reproduced, or disclosed in whole or in part without prior
    written permission" of the vendor. Chipone's Important Notice on page 226 of
    the CO5300 datasheet and Hynitron's declaration on page 10 of the CST9217

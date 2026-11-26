@@ -808,7 +808,8 @@ the file's sha256, so the same copy can be checked again.
 - Sino Wealth SH1106, version 2.3, June 2013, 49 pages, sha256 ab5ce5f3. Page 35: sleep
   current 5 mA maximum on the VDD1 and VDD2 row and on the external VPP row at
   TA 25 C. It is not a microamp figure. Page 49 revision history. The
-  Crystalfontz OCR copy, 49 pages, sha256 3baf1812, is the same text.
+  Crystalfontz OCR copy, 49 pages, sha256 3baf1812, is the same V2.3 text at
+  0.965 similarity.
   `https://www.pololu.com/file/0J1813/SH1106.pdf`
 - Hynitron CST9217, version 1.0, 2022-08-11, 10 pages, sha256 74cf16e6. Page 5:
   1.3 mA at 100 Hz, 12 uA monitor at 30 Hz, 2 uA sleep. Page 8: 8-bit I2C
@@ -827,7 +828,7 @@ the file's sha256, so the same copy can be checked again.
 
 ### Licence limits on these documents
 
-Sitronix and ILITEK print the same restriction on their pages: the document
+Sitronix and ILITEK print the same restriction in their page footers: the document
 "shall not be distributed, reproduced, or disclosed in whole or in part without
 prior written permission" of the vendor. Chipone's Important Notice on page 226
 of the CO5300 datasheet and Hynitron's declaration on page 10 of the CST9217
