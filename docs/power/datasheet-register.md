@@ -37,15 +37,29 @@ Rules:
 | Espressif ESP32-S3 module pin rules | ESP32-S3 Series Datasheet v2.2 | v2.2 | GPIO33 to GPIO37 carry DQ4 to DQ7 plus DQS/DM only in octal mode (Table 2-14 p. 31, section 2.3.5 p. 26), and the notice forbids using in-package flash or PSRAM pins for anything else | Opened for the vendor document pass | Board |
 | Semtech SX1261/2 | SX1261/2 datasheet, DS.SX1261-2.W.APP, ECO 067443, https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1198/DS_SX1261_2_V2-2.pdf and https://wiki.lilygo.cc/datasheet/DS_SX1261_SX1262.pdf (byte-identical, SHA-256 `6d783125dbef567954ce53095ad068d0950b2a8de52f95bb2cfde4146c4306c2`). The Semtech product page link is form and login gated | Rev 2.2, December 2024 | NRESET held low typically 100 us (8.1 p. 53). NSS rising to BUSY rising 600 ns maximum, BUSY held high through 20 kOhm in sleep (8.3.1 p. 55). Switching: SLEEP to STBY_RC 3500 us cold and 340 us warm, STBY_RC to STBY_XOSC 31 us, to FS 50, to RX 83, to TX 126, STBY_XOSC to FS 40, to TX 105, to RX 62, FS to RX 41, to TX 76, RX to FS 15, to TX 92 (Table 8-2 p. 56). NSS falling to SCK 100 us minimum when leaving sleep (Table 8-1 t10 and 8.2.2 p. 54). Section 15 p. 109 to 111 lists four known limitations | Opened for the vendor document pass. Not fitted on any supported board | Board |
 
-## 2. Display and panel datasheets
+## 2. Display, panel, and touch datasheets
+
+Every row in this section was downloaded and read on 2026-11-26. The revision
+cell carries the document version, the page count, the first eight hex digits of
+the sha256 of the file that was read, and the read date. The limit cell quotes
+the page the number came from, so a reader can recheck one page instead of the
+whole document.
 
 | Part | Document | Revision | Relevant limit | Lane status | Cited by |
 | --- | --- | --- | --- | --- | --- |
-| Sitronix ST7735S | ST7735S datasheet, Table 3 page 30, https://cdn.sparkfun.com/assets/9/0/2/5/8/ST7735S_v1.1.pdf | v1.1 | Normal mode 0.9 mA typ, 2.0 mA max; sleep-in 15 uA typ, 30 uA max | Quoted through the model and Display lane | Display, BLE, Board |
-| Sitronix ST7789V | ST7789V datasheet, Table 3 page 40, https://newhavendisplay.com/content/datasheets/ST7789V.pdf | v1.3 | Normal mode black image at 60 Hz 6.0 mA typ, 7.5 mA max; sleep-in 15 uA typ, 30 uA max; `FRCTRL2` (C6h) frame-rate control; partial plus idle mode 5.0 mA | Opened by Display lane for Table 3 and FRCTRL2 | Display, BLE, Board, SoC |
-| Sitronix ST7796S | ST7796S datasheet version 1.0, sections 9.2.12 and 9.2.13, cited without a copy or URL in the tree | V1.0 | Sleep Out to the next Sleep In needs 120 ms, and SLPIN and SLPOUT each need 5 ms before any other command. There is no 120 ms limit in the reverse direction | Quoted by the correction lane; no local copy | Display, SoC |
-| ILITEK ILI9342C | ILI9342C datasheet, https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/ILI9342C-ILITEK.pdf | V101 | Sleep Out to the next Sleep In and Sleep In to the next Sleep Out each need 120 ms (sections 8.2.11 and 8.2.12, pages 100 and 101). No supply current table; only voltages and leakage. The model uses an ST7789V analogy tagged estimated: 6 to 8 mA operating, 15 to 100 uA sleep-in | Dwell pair quoted by the correction lane; operating current still unavailable | Display, Board |
-| ILITEK ILI9341 | ILI9341 datasheet page 236, https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf | Not stated | The same 120 ms pair in both directions as the ILI9342C. Standby ceiling 100 uA max, used as the ILI9342C sleep-in high bound | Dwell pair quoted by the correction lane; current figures quoted through the model, not reopened | Display, Board |
+| Sitronix ST7735S | ST7735S datasheet, https://cdn.sparkfun.com/assets/9/0/2/5/8/ST7735S_v1.1.pdf | v1.1, 2011-11-21, 201 pages, sha256 0322a527, read 2026-11-26 | Table 3 page 30: normal mode 0.9 mA typ, 2.0 mA max; sleep-in 15 uA typ, 30 uA max | Opened at Table 3 and the page footers | Display, BLE, Board |
+| Sitronix ST7789V | ST7789V datasheet, https://newhavendisplay.com/content/datasheets/ST7789V.pdf | v1.3, 2014/03, 316 pages, sha256 8ecf0e43, read 2026-11-26 | Table 3 page 40: normal mode black image at 60 Hz 6.0 mA typ, 7.5 mA max; sleep-in 15 uA typ, 30 uA max; partial plus idle mode 5.0 mA. `FRCTRL2` (C6h) frame-rate control. Dwell: 5 ms after SLPIN and after SLPOUT before any other command, and 120 ms from SLPOUT to the next SLPIN only (sections 9.1.11 and 9.1.12, pages 182 and 184). Table 9 reset timing on page 48 | Opened at Table 3, Table 9 and both sleep sections | Display, BLE, Board, SoC |
+| Sitronix ST7789V2 | ST7789V2 datasheet, https://files.waveshare.com/upload/c/c9/ST7789V2.pdf | v1.0, 2016/11, 319 pages, sha256 89376784, read 2026-11-26 | Same sleep wording as ST7789V v1.3: 5 ms after SLPIN and after SLPOUT, 120 ms from SLPOUT to the next SLPIN (sections 9.1.11 and 9.1.12, pages 184 and 186). Table 3 page 40 sleep-in 15 uA typ, 30 uA max. Table 9 reset timing on page 48 | Opened at Table 3, Table 9 and both sleep sections | Display |
+| Sitronix ST7789P3 | ST7789P3 datasheet, https://files.waveshare.com/wiki/ESP32-S3-GEEK/ST7789P3.pdf | v0.1, 2022/03, 276 pages, sha256 26e62a24, read 2026-11-26 | Table 3 page 34: normal mode 6.0 mA typ, 7.5 mA max; sleep-in 20 uA typ, 50 uA max; partial plus idle mode 5.0 mA typ, 6.0 mA max. Same sleep wording as ST7789V (sections 9.1.11 and 9.1.12, pages 143 and 145). Table 8 reset timing on page 41: TRW 10 us minimum, TRT 120 ms maximum. This is the m5stick-s3 panel | Opened at Table 3, Table 8 and both sleep sections | Display, Board |
+| Sitronix ST7796S | ST7796S datasheet, https://dl.espressif.com/dl/schematics/ST7796S_SPEC_V1.0.pdf | v1.0, 2014/11, 279 pages, sha256 212f7a8e, read 2026-11-26 | 320x480, 262K colours. 5 ms after SLPIN, and 120 ms from SLPOUT to the next SLPIN only (sections 9.2.12 and 9.2.13, pages 159 and 160). MIPI DSI in section 8.5, page 94 | Opened at the cover and both sleep sections | Display |
+| Sitronix ST7796U | ST7796U datasheet, https://www.smartdisplaytech.com/wp-content/uploads/2023/03/ST7796S_spec.pdf | v1.0, 2020/02, 287 pages, sha256 c907c64e, read 2026-11-26 | 320x480, 16.7M colours. 5 ms after SLPIN, and 120 ms from SLPOUT to the next SLPIN only (sections 9.2.12 and 9.2.13, pages 163 and 164). MIPI DSI in section 8.5, page 98. The host file is named `ST7796S_spec.pdf` while the cover and the page footers say ST7796U. LilyGo's T-Lora Pager document names ST7796U for its 480x222 panel | Opened at the cover, the contents and both sleep sections | Display |
+| ILITEK ILI9342C | ILI9342C datasheet, https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/ILI9342C-ILITEK.pdf | V101, document ILI9342C_DTS_V101_20111214, 235 pages and complete at 235 of 235, sha256 604a35c0, read 2026-11-26 | No supply current table anywhere in the document. Section 18.2 page 227 gives only plus or minus 0.1 uA logic input leakage, so the model keeps its ST7789V analogy tagged estimated: 6 to 8 mA operating, 15 to 100 uA sleep-in. Dwell is 120 ms in both directions, SLPIN to SLPOUT and SLPOUT to the next SLPIN (sections 8.2.11 and 8.2.12, pages 100 and 101). Section 19 page 235 carries both the 2011/12/14 V101 line and a 2011/12/26 item | Opened at the cover, the contents, both sleep sections, the DC characteristics and the revision history | Display, Board |
+| ILITEK ILI9341 | ILI9341 datasheet, https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf | V1.11, document ILI9341_DS_V1.11.pdf, 245 pages, sha256 a9bbfdf6, read 2026-11-26 | Page 236: standby current IST 100 uA maximum at VCI 2.8 V and 25 C, used as the ILI9342C sleep-in high bound. The same 120 ms pair in both directions as the ILI9342C | Opened at the cover and page 236 | Display, Board |
+| Chipone CO5300 | CO5300 datasheet V0.01, https://files.waveshare.com/wiki/common/Co5300_Datasheet.pdf | V0.01, 2023/07/24, 226 pages, sha256 2ad0461a, read 2026-11-26 | Page 103: deep stand-by IDSTB 2 uA VDDI plus 1 uA VCI; Sleep In 110 uA VDDI plus 25 uA VCI on DSI LP, 85 uA plus 25 uA on DSI ULP. Revision history page 2 records 0.01 "Update Deep Stand-by mode current". Commands start at section 7.1, page 117. The last page is 226 | Opened at the cover, the revision history, the current table, the command table start and the last page | Display |
+| Chipone CO5300 | CO5300 datasheet V0.00, https://files.waveshare.com/wiki/common/CO5300_Datasheet_V0.00.pdf | V0.00, 2023/03/28, 226 pages, sha256 20161057, read 2026-11-26 | The same page count and the same Sleep In rows as V0.01, with no deep stand-by row on page 103 | Opened at page 103 to compare | Display |
+| Sino Wealth SH1106 | SH1106 datasheet V2.3, https://www.pololu.com/file/0J1813/SH1106.pdf | V2.3, June 2013, 49 pages, sha256 ab5ce5f3, read 2026-11-26 | Page 35: sleep current 5 mA maximum, not microamps, in both rows, the VDD1 and VDD2 row at 3 V and 3.7 V and the external VPP row at 9 V, both at TA 25 C. Revision history page 49: 2.1 April 2012 raises the maximum VPP to 14.0 V, 2.2 April 2012, 2.3 June 2013 changes the power on and off sequence on pages 32 to 34 | Opened at page 35 and page 49 | Display |
+| Sino Wealth SH1106, OCR copy | SH1106 V2.3 datasheet, https://www.crystalfontz.com/controllers/uploaded/SH1106-Revision_2.3.pdf | V2.3, 49 pages, sha256 3baf1812, read 2026-11-26 | The same text as the Pololu copy at 0.965 similarity. The PDF metadata names `SH1106-Revision_2.3.pdf` and `SH1106 V2.3.doc`, and the producer field records an Acrobat Paper Capture OCR pass created 2017-08-16 | Opened the metadata and compared the text | Display |
+| Hynitron CST9217 | CST9217 datasheet V1.0, https://raw.githubusercontent.com/ScripTerasu/cst92xx-touch-driver/0e4cede38d860ba08cf98c7a69400e10e8274608/docs/CST9217.pdf | V1.0, 2022-08-11, 10 pages, sha256 74cf16e6, read 2026-11-26 | Section 9.1 page 5: dynamic 1.3 mA at 100 Hz, monitor 12 uA at 30 Hz, sleep 2 uA. Page 8: the default 8-bit I2C address is 0xB4 and 0xB5, so 0x5A in 7-bit form, and it is configurable in the chip. Section 10.5 page 9: TPOR 100 ms, TPR 1 ms, TRON 100 ms, TRST 0.1 ms. There is no register map in the document | Opened all ten pages | Display |
 
 ## 3. Power management ICs
 
@@ -325,6 +339,34 @@ measurement exists, and the flash gate is deferred (see `plans/313`).
    reset path itself has an open item, because `src/FurbleEthernet.cpp` pulses
    `RSTn` for 500 us and then talks SPI without waiting the up-to-1 ms `TPL`,
    and the ESP-IDF PHY adds no wait of its own once `reset_gpio_num` is -1.
+10. **The display and touch documents may not be redistributed.** Sitronix and
+   ILITEK print the same sentence in every page footer: the document "shall not be
+   distributed, reproduced, or disclosed in whole or in part without prior
+   written permission" of the vendor. Chipone's Important Notice on page 226 of
+   the CO5300 datasheet and Hynitron's declaration on page 10 of the CST9217
+   datasheet grant no redistribution right either. This register therefore
+   records the URL, the revision, the page count and the hash, and never a copy,
+   and no vendor PDF is committed to this repository.
+11. **A register value taken from a driver is labelled as such.** The Linux
+   `hynitron_cstxxx.c` driver is GPL-2.0-only and the ESPHome CST92xx component
+   is GPLv3, so neither can be consulted for this MIT tree. The only driver
+   source used for touch registers is the MIT-licensed Rust `cst92xx` crate,
+   `src/registers.rs` at commit `0e4cede3`, which records that it was itself
+   ported from the MIT SensorLib. The CST9217 datasheet carries no register map,
+   so every register address in this corpus is code-derived and is attributed to
+   that crate.
+12. **There is no vendor copy of the SH1106 datasheet and there will not be
+   one.** `sino-wealth.com` returns NXDOMAIN and its Wayback captures are HTML
+   only. The live `sinowealth.com` is a Chinese MCU vendor site. Its Wayback
+   set holds 106 PDF URLs, all MCU part documents, and none of them an SH1106.
+   The two usable copies are the Pololu mirror and the Crystalfontz OCR copy,
+   both V2.3.
+   `buydisplay.com/download/ic/SH1106.pdf` answers 403 to an automated fetch.
+13. **A vendor prefix names a vendor.** Sitronix parts start with ST, so
+   ST7735S, ST7789V, ST7789P3, ST7796S and ST7796U are Sitronix. Sino Wealth
+   parts start with SH, so SH1106 is Sino Wealth. "Sino Wealth ST7796S"
+   conflates two vendors. Sitronix's own AIoT DDI table lists ST7796U, ST7796UI,
+   ST7796HU and ST7796U2 and does not list ST7796S.
 
 ## 13. Per-board component and document coverage
 
@@ -339,15 +381,14 @@ was opened. Every `unknown` names the artifact that closes it.
 
 | Board | MCU and radio | PMIC, charger, gauge | Display and touch | IMU | Audio or other | Battery | FCC | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | no board-level filing found; module grant only | documented, battery gap and no board FCC ID |
-| `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | no board-level filing found; module grant only | documented, RTC and battery gaps, no board FCC ID |
-| `m5stick-s3` | ESP32-S3 v2.2, PICO-1 N8R8 v1.2 | M5PM1 V1.9 | ST7789P3, panel document unknown | BMI270 revision 1.6 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | 2AN3WM5STICKS3, K150 grant 12/16/2025, read from a page render (OCR-derived) | documented, panel, audio and battery gaps; FCC closed |
-| `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101 | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | no board-level filing found; module grant only | documented, IMU, SD and battery gaps, no board FCC ID |
-| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C V101 plus FT6336U, not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | Core2 2AN3WM5STACK-CORE2, K010 grant 08/20/2020; Tough 2AN3W-M5STACK-TOUGH, K034 grant 04/19/2021 | documented for AXP192; AXP2101 datasheet is an open gap; FCC closed |
+| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1, read 2026-11-26 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | no board-level filing found; module grant only | documented, battery gap and no board FCC ID |
+| `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3, read 2026-11-26 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | no board-level filing found; module grant only | documented, RTC and battery gaps, no board FCC ID |
+| `m5stick-s3` | ESP32-S3 v2.2, PICO-1 N8R8 v1.2 | M5PM1 V1.9 | ST7789P3 v0.1 2022/03, 276 pages, sha256 26e62a24, read 2026-11-26 | BMI270 revision 1.6 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | 2AN3WM5STICKS3, K150 grant 12/16/2025, read from a page render (OCR-derived) | documented, audio and battery gaps; panel and FCC closed |
+| `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26 | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | no board-level filing found; module grant only | documented, IMU, SD and battery gaps, no board FCC ID |
+| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26, plus FT6336U, still not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | Core2 2AN3WM5STACK-CORE2, K010 grant 08/20/2020; Tough 2AN3W-M5STACK-TOUGH, K034 grant 04/19/2021 | documented for AXP192; AXP2101 datasheet is an open gap; FCC closed |
 | `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 Ver 1.1.0 | none | none | none | microSD, WS2812 | none | no board-level filing; the product page contains no occurrence of FCC, so it relies on the module grant 2AC7Z-ESPS3WROOM1 | documented; W5500 and module FCC closed, no board FCC ID |
 | `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | module grant 2AC7Z-ESPS3WROOM1 applies to the WROOM-1 module, not to a devkit assembly | documented for the SoC, board document missing |
-| `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101 | as Core | as Core | as Core | as Core, no board-level filing | same gaps as Core |
-
+| `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26 | as Core | as Core | as Core | as Core, no board-level filing | same gaps as Core |
 
 ### 13.2 Batteries
 

@@ -188,6 +188,7 @@ implemented.
 | [319-meshtastic-dual-boot.md](319-meshtastic-dual-boot.md) | Design only: furble and Meshtastic on one ESP32-S3 node, slot ownership, private NVS and switching |
 | [320-rtc-use.md](320-rtc-use.md) | RTC domain use: wall clock across soft resets, timed-wake time restore, drift calibration, rejected ULP ideas |
 | [324-hw-research-review-feedback.md](324-hw-research-review-feedback.md) | Review-feedback record for the hardware research branch |
+| [335-display-touch-datasheet-promotions.md](335-display-touch-datasheet-promotions.md) | Display and touch datasheet promotions: what was re-read on 2026-11-26, the page each number came from, the licence limits, and the items that stay unverified |
 
 ## Bug analyses
 
