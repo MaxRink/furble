@@ -6,11 +6,16 @@
 // instead, against a recording bus, and every expected value carries its
 // source.
 //
-// BMI270 register addresses and bit masks come from the Bosch BMI270 datasheet
-// BST-BMI270-DS000 register map, cross-checked against the Bosch
-// BMI270_SensorAPI headers. The any-motion and no-motion feature layout is not
-// in the datasheet at all. It is described only by that API:
+// BMI270 register addresses, bit masks and feature layout come from the Bosch
+// BMI270 datasheet BST-BMI270-DS000-08 revision 1.6, section 5.2.40 FEATURES,
+// pages 92 and 93, cross-checked against the Bosch BMI270_SensorAPI headers:
 //
+//   datasheet       ANYMO_1 at feature page 0x3C, duration in bits 12:0, 50 Hz
+//                   samples of 20 ms, default 5. ANYMO_2 at feature page 0x3E,
+//                   threshold in bits 10:0 over 0 to 1 g, default 0xAA (83 mg).
+//                   One count is 1 g / 2048 = 0.4883 mg, which is what makes
+//                   0xAA 83.0 mg. The no-motion feature uses the same fields and
+//                   scales, default threshold 0x090 (70.3 mg).
 //   bmi270.h        BMI270_ANY_MOT_STRT_ADDR 0x0C, BMI270_NO_MOT_STRT_ADDR 0x00,
 //                   BMI270_INT_NO_MOT_MASK 0x20, BMI270_INT_ANY_MOT_MASK 0x40
 //   bmi270.c        bmi270_feat_in: ANY_MOTION on page 1, NO_MOTION on page 2
@@ -23,15 +28,17 @@
 //   bmi2.c          bmi2_set_regs saves PWR_CONF.adv_power_save, clears it around the
 //                   write and restores it
 //
-// The unit scales and the defaults are stated by the Bosch examples
-// bmi270_examples/any_motion_interrupt/any_motion_interrupt.c and
-// bmi270_examples/no_motion_interrupt/no_motion_interrupt.c: one duration count
-// is 20 ms, one threshold count is 0.48 mg, the any-motion default threshold is
-// 83 mg and the no-motion default threshold is 70 mg.
+// The API and the datasheet agree on every field this test asserts. The scales
+// are defined once in include/FurbleIMUMotionScale.h, and a check below decodes
+// the mg back out of the bytes the driver wrote.
 //
-// MPU6886 values come from the InvenSense MPU-6886 datasheet register map.
+// MPU6886 values come from the InvenSense MPU-6886 datasheet DS-000193 revision
+// 1.1, table 15 and sections 8.20 to 8.22. Those sections give no per-count
+// figure for the threshold registers, so the mg value on the WOM checks is this
+// project's assumption, marked as one in FurbleIMUMotionScale.h.
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -42,6 +49,7 @@
 #include <M5Unified.h>
 
 #include "FurbleIMU.h"
+#include "FurbleIMUMotionScale.h"
 #include "FurblePlatform.h"
 
 namespace {
@@ -260,6 +268,8 @@ namespace {
 
 using Furble::IMU::MotionState;
 
+void seedMPU6886(void);
+
 void seedBMI270(void) {
   g_Bus.reset();
   g_Bus.registers[0x00] = 0x24;  // CHIP_ID
@@ -346,6 +356,53 @@ void testBMI270Arm(void) {
   check(Furble::Platform::getInstance().wakeArmed, "arming takes the light-sleep wake source");
   check(backend->usesInterrupt(), "the backend reports the interrupt path");
   check(backend->state() == MotionState::MOVING, "the initial state is moving");
+}
+
+// The bytes the engine writes decode to the sensitivity the scale header
+// publishes. The counts above are checked against the datasheet; this one closes
+// the loop in the other direction, so a count and a scale that disagree cannot
+// both pass.
+void testConfiguredSensitivity(void) {
+  std::cerr << "test: the armed engine decodes to its published sensitivity\n";
+
+  seedBMI270();
+  auto backend = Furble::IMU::createBMI270Backend();
+  check(backend->arm(), "the BMI270 backend arms");
+
+  const uint16_t anyThreshold = static_cast<uint16_t>(g_Bus.featureWord(1, 0x0E) & 0x07FF);
+  const uint16_t noThreshold = static_cast<uint16_t>(g_Bus.featureWord(2, 0x02) & 0x07FF);
+  const uint16_t anyDuration = static_cast<uint16_t>(g_Bus.featureWord(1, 0x0C) & 0x1FFF);
+  const uint16_t noDuration = static_cast<uint16_t>(g_Bus.featureWord(2, 0x00) & 0x1FFF);
+
+  check(std::fabs(Furble::IMU::Scale::bmi270ThresholdMg(anyThreshold) - 83.0f) < 0.1f,
+        "the any-motion word decodes to 83.0 mg, the documented default");
+  check(std::fabs(Furble::IMU::Scale::bmi270ThresholdMg(noThreshold) - 70.3f) < 0.1f,
+        "the no-motion word decodes to 70.3 mg");
+  check(static_cast<uint32_t>(Furble::IMU::Scale::bmi270DurationMs(noDuration))
+            == Furble::IMU::Scale::STATIONARY_HOLD_MS,
+        "the no-motion duration decodes to the shared 60 s window");
+  check(Furble::IMU::Scale::bmi270DurationMs(anyDuration) == 20,
+        "the any-motion duration decodes to one 20 ms count");
+  check(anyThreshold == Furble::IMU::Scale::BMI270_ANY_MOTION_THRESHOLD_COUNTS,
+        "the written count is the published count");
+  check(noThreshold == Furble::IMU::Scale::BMI270_NO_MOTION_THRESHOLD_COUNTS,
+        "the written no-motion count is the published count");
+
+  // The MPU6886 path, same loop in the other direction. The mg value is an
+  // assumption, so this pins only that the driver and the scale agree.
+  seedMPU6886();
+  auto mpu = Furble::IMU::createMPU6886Backend();
+  check(mpu->arm(), "the MPU6886 backend arms");
+  const auto wom = g_Bus.writesTo(0x20);
+  check(!wom.empty(), "ACCEL_WOM_X_THR is written");
+  if (!wom.empty()) {
+    checkEqual(wom[0].data[0], Furble::IMU::Scale::MPU6886_WOM_THRESHOLD_COUNTS,
+               "the written wake count is the published count");
+    check(std::fabs(Furble::IMU::Scale::mpu6886WomThresholdMgAssumed(wom[0].data[0])
+                    - Furble::IMU::Scale::MPU6886_WOM_THRESHOLD_MG_ASSUMED)
+              < 0.0001f,
+          "the written wake count decodes to the published assumed mg");
+  }
 }
 
 // Test 2. A full transition cycle swaps exactly one engine each way.
@@ -445,7 +502,7 @@ void testMPU6886Arm(void) {
       {0x6C, 0x07}, // PWR_MGMT_2, all three gyro axes off
       {0x1D, 0x21}, // ACCEL_CONFIG2, dec2_cfg 2, a_dlpf_cfg 1
       {0x38, 0xE0}, // INT_ENABLE, WOM on x, y and z
-      {0x20, 0x10}, // ACCEL_WOM_X_THR, 16 counts at 4 mg is about 64 mg
+      {0x20, 0x10}, // ACCEL_WOM_X_THR, 16 counts at the assumed 4 mg is 64 mg
       {0x21, 0x10}, // ACCEL_WOM_Y_THR
       {0x22, 0x10}, // ACCEL_WOM_Z_THR
       {0x69, 0xC2}, // ACCEL_INTEL_CTRL, enable, mode, WOM_TH_MODE 2
@@ -593,6 +650,7 @@ void testRetryOnceHasTeeth(void) {
 
 int main(void) {
   testBMI270Arm();
+  testConfiguredSensitivity();
   testBMI270Cycle();
   testBMI270Refusals();
   testMPU6886Arm();

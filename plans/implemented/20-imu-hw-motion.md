@@ -976,3 +976,39 @@ All links checked.
   and `CONFIG_FREERTOS_USE_TICKLESS_IDLE`, plus the `ESP_PM_NO_LIGHT_SLEEP` lock:
   https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32s3/api-reference/system/power_management.html
 - StickS3 product page, confirms the BMI270: https://docs.m5stack.com/en/core/StickS3
+
+## Follow-up: scale audit (2026-11-25)
+
+[Plan 332](../332-imu-motion-scale-audit.md) re-read this feature's threshold
+maths against the current datasheets and corrected three statements here and in
+the code. No register value changes, so the wake sensitivity of every shipped
+backend is unchanged.
+
+- **The feature layout is documented now.** The "what the first draft got wrong"
+  item 7 and the option B risk list say the BMI270 feature page offsets are
+  undocumented and that a wrong offset fails silently. BST-BMI270-DS000-08
+  revision 1.6 section 5.2.40, pages 92 and 93, documents ANYMO_1 at feature
+  page 0x3C and ANYMO_2 at 0x3E, including the field positions, the 20 ms
+  duration count and the 0 to 1 g threshold span. The Bosch API stays as
+  corroboration, not as the only source.
+- **One threshold count is 0.4883 mg, not 0.48 mg.** The header comment and the
+  scale used by the simulator quoted 0.48 mg, which is 1.7 percent low. The
+  counts this plan chose, 0xAA and 0x090, are the documented defaults and
+  produce 83.0 mg and 70.3 mg.
+- **The MPU-6886 count size is an assumption.** DS-000193 revision 1.1 sections
+  8.20 to 8.22 and table 15 name the three threshold registers and give no
+  per-count figure, so "one threshold count is 4 mg" and therefore 64 mg are
+  project assumptions, not datasheet values. Section 5.1 step 4 of that
+  document says to write the threshold at 0x1F, which table 15 does not list;
+  this driver and the M5StickC-Plus vendor driver both use 0x20 to 0x22.
+
+The audit also found the simulator double modelling both BMI270 engines with one
+threshold and 81.6 mg instead of 83.0 mg, which let a scenario report stationary
+for vibration the chip ignores. That is fixed in `sim/imu_motion_model.h` and
+pinned by `tests/host/imu_motion_scale_test.cpp`. The host encoding suite this
+plan describes has grown from the 81 checks recorded above; it is 114 now, and it
+decodes the mg back out of the bytes the driver writes.
+
+Still hardware-gated, unchanged from this plan: the physical MPU-6886 interrupt
+path, the BMI270 INT1 to M5PM1 GPIO4 chain, and the non-latched pulse width. The
+audit adds one: the MPU-6886 count size needs a measured tilt test.
