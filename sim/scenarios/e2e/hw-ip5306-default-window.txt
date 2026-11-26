@@ -1,0 +1,33 @@
+# The IP5306 light-load window is what REG_SYS_CTL2 selects, not a constant.
+#
+# REG_SYS_CTL2 (0x02) bits 3:2 select the cutoff window. The Injoinic IP5306
+# register document V1.21 (revision V1.4) gives 00 = 8 s, 01 = 32 s, 10 = 16 s
+# and 11 = 64 s, and M5Unified 0.2.20 writes 0x6C, whose bits 3:2 are 11. The
+# decode itself lives in include/FurbleIP5306.h and the model calls it, so this
+# asserts the byte the vendor block leaves behind rather than a copied figure.
+#
+# REG_SYS_CTL0 (0x00) tells the other half of the story: the vendor block writes
+# 0x31 with the "BOOST output normally open" bit clear, and furble sets bit 1 at
+# boot and reads it back (plans/354), so the byte ends at 0x33 and the cut
+# cannot fire while the board is awake.
+seed hw_profile core-4mb
+wait 100
+
+assert hw.pmic ip5306
+assert pmic.reg.0x02 108
+assert pmic.reg.0x02.meaning ip5306-sys-ctl2
+assert pmic.light_load_field 3
+assert pmic.light_load_window_ms 64000
+# The window is the decoded register byte, not a seeded figure.
+assert pmic.light_load_source reg
+assert pmic.load_ma 60
+assert pmic.light_load_ms 0
+assert pmic.light_load_cuts 0
+assert pmic.violations 0
+
+# The boot holds the boost on, so the cut is armed only after a manual Off.
+assert pmic.boost_keep_on yes
+assert pmic.reg.0x00 51
+assert pmic.reg.0x00.meaning ip5306-sys-ctl0
+assert pmic.reg.0x00.writes 2
+exit

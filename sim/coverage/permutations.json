@@ -3,7 +3,7 @@
   "boards": [
     "sticks3",
     "core2",
-    "core",
+    "core-4mb",
     "stickc",
     "stickc-plus",
     "stickc-plus2",

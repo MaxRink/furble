@@ -1,6 +1,7 @@
 # Supplemental touch-layout fit for Sensors at Small text. The shared Small
 # sweep keeps physical labels whole and both scroll ends reachable; this guard
 # retains its original strict touch fit without hiding the rest of that sweep.
+seed touch true
 seed text_size 0
 seed fauxny true
 seed imu true

@@ -1,0 +1,40 @@
+# The Core's power off is deferred by the IP5306 light-load cut, not refused.
+#
+# plans/354 finding 2 settled this: M5Unified's Power_Class::powerOff() sleeps
+# the panel, clears SYS_CTL0 bit 1 and deep sleeps, and the charger then removes
+# the boost once the load stays under 45 mA for the SYS_CTL2 window. The request
+# is accepted, the rail follows about 64 s later, and Platform::powerOff() is
+# never refused on this row: `powerOffPath` is true on the Core and false only on
+# the Waveshare. `canPowerOff` stays the UI policy gate, which is false here
+# because the four-level gauge cannot drive a percentage policy.
+#
+# platform.power_off reads yes: the request was accepted and the teardown ran.
+seed hw_profile core-4mb
+seed ip5306_light_load_ms 5000
+# A panel-off Core draws about 20 mA, well under the 45 mA light-load threshold.
+seed ip5306_load_ma 20
+wait 300
+
+assert power.off_path ip5306-light-load
+assert power.can_off yes
+assert board.can_power_off no
+assert power.state on
+assert power.off_attempts 0
+assert pmic.boost_keep_on yes
+
+action nav power_off
+wait 100
+
+assert platform.power_off yes
+assert power.off_attempts 1
+# Accepted and deferred: the keep-on bit is released, the rail is still up.
+assert pmic.boost_keep_on no
+assert pmic.reg.0x00 49
+assert power.state on
+assert pmic.light_load_cuts 0
+
+# The charger removes the boost once the window has run.
+wait 6000
+assert pmic.light_load_cuts 1
+assert power.state off
+exit

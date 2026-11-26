@@ -1,0 +1,64 @@
+# Board row versus hardware model: M5Tough.
+#
+# The Tough shares the Core2 image. The firmware row used to say no SD slot and
+# no sound, which is what the hardware model and the panel scenarios disagreed
+# with; both sides are now pinned here. The BM8563 is present but no backup cell
+# is recorded for the Tough, so neither side claims a battery-backed RTC.
+#
+# See board-row-stickc.txt for the assertion contract.
+seed hw_profile tough
+wait 100
+
+assert hw.profile tough
+assert board.name Tough
+assert hw.flash_kb 16384
+
+assert hw.sd yes
+assert board.sd yes
+
+assert hw.audio yes
+assert board.audio yes
+
+assert hw.rtc yes
+assert hw.rtc_backed yes
+assert board.rtc_backed yes
+
+# Timed wake path.
+assert hw.timed_wake rtc-alarm
+assert board.timed_wake rtc-alarm
+
+assert hw.ir no
+assert board.ir no
+
+assert hw.touch yes
+
+assert board.battery_mah 390
+assert platform.battery.capacity 390
+
+assert hw.gauge voltage_current
+assert platform.battery.caps.charging yes
+assert board.battery_charging yes
+
+assert power.off_path axp192-off
+assert power.can_off yes
+assert hw.can_power_off yes
+assert board.can_power_off yes
+
+assert board.gps_rail yes
+assert power.rail.ext5v off
+# The remaining row columns, each pinned on both sides.
+# The model twin of the row's power-off path is power.can_off, above.
+assert board.power_off_path yes
+assert hw.rtc_on_bus no
+assert board.rtc_on_bus no
+assert hw.led_active_low yes
+assert board.led_active_low yes
+assert hw.ir_mark_low no
+assert board.ir_mark_low no
+assert hw.gps_pin_source board-support
+assert board.gps_pin_source board-support
+assert hw.gps_rx_pin -1
+assert board.gps_rx_pin -1
+assert hw.gps_tx_pin -1
+assert board.gps_tx_pin -1
+exit

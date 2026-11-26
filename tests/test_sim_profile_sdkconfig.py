@@ -23,7 +23,9 @@ PROFILE_ENV = {
     "stickc": "m5stick-c",
     "stickc-plus": "m5stick-c-plus",
     "sticks3": "m5stick-s3",
-    "core": "m5stack-core",
+    # `core` is refused at scenario parse time: the committed image is 4 MB
+    # and current Basic units ship 16 MB, so the profile names the build.
+    "core-4mb": "m5stack-core",
     "core2": "m5stack-core2",
     "headless-s3": "esp32-s3-headless",
     "waveshare-s3-eth": "waveshare-s3-eth",

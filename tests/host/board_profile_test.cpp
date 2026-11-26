@@ -142,6 +142,10 @@ struct Expected {
   int gpsTx;
 };
 
+// The Core row declares charge state because the IP5306 reports it in
+// REG_READ0 bit 3, and the Tough row declares the SD slot and the NS4168
+// speaker path it shares with the Core2. Both are pinned with their evidence in
+// plans/363-core-sim-align.md and docs/power/board-power.md section 2.
 // clang-format off
 const Expected EXPECTED[] = {
     {m5::board_t::board_M5StickC, "StickC", true, true, true, true, 95, true, false, 9, MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false, true, false, 10, true, true, true,
@@ -152,7 +156,7 @@ const Expected EXPECTED[] = {
    GpsPinSource::BOARD_SUPPORT, -1, -1},
     {m5::board_t::board_M5StickS3, "StickS3", true, true, false, true, 250, false, false, 46, MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true, 32, true, false, false, -1, true, true, false,
    GpsPinSource::BOARD_SUPPORT, -1, -1},
-    {m5::board_t::board_M5Stack, "Core", true, false, false, false, 110, false, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true, false, false, -1, false, true, false,
+    {m5::board_t::board_M5Stack, "Core", true, false, false, true, 110, false, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true, false, false, -1, false, true, false,
    GpsPinSource::NONE, -1, -1},
     {m5::board_t::board_M5StackCore2, "Core2", true, true, true, true, 500, true, false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true, false, true, -1, true, true, false,
    GpsPinSource::BOARD_SUPPORT, -1, -1},

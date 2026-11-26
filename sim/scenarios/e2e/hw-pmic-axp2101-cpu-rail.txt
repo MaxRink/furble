@@ -1,0 +1,40 @@
+# Core2 v1.1 AXP2101: 0x82 is never written.
+#
+# The same 8-bit address means a different thing on each part. On the AXP192,
+# REG 82H is the ADC enable mask. On the AXP2101 it is the DCDC1 voltage
+# register, which is the CPU rail on a Core2 v1.1, so the AXP192 init block must
+# never land there. M5Unified's Core2 v1.1 block writes 0x12 (BATFET), 0x30 (ADC
+# enable) and never 0x82/0x83/0x84/0x90.
+#
+# The AXP2101 register map is an open documentation gap in this tree
+# (docs/power/datasheet-register.md), so this asserts what the vendor code does
+# and what the model refuses, not a datasheet byte layout.
+seed hw_profile core2
+seed pmic_variant axp2101
+wait 100
+
+assert pmic.variant axp2101
+assert pmic.violations 0
+
+# Never written: the CPU rail register stays at its reset value.
+assert pmic.reg.0x82 0
+assert pmic.reg.0x82.writes 0
+assert pmic.reg.0x82.meaning axp2101-dcdc1-voltage
+assert pmic.reg.0x83 0
+assert pmic.reg.0x83.writes 0
+assert pmic.reg.0x84 0
+assert pmic.reg.0x84.writes 0
+assert pmic.reg.0x90 0
+assert pmic.reg.0x90.writes 0
+
+# 0x12 exists on this part with a different meaning, so the byte alone is not
+# evidence: the model reports the meaning as well.
+assert pmic.reg.0x12 0
+assert pmic.reg.0x12.writes 1
+assert pmic.reg.0x12.meaning axp2101-batfet
+
+# The AXP2101 ADC enable is REG 30H, not REG 82H/83H.
+assert pmic.reg.0x30 15
+assert pmic.reg.0x30.writes 1
+assert pmic.reg.0x30.meaning axp2101-adc-enable
+exit

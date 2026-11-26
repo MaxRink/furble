@@ -1,5 +1,6 @@
 # Core touch Remote shutter fit at the largest text size. Core touch keeps
 # all three full-size controls on one row and therefore remains fit-required.
+seed touch true
 seed no_touch false
 seed text_size 2
 seed fauxny true

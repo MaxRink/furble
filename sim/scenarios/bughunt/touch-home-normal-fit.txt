@@ -1,6 +1,7 @@
 # Supplemental touch-layout fit for the six-row Home state at Normal text.
 # These are overflow-sweep's original Home seeds; the touch guard keeps this
 # viewport-specific assertion out of the physical no-touch runner.
+seed touch true
 seed fauxny true
 seed saved_camera true
 seed gps true

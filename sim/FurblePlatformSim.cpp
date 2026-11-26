@@ -80,23 +80,26 @@ Platform &Platform::getInstance(void) {
     }
 #endif
 
-    // The SDL panel always attaches a mouse-driven touch device, so
-    // M5.Touch.isEnabled() is true regardless of the simulated board. A scenario
-    // can seed "no_touch true" to detach it and exercise the physical-button
-    // (non-touch) UI branch that boards like the M5StickS3 use, including the
-    // floating on-screen button indicators. The FURBLE_SIM_NO_TOUCH environment
-    // variable does the same, so a capture harness can select the non-touch
-    // layout per board without editing the shared scenario script.
+    // The panel class is not the board. The SDL panel always attaches a
+    // mouse-driven touch device, so an unseeded run would render the touch
+    // layout on a board that has no touch panel. Default to the modelled
+    // capability, which is the same answer M5.Touch.isEnabled() gives on the
+    // device, and let a scenario that measures the touch layout opt in with
+    // "seed touch true". "seed no_touch true" and FURBLE_SIM_NO_TOUCH do the
+    // reverse and force the physical-button layout; FURBLE_SIM_NO_TOUCH=0
+    // restores touch for a deliberate mixed-input session.
+    const std::string touchSeed = Sim::scenarioSetting("touch", "");
+    const bool touchCapability =
+        touchSeed.empty() ? Sim::hwTouch() : Sim::scenarioSettingIsTrue("touch");
     const char *noTouchEnv = std::getenv("FURBLE_SIM_NO_TOUCH");
-    const bool noTouch =
-        Sim::scenarioSettingIsTrue("no_touch")
-        || (noTouchEnv != nullptr && noTouchEnv[0] != '\0' && noTouchEnv[0] != '0');
+    const bool forceTouch = noTouchEnv != nullptr && noTouchEnv[0] == '0';
+    const bool noTouchSeed = Sim::scenarioSettingIsTrue("no_touch")
+                             || (noTouchEnv != nullptr && noTouchEnv[0] != '\0' && !forceTouch);
+    const bool noTouch = !forceTouch && (noTouchSeed || !touchCapability);
     // The on-screen button window is a physical-input surface. Keep the panel
     // in the physical-button layout too, otherwise the touch driver interprets
     // a click in the button window as a second touch on the panel and the
-    // floating legends disappear. FURBLE_SIM_NO_TOUCH=0 restores touch for a
-    // deliberate mixed-input session.
-    const bool forceTouch = noTouchEnv != nullptr && noTouchEnv[0] == '0';
+    // floating legends disappear.
     if (noTouch || (Sim::uiButtonsRequested() && !forceTouch)) {
       M5.Touch.begin(nullptr);
     }
@@ -145,6 +148,8 @@ void Platform::update(void) {
   // it here once the window has elapsed, the way the production IR task
   // releases its hold after transmit() returns.
   IR::getInstance().poll();
+  // Advance the modelled board power path (the IP5306 light-load timer).
+  Sim::hwTick();
   // The production Scan expires its own deadline from isActive(); the virtual
   // radio delivers advertisements and the scan-end event on its own task, so
   // there is nothing for the platform tick to pump here any more.
@@ -176,8 +181,10 @@ bool Platform::powerOff(void) {
              Board::profile().name);
     return false;
   }
+  // Record the request before the model answers, so a refused outcome still
+  // shows that the whole shutdown sequence ran.
   Sim::notePowerOff();
-  return true;
+  return Sim::hwPowerOff();
 }
 
 #if defined(FURBLE_M5STICKS3)
@@ -269,8 +276,12 @@ void Platform::setDisplayOff(bool off) {
   // it while the panel is off, then restores it on wake. The EXT 5 V output bit
   // shares that byte, so this path drives the same register instead of a local
   // flag: a write built from a read that a rail change has since invalidated
-  // loses the change, and the model counts it.
+  // loses the change, and the model counts it. `platform.display_off` reads the
+  // same modelled byte.
   Sim::hwSetDisplayOff(off);
+  // The IP5306 light-load timer runs on the panel state, so the same call feeds
+  // the modelled cutoff.
+  Sim::hwSetPanelOff(off);
 }
 
 // The IMU interrupt reaches an ESP32 pin only on the boards whose schematic
@@ -418,9 +429,11 @@ bool Platform::canCutGpsRail(void) {
 }
 
 bool Platform::canTurnDisplayOff(void) {
-  // The simulator has no IP5306 register model; its Platform double cannot
-  // fail a keep-on write, so display-off stays available.
-  return true;
+  // The model owns the IP5306 keep-on bit, so this answers from it: an IP5306
+  // board whose bit is clear would drop a panel-off load under the 45 mA
+  // light-load floor, which is the firmware's own reason to stay dim. Every
+  // other modelled part answers yes.
+  return Sim::hwCanTurnDisplayOff();
 }
 
 bool Platform::hasGpsBackupSupply(void) {
@@ -478,7 +491,10 @@ Platform::battery_status_t Platform::getBatteryStatus(void) {
 }
 
 uint16_t Platform::getBatteryCapacity(void) {
-  return 250;
+  // The firmware reads Board::profile().batteryCapacityMah at the platform
+  // boundary; the simulator answers from the same row, so a board whose
+  // capacity is unknown reports 0 rather than the StickS3 figure.
+  return Board::profile().batteryCapacityMah;
 }
 
 namespace {

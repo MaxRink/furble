@@ -1,6 +1,7 @@
 # Supplemental touch-layout fit for Sensors at each board's default text size.
 # Physical 80px scrolls the complete rows; this guard makes the no-touch runner
 # skip the stricter touch-only lane without dropping the gesture behavior walk.
+seed touch true
 seed imu true
 seed imu_wake 1
 seed imu_trigger true

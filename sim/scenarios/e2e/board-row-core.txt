@@ -1,0 +1,80 @@
+# Board row versus hardware model: M5Stack Core (4 MB build configuration).
+#
+# This is the row the whole PR exists for. The core-retail part ships 16 MB
+# today but the committed m5stack-core image is built for 4 MB, so the modelled
+# profile names the flash assumption; hw-profile-core-16mb.txt covers the other
+# part. The Core has no IR emitter, no RTC chip, a speaker, an SD slot, and an
+# IP5306 with no software off command, and it reports charge state from the
+# IP5306 status byte while voltage and current stay unknown.
+#
+# See board-row-stickc.txt for the two-sided assertion contract.
+seed hw_profile core-4mb
+wait 100
+
+assert hw.profile core-4mb
+assert board.name Core
+assert hw.flash_kb 4096
+
+assert hw.sd yes
+assert board.sd yes
+
+assert hw.audio yes
+assert board.audio yes
+
+# No RTC chip on the board at all.
+assert hw.rtc no
+assert hw.rtc_backed no
+assert board.rtc_backed no
+
+# Timed wake path.
+assert hw.timed_wake none
+assert board.timed_wake none
+
+# No IR emitter.
+assert hw.ir no
+assert board.ir no
+
+assert hw.touch no
+
+# Capacity unknown, so the platform reports 0 rather than a StickS3 figure.
+assert board.battery_mah 110
+assert platform.battery.capacity 110
+
+# Four-level gauge, and the IP5306 status byte carries charge state.
+assert hw.gauge four_level
+assert hw.pmic ip5306
+assert platform.battery.caps.level yes
+assert platform.battery.caps.charging yes
+assert board.battery_charging yes
+assert platform.battery.caps.voltage no
+assert board.battery_voltage no
+assert platform.battery.caps.current no
+
+# The IP5306 has no off command: the row and the model both say so.
+# The manual Off clears the boost keep-on bit and the light-load cut removes
+# the rail after the 64 s window, so the platform path exists while the
+# automatic policies stay off (plans/354, finding 2).
+assert power.off_path ip5306-light-load
+assert power.can_off yes
+assert hw.can_power_off no
+assert board.can_power_off no
+
+assert board.gps_rail no
+assert power.rail.gps off
+assert power.rail.ext5v n/a
+# The remaining row columns, each pinned on both sides.
+# The model twin of the row's power-off path is power.can_off, above.
+assert board.power_off_path yes
+assert hw.rtc_on_bus no
+assert board.rtc_on_bus no
+assert hw.led_active_low yes
+assert board.led_active_low yes
+assert hw.ir_mark_low no
+assert board.ir_mark_low no
+assert hw.gps_pin_source none
+assert board.gps_pin_source none
+assert hw.gps_rx_pin -1
+assert board.gps_rx_pin -1
+assert hw.gps_tx_pin -1
+assert board.gps_tx_pin -1
+exit

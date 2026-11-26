@@ -52,7 +52,7 @@ class ScenarioGeneratorTest(unittest.TestCase):
         # generated scenario must assert the failure counter instead, and the
         # coverage manifest must name the same assertion.
         manifest = json.loads((ROOT / "sim" / "coverage" / "permutations.json").read_text())
-        for board in ("sticks3", "stickc", "core"):
+        for board in ("sticks3", "stickc", "core-4mb"):
             script = PERMS.scenario_for(board, COMBO).splitlines()
             self.assertIn("assert heap.alloc_failures 0", script)
             self.assertFalse(any(line.startswith("assert_min heap.free") for line in script))

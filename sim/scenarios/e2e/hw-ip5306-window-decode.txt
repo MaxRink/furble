@@ -1,0 +1,24 @@
+# The IP5306 light-load window decodes from REG_SYS_CTL2, so a second field
+# value gives a second window.
+#
+# hw-ip5306-default-window.txt decodes the shipped byte 0x6C, whose bits 3:2
+# are 11 and select 64 s. Here the byte is 0x60, whose bits 3:2 are 00 and
+# select 8 s in the same table, 00 = 8 s, 01 = 32 s, 10 = 16 s and 11 = 64 s per
+# the IP5306 register document V1.21. Two code points are asserted, so a decoder
+# that returned one constant fails one of them.
+#
+# The seeded byte stands in for a vendor block that selects another field value.
+# It is written through the meaning-checked path, so a byte for the wrong part
+# would count a violation instead of landing.
+seed hw_profile core-4mb
+seed ip5306_sys_ctl2 96
+wait 100
+
+assert pmic.reg.0x02 96
+assert pmic.light_load_field 0
+assert pmic.light_load_window_ms 8000
+assert pmic.light_load_source reg
+assert pmic.light_load_ms 0
+assert pmic.light_load_cuts 0
+assert pmic.violations 0
+exit

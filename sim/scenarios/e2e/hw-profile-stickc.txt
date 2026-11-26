@@ -10,7 +10,7 @@ assert hw.display 80x160
 assert hw.touch no
 assert hw.ir yes
 assert hw.sd no
-assert hw.audio yes
+assert hw.audio no
 assert hw.rtc yes
 assert pmic.battery present
 assert pmic.watchdog unavailable

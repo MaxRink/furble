@@ -12,7 +12,7 @@ namespace {
 // only; that limits the level, not the capacity. Battery caps still follow
 // the PMIC: AXP192 boards report all four, the M5PM1 has no battery current
 // register, the Plus2 reads an ADC divider and the Core's IP5306 gives a
-// coarse level only.
+// coarse level plus a charge-state bit, with no voltage or current ADC.
 //
 // IR: G9 is only free on the StickC and StickC Plus because they run the flash
 // in DIO mode; QIO would claim GPIO 9/10 as SD2/SD3. G19 on the Plus2 is also
@@ -85,6 +85,12 @@ namespace {
 // both the red LED and the emitter, so it is active high and its RMT image is
 // not inverted. The StickS3 emitter wiring was not available in this pass, so
 // its row keeps the previous non-inverted image and is UNVERIFIED.
+//
+// Shared image: the Core2 image also serves the M5Tough, which has the same SD
+// slot and the same NS4168 speaker path, so both rows declare them. Only the
+// LDO3 load differs, and that is a backlight rail on the Tough rather than the
+// Core2 vibration motor. The Core has no IR emitter and no RTC chip, and its
+// IP5306 has no software off command.
 
 // Columns: name, battery {level, voltage, current, charging}, capacity mAh,
 // RTC backed, RTC on the bus, IR pin, motion wake, motion pin, timed wake,
@@ -129,7 +135,7 @@ constexpr Profile STICKS3       = {"StickS3", {true,  true,  false, true}, 250, 
     MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true,
     32, true, false, false, -1, true, true, false,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
-constexpr Profile CORE          = {"Core", {true,  false, false, false}, 110, false, false, -1,
+constexpr Profile CORE          = {"Core", {true,  false, false, true}, 110, false, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true,
     false, false, -1, false, true, false,
     GpsPinSource::NONE, -1, -1};

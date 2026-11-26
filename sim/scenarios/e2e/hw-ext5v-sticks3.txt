@@ -1,0 +1,23 @@
+# StickS3: the Port A rail is not the external 5 V net.
+#
+# The StickS3 5 V boost feeds Grove, EXT_5V and the IR pair from one PM1 output,
+# but that is the PM1 boost rather than a separate external net furble can drop,
+# so the model reports the collateral question as not applicable rather than
+# inventing a BUS_5V state. The GPS rail itself still switches.
+seed hw_profile sticks3
+wait 300
+
+assert board.gps_rail yes
+assert power.rail.gps off
+assert power.rail.ext5v n/a
+assert power.rail.ext5v_drops n/a
+
+action gps-rail-on
+assert power.rail.gps on
+assert power.rail.ext5v n/a
+
+action gps-rail-off
+assert power.rail.gps off
+assert power.rail.ext5v n/a
+assert power.rail.ext5v_drops n/a
+exit

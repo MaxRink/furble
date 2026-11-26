@@ -673,10 +673,49 @@ gaps advance on the virtual clock.
 #### Board, PMIC, USB and memory-profile model
 
 `hw_profile` selects a supported board identity from `stickc`, `stickc-plus`,
-`stickc-plus2`, `sticks3`, `core`, `core2`, `tough`, `headless-s3`,
-`waveshare-s3-eth` or the Core USB-UART fallback. It selects PMIC, gauge, USB,
-radio, peripheral and memory-budget rows; it does not replace the compiled SDL
-panel class. `psram_mode` is `absent`, `quad`, `octal` or `init_fail`.
+`stickc-plus2`, `sticks3`, `core-4mb`, `core-16mb`, `core2`, `tough`,
+`headless-s3`, `waveshare-s3-eth` or the Core USB-UART fallback. The two Core
+names are the flash variants of one board: the committed `m5stack-core` image is
+built for 4 MB (`CONFIG_ESPTOOLPY_FLASHSIZE_4MB`), while current Basic units ship
+16 MB. The bare name `core` is refused so a scenario always states which
+assumption it means. It selects PMIC, gauge, USB, radio, peripheral and
+memory-budget rows; it does not replace the compiled SDL panel class.
+
+The seeded profile is also the board identity `Board::profile()` returns. The
+simulator compiles one M5GFX panel class and the SDL panel always reports its
+own board, so `M5.getBoard()` cannot name the board under test. `Board::profile()`
+asks the weak `furble_sim_board_profile()` hook, which the simulator answers
+from `Sim::setBoardProfile()`; applying the scenario seeds the profile through
+`sim/driver.cpp`, and `seed board` overrides it. `waveshare-s3-eth` maps to
+`board_M5StampS3`, the identity M5Unified detects there, and `headless-s3` to
+`board_unknown`, which is the no-hardware row. Firmware builds keep the weak
+default and still call `M5.getBoard()`. Without this, every capability row in
+`Board::profile()` would come from the panel class and a scenario that claims to
+check a Core row would be checking the model struct against itself.
+
+`touch` overrides the touch-panel capability: `true` attaches the SDL touch
+device, which selects the touch layout, and `false` detaches it. The default is
+the modelled board's capability, so an unseeded run renders the layout the board
+actually ships. `no_touch true` and `FURBLE_SIM_NO_TOUCH=1` force the
+physical-button layout; `FURBLE_SIM_NO_TOUCH=0` forces touch for a mixed-input
+session.
+
+`ip5306_load_ma` seeds the modelled load current in milliamps (default 60, which
+is the middle of the documented Core screen-off range). The IP5306 light-load
+window is decoded from `REG_SYS_CTL2` (`0x02`) bits 3:2, which the IP5306
+register document V1.21 gives as 00 = 8 s, 01 = 32 s, 10 = 16 s and 11 = 64 s.
+M5Unified 0.2.20 `Power_Class.cpp` writes `0x6C`, bits 3:2 = 11, so the model
+runs 64 s: the datasheet headline row's 32 s is the power-on default of a field
+the firmware overwrites. That window is what the boost cutoff runs for when the
+load stays under 45 mA with the panel off and the keep-on bit clear.
+`ip5306_light_load_ms` seeds the window in milliseconds, overriding the decoded
+value, and a window of 0 cuts at the first panel-off tick, so a scenario that
+wants the cut in bounded virtual time shortens it. `ip5306_sys_ctl2` seeds the
+`0x02` byte itself, so a scenario can decode a field value the vendor block does
+not select, and `pmic.light_load_source` reports whether the window came from
+the register byte or from a seed.
+
+`psram_mode` is `absent`, `quad`, `octal` or `init_fail`.
 `pmic_variant` is `m5pm1`, `axp192`, `axp2101`, `ip5306` or `none`.
 `battery_gauge` is `none`, `voltage`, `voltage_current`, `voltage_charge` or
 `four_level`. `battery_state` is `present`, `absent`, `charging`, `full` or
@@ -859,6 +898,11 @@ action pmic-battery-absent
 action pmic-brownout
 action pmic-watchdog-on
 action pmic-watchdog-off
+action pmic-boost-keep-on
+action pmic-boost-keep-off
+action pmic-axp192-adc
+action gps-rail-on
+action gps-rail-off
 action wifi-connect
 action wifi-disconnect
 action wifi-fail-auth
@@ -1191,9 +1235,53 @@ The other namespaces are:
   `gps`, `ir`, `gps+ir`) and `rail.refusals` counts requests the board could not
   honour. `ir.state` is `absent`, `idle`, `transmitting`, `unpowered` or
   `timeout`, with `ir.transmits` and `ir.failures` beside it.
+  `hw.ir`, `hw.sd`, `hw.audio` and `hw.touch` are the capabilities the firmware
+  reads, so a scenario can hold each against the `Board::profile()` row:
+  `hw.audio` is a speaker or amplifier the firmware drives for feedback sound,
+  `hw.rtc_backed` is the profile's battery-backed column next to `hw.rtc`,
+  `hw.can_power_off` is the UI policy gate, and `hw.rtc_on_bus`,
+  `hw.led_active_low`, `hw.ir_mark_low`, `hw.gps_pin_source`, `hw.gps_rx_pin`
+  and `hw.gps_tx_pin` mirror the row columns of the same name.
+- `pmic.reg.<0xNN>` reads a modelled PMIC register byte and
+  `pmic.reg.<0xNN>.writes` its write count. `pmic.reg.<0xNN>.meaning` names what
+  that address is on the modelled part, because the AXP192 and AXP2101 reuse the
+  same numbers for different registers. Modelled: AXP192 `0x12` rail enables,
+  `0x82`/`0x83` ADC enables, `0x84` ADC rate, `0x90` LDOIO0 mode; AXP2101 `0x12`
+  BATFET, `0x30` ADC enable, `0x82` DCDC1 voltage (the CPU rail); IP5306 `0x00`,
+  `0x01`, `0x02` system control. A write to an address the part does not have is
+  refused and counted in `pmic.violations`, so the AXP2101 variant can assert
+  that `0x82` is never written. `pmic.boost_keep_on`, `pmic.load_ma`,
+  `pmic.light_load_window_ms`, `pmic.light_load_ms` and `pmic.light_load_cuts`
+  report the IP5306 light-load model, and `pmic.light_load_field` the bits 3:2
+  selector those milliseconds decode from, so a scenario can assert the decode
+  and not a bare number.
 - `power.*` reports the button state machine and one-event counters:
   `power.state`, `power.clicks`, `power.double_clicks`, `power.long_presses`,
   `power.resets`, `power.offs`, `power.downloads` and `power.recoveries`.
+  `power.off_path` names the modelled shutdown path (`ip5306-light-load`,
+  `axp192-off`, `pm1-off`, `hold-latch`, `deep-sleep`, `none`). `power.can_off`
+  is the platform path (`Profile::powerOffPath`), which is the Core's deferred
+  IP5306 cut and `no` only on the Waveshare; `board.can_power_off` is the UI
+  policy gate (`Profile::canPowerOff`), and the Core is the row where the two
+  differ. `power.off_attempts`/`power.off_refused` count `Platform::powerOff()`
+  calls and refusals. `power.rail.gps`,
+  `power.rail.ext5v` and `power.rail.ext5v_drops` report the Port A rail and, on
+  Core2 and Tough, the external 5 V net behind it; `power.rail.ext5v` is `n/a` on
+  a board where the two are not one switch.
+- `board.*` reports the firmware `Board::profile()` row for the selected board:
+  `board.name`, `board.sd`, `board.audio`, `board.rtc_backed`,
+  `board.can_power_off`, `board.battery_mah`, `board.battery_charging`,
+  `board.battery_voltage`, `board.ir`, `board.gps_rail`, `board.timed_wake`,
+  `board.rtc_on_bus`, `board.power_off_path`, `board.led_active_low`,
+  `board.ir_mark_low`, `board.gps_pin_source`, `board.gps_rx_pin` and
+  `board.gps_tx_pin`. `board.can_power_off` is the UI policy gate and
+  `board.power_off_path` the platform path; the model twins are
+  `hw.can_power_off` and `power.can_off`. A board-row scenario
+  asserts the same literal against `board.*` and against the hardware model, so a
+  row that drifts from the model fails. `platform.battery.capacity` is the value
+  `Platform::getBatteryCapacity()` returns, and `platform.battery.caps.level`,
+  `.voltage`, `.current` and `.charging` are the gauge capability the platform
+  reports.
 - `usb.*` reports `usb.transport`, `usb.mode`, `usb.host`, `usb.console`,
   `usb.ble`, `usb.rom_entries`, `usb.syncs` and `usb.recoveries`.
   `platform.reset_reason` reports the current boot reason.

@@ -1,4 +1,10 @@
 # The current UI setting maps inactivity value 1 to a 30 second timeout.
+# The committed power baseline in tools/power-model/baseline was recorded
+# in the touch layout, before touch defaulted to the modelled capability.
+# Keep that layout here so the gate stays a comparison of the same
+# scenario; re-recording the baselines in the shipped button layout is a
+# plan 63 follow-up.
+seed touch true
 seed brightness 255
 seed inactivity 1
 seed display_off 1

@@ -4,6 +4,7 @@
 # scroll: the fit rule in sim/CLAUDE.md lets Timer scroll on every panel, and at
 # the largest offered text size the four interval fields overflow the 80x160
 # StickC by 17 px and the 320x240 Core by 3 px.
+seed touch true
 assert ui.nav_layout touch
 seed text_size 2
 wait 300

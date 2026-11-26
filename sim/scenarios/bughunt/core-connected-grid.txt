@@ -17,6 +17,7 @@
 # is where master overflowed and where the wrapped names earn their
 # keep. Two files because the text size is a boot seed, following
 # home-seven-rows.txt and home-seven-rows-large.txt.
+seed touch true
 seed fauxny true
 seed saved_camera true
 seed gps true

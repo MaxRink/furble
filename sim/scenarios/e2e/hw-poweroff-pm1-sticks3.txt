@@ -1,0 +1,19 @@
+# The StickS3 powers off through the M5PM1, unchanged by this alignment.
+#
+# The M5PM1 SYS_CMD 0xA1 shutdown is the existing path; the only thing asserted
+# here is that the per-board model kept it and did not inherit the IP5306
+# refusal.
+seed hw_profile sticks3
+wait 300
+
+assert power.off_path pm1-off
+assert power.can_off yes
+assert power.state on
+
+action nav power_off
+wait 100
+
+assert platform.power_off yes
+assert power.off_refused 0
+assert power.state off
+exit
