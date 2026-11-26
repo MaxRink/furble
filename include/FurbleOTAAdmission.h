@@ -17,6 +17,30 @@ namespace OTA {
 constexpr uint8_t MIN_UPDATE_BATTERY_PERCENT = 30;
 
 /**
+ * True when the board has evidence that external power is present.
+ *
+ * `vbusMillivolts` has to be a measurement, never the charge flag and never the
+ * board's capability to report one. M5Unified's StickS3 `isCharging()` reads the
+ * PMIC charge-status GPIO input, which returns false when the I2C transaction
+ * fails, and maps false to "charging", so a failed read reports external power.
+ * The charge *capability* is worse still: it is a compile-time constant and is
+ * true on every board that can report a charge state, which is exactly the
+ * boards where this floor matters.
+ *
+ * Only a positive VBUS reading is evidence. `Platform::getBatteryStatus()`
+ * already reports 0 where the board cannot sense VBUS, so a board without the
+ * capability keeps the floor. The floor is the safe direction: refusing a
+ * device that really is on the cable costs a retry, while admitting a flat cell
+ * to a multi-megabyte flash write and a reboot does not.
+ *
+ * This is the same rule, and the same trap, as
+ * `FurbleFeedbackPolicy::onBatteryPower` for the amplifier rail.
+ */
+constexpr bool externalPowerPresent(int32_t vbusMillivolts) {
+  return vbusMillivolts > 0;
+}
+
+/**
  * Why an update or check request is refused.
  *
  * The order of the enumerators is the evaluation order documented by
@@ -60,7 +84,12 @@ struct Conditions {
   /** The board reports a battery gauge. A board without one is not refused. */
   bool batteryKnown = false;
   uint8_t batteryPercent = 0;
-  /** External power is present, which exempts the battery floor. */
+  /**
+   * External power is present, which exempts the battery floor.
+   *
+   * This must come from externalPowerPresent(), not from the board's charge
+   * capability and not from the charge flag alone.
+   */
   bool charging = false;
   /** The board has a second app slot this image can be written to. */
   bool slotAvailable = true;

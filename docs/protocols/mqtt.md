@@ -76,17 +76,29 @@ Every refusal is published as `ota <command> refused: <reason>` on
 reasons are `busy`, `camera_session`, `intervalometer`, `link_down`,
 `battery_low`, `slot_unavailable`, `source_unavailable`, `no_newer_version`,
 `invalid_source`, `retained_command` and `transport_unavailable`
-(`include/FurbleOTAAdmission.h:26`, `src/FurbleOTAAdmission.cpp:120`).
+(`include/FurbleOTAAdmission.h:50`, `src/FurbleOTAAdmission.cpp:120`).
 
 The preconditions are enforced, not advisory. An update is refused while any
 camera session owns the radio, while the intervalometer runs, while the station
 link is down, while the inactive slot is missing, and below 30 percent battery
-unless the board is charging. A board without a battery gauge is admitted,
-because there is no threshold to evaluate. A different URL while an update runs
+unless the board reports external power from a positive VBUS reading. The charge
+flag alone is not that evidence: a failed PMIC read reports "charging", and the
+board's charge *capability* is a compile-time constant, so only a VBUS
+measurement exempts the floor. A board that cannot sense VBUS therefore keeps
+the floor, and so does one whose charge flag is set. A board without a battery
+gauge is admitted, because there is no threshold to evaluate.
+
+The gates are evaluated once, when the command arrives, not continuously. A
+camera session started while a transfer runs is not refused retroactively; the
+transfer continues and two radios share the antenna. A download link that dies
+mid-transfer surfaces as `transfer_interrupted` from the adapter, which discards
+the staged image and leaves the running slot untouched.
+
+A different URL while an update runs
 is `busy`; the identical URL is an idempotent duplicate, so a QoS-1 redelivery
 cannot start a second download. The version comparison needs a strictly newer
 dotted numeric release, and an installed `dev+g<hash>` build counts as older
-than any release (`include/FurbleOTAAdmission.h:51`,
+than any release (`include/FurbleOTAAdmission.h:75`,
 `src/FurbleOTAAdmission.cpp:143`).
 
 A check reads the release manifest, not the image: it never opens the download.

@@ -648,7 +648,7 @@ int main(void) {
           "cmd/ota camera refusal was not published on state/error");
   require(ota_client.openCalls == 0, "a refused cmd/ota started a download");
 
-  // A gauge below the floor refuses too, and charging exempts it.
+  // A gauge below the floor refuses too, and real external power exempts it.
   Furble::Platform::battery_caps_t caps;
   caps.level = true;
   Furble::Platform::setBatteryCaps(caps);
@@ -662,6 +662,49 @@ int main(void) {
               != std::string::npos,
           "cmd/ota did not refuse a low battery");
   require(ota_client.openCalls == 0, "a low-battery cmd/ota started a download");
+
+  // The charge *capability* must not exempt the floor. It is a compile-time
+  // constant, true on every board that can report a charge state, and reading
+  // it as the state let a nearly flat StickS3 start a flash write. Only a VBUS
+  // measurement is evidence of external power.
+  caps.charging = true;
+  Furble::Platform::setBatteryCaps(caps);
+  host_mqtt::deliver(ota_topic, ota_url);
+  ownerStep(mqtt);
+  require(latestPublishedTopic(ota_status_topic).payload.find("\"reason\":\"battery_low\"")
+              != std::string::npos,
+          "the charge capability exempted the battery floor");
+  require(ota_client.openCalls == 0, "the charge capability started a download on a flat cell");
+
+  // A zero VBUS reading is battery power even when the charge flag says
+  // otherwise, because a failed PMIC read reports "charging".
+  Furble::Platform::battery_status_t status;
+  status.charging = true;
+  status.vbus = 0;
+  Furble::Platform::setBatteryStatus(status);
+  host_mqtt::deliver(ota_topic, ota_url);
+  ownerStep(mqtt);
+  require(latestPublishedTopic(ota_status_topic).payload.find("\"reason\":\"battery_low\"")
+              != std::string::npos,
+          "a failed PMIC read exempted the battery floor");
+
+  // A positive VBUS reading is external power, so the floor does not apply and
+  // the next gate answers instead: the same installed version is not newer.
+  status.vbus = 5000;
+  Furble::Platform::setBatteryStatus(status);
+  const std::string source_version = ota_source.version;
+  ota_source.version = FURBLE_VERSION;
+  host_mqtt::deliver(ota_topic, ota_url);
+  ownerStep(mqtt);
+  require(latestPublishedTopic(ota_status_topic).payload.find("\"reason\":\"no_newer_version\"")
+              != std::string::npos,
+          "a positive VBUS reading did not exempt the battery floor");
+  require(ota_client.openCalls == 0, "the external-power probe started a download");
+  ota_source.version = source_version;
+  caps.charging = false;
+  Furble::Platform::setBatteryCaps(caps);
+  status.vbus = 0;
+  Furble::Platform::setBatteryStatus(status);
 
   battery.level = 80;
   Furble::Platform::setBattery(battery);
@@ -1049,6 +1092,52 @@ int main(void) {
   ownerStep(mqtt);
   ownerStep(mqtt);
   require(mqtt.isConnected(), "the retry after an unavailable broker did not connect");
+
+  // A broker outage must not freeze a running transfer. The engine has no task
+  // of its own, so the owner has to keep stepping it while the broker is down;
+  // otherwise the update sits busy() with no command able to reach it and the
+  // staged image held until the broker comes back. Lifecycle events are drained
+  // before the owner's publish block, so a drop seen on this iteration is the
+  // state the step decision is made in. Placed last because the extra client
+  // replacement moves every earlier startCount() expectation.
+  {
+    OtaClient outage_client;
+    Furble::OTA::HTTPS::Adapter outage_adapter(outage_client);
+    Furble::OTA::Engine outage_engine(outage_adapter);
+    OtaSource outage_source;
+    Furble::OTA::Command::Handler outage_handler(outage_engine, outage_source, mqtt.otaContext());
+    mqtt.attachOTAHandler(&outage_handler);
+
+    Control::setState(Control::STATE_IDLE);
+    Furble::Platform::battery_caps_t outage_caps;
+    outage_caps.level = true;
+    Furble::Platform::setBatteryCaps(outage_caps);
+    Furble::Platform::battery_t outage_battery;
+    outage_battery.level = 90;
+    Furble::Platform::setBattery(outage_battery);
+    Furble::Platform::battery_status_t outage_status;
+    outage_status.charging = false;
+    outage_status.vbus = 0;
+    Furble::Platform::setBatteryStatus(outage_status);
+
+    outage_client.plan = {
+        {false, false, 400},
+        {false, true,  800}
+    };
+    const std::string outage_url = "https://updates.example/furble-outage.bin";
+    host_mqtt::deliver(timeout_root_topic + "/cmd/ota", outage_url);
+    ownerStep(mqtt);
+    require(outage_engine.busy(), "the outage probe did not start an update");
+
+    const size_t outage_polls = outage_client.pollCalls;
+    host_mqtt::dropConnection();
+    ownerStep(mqtt);
+    require(!mqtt.isConnected(), "the mock broker drop did not reach the owner");
+    require(outage_client.pollCalls > outage_polls,
+            "the OTA engine stalled while the broker was down");
+    mqtt.attachOTAHandler(nullptr);
+  }
+
   mqtt.disconnect();
   ownerStep(mqtt);
   host_mqtt_timer::advance(1000);

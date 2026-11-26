@@ -105,15 +105,31 @@ class Platform {
     bool charging = false;
   };
 
+  /**
+   * Same shape as the firmware battery_status_t for the fields the OTA
+   * preconditions read. A real board reports 0 here where it cannot sense
+   * VBUS, and this double starts at 0 so the default is "no external power".
+   */
+  struct battery_status_t {
+    int32_t level = 0;
+    int16_t voltage = 0;
+    int32_t current = 0;
+    int16_t vbus = 0;
+    bool charging = false;
+  };
+
   static Platform &getInstance(void);
   battery_t readBattery(void) const { return m_Battery; }
   battery_caps_t getBatteryCaps(void) const { return m_Caps; }
+  battery_status_t getBatteryStatus(void) const { return m_Status; }
   static void setBattery(const battery_t &battery);
   static void setBatteryCaps(const battery_caps_t &caps);
+  static void setBatteryStatus(const battery_status_t &status);
 
  private:
   battery_t m_Battery;
   battery_caps_t m_Caps;
+  battery_status_t m_Status;
 };
 
 class GPS {

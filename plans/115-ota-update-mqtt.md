@@ -222,6 +222,17 @@ Deviations from the plan text:
 - Plan 130's signed `FOA1` envelope remains the reserved update path. The
   `cmd/ota` topic in this slice carries the documented bare command form and
   does not dispatch a signed envelope.
+- External power is a VBUS measurement, not the board's charge capability and
+  not the charge flag. The first draft of the composition read
+  `battery_caps_t::charging`, which is a compile-time constant and made the 30
+  percent floor unreachable on the StickS3, the Core2 and the Tough. The
+  independent review caught it; see
+  [115-review-feedback.md](115-review-feedback.md). `OTA::externalPowerPresent()`
+  is the rule, and a board without VBUS sense keeps the floor.
+- The engine advances once per MQTT owner iteration whether or not the broker is
+  connected. Gating the step on the connection froze a running transfer in
+  `busy()` during an outage, with no command able to abort it. Only the publish
+  is gated on the broker.
 
 Remaining hardware validation:
 

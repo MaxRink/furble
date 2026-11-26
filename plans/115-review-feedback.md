@@ -1,0 +1,73 @@
+# 115b - Review feedback
+
+An independent, adversarial review of the HTTPS delivery adapter and the
+`cmd/ota` handler in [115-ota-update-mqtt.md](115-ota-update-mqtt.md) (PR #531),
+reviewed against master at `4043fba0`.
+
+The review attacked the state machine rather than the happy path: wrong size,
+bad digest, bad signature, an interrupted transfer, a rollback after a failed
+health check, the battery floor, an active camera session, and a second
+`cmd/ota` arriving mid-download. It also checked the structural claims the pull
+request makes: that the adapter sits behind the existing `OTA::Transport` seam,
+that nothing touches the partition table, that the MQTT payload is validated
+rather than trusted, that no test performs a real network fetch, and that the
+precondition policy cannot brick a device.
+
+| # | Severity | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- | :--- |
+| 1 | Blocking | The 30 percent battery floor was exempted on every board that can report a charge state. `MQTT::OTAContext::conditions()` set `conditions.charging = caps.charging`, and `battery_caps_t::charging` is the board's *capability*, a compile-time constant, not the charge state. On the StickS3, the Core2 and the Tough, whose board profile sets that column, `charging` was therefore always true and `evaluateUpdate()` never reached `BatteryLow`. Those three are exactly the boards the floor exists for. The simulator already models a real charge state (`hw.pmic.charging`, driven by a scenario's `battery=` seed) and the composition never read it. No test covered the composition, because the pull request's own MQTT case left `caps.charging` at its default. | Fixed. The composition now takes external power from a VBUS measurement through the new `OTA::externalPowerPresent()`, and a zero reading is retried once because the first PMIC transaction after its idle sleep only wakes it. The charge flag is deliberately not an input either: M5Unified maps a failed charge-status read to "charging", the trap `FurbleFeedbackPolicy::onBatteryPower` already documents for the amplifier rail. A board without VBUS sense reads zero and keeps the floor, which is the safe direction. | `src/FurbleMQTT.cpp` `OTAContext::conditions()`; `include/FurbleOTAAdmission.h` `externalPowerPresent()`; board rows in `src/FurbleBoard.cpp` (`StickS3`, `Core2`, `Tough` carry the charging capability); every other caller ANDs the capability with the state (`src/FurbleUI.cpp:11570`, `src/FurbleUI.cpp:13175`). Red-first: putting `caps.charging` back makes `mqtt-owner` fail with `the charge capability exempted the battery floor`. |
+| 2 | Blocking | A running transfer froze when the broker connection dropped. The engine step was nested inside `if (m_Connected.load())`, so an update in `Downloading` advanced only while MQTT was connected. During an outage the engine stayed `busy()` with no command able to reach the handler, because `cmd/ota` itself needs the broker, so `abort` could not be delivered and the staged image was held until the broker returned. That contradicts the state machine this pull request documents, where an interrupted transfer is supposed to fail cleanly. | Fixed. The owner steps the engine whenever a handler is attached, independent of the broker link, and `publishOTAStatus()` gates only the *publish* on the connection. A download link that really died now fails its poll and discards the staged image instead of freezing, and the console's `StatusStore` copy stays current through the outage. | `src/FurbleMQTT.cpp` `taskStep()` and `publishOTAStatus()`. Red-first: gating the step on `m_Connected` again makes `mqtt-owner` fail with `the OTA engine stalled while the broker was down`. |
+| 3 | Non-blocking | `docs/protocols/mqtt.md` and this plan both stated that a "charging board is exempt" and that "the preconditions are enforced, not advisory". The first was false per finding 1. The second overstated the design: the gates are read once, when the command arrives, so a camera session started during a transfer is not refused retroactively, and the link gate is not re-evaluated. | Fixed. The doc now states the VBUS rule, says the charge flag and the capability are not evidence, and states plainly that the gates are evaluated once at command time, with a lost link surfacing as `transfer_interrupted` from the adapter. | `docs/protocols/mqtt.md` "OTA command and status". |
+| 4 | Non-blocking | No `plans/NN-review-feedback.md` record existed. Green CI is not a review, and the author's own test suite is not an independent review of it: the composition bug in finding 1 passed the whole suite because the one test that reached `OTAContext` never set the charging capability. | Fixed. This document is that record, and the two regressions above now pin the composition rather than the policy in isolation. | This file; `tests/host/mqtt_test.cpp`. |
+
+Verified, no change needed:
+
+| Claim | Result | Evidence |
+| :--- | :--- | :--- |
+| The adapter sits behind the existing engine seam, so the engine stays transport independent | Holds. `OTA::HTTPS::Adapter final : public OTA::Transport`, constructed over an injected `OTA::HTTPS::Client`. The engine source is not touched by this pull request: `src/FurbleOTA.cpp` and `include/FurbleOTA.h` are absent from the diff, and the engine holds a `Transport &` only. The lifecycle, the progress invariants and the abort seam stay in the engine. | `include/FurbleOTAHTTPS.h`; `git diff --stat origin/master...HEAD` has no engine file. |
+| Nothing touches the partition table | Holds. No `partitions_*.csv`, no `sdkconfig.*`, no `esp_ota_*` call and no `PRIV_REQUIRES` change. `esp_https_ota` appears only in a comment describing the shape the `Client` seam will take. `slotAvailable` is hard true in the composition, with the adapter's real slot-capacity check at `open()` as the authority, and the plan records that as a deviation. | The diff; `grep -rn esp_https_ota src include` returns comments only. |
+| The MQTT payload is documented and validated rather than trusted | Holds. `parseRequest()` rejects an over-long payload, an embedded NUL, an empty or whitespace-only payload, an unknown keyword, extra data after `status`/`abort`, a second word after `check`, and a non-https or authority-less URL. Every string that reaches `state/ota` is escaped by `appendJsonString()`, including the manifest-supplied `available` version, so a hostile manifest cannot inject JSON. | `src/FurbleOTACommand.cpp` `parseRequest()`; `src/FurbleOTAStatus.cpp` `appendJsonString()`; `tests/host/ota_command_test.cpp` parser cases. |
+| No test performs a real network fetch, and the double models the failures | Holds. `ScriptedClient` and the `OtaClient` in `mqtt_test` script `open`, each `poll`, `finish` and `apply`; the `Source` double scripts the manifest. The scripts cover an unknown size, an oversized image, an unreachable source, a short image, each verify failure, an interrupted transfer, an apply failure and an abort, with the discard and apply call counts asserted. | `tests/host/ota_https_test.cpp`; `tests/host/ota_command_test.cpp`; `tests/host/mqtt_test.cpp`. |
+| A bad digest or signature cannot reach `apply()` | Holds. `Engine::step()` moves `Verifying -> Applying` only when `verify()` returned true, and `fail()` is terminal. Each verify failure maps to a stable `Reason` and the adapter discards the staged image. | `src/FurbleOTA.cpp` `Engine::step()`; `tests/host/ota_https_test.cpp` asserts `applyCalls == 0` for every verify failure. |
+| A wrong size, or an image that does not fit the inactive slot, is refused before any write | Holds, twice over: `Adapter::check()` bounds the announced length and compares it with the slot capacity, and `Handler` refuses `NoNewerVersion` and `SlotUnavailable` from the manifest before starting. | `src/FurbleOTAHTTPS.cpp` `check()`; `src/FurbleOTACommand.cpp` `handle()`. |
+| A second `cmd/ota` mid-download cannot start a second transfer | Holds. The identical URL is an idempotent `duplicate`, which neither reopens the image nor restarts the engine; a different URL is refused `busy`. A `DUP` redelivery after a failure is also a duplicate, so only a fresh command retries, and it resumes at the checkpoint the adapter confirmed. | `src/FurbleOTACommand.cpp`; `tests/host/ota_command_test.cpp` duplicate and resume cases. |
+| A failed health check is reported as a rollback | Holds, within the slice's scope. `evaluateBootHealth()` decides, `setOTABootReport()` records, and `state/ota` publishes `slot: aborted` with `boot: mark_invalid_rollback_and_reboot`. The plan states plainly that the verdict is reported and not executed, so `app_main` still does not arm the health check or call the mark-valid API. | `include/FurbleOTA.h` `evaluateBootHealth()`; `tests/host/mqtt_test.cpp` rollback case; plan 115 "Deviations". |
+| An interrupted transfer leaves the running image alone | Holds by construction of the seam. `apply()` is the only call that selects a slot, it runs only after a successful `verify()`, and every failure path discards the staged bytes. The engine refuses a resume offset past the announced size with `InvalidResume`. | `src/FurbleOTA.cpp` `Engine::step()`; `src/FurbleOTAHTTPS.cpp` `download()` and `abort()`. |
+
+Judged false:
+
+| Hypothesis | Why it does not hold | Evidence |
+| :--- | :--- | :--- |
+| A board without a battery gauge is a brick risk because it is admitted at any level | It is admitted, and that is the pre-existing policy this pull request inherits rather than introduces, and it is the only policy that lets those boards update at all: there is no threshold to evaluate. The population is the StickC family and the Core, whose cells cannot report a level; the boards with a gauge all take the floor. | `include/FurbleOTAAdmission.h` `evaluateUpdate()`; `src/FurbleBoard.cpp` battery capability column. |
+| A weak link can brick a device because the link gate is a single boolean | The gate is deliberately a presence check, and it is not what protects the device. A transfer that dies fails its poll, the adapter discards the staged bytes, and the boot slot is never switched, so the running image is untouched by an interrupted or abandoned download. The brick risk the floor covers is power loss during a flash write, which is why the battery rule, not a signal-strength rule, is the safety gate. | `src/FurbleOTAHTTPS.cpp` `download()`, `abort()`; `src/FurbleOTA.cpp` `Engine::step()`. |
+| `STATE_CONNECT_FAILED` makes the camera gate over-broad | It does refuse an update after a failed connect, and the reason label reads `camera_session`. That is deliberate fail-closed behaviour: a failed connect can still have a draining teardown holding the radio, and the state machine has no cheaper way to tell the two apart. Narrowing it is a Control change, not an OTA one, and refusing an update there costs a disconnect. | `src/FurbleControl.cpp` `Control::task()` state cases; `src/FurbleMQTT.cpp` `OTAContext::conditions()`. |
+| A stale resume offset can overrun the slot or report progress past 100 percent | The engine refuses an offset past the announced length with `InvalidResume` before any download, the adapter refuses a poll that moves backwards or past the total, and the handler zeroes the checkpoint unless the previous attempt failed on a transfer that confirmed bytes. | `src/FurbleOTA.cpp` `Engine::step()`; `src/FurbleOTAHTTPS.cpp` `download()`; `src/FurbleOTACommand.cpp` `noteProgress()`. |
+| A redelivered `DUP` after a *successful* update starts it again | The identical URL after `Done` returns `duplicate`. Only a different URL, or a fresh command after a failure, starts a transfer. | `src/FurbleOTACommand.cpp` `handle()`; `tests/host/ota_command_test.cpp` duplicate cases. |
+
+Red-first verification. Both fixes were reverted separately; each revert
+produced exactly one failure, and each restored cleanly.
+
+The charging capability read back in place of the VBUS rule:
+
+```
+mqtt_test: the charge capability exempted the battery floor
+```
+
+The engine step gated on the broker connection again:
+
+```
+mqtt_test: the OTA engine stalled while the broker was down
+```
+
+Both pass on the branch as pushed: `mqtt-owner`, `ota-mqtt-handler` and
+`ota-https`.
+
+Gates: full host suite `223/223` via `ctest --output-on-failure`; `pre_review.py --base
+origin/master`; `check-doc-citations.py`; `sh sim/scripts/check-doc-tokens.sh`.
+The results are in the pull request body.
+
+What this review does not certify: no firmware path attaches a handler, so
+nothing here has run on hardware and no board has downloaded an image. The
+adapter's `Client` has no firmware implementation in this slice, so the real
+`esp_https_ota` call sequence, the rollback execution and the boot health
+composition remain the hardware gate plan 115 already records.

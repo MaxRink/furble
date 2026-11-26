@@ -112,6 +112,10 @@ void Platform::setBatteryCaps(const battery_caps_t &caps) {
   getInstance().m_Caps = caps;
 }
 
+void Platform::setBatteryStatus(const battery_status_t &status) {
+  getInstance().m_Status = status;
+}
+
 GPS &GPS::getInstance(void) {
   static GPS gps;
   return gps;

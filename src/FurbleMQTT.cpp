@@ -629,14 +629,18 @@ void MQTT::taskStep(void) {
       publishBattery(false);
       publishGPS(false);
     }
+  }
 
-    // The OTA engine has no task of its own. Advance one stage or one
-    // download poll per owner iteration and report the result, so a slow
-    // transfer never blocks the camera or shutter path.
-    if (m_OTAHandler != nullptr) {
-      m_OTAHandler->step();
-      publishOTAStatus();
-    }
+  // The OTA engine has no task of its own. Advance one stage or one download
+  // poll per owner iteration whether or not the broker is connected, so a
+  // broker outage cannot freeze a running transfer in busy(): no command could
+  // reach the handler to abort it, and the staged image would be held until the
+  // broker came back. A download link that really died fails the poll instead,
+  // which is the documented clean abort. publishOTAStatus() still gates the
+  // topic on the broker, so nothing is published while it is down.
+  if (m_OTAHandler != nullptr) {
+    m_OTAHandler->step();
+    publishOTAStatus();
   }
 }
 
@@ -1497,12 +1501,18 @@ void MQTT::handleOTA(const queued_event_t &event) {
 }
 
 void MQTT::publishOTAStatus(void) {
-  if (!m_Connected.load() || (m_OTAHandler == nullptr)) {
+  if (m_OTAHandler == nullptr) {
     return;
   }
 
   const OTA::Status status = m_OTAHandler->status();
+  // Keep the console's copy current even with the broker down, so `ota status`
+  // can report a transfer that continued through an outage.
   OTA::StatusStore::getInstance().set(status);
+
+  if (!m_Connected.load()) {
+    return;
+  }
 
   const std::string payload = OTA::statusJson(status);
   const uint32_t revision = m_OTAHandler->revision();
@@ -1552,7 +1562,21 @@ OTA::Conditions MQTT::OTAContext::conditions(void) {
   const Platform::battery_caps_t caps = platform.getBatteryCaps();
   conditions.batteryKnown = caps.level;
   conditions.batteryPercent = platform.readBattery().level;
-  conditions.charging = caps.charging;
+
+  // External power from a VBUS measurement, never from `caps.charging`. That
+  // field is the board's *capability*, true on every board that can report a
+  // charge state, so reading it here exempted the 30 percent floor on the
+  // StickS3, the Core2 and the Tough. The charge flag is no better: M5Unified
+  // maps a failed charge-status read to "charging". `getBatteryStatus()` reports
+  // 0 where the board cannot sense VBUS, so those boards keep the floor.
+  int16_t vbus = platform.getBatteryStatus().vbus;
+  if (vbus == 0) {
+    // The first transaction after the PMIC idle sleep only wakes it, so a zero
+    // reading is retried once. A zero that survives the retry reads as battery
+    // power, which is the safe direction for a multi-megabyte flash write.
+    vbus = platform.getBatteryStatus().vbus;
+  }
+  conditions.charging = OTA::externalPowerPresent(vbus);
 
   // No partition read is linked in this build. The HTTPS adapter checks the
   // real inactive slot capacity when it opens the image, so this stays true
