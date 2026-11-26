@@ -33,6 +33,18 @@ struct SonyAdvertisement {
   uint8_t mode21;
 };
 
+/**
+ * Sony advertisement generation, selected by tag 0x22 mode bit 1.
+ *
+ * The triage of upstream issue 316 reports a 2019 ILCE body advertising 0xE8
+ * or 0xEC, both of which clear bit 1 (spec note U-31 records that bit 1 may be
+ * clear). Only bits 7 and 6 are required to recognise an advertisement at all.
+ */
+enum class SonyGeneration : uint8_t {
+  Current, /**< Bit 1 set: the 2020 and later generation. */
+  Legacy,  /**< Bit 1 clear: the 2019 generation. */
+};
+
 struct LumixAdvertisement {
   uint16_t companyID;
   uint8_t flags;
@@ -44,7 +56,18 @@ bool parseNikonAdvertisement(const uint8_t *data, size_t bytes, NikonAdvertiseme
 bool matchesNikonReconnect(const uint8_t *data, size_t bytes, uint32_t device);
 
 bool parseSonyAdvertisement(const uint8_t *data, size_t bytes, SonyAdvertisement &advertisement);
+/** Classify a parsed advertisement by tag 0x22 mode bit 1. */
+SonyGeneration sonyGeneration(const SonyAdvertisement &advertisement);
+/** Discover both generations; the generation is not reported. */
 bool matchesSonyAdvertisement(const uint8_t *data, size_t bytes);
+/**
+ * Discover both generations and report which one the advertisement describes.
+ *
+ * `generation` is written only when the advertisement matches. Bits 7 and 6 of
+ * tag 0x22 are required because they mark a paired, connectable camera. Bit 1
+ * is not required: a body that clears it is the 2019 generation.
+ */
+bool matchesSonyAdvertisement(const uint8_t *data, size_t bytes, SonyGeneration &generation);
 
 bool parseLumixAdvertisement(const uint8_t *data, size_t bytes, LumixAdvertisement &advertisement);
 bool matchesLumixAdvertisement(const uint8_t *data, size_t bytes, bool advertisesService);

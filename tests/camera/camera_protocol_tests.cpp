@@ -184,14 +184,26 @@ bool testAdvertisementParsing() {
   CHECK(sonyParsed.mode22 == 0xc2);
   CHECK(Furble::AdvertisementProtocol::matchesSonyAdvertisement(sony.data(), sony.size()));
 
-  // Each of the three mode bits is required independently. Keep these as
-  // separate mutations so a future mask regression cannot hide behind one
-  // aggregate negative case.
-  for (const uint8_t mode : {uint8_t {0x42}, uint8_t {0x82}, uint8_t {0xc0}}) {
+  // Bits 7 and 6 are required independently: together they mark a camera that
+  // is paired and connectable. Keep these as separate mutations so a future mask
+  // regression cannot hide behind one aggregate negative case.
+  for (const uint8_t mode : {uint8_t {0x42}, uint8_t {0x82}}) {
     auto missingRequiredMode = sony;
     missingRequiredMode[9] = mode;
     CHECK(!Furble::AdvertisementProtocol::matchesSonyAdvertisement(missingRequiredMode.data(),
                                                                    missingRequiredMode.size()));
+  }
+
+  // Bit 1 is not required: it divides the two advertisement generations. A body
+  // that clears it is the 2019 generation (upstream issue 316), so 0xc0 must
+  // match and must be reported as legacy rather than rejected.
+  for (const uint8_t mode : {uint8_t {0xc0}, uint8_t {0xc8}}) {
+    auto legacyMode = sony;
+    legacyMode[9] = mode;
+    auto legacyGeneration = Furble::AdvertisementProtocol::SonyGeneration::Current;
+    CHECK(Furble::AdvertisementProtocol::matchesSonyAdvertisement(
+        legacyMode.data(), legacyMode.size(), legacyGeneration));
+    CHECK(legacyGeneration == Furble::AdvertisementProtocol::SonyGeneration::Legacy);
   }
 
   const std::array<uint8_t, 14> sonyOversized = {0x2d, 0x01, 0x03, 0x00, 0x01, 0x00, 0x34,

@@ -651,6 +651,28 @@ target_compile_options(sony_location_test PRIVATE
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
 add_test(NAME sony-location COMMAND sony_location_test)
 
+# Drive the Sony location path across both advertisement generations: the
+# legacy body from upstream issue 316 has no DD30/DD31, and a link that cannot
+# carry the 91 or 95 byte packet in one write must skip it rather than fail.
+add_executable(sony_geo_test
+               sony_geo_test.cpp
+               ${HOST_PEER_DIR}/SonyVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Sony.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(sony_geo_test PRIVATE furble_host_camera)
+target_include_directories(sony_geo_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(sony_geo_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+add_test(NAME sony-geo COMMAND sony_geo_test)
+
 # The sleep gate test drives the production Ricoh shutter path against the
 # virtual peer in BLE standby. It protects the invariant that only a fresh
 # OperationMode read of CAPTURE authorizes the ShootingFlavor and
@@ -793,6 +815,16 @@ target_compile_options(camera_list_protocol_test PRIVATE -Wall -Wextra -Werror -
 add_executable(auto_off_policy_test auto_off_policy_test.cpp)
 target_include_directories(auto_off_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(auto_off_policy_test PRIVATE -Wall -Wextra -Werror)
+
+# The Sony matcher gates discovery for both advertisement generations. A 2019
+# body clears tag 0x22 bit 1, which the strict matcher used to require.
+add_executable(sony_advertisement_test
+               sony_advertisement_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp)
+target_include_directories(sony_advertisement_test PRIVATE ${FURBLE_ROOT}/lib/furble)
+target_compile_options(sony_advertisement_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                      -Wno-unused-parameter)
+add_test(NAME sony-advertisement COMMAND sony_advertisement_test)
 
 add_executable(fujifilm_protocol_test
                fujifilm_protocol_test.cpp

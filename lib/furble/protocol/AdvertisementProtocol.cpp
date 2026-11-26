@@ -64,14 +64,33 @@ bool parseSonyAdvertisement(const uint8_t *data, size_t bytes, SonyAdvertisement
 }
 
 bool matchesSonyAdvertisement(const uint8_t *data, size_t bytes) {
+  SonyGeneration generation = SonyGeneration::Current;
+  return matchesSonyAdvertisement(data, bytes, generation);
+}
+
+SonyGeneration sonyGeneration(const SonyAdvertisement &advertisement) {
+  constexpr uint8_t currentModeBit = (1U << 1);
+  return (advertisement.mode22 & currentModeBit) != 0 ? SonyGeneration::Current
+                                                      : SonyGeneration::Legacy;
+}
+
+bool matchesSonyAdvertisement(const uint8_t *data, size_t bytes, SonyGeneration &generation) {
   SonyAdvertisement advertisement = {};
   if (!parseSonyAdvertisement(data, bytes, advertisement)
       || advertisement.companyID != SONY_COMPANY_ID || advertisement.type != SONY_CAMERA_TYPE) {
     return false;
   }
 
-  constexpr uint8_t requiredMode = (1U << 7) | (1U << 6) | (1U << 1);
-  return (advertisement.mode22 & requiredMode) == requiredMode;
+  // Bits 7 and 6 mark a camera that is paired and connectable. Bit 1 divides the
+  // generations: 2019 bodies advertise 0xE8 or 0xEC and clear it, 2020 and later
+  // bodies set it. Requiring bit 1 hid every 2019 body from discovery.
+  constexpr uint8_t requiredMode = (1U << 7) | (1U << 6);
+  if ((advertisement.mode22 & requiredMode) != requiredMode) {
+    return false;
+  }
+
+  generation = sonyGeneration(advertisement);
+  return true;
 }
 
 bool parseLumixAdvertisement(const uint8_t *data, size_t bytes, LumixAdvertisement &advertisement) {

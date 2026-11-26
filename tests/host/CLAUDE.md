@@ -149,6 +149,19 @@ ASan and UBSan like every fuzz target.
   restore and untouched camera bonds. The live LE address rotation is asserted
   by `sim/scenarios/e2e/hw-ble-auth-gatt-reidentify.txt`, not by the host
   double.
+- The NimBLE mock models one ATT MTU per link. `NimBLEDevice::setMTU/getMTU`
+  hold the local preference (default 256, the sdkconfig value),
+  `NimBLEClient::connect` starts a link at the mandatory 23 and runs the
+  exchange, `getMTU()` reports the negotiated value, and
+  `writeValue`/`setValue` refuse a value above `MTU - 3` and count it in
+  `mockAttWriteRejections()`, which is the only observable for the host-side
+  `BLE_HS_EMSGSIZE` failure. `NimBLEMockPeer::negotiateAttMtu()` defaults to 517
+  so a suite that does not model a narrow body keeps working, and a peer that
+  answers 23 models a body without MTU support. `sizeof(NimBLEClient)` is
+  charged against the modelled device heap by `sim/heap_count.cpp`, so a field
+  that does not fit the existing padding moves every calibrated floor in
+  `sim/scenarios/e2e/hw-memory-*.txt`. Keep the object the same size, and
+  measure it with a `sizeof` probe on both ABIs when adding one.
 - The port stack moved the host doubles with the production seams. The
   companion doubles implement `Platform::getBatteryStatus()` instead of
   `UI::getBattery*()`. The headless doubles gained `TxPower`,

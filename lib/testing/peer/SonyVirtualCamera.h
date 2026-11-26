@@ -90,8 +90,10 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
     NimBLEAddress address = NimBLEAddress(0x2d012d012d01ULL, 0);
 
     // Manufacturer-data model gate. The vendor pairing scan requires tag 0x22
-    // bit 6 only. Furble additionally requires bits 7 and 1, so legacy_bit1
-    // models the undecoded bit that a real body may clear (spec U-31).
+    // bit 6 only. Furble requires bits 7 and 6 for both generations, and bit 1
+    // only selects the generation: a 2019 body clears it (0xE8 or 0xEC, spec
+    // note U-31), so legacy_bit1 defaults to the current generation and a test
+    // clears it to model the legacy one.
     std::array<uint8_t, 2> model_code = {'U', '0'};
     uint16_t protocol_version = 0x6400;
     bool pairing_supported = true;
@@ -147,6 +149,19 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
     // accepts the base form (capture-gated, spec U-14).
     bool timezone_supported = true;
     bool require_91_byte_location = false;
+    // DD30 (allow) and DD31 (enable) gate the location transfer on the bodies
+    // whose firmware exposes them: the ILCE-7RM5 4.00 image confirms both. The
+    // 2019 generation in upstream issue 316 does not expose them, and DD11
+    // then accepts the packet without a lock or an enable step. The two are
+    // separate so a profile that exposes only one can be modelled: production
+    // keeps the strict gate for that shape rather than writing DD11 ungated.
+    bool location_allow_present = true;
+    bool location_enable_present = true;
+    // ATT MTU this body answers an MTU exchange with. The default is the
+    // largest value the ATT field carries, so the link settles at the central's
+    // 256-byte local preference. 23 models the ATT minimum, where the 91 or 95
+    // byte DD11 packet cannot fit in a single write.
+    uint16_t max_att_mtu = 517;
     // No automatic lock release is documented. true keeps a basic test clean;
     // false models the lock leak that a missing DD30 = 00 write can leave.
     bool release_lock_on_disconnect = true;
@@ -185,6 +200,17 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
     bool emit_cc09_on_subscribe = false;
   };
 
+  /**
+   * 2019 generation body from upstream issue 316, the ILCE-7RM4.
+   *
+   * It advertises tag 0x22 with bit 1 clear (0xE8 or 0xEC), exposes the DD00
+   * location service with DD11 and DD21, and has no DD30 allow or DD31 enable
+   * characteristic, so nothing gates the location transfer on the camera side.
+   * The two model bytes are the peer default because Furble does not decode
+   * them and the body's real code is not captured.
+   */
+  static Config legacyBody();
+
   struct Write {
     std::string service;
     std::string characteristic;
@@ -214,8 +240,10 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
 
   /** Vendor pairing gate: tag 0x22 bit 6. */
   bool vendorPairingGate() const;
-  /** Furble matcher gate: tag 0x22 bits 7, 6, and 1 at the fixed offsets. */
+  /** Furble matcher gate: tag 0x22 bits 7 and 6 at the fixed offsets. */
   bool centralModelGate() const;
+  /** True when this body advertises the 2019 generation: tag 0x22 bit 1 clear. */
+  bool legacyGeneration() const;
 
   bool cameraBonded() const;
   bool registered() const;
@@ -248,6 +276,15 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
   LocationForm lastLocationForm() const;
   const std::vector<uint8_t> &lastLocation() const;
   const std::vector<uint8_t> &lastClock() const;
+
+  /** The MTU the central asked for, 0 when no exchange was requested. */
+  uint16_t requestedAttMtu() const;
+  /** The MTU this link settled on, 23 before an exchange. */
+  uint16_t negotiatedAttMtu() const;
+  /** Number of ATT MTU exchanges this peer answered. */
+  size_t mtuExchangeCount() const;
+  /** Largest value a single write can carry on this link. */
+  uint16_t maxWriteLength() const;
 
   uint8_t lastAttError() const;
   uint16_t lastFf01Opcode() const;
@@ -336,6 +373,7 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
                               uint16_t latency,
                               uint16_t timeout) override;
   int getRssi() const override;
+  uint16_t negotiateAttMtu(uint16_t requested) override;
 
   static const NimBLEUUID &cameraServiceUUID();
   static const NimBLEUUID &locationServiceUUID();
@@ -428,6 +466,9 @@ class SonyVirtualCamera final: public NimBLEMockPeer {
   LocationForm m_LastLocationForm = LocationForm::Bytes95;
   std::vector<uint8_t> m_LastLocation;
   std::vector<uint8_t> m_LastClock;
+
+  uint16_t m_RequestedAttMtu = 0;
+  size_t m_MtuExchangeCount = 0;
 
   uint8_t m_LastAttError = 0;
   Fault m_LastFault = Fault::None;

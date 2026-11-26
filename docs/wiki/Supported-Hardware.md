@@ -35,7 +35,7 @@ by code review and the FauxNY test camera.
 | Canon EOS (Smart) | Smart device pairing. Supports GPS and AF-only focus. The AF writes come from Camera Connect evidence and await hardware validation; manual lens focus is not available. |
 | Canon EOS (Remote) | Remote controller pairing. Focus, no GPS. |
 | Nikon | Remote controller mode works (shutter only). Smart mode appears but does not pair. |
-| Sony | Sony ZV and most modern Sony bodies. |
+| Sony | Sony ZV and most modern Sony bodies. Two advertisement generations are accepted: 2020 and later bodies set tag 0x22 bit 1 and use the DD30/DD31 location handshake, while the 2019 generation (0xE8 or 0xEC) clears it and gets a direct DD11 write. The 2019 generation is covered by the virtual peer only and is untested on hardware. |
 | Ricoh | GR IV and GR IV HDF, firmware 1.20. Shutter capture with autofocus and GPS supported. Focus-only control is unsupported. GR III and GR IIIx expose the same BLE service UUIDs but remain uncertified because power and WLAN behaviour differ. GR II is Wi-Fi only. Numeric-comparison pairing displays the camera's six-digit code on the furble screen and is untested on hardware. |
 | Panasonic LUMIX | Implemented from S5II and BGH1 protocol traces. Shutter and GPS with clock are supported. There is no focus opcode, so focus control is disabled. Untested on hardware. |
 | PENTAX K-3 Mark III | Untested on hardware. The K-3 Mark III and K-3 Mark III Monochrome are matched by the Ricoh service UUIDs or the PENTAX name and use the Ricoh Imaging protocol path unchanged. The K-1, K-1 Mark II, KP, KF and K-70 connect over Wi-Fi only and are not supported. Shutter capture with autofocus and GPS follow the Ricoh class. Focus-only control is unsupported. |

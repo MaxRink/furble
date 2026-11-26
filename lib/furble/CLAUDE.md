@@ -17,6 +17,23 @@ protocol core.
 - `Ricoh` owns the shared Ricoh Imaging GATT family. PENTAX K bodies reuse its
   persisted `Camera::Type::RICOH`, security flow, UUIDs, and command bytes until
   hardware testing proves a model-specific delta.
+- `Camera` owns the ATT MTU helpers because the MTU is a link property and the
+  local preference is process-wide. `requestAttMtu(floor)` only raises, so a
+  vendor that asks for more keeps its request (DJI Osmo pins 517), and
+  `verifyAttMtu(floor)` polls the negotiated value in 10 ms slices up to 200 ms
+  because the exchange completes on the host task. `attMtu()` is read again at
+  each use and never cached, since a late completion raises it mid-session. A
+  wait on the connect path holds `Camera::m_Mutex`, so it must poll
+  `connectCancelled()` in the same loop body (plan 148).
+- A vendor behaviour that depends on a discovered characteristic, rather than on
+  an advertisement, is decided from the GATT profile. Sony's location gate is the
+  example: DD30 plus DD31 present means `Strict`, both absent means `BestEffort`,
+  and a profile with only one of the two keeps `Strict` because half a gate is
+  not an absent one. The advertised generation only breaks the tie
+  (`Sony::geoGate()`). A saved record carries no advertisement, so it is
+  `Generation::Unknown` and the profile decides; there is no per-body model
+  table, because Sony's model codes are not documented and would need
+  maintaining per firmware release.
 - New camera types get a new `Camera::Type` enum value. Values are persisted
   in NVS: never renumber or reuse existing ones (MOBILE_DEVICE is deprecated
   but its value stays reserved).

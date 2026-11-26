@@ -35,6 +35,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | #451 | [325](325-peer-subscription-race.md) | Fixed on `fix/451-fuji-double-subscriptions`: the virtual camera subscription tables are thread safe. Closes on merge. |
 | #455 | [332](332-sim-rtc.md) | Implemented on `feat/455-sim-rtc` in #507: the simulator models a battery-backed RTC, and the deep-sleep scenarios cover a rejected stale record, an accepted valid record, an immediate late shot and a resume after the cell dropped. Closed against #507; the hardware item stays with the plan. |
 | #464 | [331](331-merge-gate-base.md) | Fixed on `fix/464-base-workflows`: the merge gate reads the workflow path filters at the PR base commit through `baseRefOid`, fails closed when they cannot be read, and keeps checkout reads for a run with no PR only. Closes on merge. |
+| upstream #316 | [359](359-sony-legacy-generation.md) | Fixed on `fix/316-sony-7rm4`: the 2019 advertisement generation is accepted, the ATT MTU floor is requested and verified with a graceful location skip, and a body without DD30/DD31 gets a best-effort DD11 write. Host and virtual peer only; a real ILCE-7RM4 capture remains, listed in the plan. |
 
 Closed issues #280, #281, #282, #288 and #290 are retained in their plans and in
 the git history. They are no longer ownership rows.
@@ -241,6 +242,8 @@ implemented.
 | [124-sim-incremental-deps.md](implemented/124-sim-incremental-deps.md) | Compiler depfiles for reliable direct-simulator incremental builds |
 | [127-dev-version-identity.md](implemented/127-dev-version-identity.md) | Append an unambiguous short Git revision to development firmware versions while preserving release tags |
 | [142-bt-journal-memory.md](implemented/142-bt-journal-memory.md) | Compact, capability-aware Bluetooth journal storage and loss accounting |
+| [359-sony-legacy-generation.md](359-sony-legacy-generation.md) | Sony 2019 generation (upstream issue 316): legacy advertisement accepted, a verified 158-byte ATT MTU floor with an honest location skip, and a best-effort DD11 write gated on the discovered DD00 profile |
+| [359-review-feedback.md](359-review-feedback.md) | Review-feedback record for PR 508: the missing directory guides, the flash delta and its external blocker, the saved-record behaviour change, the retryable-failure latch and the mock client's charged size, plus the four pre-rebase red checks and whether they were real |
 | [345-doc-citation-gate.md](345-doc-citation-gate.md) | Gate that checks `file:line` citations in every Markdown file: the path exists, the line is in range, and an annotated symbol is on that line or inside its definition. Fixes the four line drift #473 left in plans 338, 303 and the CLAUDE docs |
 | [344-android-ui-snapshot.md](344-android-ui-snapshot.md) | Robolectric UI snapshot test for the Android companion main screen: pinned rendering inputs, committed baseline, runs inside `./gradlew test` |
 | [511-review-feedback.md](511-review-feedback.md) | Review-feedback record for PR 511: the re-derived 86 finding count at the merge base, the gate's real detection envelope, the symbol-rule sample and twelve churn spot checks, plus the five stale citations reading found in the files the PR touched |

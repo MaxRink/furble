@@ -1,6 +1,19 @@
 #include <algorithm>
 #include <cstring>
 
+// The ATT MTU wait must use the scheduler's tick wherever FreeRTOS is present:
+// the simulator runs on a virtual clock its scenarios advance, so a wall-clock
+// sleep would neither observe the exchange nor time out. Host targets that link
+// no FreeRTOS shim fall back to the wall clock. Same rule as Fujifilm.cpp.
+#if __has_include(<freertos/FreeRTOS.h>)
+#define FURBLE_MTU_WAIT_USES_TICKS 1
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#else
+#include <chrono>
+#include <thread>
+#endif
+
 #include <NimBLEAdvertisedDevice.h>
 #include <NimBLERemoteService.h>
 #include <NimBLEUtils.h>
@@ -1181,6 +1194,68 @@ bool Camera::gattSubscribe(NimBLERemoteCharacteristic *characteristic,
                 response, started_us, attempt_id);
 #endif
   return result;
+}
+
+bool Camera::requestAttMtu(uint16_t floor) {
+  const uint16_t preferred = NimBLEDevice::getMTU();
+  if (preferred >= floor) {
+    return true;
+  }
+  if (!NimBLEDevice::setMTU(floor)) {
+    ESP_LOGW(LOG_TAG, "%s could not raise the preferred ATT MTU from %u to %u", m_Name.c_str(),
+             preferred, floor);
+    return false;
+  }
+  ESP_LOGD(LOG_TAG, "%s raised the preferred ATT MTU from %u to %u", m_Name.c_str(), preferred,
+           floor);
+  return true;
+}
+
+uint16_t Camera::attMtu(void) const {
+  if (m_Client == nullptr) {
+    return 23;
+  }
+  return m_Client->getMTU();
+}
+
+uint16_t Camera::verifyAttMtu(uint16_t floor) {
+  if ((m_Client == nullptr) || !isConnected()) {
+    return 23;
+  }
+
+  uint16_t negotiated = m_Client->getMTU();
+  // The exchange is asynchronous: esp-nimble-cpp queues the request and the
+  // response reaches the ATT layer on the host task, so poll in slices instead
+  // of reading once and reporting the 23-byte default as a verdict. Twenty
+  // 10 ms slices cover several connection intervals without stalling a connect.
+  constexpr uint8_t POLL_SLICES = 20;
+  constexpr uint32_t POLL_MS = 10;
+  for (uint8_t slice = 0; (slice < POLL_SLICES) && (negotiated < floor); slice++) {
+    if (!isConnected()) {
+      break;
+    }
+    // Plan 148 cancel contract. This wait runs on the connect path, which holds
+    // Camera::m_Mutex for its whole attempt, so a user disconnect has to be able
+    // to abort it instead of draining the target with the attempt still running.
+    if (connectCancelled()) {
+      ESP_LOGD(LOG_TAG, "%s ATT MTU poll cancelled", m_Name.c_str());
+      break;
+    }
+#if defined(FURBLE_MTU_WAIT_USES_TICKS)
+    vTaskDelay(pdMS_TO_TICKS(POLL_MS));
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
+#endif
+    negotiated = m_Client->getMTU();
+  }
+
+  if (negotiated < floor) {
+    ESP_LOGW(LOG_TAG, "%s ATT MTU %u is below the %u byte floor", m_Name.c_str(), negotiated,
+             floor);
+  } else {
+    ESP_LOGD(LOG_TAG, "%s ATT MTU %u", m_Name.c_str(), negotiated);
+  }
+  return negotiated;
 }
 
 #if defined(FURBLE_CONSOLE)
