@@ -466,6 +466,11 @@ void Control::task(void) {
     // task can still touch them.
     reapZombieTargets();
 
+    // Apply a connection-saver change published by another task. Runs every
+    // tick regardless of state, before any state work, so a toggle issued while
+    // the machine is connecting is not queued behind the attempt.
+    applyPendingConnSaver();
+
     bool retired = false;
     {
       const std::lock_guard<std::mutex> lock(m_Mutex);
@@ -1684,17 +1689,42 @@ void Control::setPower(esp_power_level_t power) {
 }
 
 void Control::setConnSaver(bool enabled) {
+  // Publish the request instead of applying it here. setConnSaverEnabled() on a
+  // connected camera enters NimBLE and can block on the HCI transport for up to
+  // two seconds, and the caller is the LVGL task for the UI toggle: the whole
+  // screen, and the M5PM1 watchdog fed from that task, stall behind it. The
+  // control task owns every other radio fan-out, so it applies this one too.
+  m_ConnSaverWanted.store(enabled, std::memory_order_release);
+  m_ConnSaverPending.store(true, std::memory_order_release);
+
+  // Wake the control task so the setting applies on its next pass rather than
+  // on the 250 ms idle tick. CMD_ERROR carries no work and is ignored in every
+  // state. A failed send loses nothing: a full queue means the task is about to
+  // run anyway.
+  cmd_t wake = CMD_ERROR;
+  (void)xQueueSend(m_Queue, &wake, 0);
+}
+
+void Control::applyPendingConnSaver(void) {
+  if (!m_ConnSaverPending.load(std::memory_order_acquire)) {
+    return;
+  }
+  // Claim the request before reading the value. A call that lands after this
+  // re-arms the pending flag, so it is applied on the next pass and no request
+  // is lost or applied twice.
+  m_ConnSaverPending.store(false, std::memory_order_release);
+  const bool enabled = m_ConnSaverWanted.load(std::memory_order_acquire);
+
   std::vector<std::shared_ptr<Camera>> cameras;
   {
     const std::lock_guard<std::mutex> lock(m_Mutex);
+    cameras.reserve(m_Targets.size());
     for (const auto &target : m_Targets) {
       cameras.push_back(target->getCamera());
     }
   }
 
-  // Apply outside the mutex. setConnSaverEnabled() on a connected camera
-  // enters NimBLE and can block on the HCI transport for up to two seconds,
-  // and this runs on the caller's task (the LVGL task for the UI toggle).
+  // Radio call, outside the mutex.
   for (const auto &camera : cameras) {
     camera->setConnSaverEnabled(enabled);
   }
