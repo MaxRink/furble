@@ -14,6 +14,10 @@
 #include <array>
 #include <cstdint>
 
+#include "FurblePlatformPolicy.h"
+#include "FurblePowerBackend.h"
+#include "FurbleRail.h"
+
 // ble_gap_conn_cancel() cancels an in-flight NimBLE connection attempt. On the
 // device a transitively included NimBLE host header declares it. The mock does
 // not, so the shim declares it here, as the control host shim does.
@@ -94,6 +98,20 @@ class Platform {
   uint32_t motionWakeEdges(void) const { return 0; }
   uint32_t getM5PM1RetryCount(void) const { return 0; }
 
+  // The rail accounting `rail status` reads. The console target links no rail
+  // implementation, so the counters are test settable state that defaults to
+  // the boot values.
+  uint8_t railHolders(PowerBackend::Rail rail);
+  uint32_t railCutRefusals(void) const { return m_RailCutRefusals; }
+  uint32_t railEnableRefusals(void) const { return m_RailEnableRefusals; }
+  PlatformPolicy::RailEnableVerdict railLastVerdict(void) const { return m_RailVerdict; }
+  void setRailHolders(uint8_t mask) { m_RailHolders = mask; }
+  void setRailCounters(uint32_t cuts, uint32_t enables) {
+    m_RailCutRefusals = cuts;
+    m_RailEnableRefusals = enables;
+  }
+  void setRailVerdict(PlatformPolicy::RailEnableVerdict verdict) { m_RailVerdict = verdict; }
+
   uint32_t restartCount(void) const { return m_Restarts; }
   uint32_t dumpPMLocksCount(void) const { return m_DumpPMLocks; }
 
@@ -115,6 +133,10 @@ class Platform {
   bool m_FlashReady = false;
   uint32_t m_Restarts = 0;
   uint32_t m_DumpPMLocks = 0;
+  uint8_t m_RailHolders = 0;
+  uint32_t m_RailCutRefusals = 0;
+  uint32_t m_RailEnableRefusals = 0;
+  PlatformPolicy::RailEnableVerdict m_RailVerdict = PlatformPolicy::RailEnableVerdict::ALLOW;
 };
 
 }  // namespace Furble

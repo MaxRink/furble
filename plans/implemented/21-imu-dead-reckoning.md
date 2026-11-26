@@ -6,7 +6,7 @@ Implementation state (2026-11-13): merged in `e9009bc9`. The "known gap" for wir
 ## Goal
 
 Keep supplying a position to the camera when the GPS fix goes away. Today furble
-silently stops. `GPS::update()` (`src/FurbleGPS.cpp:2578-2849`) only calls
+silently stops. `GPS::update()` (`src/FurbleGPS.cpp:2591-2862`) only calls
 `Control::updateGPS()` when location, date and time are all valid and all newer
 than `MAX_AGE_MS`, which is 30 s (`include/FurbleGPS.h:38`). One tunnel, one
 camera bag, one GPS standby window from PR15, and photos stop being tagged with

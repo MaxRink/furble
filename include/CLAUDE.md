@@ -106,6 +106,15 @@ Public headers for the app layer in src/, one header per module
   `m_UartInstallFailed` is set once by `getInstance()` before any task exists and
   makes `getReceiverState()` report `absent` for the session, so a failed UART
   install cannot be hidden by a later `enable()` or `disable()` write.
+
+  `GPS::setRailPower()` is the receiver's hold on `Rail::EXT_5V`
+  (`RailHolder::GPS`), not an exclusive switch: its enable and its cut can both
+  be refused, and it returns the read-back. `disable()`, `enterRailOff()` and
+  `onProbeFailed()` release the hold and must keep `railOffOrRestart()`'s
+  promise for the refused case, because the rail can stay up while the receiver
+  is stopped. Never call `Platform::setRail()` from the GPS path. The receiver
+  never assumes it owns the rail, because the infrared circuit and a Grove
+  device draw from the same switch; see plans/364-ext5v-rail.md.
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD
   writer task. Other tasks use only the non-blocking `SD::request()` /
   `SD::logPoint()` API and the atomic state accessors, and never call GPX
@@ -398,3 +407,37 @@ settings-touching rebase.
   file on the drivers in `lib/hal`. Never make it virtual: a vtable defeats
   `--gc-sections` and pushed the headless Waveshare image over its IRAM budget.
   See plans/implemented/322-hardware-abstraction.md.
+- `Rail::EXT_5V` is named by what it feeds, not by one consumer. On the
+  StickS3 it is M5PM1 `PWR_CFG` 0x06 bit 3 (`BOOST_EN`, the EXT_5V port), which
+  powers the Grove 5 V output, the HAT EXT_5V pin and the infrared circuit as
+  well as the receiver; on the AXPs it is EXTEN or LDOIO0. Never add a rail
+  named after one client.
+- `FurbleRail.h` owns the rail ownership contract: one owner (`Platform`) and a
+  reference count of named holders (`RailHolder::GPS`, `IR`, `GROVE`). The first
+  holder switches the rail on, the last holder switches it off, and a cut is
+  refused while another holder remains. `RailAccount` is counted per holder, not
+  per call, so a repeated acquire from one task cannot inflate it and a stale
+  release cannot strand the rail on. Every firmware client holds the rail
+  through `Platform::railAcquire()`/`railRelease()`; `Platform::setRail()` is the
+  owner's own switch, refuses a switch-on with no counted holder, and must never
+  be a client's entry point. The IR task takes the IR hold when it dequeues a
+  request and releases it after the burst, which is the deferred-cut rule that
+  stops a GPS duty cycle cutting the carrier without letting a queued request cut
+  one already in flight.
+  See plans/364-ext5v-rail.md.
+- Rail returns are read-back, never intent. A cut refused for another holder, a
+  refused output-mode enable and a PMIC that did not take the write all return
+  false, and `GPS::railOffOrRestart()` restarts a receiver it stopped for a cut
+  that did not take. Do not "fix" a false into a retry loop: the holders change
+  on their own tasks.
+- `FurblePlatformPolicy.h` holds the EXT_5V output-mode interlock
+  (`railEnableVerdict()`). Output mode is refused while an external 5 V source
+  is on the bidirectional port or the supply cannot be established, because the
+  vendor documents short-circuit and device-damage risk otherwise. The failure
+  direction is closed: a refusal writes nothing, so the port keeps the vendor
+  default of input mode. A cut is always allowed. See plans/364-ext5v-rail.md.
+- `PWR_CFG` 0x06 has one writer, `Platform::updatePowerConfig()`, because the
+  rail bit and the status LED bit live in the same byte and both callers run on
+  different tasks. Its `m_PowerConfigMutex` is a leaf lock: never hold it across
+  a delay, an event wait or a call into Control, and never take `m_RailMutex`
+  while holding it. Lock order is rail, then power config.

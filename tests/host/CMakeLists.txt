@@ -1467,6 +1467,16 @@ target_include_directories(gps_power_cycle_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(gps_power_cycle_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                      -Wno-unused-parameter)
 
+# EXT_5V rail ownership accounting and the output-mode supply interlock. Both
+# live in header-only pure types (include/FurbleRail.h and
+# include/FurblePlatformPolicy.h) that the firmware and the simulator Platform
+# drive unchanged, so this pins the reference count, the refused cut and the
+# fail-closed interlock without a device. No furble sources on its link line.
+add_executable(rail_account_test rail_account_test.cpp)
+target_include_directories(rail_account_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(rail_account_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                 -Wno-unused-parameter)
+
 # Bounded GPS fix hold and dead reckoning. include/FurbleGPSHold.h holds the
 # bound, the held UTC advance and the straight line projection, free of
 # FreeRTOS, LVGL, NVS and the camera headers, so this pins the exact production
@@ -2600,6 +2610,7 @@ if(BUILD_TESTING)
   add_test(NAME gps-format COMMAND gps_format_test)
   add_test(NAME gps-hold COMMAND gps_hold_test)
   add_test(NAME gps-power-cycle COMMAND gps_power_cycle_test)
+  add_test(NAME rail-account COMMAND rail_account_test)
   add_test(NAME gps-power-profiler COMMAND gps_power_profiler_test)
   add_test(NAME gps-casic COMMAND gps_casic_test)
   add_test(NAME gps-ubx COMMAND gps_ubx_test)
@@ -3039,6 +3050,36 @@ else()
   target_link_options(platform_wake_test PRIVATE -Wl,--gc-sections)
 endif()
 target_link_libraries(platform_wake_test PRIVATE Threads::Threads)
+# The production src/FurblePlatform.cpp rail path, compiled against a
+# register-bus fake M5PM1. No other host target compiled that file: rail-account
+# pins the pure accounting and the e2e scenarios drive sim/FurblePlatformSim.cpp,
+# a second implementation, so a reverted cut decision there stayed green. This
+# target links the real file and drives the real railAcquire()/railRelease()/
+# setRail()/setDisplayOff() against platform_shims/M5PM1.h, which records every
+# PWR_CFG 0x06 write. The doubles replace only the ESP-IDF services and the four
+# furble subsystems the rail path never reaches.
+set(PLATFORM_SHIM_DIR ${BOUNDARY_DIR}/platform_shims)
+add_executable(boundary_platform_rail_test
+               ${BOUNDARY_DIR}/platform_rail_test.cpp
+               ${BOUNDARY_DIR}/platform_rail_support.cpp
+               ${BOUNDARY_DIR}/m5_stub.cpp
+               ${FURBLE_ROOT}/src/FurblePlatform.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp
+               ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/boot_timeline_host_stub.cpp)
+target_include_directories(boundary_platform_rail_test BEFORE PRIVATE
+                           ${PLATFORM_SHIM_DIR}
+                           ${BOUNDARY_DIR}
+                           ${BOUNDARY_SHIM_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(boundary_platform_rail_test PRIVATE
+                           FURBLE_M5STICKS3
+                           FURBLE_BOUNDARY_M5UNIFIED_TIMER
+                           FURBLE_BOOT_TIMELINE_HOST_TEST=1
+                           FURBLE_VERSION="boundary")
+target_compile_options(boundary_platform_rail_test PRIVATE
+                       -Wall -Wextra -Wno-unused-parameter -Wno-format)
+target_link_libraries(boundary_platform_rail_test PRIVATE Threads::Threads)
 
 # Board::Profile rows against the values of the board switches they replaced,
 # compiled against the boundary M5Unified shim, which declares every board.
@@ -3091,6 +3132,7 @@ if(BUILD_TESTING)
     add_test(NAME boundary-shared-pin-${mode} COMMAND boundary_shared_pin_test ${mode})
   endforeach()
   add_test(NAME boundary-ethernet-w5500 COMMAND boundary_ethernet_test)
+  add_test(NAME boundary-platform-rail COMMAND boundary_platform_rail_test)
   add_test(NAME boundary-companion-gatt COMMAND boundary_companion_test)
   set_tests_properties(boundary-companion-gatt PROPERTIES ENVIRONMENT
                        "FURBLE_SIM_PREFS=${CMAKE_CURRENT_BINARY_DIR}/boundary-companion-prefs.bin")

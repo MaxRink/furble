@@ -414,7 +414,8 @@ device boot. A production UI restart keeps the setting written by its Restart
 button instead of applying the launch environment again.
 
 `assert`, `assert-eventually`, `xassert`, and `print` use the same query namespaces:
-`ui.*`, `control.*`, `camera.*`, `gps.*`, `uart.*`, `setting.*`, and `platform.*`.
+`ui.*`, `control.*`, `camera.*`, `gps.*`, `rail.*`, `uart.*`, `setting.*`, and
+`platform.*`.
 
 The `ble_peers` seed selects the virtual radio topology. Its peers advertise to
 the production `Scan` and answer the production `Camera` connect paths, so the
@@ -494,6 +495,19 @@ and `gps_m10_unknown_key` (`20910007`, `10230001` or `20d00001`, a key the
 firmware refuses) are described under the virtual u-blox M10 below.
 `gps_gnss` and `gps_psm` are byte seeds and `gps_ana` a boolean seed for the
 u-blox constellation mask, power save and AssistNow Autonomous settings.
+`rail_supply` selects what the modelled M5PM1 `PWR_SRC` register reports for the
+EXT_5V output-mode interlock: `battery` (the default, no external source),
+`usb` (USB/DC 5 V input), `port` (an external 5 V source driving the
+bidirectional 5 V port), `unknown` (no supply reported) or `unreadable` (the
+register does not answer). The last three refuse an output-mode enable, which is
+the vendor short-circuit protection; see plans/364-ext5v-rail.md.
+`ir_burst_ms` sets the virtual-millisecond window the simulated IR fake holds
+the EXT_5V rail for one `action ir-fire`, default 100. It is a modelled
+ownership window, not an RMT timing claim. `rail.interlock` reports the last
+interlock verdict (`allow`, `refuse-external-source` or
+`refuse-unknown-supply`), `rail.holders` and `rail.on` the accounting and the
+fake receiver rail, and `rail.cuts_refused`, `rail.enables_refused`,
+`rail.ir_held` and `rail.ir_bursts` the refusal counters and the IR hold.
 `gps_rail_fixed` models a board whose GPS rail cannot be cut (the Core IP5306 or
 a refused PMIC request), so `Platform::canCutGpsRail()` reports false.
 `gps_rail_refused` also keeps the rail on but leaves `canCutGpsRail()` true: the
@@ -808,6 +822,7 @@ action imu.accel.recover
 action imu.gyro.fail
 action imu.gyro.recover
 action invalidate.reset
+action ir-fire
 action shutter
 action main-press-hold
 action main-double-click
@@ -981,6 +996,14 @@ the request goes to the first, which is the duplicate the production guard has
 to refuse. `action camera-pair-accept` and `action camera-pair-reject` click the
 modal's real footer buttons, while `action camera-pair-expire` advances the
 pending request past its response deadline without a wall-clock wait.
+
+`action ir-fire` queues one infrared burst through the production
+`IR::fire()` gate (emitter present and the IR setting on), for the same reason
+the console `ir fire` command exists. With the emitter present, the sim IR shim
+holds the `EXT_5V` rail for `seed ir_burst_ms` virtual milliseconds, which is
+the modelled queued-or-in-flight burst that keeps a GPS cut refused; see
+`include/FurbleRail.h` and plans/364-ext5v-rail.md. It models rail ownership,
+not the RMT waveform.
 
 `watchdog` is present in the M5StickS3 build. The lists above are the canonical
 toggle, navigation, and page vocabularies.

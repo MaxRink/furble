@@ -231,6 +231,18 @@ Platform::battery_status_t Platform::getBatteryStatus(void) {
 
 void Platform::restart(void) {}
 
+// The boundary targets compile production drivers against the real Platform
+// declaration and supply only what those drivers call. The host has no
+// switchable rail, so the IR driver's hold is refused and its release is a
+// no-op; the rail accounting itself is covered by tests/host/rail_account_test.
+bool Platform::railAcquire(Rail, RailHolder) {
+  return false;
+}
+
+bool Platform::railRelease(Rail, RailHolder) {
+  return false;
+}
+
 }  // namespace Furble
 
 extern "C" BaseType_t xTaskCreateWithCaps(TaskFunction_t task,

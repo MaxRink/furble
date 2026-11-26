@@ -3,7 +3,16 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <string>
+
+// M5Unified.hpp provides esp_timer_get_time to the production platform. Only
+// the target that compiles src/FurblePlatform.cpp needs it here, so the include
+// is opt in: pulling esp_timer.h into every boundary target would need a shim
+// on their include path for no benefit.
+#if defined(FURBLE_BOUNDARY_M5UNIFIED_TIMER)
+#include <esp_timer.h>
+#endif
 
 namespace lgfx {
 
@@ -113,12 +122,22 @@ class Power_Class {
     is_charging = 1,
   };
 
+  enum pmic_t {
+    pmic_unknown = 0,
+    pmic_axp192,
+    pmic_axp2101,
+    pmic_m5pm1,
+    pmic_ip5306,
+  };
+
+  pmic_t getType(void) const { return type; }
   void setVibration(uint8_t level) { vibration = level; }
-  void setExtOutput(bool, int) {}
+  void setExtOutput(bool value, int = 0) { extOutput = value; }
   int32_t getBatteryLevel() const { return batteryLevel; }
   int16_t getBatteryVoltage() const { return batteryVoltage; }
   int32_t getBatteryCurrent() const { return batteryCurrent; }
   int16_t getVBUSVoltage() const { return vbusVoltage; }
+  bool getExtOutput(void) const { return extOutput; }
   is_charging_t isCharging() const { return charging ? is_charging : is_discharging; }
   void powerOff() { powerOffCalled = true; }
 
@@ -129,6 +148,8 @@ class Power_Class {
   int16_t vbusVoltage = 0;
   bool charging = false;
   bool powerOffCalled = false;
+  bool extOutput = true;
+  pmic_t type = pmic_ip5306;
 };
 
 class Display_Class {
@@ -148,6 +169,8 @@ class Display_Class {
   // The headless service loop must never reach a panel drawing entry point.
   // Marking every access makes the no_panel check a real probe rather than a
   // constant that no code can ever set.
+  void sleep(void) { sleeping = true; }
+  bool sleeping = false;
   void fillScreen(uint16_t) const { used = true; }
   void drawRect(int32_t, int32_t, int32_t, int32_t, uint16_t) const { used = true; }
   void fillRect(int32_t, int32_t, int32_t, int32_t, uint16_t) const { used = true; }
@@ -161,6 +184,79 @@ class Display_Class {
 
   lgfx::Panel_Device panel;
   mutable bool used = false;
+};
+
+// The rail test compiles the whole production Platform, so the M5Unified
+// surface it touches outside the rail path is doubled here as well: the
+// configuration struct, begin(), the I2C helper the platform uses for the
+// BM8563 and the AXP192 ADC trim, the RTC alarm calls, the PMIC button and the
+// display sleep entry point.
+struct config_t {
+  bool clear_display = true;
+  bool output_power = true;
+  bool output_charge = true;
+  bool pmic_button = true;
+  bool internal_imu = true;
+  bool internal_rtc = true;
+  bool internal_spk = true;
+  bool internal_mic = true;
+  bool disable_rtc_irq = true;
+  int8_t pin_btn = -1;
+};
+
+class I2C_Class {
+ public:
+  bool writeRegister8(uint8_t addr, uint8_t reg, uint8_t data, uint32_t freq) {
+    if (freq == 0) {
+      return false;
+    }
+    registers[addr][reg] = data;
+    return true;
+  }
+
+  uint8_t readRegister8(uint8_t addr, uint8_t reg, uint32_t) {
+    auto device = registers.find(addr);
+    if (device == registers.end()) {
+      return 0xFF;
+    }
+    auto value = device->second.find(reg);
+    return value == device->second.end() ? 0xFF : value->second;
+  }
+
+  std::map<uint8_t, std::map<uint8_t, uint8_t>> registers;
+};
+
+class Rtc_Class {
+ public:
+  void disableIRQ(void) {}
+  void clearIRQ(void) { irqStatus = false; }
+  bool isEnabled(void) const { return timerEnabled; }
+  bool getIRQstatus(void) const { return irqStatus; }
+  int setAlarmIRQ(int seconds) {
+    timerEnabled = seconds > 0;
+    return timerEnabled ? seconds : -1;
+  }
+
+  bool timerEnabled = false;
+  bool irqStatus = false;
+};
+
+class Button_Class {
+ public:
+  void setRawState(uint32_t, bool value) {
+    pressed = value;
+    if (value) {
+      clicks++;
+    }
+  }
+  bool wasClicked(void) {
+    const bool result = clicks > 0;
+    clicks = 0;
+    return result;
+  }
+
+  bool pressed = false;
+  uint32_t clicks = 0;
 };
 
 class M5Unified {
@@ -180,7 +276,18 @@ class M5Unified {
   }
   void update() {}
 
+  config_t config(void) const { return config_t(); }
+  void begin(const config_t &cfg) {
+    begun = true;
+    outputPower = cfg.output_power;
+  }
+
   board_t board = board_M5StickS3;
+  bool begun = false;
+  bool outputPower = true;
+  I2C_Class In_I2C;
+  Rtc_Class Rtc;
+  Button_Class BtnPWR;
   int32_t sdCsPin = 4;
   int32_t portAPin1 = -1;
   int32_t portAPin2 = -1;

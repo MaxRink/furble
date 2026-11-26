@@ -41,6 +41,7 @@
 #include "FurbleMQTT.h"
 #endif
 #include "FurbleGPS.h"
+#include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
@@ -513,6 +514,16 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::cerr << "Invalid board: " << value << '\n';
       std::exit(2);
     }
+    return;
+  } else if (name == "rail_supply") {
+    if (value != "battery" && value != "usb" && value != "port" && value != "unknown"
+        && value != "unreadable") {
+      std::cerr << "Invalid rail_supply: " << value << '\n';
+      std::exit(2);
+    }
+    return;
+  } else if (name == "ir_burst_ms") {
+    parseUnsigned(value);
     return;
   } else if (name == "gps_baud") {
     if (value != "auto" && value != "0" && value != "9600" && value != "115200") {
@@ -1381,6 +1392,17 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
     *applied = true;
     return true;
   }
+  if (action.name == "ir-fire") {
+    // Same gates as the console `ir fire` command, so the action cannot claim a
+    // burst the firmware would refuse. The rail hold then follows the shim in
+    // sim/shim/FurbleIR.h.
+    IR &ir = IR::getInstance();
+    *applied = ir.isSupported() && Settings::load<Settings::IR>();
+    if (*applied) {
+      ir.fire();
+    }
+    return true;
+  }
   if (action.name == "crash-inject-panic") {
     crashLogInject(4, "ui", "Guru Meditation Error: synthetic panic record");
     *applied = true;
@@ -1678,6 +1700,34 @@ std::string queryValueUnscoped(const std::string &key) {
   }
   if (key == "scan.start_probe_blocked") {
     return Scan::getInstance().startProbeBlocked() ? "1" : "0";
+  }
+  if (prefixed("rail.")) {
+    // The EXT_5V ownership model: who holds the rail, whether it is powered,
+    // what the modelled PMIC reports for the supply, and how many requests were
+    // refused. See include/FurbleRail.h and plans/364.
+    auto &platform = Furble::Platform::getInstance();
+    const std::string sub = key.substr(std::char_traits<char>::length("rail."));
+    if (sub == "on") {
+      return furble_sim_uart_rail_on() ? "1" : "0";
+    }
+    if (sub == "supply") {
+      return Furble::Sim::hwRailSupplyName();
+    }
+    if (sub == "cuts_refused") {
+      return std::to_string(platform.railCutRefusals());
+    }
+    if (sub == "enables_refused") {
+      return std::to_string(platform.railEnableRefusals());
+    }
+    if (sub == "interlock") {
+      return Furble::PlatformPolicy::railEnableVerdictName(platform.railLastVerdict());
+    }
+    if (sub == "ir_held") {
+      return Furble::IR::getInstance().railHeld() ? "1" : "0";
+    }
+    if (sub == "ir_bursts") {
+      return std::to_string(Furble::IR::getInstance().bursts());
+    }
   }
   if (prefixed("gps.")) {
     auto &gps = Furble::GPS::getInstance();
@@ -2668,6 +2718,14 @@ void applyScenarioSettings(void) {
   hwSetRailFixed(scenarioSettingIsTrue("gps_rail_fixed"));
   hwSetRailRefused(scenarioSettingIsTrue("gps_rail_refused"));
   hwSetPwrCfgStale(scenarioSettingIsTrue("pmic_pwr_cfg_stale"));
+  const auto railSupply = scenarioSettings.find("rail_supply");
+  if (railSupply != scenarioSettings.end()) {
+    hwSetRailSupply(railSupply->second);
+  }
+  const auto irBurst = scenarioSettings.find("ir_burst_ms");
+  if (irBurst != scenarioSettings.end()) {
+    hwSetIrBurstMs(parseUnsigned(irBurst->second));
+  }
   const auto model = scenarioSettings.find("gps_model");
   if (model != scenarioSettings.end()) {
     const auto unknown = scenarioSettings.find("gps_m10_unknown_key");

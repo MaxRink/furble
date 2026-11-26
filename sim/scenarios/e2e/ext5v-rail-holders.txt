@@ -1,0 +1,69 @@
+# EXT_5V rail ownership: a failed GPS probe with an IR burst in flight.
+#
+# The M5StickS3 rail is not a GPS rail. It is M5PM1 PWR_CFG bit 3 (BOOST_EN,
+# the EXT_5V port), which the M5Stack documentation has feeding the Grove 5 V
+# output, the HAT EXT_5V pin and the infrared circuit. The GPS duty cycle used
+# to cut it on every RAIL_OFF and after a failed probe, so IR remote triggering
+# stopped after a probe failure and Grove devices browned out. See
+# plans/346-ext5v-rail.md and include/FurbleRail.h.
+#
+# This scenario is the field case the ownership model exists for:
+#   1. GPS enables and takes its hold, which switches the rail on.
+#   2. Nothing answers on the Grove port, so the autobaud ladder runs out.
+#   3. While the ladder is still probing, an IR burst is queued and the
+#      infrared circuit takes its own hold.
+#   4. The probe fails, so the GPS driver releases. The cut is refused, the rail
+#      stays powered and the driver is told so (which is what makes it restart a
+#      receiver it stopped for a cut that did not take).
+#   5. The burst window ends, the last holder releases, and the rail goes off.
+#
+# `ir_burst_ms` is a modelled ownership window, not a waveform claim: it
+# stretches the burst so it overlaps the probe failure. The production bound on
+# the transmit itself is RMT_TX_TIMEOUT_MS (1000 ms) in src/FurbleIR.cpp.
+# `rail_supply battery` is the field case: no external 5 V source, so the
+# output-mode interlock allows the enable.
+seed gps true
+seed gps_baud auto
+seed gps_receiver none
+seed gps_uart_mode ack
+seed rail_supply battery
+seed ir_burst_ms 45000
+wait 300
+
+# The GPS enable took the rail: one holder, powered.
+assert-eventually-virtual 5000 gps.receiver detecting
+assert-eventually-virtual 5000 rail.holders gps
+assert rail.on 1
+assert rail.cuts_refused 0
+assert rail.enables_refused 0
+
+# Enable IR triggering (the setting the trigger path gates on), then queue a
+# burst. The infrared circuit takes its own hold on the same rail, which must
+# not re-drive it.
+action toggle ir
+wait 300
+action ir-fire
+assert rail.ir_bursts 1
+assert rail.ir_held 1
+assert rail.holders gps+ir
+assert rail.on 1
+
+# Nothing answers, so the ladder gives up and the probe fails.
+assert-eventually-virtual 20000 gps.receiver absent
+
+# The GPS release was refused: the IR circuit still needs the rail, so it stays
+# powered and the refusal is counted. Only the IR hold remains.
+assert rail.on 1
+assert rail.holders ir
+assert rail.cuts_refused 1
+
+# Let the modelled burst window run out. The last holder release cuts the rail,
+# which is the other half of the contract: no holder, no power.
+wait 40000
+assert-eventually-virtual 5000 rail.holders none
+assert-eventually-virtual 5000 rail.on 0
+assert rail.ir_held 0
+# One refusal only: the burst end was the last holder, so it was not a refused
+# cut but the real one.
+assert rail.cuts_refused 1
+exit

@@ -149,8 +149,11 @@ hardware is attached.
 a GPS burst lock and a PM1 timer wake. It is also the only board with a
 vendor-published 14.02 uA off figure and a PM1 shutdown path. The M5PM1 also
 powers the 5 V boost that feeds Grove, EXT_5V, and the IR transmitter and
-receiver. That coupling is the reason the IR feature depends on the GPS rail
-setting today. The BMI270 is read at 1 Hz for gestures and 50 Hz on the level
+receiver. That coupling used to make the IR feature depend on the GPS duty
+cycle: a GPS `RAIL_OFF` or a failed probe cut the IR circuit and any Grove
+device on the port. The rail now has one owner and named holders (GPS, IR,
+Grove), so a cut is refused while another holder needs it (`code`,
+plans/364-ext5v-rail.md). The BMI270 is read at 1 Hz for gestures and 50 Hz on the level
 page; the gyro is never used by furble. The 8 MB octal PSRAM adds about 140 uA
 to light sleep per the ESP32-S3 datasheet, which the S3 energy model does not
 charge. Octal mode is also what takes pins: on this SiP, SPICS1 and GPIO33 to
@@ -278,6 +281,20 @@ so a failed button read costs one 20 ms poll, not a lost press. M5Unified also
 clears the PM1 watchdog count at begin. Furble later arms the watchdog for 45
 s and feeds it every 1 s.
 
+`PWR_CFG` 0x06 has two bits Furble touches: bit 3, the 5 V boost that is the
+EXT_5V port, and bit 4, the status LED default level. Both used to be written by
+different drivers with independent read-modify-write, so one could lose the
+other's update; both now go through one serialized path. On this board
+`Platform::init()` passes `output_power = false` to `M5.begin()` so M5Unified
+does not commit the port to output mode before the rail manager and the supply
+interlock run; the AXP boards keep M5Unified's own port control, see section 3.2
+(`code`, plans/364). `PWR_SRC` 0x04 bits 2:0 report the supply
+(`5VIN`, `5VINOUT`, `BAT`, unknown); the rail manager refuses an output-mode
+enable unless it reads a known supply that is not an external source on the
+bidirectional port, because the M5Stack documentation warns that output mode may
+only be used with power applied through USB or 5VIN. `PWR_SRC` behaviour on a
+StickS3 with a source on the port is `unverified` in this tree.
+
 **Chargers.** There is no runtime charge control in furble. The AXP192 boards
 use the M5Unified charge current, 100 mA on StickC and Plus, and the Core2 call
 is `setChargeCurrent(390)`, which the AXP192 table turns into register `0x33`
@@ -316,15 +333,16 @@ not a runtime. Do not invent one in a power document.
 | StickC, Plus | DCDC1 3.35 V | ESP32 | No, always on while running |
 | StickC, Plus | LDO2 1.8 to 3.3 V | LCD backlight | Yes, M5GFX writes the LDO2 voltage; 0 disables the rail |
 | StickC, Plus | LDO3 3.0 V | LCD logic | No, stays on while the panel is powered |
-| StickC, Plus | EXTEN | Grove 5 V (UNVERIFIED) | Yes, `M5.Power.setExtOutput`; already on after `M5.begin()`, see below |
+| StickC, Plus | EXTEN | Grove 5 V (UNVERIFIED) | Yes, `M5.Power.setExtOutput`. M5Unified switches it on at `M5.begin()`, so the port is powered from boot; the GPS rail release still cuts it through the same call. |
 | Core | 3.3 V boost output | ESP32, LCD, SD, speaker | No, the IP5306 boost is the whole rail |
 | Core2 | DCDC3 | LCD backlight | Yes, M5GFX voltage dimming |
 | Core2 | LDO2 3.3 V | LCD and SD | No, stays on |
 | Core2 | LDO3 | Vibration motor on Core2 | Yes, `M5.Power.setVibration` |
 | Core2, Tough | AXP192 GPIO0 | One BUS_5V boost feeding Grove Port A and the M-Bus | Yes, `M5.Power.setExtOutput`; the request is advisory and the PMIC can refuse an enable on a low battery with VBUS current and no ACIN |
 | StickS3 | 3.3 V DCDC and LDO | ESP32, panel, PM1 | No, PM1 default on |
-| StickS3 | 5 V boost | Grove, EXT_5V, IR TX and RX | Yes, `M5.Power.setExtOutput` through PM1 `PWR_CFG` bit 3 |
+| StickS3 | 5 V boost | Grove, EXT_5V, IR TX and RX | Yes, through PM1 `PWR_CFG` bit 3, owned by the rail manager (`Platform::railAcquire`/`railRelease`) with named holders and an output-mode interlock. Unlike the AXP boards the port is **off from boot**: `Platform::init()` passes `output_power = false`, so it stays in the vendor default of input mode until a holder acquires it, and the infrared circuit holds it around each burst. See plans/364-ext5v-rail.md |
 | StickS3 | L3B | Hat rail, PM1 GPIO2 | Not touched by furble |
+| Core, Plus2, Waveshare | Port A 5 V | none | No switch. `M5.Power.setExtOutput` does nothing on these boards, so the Grove 5 V pin has no firmware control and this rail manager has nothing to own. |
 | All Core boards | SD slot | microSD | No load switch; the card stays powered when inserted |
 | Waveshare | microSD, WS2812, W5500 | Unused slot, status LED, Ethernet | SD slot unused; WS2812 off; W5500 started at boot |
 
@@ -339,6 +357,21 @@ on Port A is powered from boot even when GPS is disabled in settings. The
 EXTEN-to-Grove-5V routing itself stays `unverified`: the StickC and Plus
 schematics were not available in this pass, and neither were the AXP192 register
 details beyond the values M5Unified writes (plan 350).
+
+**Grove 5 V at boot, board by board.** The four board rows above differ on
+purpose, and the difference is the direction this project had to choose.
+
+| Board | Grove / EXT_5V port at boot | Who switches it |
+| :--- | :--- | :--- |
+| StickS3 | Off, in the vendor default of input mode | The rail manager only, through `PWR_CFG` bit 3. `Platform::init()` clears M5Unified's `output_power`, because M5Unified would otherwise commit the port to output mode before any supply interlock runs (plans/364) |
+| StickC, StickC Plus | Powered | M5Unified `setExtOutput(true)` in `M5.begin()`, unchanged. The GPS rail release can cut it, as before this change |
+| Core2, Tough | Powered | M5Unified `setExtOutput(true)` in `M5.begin()`, unchanged, including its low-battery cancel |
+| StickC Plus2, Core, Waveshare | No firmware control | The PMIC has no such output and `setExtOutput` is a no-op |
+
+`cfg.output_power = false` is scoped with `#if FURBLE_HAS_M5PM1` for exactly this
+reason: on the AXP boards the Grove 5 V output has no other owner, so clearing
+it at boot left the port unpowered with no client that could switch it back on,
+which is the regression plans/364-review-feedback.md records as B2.
 
 Two consequences follow. First, the only true peripheral power controls in
 furble are the Grove 5 V rail and the panel backlight. Everything else is

@@ -218,18 +218,20 @@ class GPS {
   static void init(void);
 
   /**
-   * Switch the rail that powers the GPS unit.
+   * Take or drop this driver's hold on the rail that powers the GPS unit.
    *
-   * The only place firmware drives that rail. It goes through
-   * Platform::setRail(GPS), which switches the external 5 V output on boards
-   * whose profile has a GPS rail. On the Core2 and Tough that output is one
-   * BUS_5V net shared by Grove Port A and the M-Bus, so a GPS power cycle also
-   * drops every other 5 V consumer there. The request is advisory: M5Unified
-   * refuses an enable on a low battery with VBUS current and no ACIN, which is
-   * why this returns the final readback rather than assuming success. Other
-   * boards have no switch and the call does nothing.
+   * The receiver's named hold on the board's EXT_5V rail
+   * (`RailHolder::GPS`), which on the StickS3 also feeds the Grove 5 V output
+   * and the infrared circuit; see include/FurbleRail.h. The platform switches
+   * the rail on with the first holder and off with the last, so `enable=false`
+   * is a release and not a guaranteed cut: it is refused while another holder
+   * needs the rail. On the Core2 and Tough the same output is one BUS_5V net
+   * shared by Grove Port A and the M-Bus, so a GPS power cycle also drops every
+   * other 5 V consumer there.
    *
-   * @return true only when the rail read back in the requested state.
+   * The request is advisory: the PMIC can refuse an enable, and an enable the
+   * output-mode interlock refuses writes nothing. Returns the read-back, so the
+   * caller can tell a cut that took from one that did not.
    */
   static bool setRailPower(bool enable);
 

@@ -310,6 +310,14 @@ struct pmic_state_t {
   bool statusLedSaved = false;
   bool statusLedLevel = false;
   uint32_t watchdogCycles = 0;
+  // What the modelled M5PM1 reports in PWR_SRC 0x04 bits 2:0, and whether the
+  // register answers at all. The default is a battery-only board, which is the
+  // field case the EXT_5V rail exists for. A scenario that models an external
+  // 5 V source on the port seeds "port"; "unreadable" makes the read fail.
+  std::string railSupply = "battery";
+  // Modelled window one IR burst holds the EXT_5V rail, seeded by
+  // `ir_burst_ms`. See hwIrBurstMs().
+  uint32_t irBurstMs = 100;
 };
 
 // The switched EXT 5 V output on the board. The M5PM1 owns the switch on the
@@ -994,6 +1002,28 @@ void hwSetPmicVariant(const std::string &variant) {
 void hwSetBatteryGauge(const std::string &gauge) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   state().pmic.gauge = gauge;
+}
+
+void hwSetRailSupply(const std::string &supply) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().pmic.railSupply = supply;
+}
+
+std::string hwRailSupplyName(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  // By value: returning c_str() here handed the caller a pointer into a string
+  // the lock no longer protected (plans/364-review-feedback.md, N7).
+  return state().pmic.railSupply;
+}
+
+void hwSetIrBurstMs(uint32_t milliseconds) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().pmic.irBurstMs = milliseconds;
+}
+
+uint32_t hwIrBurstMs(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().pmic.irBurstMs;
 }
 
 void hwSetResetReasonName(const std::string &name) {

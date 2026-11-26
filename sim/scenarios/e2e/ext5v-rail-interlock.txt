@@ -1,0 +1,36 @@
+# EXT_5V output-mode interlock: refuse the enable rather than risk the port.
+#
+# The M5Stack documentation for EXT_5V warns that the port defaults to INPUT and
+# that in output mode power may only be applied through USB or 5VIN, otherwise
+# there is a risk of short circuit and device damage. The firmware used to write
+# the rail into output mode unconditionally. The rail manager now reads the
+# M5PM1 PWR_SRC register first and fails closed: an external 5 V source on the
+# bidirectional port refuses the enable, and so does a supply the PMIC will not
+# report. A refusal leaves PWR_CFG 0x06 untouched, so the port keeps the vendor
+# default of input mode. See plans/346-ext5v-rail.md.
+#
+# This scenario is the dangerous case: a Grove device is driving 5 V into the
+# port while furble would have switched its own boost on against it.
+#
+# The host has no PMIC rail to observe, so `rail.on` reads the fake receiver
+# rail, which starts up in its own boot state rather than tracking the PMIC bit.
+# What this scenario proves is the decision and its failure direction: the
+# interlock refused for the right reason, no holder was left behind, and the
+# receiver was never probed because the port stayed unpowered.
+seed gps true
+seed gps_baud auto
+seed gps_receiver none
+seed rail_supply port
+wait 300
+
+assert rail.supply port
+assert rail.interlock refuse-external-source
+assert_min rail.enables_refused 1
+assert rail.holders none
+
+# Nothing was probed on the unpowered port, so the receiver ends up absent and
+# the refusal did not leave a hold behind.
+assert-eventually-virtual 20000 gps.receiver absent
+assert rail.holders none
+assert rail.interlock refuse-external-source
+exit

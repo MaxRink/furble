@@ -2400,7 +2400,20 @@ void GPS::disable(void) {
 }
 
 bool GPS::setRailPower(bool enable) {
-  return Platform::getInstance().setRail(PowerBackend::Rail::GPS, enable);
+  // The receiver holds the EXT_5V rail through the platform's accounting, so a
+  // cut is refused while the infrared circuit or a Grove device still needs it
+  // (include/FurbleRail.h). The return is the PMIC read-back, never the
+  // request: railOffOrRestart() restarts a receiver that was stopped for a cut
+  // which did not take, and an enable that was refused leaves no hold behind.
+  Platform &platform = Platform::getInstance();
+  const bool reached = enable ? platform.railAcquire(PowerBackend::Rail::EXT_5V, RailHolder::GPS)
+                              : platform.railRelease(PowerBackend::Rail::EXT_5V, RailHolder::GPS);
+  if (!reached && Platform::canCutGpsRail()) {
+    // A switched board that did not reach the request: the platform has
+    // already logged why (interlock refusal, PMIC refusal or another holder).
+    ESP_LOGD(LOG_TAG, "GPS rail %s not confirmed", enable ? "on" : "off");
+  }
+  return reached;
 }
 
 /** Refresh the setting from NVS. */

@@ -158,6 +158,27 @@ virtual timer: never reintroduce wall-clock reads into the host double, or an
 offline-ACK deadline becomes a timing flake. `console-commands` pins the
 `companion reidentify` command and `crash` argument validation.
 
+## Rail ownership
+
+`rail-account` pins the EXT_5V ownership accounting (`Furble::RailAccount` in
+`include/FurbleRail.h`) and the output-mode supply interlock
+(`PlatformPolicy::railEnableVerdict()`): the first holder switches the rail on,
+the last release switches it off, a cut is refused while another holder remains,
+and the interlock fails closed on an external source or an unreadable supply.
+Both are header-only and the firmware and the simulator Platform drive them
+unchanged; the refused probe and the deferred IR cut are covered by
+`sim/scenarios/e2e/ext5v-rail-holders.txt`. Never reimplement the count in a
+test double. See plans/364-ext5v-rail.md.
+
+`boundary-platform-rail` compiles the production `src/FurblePlatform.cpp` itself
+against `boundaries/platform_shims/M5PM1.h`, a register-bus fake that records
+every `PWR_CFG` 0x06 write. It is the only target that links that file, and it
+exists because `rail-account` and the e2e scenarios both kept passing when the
+cut decision there was reverted to `false`. It asserts that a refused enable
+writes nothing, that a refused cut writes nothing while the last release still
+cuts, and that an interleaved LED and rail update each keep the other's bit and
+serialize. Change those assertions when the rail policy changes.
+
 ## GPS receiver protocols
 
 `gps-ubx` covers the UBX codec, the settings planner, the `Settle` gate

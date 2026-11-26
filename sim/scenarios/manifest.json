@@ -1984,6 +1984,33 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/ext5v-rail-holders.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/ext5v-rail-interlock.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/false-connected-both-links-dead.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
