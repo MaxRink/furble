@@ -214,7 +214,9 @@ whose title carries it, and plan 331 is archived there with it.
 
 Research and design from the 2026-11-13 hardware survey. None of it is
 implemented. Plan 360 is the later addition: it was read from the slgray fork
-and the Waveshare documents on 2026-11-26.
+and the Waveshare documents on 2026-11-26. Plan 364 is the port-cost ranking
+added the same day; it defers to 318 on the T-Beam trim, to 360 on the first
+AMOLED port, and to 362 on nRF.
 
 | Doc | Content |
 |---|---|
@@ -224,6 +226,7 @@ and the Waveshare documents on 2026-11-26.
 | [324-hw-research-review-feedback.md](implemented/324-hw-research-review-feedback.md) | Review-feedback record for the hardware research branch |
 | [335-display-touch-datasheet-promotions.md](335-display-touch-datasheet-promotions.md) | Display and touch datasheet promotions: what was re-read on 2026-11-26, the page each number came from, the licence limits, and the items that stay unverified |
 | [360-waveshare-amoled-1-8-port.md](360-waveshare-amoled-1-8-port.md) | Port plan for the slgray AMOLED-1.8 board: parts with their documents, pin collisions, AXP2101 rails and their boot state, whether M5GFX can drive the CO5300, the profile row, and the simulator and bench work |
+| [364-hardware-candidates.md](364-hardware-candidates.md) | Ranked off-the-shelf port candidates by new reusable capability per driver or profile unit: T-Beam Supreme, CoreS3 and Waveshare 1.75-G on top, the skip list, and the facts no vendor page settles |
 
 ## Bug analyses
 
