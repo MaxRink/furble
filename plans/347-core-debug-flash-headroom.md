@@ -126,7 +126,10 @@ row is one build and the headroom, not a byte-exact delta, is the claim, and
 every figure in the tables above and in Gates below is the same build. The
 review on `plans/347-review-feedback.md` rebuilt five of these lanes on another
 host and landed within that drift: 1,714,848 and 1,731,648 exactly, 1,740,768
-unguarded, 1,756,448 for the USB lane and 1,862,480 for the StickS3. A
+unguarded, 1,756,448 for the USB lane and 1,862,480 for the StickS3. Every table
+here is base `81139818`; master moved to `85b89931` while the review ran and the
+branch was rebased onto it, where this lane builds at 1,733,504 of 1,740,800,
+7,296 bytes of margin, and the review record carries both bases. A
 second clean build of the guarded tree measured 1,731,344 bytes, 9,456 bytes of
 headroom, and the two are the same tree.
 

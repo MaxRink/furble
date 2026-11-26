@@ -17,6 +17,12 @@ percent, so the host reclaimed build directories under `/tmp` mid-review. Every
 figure below was measured; where an artifact did not survive to a second gate
 run, the entry says so instead of quoting the PR.
 
+Master also moved nine commits, to `85b89931`, while the review ran, including
+`src/` work in the SD refusal, Sony discovery, StickC pin and memory lanes. The
+branch was rebased onto it and every lane rebuilt, because a margin measured on
+the base a PR was opened on is not the margin that ships. Both bases are
+reported below.
+
 ## Findings
 
 | # | Severity | Finding | Resolution | Evidence |
@@ -123,6 +129,17 @@ Every row is a `firmware.bin` from a build of that tree.
 | `m5stick-s3` | 1,862,480 | 1,862,480 | 0 |
 | `m5stack-core2` | 1,912,976 | 1,912,976 | 0 |
 
+The same five lanes, rebuilt after the rebase onto the master this branch now
+sits on:
+
+| Env | master `85b89931` | PR head, rebased | Change |
+| --- | ---: | ---: | ---: |
+| `m5stack-core-debug` | 1,717,408 (`ESP_LOG_INFO`, blob) | **1,733,504** (`ESP_LOG_VERBOSE`, no blob) | +16,096 |
+| `m5stack-core` | not rebuilt | 1,620,240 (release, no blob) | guard only |
+| `m5stack-core-usb-debug` | not rebuilt | 1,758,672 (`ESP_LOG_VERBOSE`, no blob) | log maximum plus guard |
+| `m5stick-s3` | 1,862,480 on `81139818` | 1,862,480 on `81139818` | 0 |
+| `m5stack-core2` | 1,912,976 on `81139818` | 1,912,976 on `81139818` | 0 |
+
 `m5stick-s3` and `m5stack-core2` are byte-for-byte the same size on the two
 trees, which is the strongest form of the claim that the guard does not reach
 them. The two release lanes move in opposite directions and that is correct:
@@ -131,36 +148,47 @@ the Core release lane has no log maximum to restore, so it only loses the blob,
 on the debug lane, while the two debug lanes pay for the diagnostics they get
 back.
 
-The constrained lane ends at **1,731,648 of 1,740,800, 9,152 bytes of margin**,
-against 320 bytes with the log maximum restored and no guard, and against the
-431 bytes #518 was written to escape. The plan's own decomposition is 25,632
-bytes for the restoration less 9,120 for the guard, which nets the +16,800 this
-review measured end to end.
+The constrained lane ends at **1,731,648 of 1,740,800, 9,152 bytes of margin on
+the base the PR was opened on, and at 1,733,504 of 1,740,800, 7,296 bytes on the
+master it now sits on**. Either is against the 320 bytes the same lane has with
+the log maximum restored and no guard, and against the 431 bytes #518 was
+written to escape. The plan's own decomposition is 25,632 bytes for the
+restoration less 9,120 for the guard, which nets the +16,800 this review
+measured end to end on `81139818`; the `85b89931` pair nets +16,096 because
+master's own nine commits moved both ends.
+
+Those two numbers are the answer to the question the merge was blocked on. PR
+488 is 80 bytes over and PR 493 needs about 848, so a lane with 7,296 bytes of
+margin is not merely out of the red, it is the headroom those two PRs land in.
 
 ## Gates
 
+Both bases, because the branch was rebased mid-review. `rebased` means
+`85b89931`, `original` means `81139818`.
+
 | Gate | Result |
 | --- | --- |
-| `tools/check_size_budget.py --env m5stack-core-debug` | `PASS m5stack-core-debug: flash 1,731,648/1,740,800, dram 56,212/57,344, iram 119,036/119,808` |
-| `tools/check_size_budget.py --env m5stack-core` | `PASS m5stack-core: flash 1,618,496/1,740,800, dram 55,148/56,320, iram 115,668/116,736` |
-| `tools/check_size_budget.py --env m5stack-core-usb-debug` | `PASS m5stack-core-usb-debug: flash 1,756,448/4,063,232, dram 56,252/57,344, iram 119,756/120,832` |
-| `tools/check_size_budget.py --env m5stick-s3` | `PASS m5stick-s3: flash 1,862,480/3,145,728, dram 47,496/48,128, iram 114,688/115,712` |
-| `tools/check_size_budget.py --env m5stack-core2` | image is 1,912,976 on both trees, identical to master. The local build directory did not survive the host's disk reclamation, so the number is from the build log and the budget check for this env is the green `m5stack-core2` CI job, which runs this gate after its build |
-| `tools/stack_budget.py --env m5stack-core-debug` | PASS, every task under its bound, deepest is `main` at 7,888 of 16,384 bytes |
-| `tools/stack_budget.py --env m5stack-core-usb-debug` | PASS, every task under its bound |
-| `tools/stack_budget.py --env m5stick-s3` | PASS, 16 tasks, deepest `webui_tls` at 8,032 of 12,288 bytes. Run against the 1,862,480-byte image, which this review measured identical on both trees |
-| `tools/stack_budget.py --env m5stack-core` and `m5stack-core2` | covered by the green CI jobs for those envs. The guard removes a call edge and adds none, so it cannot deepen a stack |
-| `python3 tools/check_doc_citations.py` | `0 errors of 2757 citations in 147 files` after the corrections |
+| `check_size_budget.py --env m5stack-core-debug` | `PASS m5stack-core-debug: flash 1,733,504/1,740,800, dram 56,212/57,344, iram 119,036/119,808` (rebased); `PASS ... flash 1,731,648/1,740,800` (original) |
+| `check_size_budget.py --env m5stack-core` | `PASS m5stack-core: flash 1,620,240/1,740,800, dram 55,148/56,320, iram 115,668/116,736` (rebased); `PASS ... flash 1,618,496/1,740,800` (original) |
+| `check_size_budget.py --env m5stack-core-usb-debug` | `PASS m5stack-core-usb-debug: flash 1,758,672/4,063,232, dram 56,268/57,344, iram 119,756/120,832` (rebased); `PASS ... flash 1,756,448/4,063,232` (original) |
+| `check_size_budget.py --env m5stick-s3` | `PASS m5stick-s3: flash 1,862,480/3,145,728, dram 47,496/48,128, iram 114,688/115,712` (original; unchanged lane) |
+| `check_size_budget.py --env m5stack-core2` | `PASS m5stack-core2: flash 1,912,976/6,291,456, dram 56,768/57,344, iram 121,036/121,856` (original; unchanged lane) |
+| `stack_budget.py --env m5stack-core-debug` | PASS, every task under its bound, deepest is `main` at 7,888 of 16,384 bytes. Run on both bases |
+| `stack_budget.py --env m5stack-core`, `m5stack-core-usb-debug` | PASS, every task under its bound, on both bases |
+| `stack_budget.py --env m5stick-s3` | PASS, 16 tasks, deepest `webui_tls` at 8,032 of 12,288 bytes |
+| `stack_budget.py --env m5stack-core2` | PASS, 16 tasks, exit 0 |
+| `python3 tools/check_doc_citations.py` | `0 errors of 2891 citations in 161 files` after the rebase and the corrections |
 | `sh sim/scripts/check-doc-tokens.sh` | `sim documentation tokens are present` |
-| `tools/check_review_threads.py --repo MaxRink/furble --pr 524` | 0 review threads, 30 checks passed on head `5c09dd24` |
+| `tools/pre_review.py --base origin/master` | `PASS: 13 gates`, run before the rebase and re-run on it |
+| `tools/check_review_threads.py --repo MaxRink/furble --pr 524` | 0 review threads; checks had all passed on `5c09dd24`, and the rebased head starts a fresh set |
 
 ## What this review could not do
 
-* It could not re-measure the `m5stack-core-usb-debug` guard on its own, because
-  that build was reclaimed. The 9,120-byte guard figure comes from the
-  constrained lane, which links the same two objects.
-* It could not keep a second gate run on `m5stack-core2` locally for the reason
-  above. The image size, the blob's presence and the CI gate for that env are
-  recorded instead.
-* It did not flash hardware, so the motion-wake claim rests on the linked
-  symbols and the unchanged `arm()` chip-ID check rather than on a device.
+* The `m5stack-core-usb-debug` guard is not isolated by its own same-tree A/B.
+  Its 9,104-byte figure in the plan is the plan's measurement; this review
+  measured the guard at 9,120 on the constrained lane, which links the same two
+  objects, and proved the USB lane's blob is gone and its log maximum is back.
+* Reference hardware was not flashed, so the motion-wake claim rests on the
+  linked symbols and on `arm()`'s unchanged chip-ID check rather than on a
+  device. That is the same evidence the PR offers, and it is now checked on both
+  boards that carry the part.
