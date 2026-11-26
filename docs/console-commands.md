@@ -27,6 +27,11 @@ Log output shares the port, so `log * warn` is usually the first thing worth
 typing. Every command prints one fact per line as `key: value`, so a host script
 can parse it with a split on the first colon.
 
+The console runs at most 255 characters per line, because `esp_console_run()`
+copies the line into a 256-byte buffer with `strlcpy()`. A longer line is
+refused with `error: line longer than 255 bytes, command not run` and is never
+clipped, so a truncated command cannot look like a complete one.
+
 The console distorts power measurements, so do not take power numbers from a
 build that contains it. On the ESP32 boards the console holds an APB frequency
 lock for its lifetime. On the M5StickS3 no lock is needed.
@@ -401,7 +406,21 @@ On success the command prints `provision: decoded <n> bytes as hex` or
 `base64`, then one line per applied field. On failure it prints
 `error: provision: <code> at offset <n>` for a text or record decode error, or
 `error: provision: <reason>` with the failing wire id for an apply error, and
-returns 1 (`src/FurbleConsole.cpp:1169-1215`).
+returns 1 (`src/FurbleConsole.cpp:1173-1245`).
+
+One provisioning line must fit the console line limit. The console runs at most
+255 characters, because `esp_console_run()` copies the line into a 256-byte
+buffer with `strlcpy()`. A longer line is refused with
+`error: line longer than 255 bytes, command not run` and is never handed to the
+command, so an oversized blob cannot be clipped into a shorter bundle that
+still applies (`src/FurbleConsole.cpp:3791-3792`). With the 17-character
+`provision base64:` prefix that leaves about 178 blob bytes per line.
+
+The [web installer](https://maxrink.github.io/furble/) sends this command over
+Web Serial in its "WiFi and settings provisioning" step, so a debug build can be
+provisioned from the browser without a terminal. It needs the debug build: a
+release image has no console to answer the line. The installer encodes the blob
+with the same record layout and checks the line limit before it opens the port.
 
 The record layout, the tag numbers, the size limits and every error code are in
 [the companion GATT page](protocols/companion-gatt.md#provisioning-tlv).

@@ -35,6 +35,36 @@
       .hidden {
         display: none;
       }
+      .provision {
+        margin-top: 1.5em;
+        border-top: 1px solid #ccc;
+        padding-top: 0.5em;
+      }
+      .provision summary {
+        cursor: pointer;
+        font-weight: bold;
+      }
+      .provision .row {
+        margin-bottom: 0.5em;
+      }
+      .provision label {
+        margin-right: 0.75em;
+      }
+      .provision input {
+        width: 16em;
+      }
+      .provision fieldset {
+        border: 1px solid #ddd;
+        margin: 0.5em 0;
+        padding: 0.5em;
+      }
+      .provision ul {
+        margin: 0.25em 0;
+        padding-left: 1.25em;
+      }
+      .provision li.failure {
+        color: #b00020;
+      }
     </style>
   </head>
   <body>
@@ -79,6 +109,98 @@
       </p>
       <p id="flashStatus" class="status" aria-live="polite"></p>
       <p id="pmicStatus" class="status" aria-live="polite"></p>
+
+      <details class="provision" id="provisionPanel">
+        <summary>WiFi and settings provisioning</summary>
+        <p>Send the WiFi credentials, the companion password and a few furble
+        settings over the same USB cable. This uses the device console, so it
+        needs the debug build: tick "Debug build" above and install it first.</p>
+        <p>The step writes settings. It never erases NVS, and running it again is
+        the way to retry. The release build has no console and cannot be
+        provisioned this way.</p>
+
+        <div id="provisionUnsupported" class="hidden status">
+          This browser does not support Web Serial. Use a Chromium based browser
+          such as Chrome or Edge on a desktop to provision.
+        </div>
+        <div id="provisionNeedsDebug" class="hidden status">
+          Tick "Debug build" above and install it. A release build has no
+          console to answer the provisioning step.
+        </div>
+
+        <div id="provisionSupported" class="hidden">
+          <div class="row">
+            <label for="provSsid">WiFi SSID
+              <input id="provSsid" type="text" maxlength="32" size="24"
+                     autocomplete="off" autocapitalize="off" spellcheck="false"/>
+            </label>
+          </div>
+          <div class="row">
+            <label for="provPsk">Passphrase
+              <input id="provPsk" type="password" maxlength="63" size="24"
+                     autocomplete="off" spellcheck="false"/>
+            </label>
+            <span class="caption">Blank means an open network, which clears a
+            saved passphrase.</span>
+          </div>
+          <div class="row">
+            <label for="provCompanion">Companion password
+              <input id="provCompanion" type="password" maxlength="63" size="24"
+                     autocomplete="off" spellcheck="false"/>
+            </label>
+            <span class="caption">Blank leaves it unchanged.</span>
+          </div>
+          <div class="row">
+            <label for="provTheme">Theme
+              <select id="provTheme">
+                <option value="">Leave unchanged</option>
+                <option value="Dark">Dark</option>
+                <option value="Default">Default</option>
+                <option value="Mono Furble">Mono Furble</option>
+              </select>
+            </label>
+            <label for="provTxPower">TX power
+              <select id="provTxPower">
+                <option value="">Leave unchanged</option>
+                <option value="0">Low (P3)</option>
+                <option value="1">Medium (P6)</option>
+                <option value="2">High (P9)</option>
+              </select>
+            </label>
+          </div>
+          <fieldset id="provMqttGroup" class="hidden">
+            <legend>MQTT (8 MB and 16 MB boards)</legend>
+            <div class="row">
+              <label for="provMqttUri">Broker URI
+                <input id="provMqttUri" type="text" size="30"
+                       placeholder="mqtt://192.168.1.10:1883"
+                       autocomplete="off" spellcheck="false"/>
+              </label>
+            </div>
+            <div class="row">
+              <label for="provMqttBase">Base topic
+                <input id="provMqttBase" type="text" size="24"
+                       placeholder="furble" autocomplete="off" spellcheck="false"/>
+              </label>
+            </div>
+            <div class="row">
+              <label for="provMqttUser">User
+                <input id="provMqttUser" type="text" size="20"
+                       autocomplete="off" spellcheck="false"/>
+              </label>
+              <label for="provMqttPass">Password
+                <input id="provMqttPass" type="password" size="20"
+                       autocomplete="off" spellcheck="false"/>
+              </label>
+            </div>
+          </fieldset>
+          <div class="row">
+            <button id="provSend">Send provisioning</button>
+          </div>
+          <p id="provStatus" class="status" aria-live="polite">Not started.</p>
+          <ul id="provResult"></ul>
+        </div>
+      </details>
 
       <details class="bt-dump" id="btDumpPanel">
         <summary>Capture BT debug dump</summary>
@@ -238,6 +360,226 @@
       document.getElementById('debug').addEventListener("change", updateManifest);
     </script>
     <script type="module" src="./pmic-preflight.js"></script>
+    <script src="./provision.js"></script>
+    <script id="provision-script">
+      // "WiFi and settings provisioning" panel. Collects the credentials and
+      // settings, encodes one provisioning blob with the production TLV layout
+      // (provision.js), and hands it to the firmware through the one validated
+      // `provision` console command over Web Serial. The firmware parser is the
+      // authority: every field is checked again on the device, and this panel
+      // reports success only from the documented result lines.
+      (function () {
+        "use strict";
+
+        function init() {
+          var unsupported = document.getElementById("provisionUnsupported");
+          var needsDebug = document.getElementById("provisionNeedsDebug");
+          var supported = document.getElementById("provisionSupported");
+          if (!unsupported || !needsDebug || !supported) {
+            return;
+          }
+          if (!("serial" in navigator) || typeof FurbleProvision === "undefined") {
+            unsupported.classList.remove("hidden");
+            return;
+          }
+
+          var el = {
+            debug: document.getElementById("debug"),
+            ssid: document.getElementById("provSsid"),
+            psk: document.getElementById("provPsk"),
+            companion: document.getElementById("provCompanion"),
+            theme: document.getElementById("provTheme"),
+            txPower: document.getElementById("provTxPower"),
+            mqttGroup: document.getElementById("provMqttGroup"),
+            mqttUri: document.getElementById("provMqttUri"),
+            mqttBase: document.getElementById("provMqttBase"),
+            mqttUser: document.getElementById("provMqttUser"),
+            mqttPass: document.getElementById("provMqttPass"),
+            send: document.getElementById("provSend"),
+            status: document.getElementById("provStatus"),
+            result: document.getElementById("provResult"),
+          };
+
+          function selectedBoard() {
+            var radio = document.querySelector('input[name="type"]:checked');
+            return radio ? radio.value : "";
+          }
+
+          function mqttVisible() {
+            return !el.mqttGroup.classList.contains("hidden");
+          }
+
+          function refresh() {
+            var consoleBuild = el.debug.checked;
+            supported.classList.toggle("hidden", !consoleBuild);
+            needsDebug.classList.toggle("hidden", consoleBuild);
+            el.mqttGroup.classList.toggle(
+              "hidden",
+              !consoleBuild || !FurbleProvision.boardHasMqtt(selectedBoard()),
+            );
+          }
+
+          function setStatus(text, failure) {
+            el.status.textContent = text;
+            el.status.style.color = failure ? "#b00020" : "";
+          }
+
+          function clearResult() {
+            el.result.textContent = "";
+          }
+
+          function addResult(text, failure) {
+            var item = document.createElement("li");
+            item.textContent = text;
+            if (failure) {
+              item.className = "failure";
+            }
+            el.result.appendChild(item);
+          }
+
+          function render(result) {
+            clearResult();
+            result.applied.forEach(function (name) {
+              addResult("applied: " + name, false);
+            });
+            result.deferred.forEach(function (name) {
+              addResult("deferred: " + name + " (no backend in this build)", true);
+            });
+            result.errors.forEach(function (line) {
+              addResult(line, true);
+            });
+            setStatus(result.reason, !result.ok);
+          }
+
+          function collectFields() {
+            var ssid = el.ssid.value;
+            if (ssid === "") {
+              throw new Error("Enter the WiFi SSID.");
+            }
+            var fields = {
+              wifiSsid: ssid,
+              // Always sent with the SSID so a blank field clears a saved
+              // passphrase, which is what an open network needs.
+              wifiPsk: el.psk.value,
+              settings: [],
+            };
+            if (el.companion.value !== "") {
+              fields.companionPassword = el.companion.value;
+            }
+            if (el.theme.value !== "") {
+              fields.settings.push({
+                wireId: FurbleProvision.WIRE_ID.THEME,
+                type: FurbleProvision.TYPE.STRING,
+                value: el.theme.value,
+              });
+            }
+            if (el.txPower.value !== "") {
+              fields.settings.push({
+                wireId: FurbleProvision.WIRE_ID.TX_POWER,
+                type: FurbleProvision.TYPE.U8,
+                value: Number(el.txPower.value),
+              });
+            }
+            if (mqttVisible()) {
+              if (el.mqttUri.value.trim() !== "") {
+                fields.mqttUri = el.mqttUri.value.trim();
+              }
+              if (el.mqttBase.value.trim() !== "") {
+                fields.mqttBaseTopic = el.mqttBase.value.trim();
+              }
+              if (el.mqttUser.value !== "") {
+                fields.mqttUsername = el.mqttUser.value;
+              }
+              if (el.mqttPass.value !== "") {
+                fields.mqttPassword = el.mqttPass.value;
+              }
+            }
+            return fields;
+          }
+
+          // The reopen after an install is only as good as the browser and the
+          // port state ESP Web Tools leaves behind. Reopening while the install
+          // dialog still holds the port fails, so runProvision retries the open.
+          // The exact timing is a hardware acceptance item, not something a host
+          // test can prove.
+          async function requestPort() {
+            // Prefer the one port the installer was just granted, which avoids a
+            // second permission prompt. With several granted ports, ask so the
+            // user picks the device instead of guessing.
+            var granted = await navigator.serial.getPorts();
+            if (granted.length === 1) {
+              return granted[0];
+            }
+            return navigator.serial.requestPort();
+          }
+
+          el.send.addEventListener("click", async function () {
+            var fields;
+            try {
+              fields = collectFields();
+              // Encode first so a bad or oversized bundle never opens the port.
+              FurbleProvision.buildCommand(fields);
+            } catch (error) {
+              clearResult();
+              setStatus(error.message, true);
+              return;
+            }
+
+            el.send.disabled = true;
+            clearResult();
+            setStatus("Opening the serial port...", false);
+            try {
+              var port = await requestPort();
+              setStatus("Sending the provisioning bundle...", false);
+              var result = await FurbleProvision.runProvision(port, fields, {
+                onLine: function (line) {
+                  if (line.indexOf("error:") === 0) {
+                    setStatus(line, true);
+                  }
+                },
+              });
+              render(result);
+            } catch (error) {
+              clearResult();
+              setStatus(
+                error instanceof Error ? error.message : String(error),
+                true,
+              );
+            } finally {
+              el.send.disabled = false;
+            }
+          });
+
+          document.querySelectorAll('input[name="type"]').forEach(function (radio) {
+            radio.addEventListener("change", refresh);
+          });
+          el.debug.addEventListener("change", refresh);
+
+          // ESP Web Tools dispatches state-changed as the install progresses.
+          // Use the finished state to point at the next step, and never send
+          // anything automatically.
+          var installButton = document.getElementById("installButton");
+          if (installButton && typeof installButton.addEventListener === "function") {
+            installButton.addEventListener("state-changed", function (event) {
+              var detail = event ? event.detail : null;
+              if (detail && detail.state === "FINISHED") {
+                setStatus(
+                  "Install finished. Close the installer dialog, then send the " +
+                    "provisioning step.",
+                  false,
+                );
+              }
+            });
+          }
+
+          refresh();
+        }
+
+        if (typeof document !== "undefined") {
+          document.addEventListener("DOMContentLoaded", init);
+        }
+      })();
+    </script>
     <script id="bt-dump-script">
       // Web Serial "Capture BT debug dump" panel. Drives the furble debug
       // console (the bt journal, scan and explore commands) over the same USB

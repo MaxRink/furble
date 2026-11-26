@@ -257,6 +257,12 @@ as padded or unpadded standard base64
 (`lib/furble/protocol/ProvisionTLV.h:104-112`,
 `docs/console-commands.md#settings`).
 
+The web installer builds the same batches in `web-installer/provision.js` and
+sends one `provision base64:` line over Web Serial. The console line limit of 255
+characters caps one bundle at about 178 bytes, and both ends refuse the overflow
+rather than clipping it. The browser and firmware codecs are pinned to one
+shared fixture, `tests/web-installer/provision-fixture.json`.
+
 ## Camera list blob
 
 The saved camera index is a versioned binary blob, not a TLV

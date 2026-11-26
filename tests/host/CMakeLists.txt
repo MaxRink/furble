@@ -1129,6 +1129,10 @@ add_executable(provision_tlv_test
                provision_tlv_test.cpp
                ${FURBLE_ROOT}/lib/furble/protocol/ProvisionTLV.cpp)
 target_include_directories(provision_tlv_test PRIVATE ${FURBLE_ROOT}/lib/furble)
+# The browser encoder in web-installer/provision.js is checked against the same
+# fixture, so the two codecs cannot drift apart silently.
+target_compile_definitions(provision_tlv_test PRIVATE
+                           FURBLE_PROVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../web-installer/provision-fixture.json")
 target_compile_options(provision_tlv_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                   -Wno-unused-parameter)
 

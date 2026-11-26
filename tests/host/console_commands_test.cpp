@@ -2145,6 +2145,203 @@ void testProvision(void) {
   runDirect("settings set brightness 128");
 }
 
+std::string toHex(const std::vector<uint8_t> &bytes) {
+  static const char *HEX = "0123456789abcdef";
+  std::string out;
+  for (const uint8_t byte : bytes) {
+    out.push_back(HEX[byte >> 4]);
+    out.push_back(HEX[byte & 0x0f]);
+  }
+  return out;
+}
+
+std::string toBase64(const std::vector<uint8_t> &bytes) {
+  static const char *ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  size_t index = 0;
+  for (; index + 2 < bytes.size(); index += 3) {
+    const uint32_t chunk = (static_cast<uint32_t>(bytes[index]) << 16)
+                           | (static_cast<uint32_t>(bytes[index + 1]) << 8)
+                           | static_cast<uint32_t>(bytes[index + 2]);
+    out.push_back(ALPHABET[(chunk >> 18) & 0x3f]);
+    out.push_back(ALPHABET[(chunk >> 12) & 0x3f]);
+    out.push_back(ALPHABET[(chunk >> 6) & 0x3f]);
+    out.push_back(ALPHABET[chunk & 0x3f]);
+  }
+  if ((bytes.size() - index) == 1) {
+    const uint32_t chunk = static_cast<uint32_t>(bytes[index]) << 16;
+    out.push_back(ALPHABET[(chunk >> 18) & 0x3f]);
+    out.push_back(ALPHABET[(chunk >> 12) & 0x3f]);
+    out.append("==");
+  } else if ((bytes.size() - index) == 2) {
+    const uint32_t chunk = (static_cast<uint32_t>(bytes[index]) << 16)
+                           | (static_cast<uint32_t>(bytes[index + 1]) << 8);
+    out.push_back(ALPHABET[(chunk >> 18) & 0x3f]);
+    out.push_back(ALPHABET[(chunk >> 12) & 0x3f]);
+    out.push_back(ALPHABET[(chunk >> 6) & 0x3f]);
+    out.push_back('=');
+  }
+  return out;
+}
+
+std::vector<uint8_t> provisionRecord(uint8_t rawTag,
+                                     Furble::ProvisionTLV::ValueType type,
+                                     const std::vector<uint8_t> &value) {
+  std::vector<uint8_t> bytes = {rawTag, static_cast<uint8_t>(type),
+                                static_cast<uint8_t>(value.size())};
+  bytes.insert(bytes.end(), value.begin(), value.end());
+  return bytes;
+}
+
+void appendBytes(std::vector<uint8_t> &target, const std::vector<uint8_t> &source) {
+  target.insert(target.end(), source.begin(), source.end());
+}
+
+// Test 11b. The same provisioning command typed at the serial transport, which
+// is exactly what the web installer's config step does. The line editor, the
+// echo, esp_console_run() and the command handler all run, so the browser half
+// is tested against the real receive path rather than a direct dispatch.
+void testProvisionReceivePath(void) {
+  std::cerr << "test: provision receive path applies one line and rejects bad frames\n";
+  ConsoleHost::resetDoubles();
+
+  const auto textBytes = [](const char *value) {
+    return std::vector<uint8_t>(value, value + std::strlen(value));
+  };
+  const uint8_t SSID_TAG = static_cast<uint8_t>(Furble::ProvisionTLV::FieldTag::WIFI_SSID)
+                           | Furble::ProvisionTLV::REQUIRED_TAG_BIT;
+  const uint8_t PSK_TAG = static_cast<uint8_t>(Furble::ProvisionTLV::FieldTag::WIFI_PSK)
+                          | Furble::ProvisionTLV::REQUIRED_TAG_BIT;
+  const uint8_t SETTING_TAG = static_cast<uint8_t>(Furble::ProvisionTLV::FieldTag::SETTING)
+                              | Furble::ProvisionTLV::REQUIRED_TAG_BIT;
+
+  Furble::Settings::save<std::string>(Furble::Settings::WIFI_SSID, "seed-network");
+  Furble::Settings::save<std::string>(Furble::Settings::WIFI_PSK, "seed-passphrase");
+  Furble::Settings::save<uint8_t>(Furble::Settings::BRIGHTNESS, 111);
+
+  // A complete bundle typed at the port. base64 is the encoding the browser
+  // uses, so this covers the decoder branch the flasher depends on.
+  {
+    Furble::ProvisionTLV::ProvisionBundle bundle;
+    bundle.wifiSsid = textBytes("typed-net");
+    bundle.wifiPsk = textBytes("typed-secret");
+    Furble::ProvisionTLV::SettingValue brightness;
+    brightness.wireId = 1;
+    brightness.type = Furble::ProvisionTLV::ValueType::U8;
+    brightness.value = {42};
+    bundle.settings.push_back(brightness);
+    std::vector<uint8_t> encoded;
+    if (check(Furble::ProvisionTLV::encode(bundle, encoded), "the typed bundle encodes")) {
+      const std::string base64 = toBase64(encoded);
+      const std::string output = ConsoleHost::runLine("provision base64:" + base64);
+      checkContains(output,
+                    "provision: decoded " + std::to_string(encoded.size()) + " bytes as base64",
+                    "the transport line reaches the decoder");
+      checkContains(output, "provision: wifi_ssid applied", "the SSID is applied");
+      checkContains(output, "provision: wifi_psk applied", "the PSK is applied");
+      checkContains(output, "provision: setting 1 (brightness) applied", "the setting is applied");
+      checkContains(output, "provision: 3 field(s) applied, 0 field(s) deferred",
+                    "the summary counts every applied field");
+      check(!contains(output, base64), "the echoed command does not reach the result");
+      check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 42,
+            "the typed line wrote the real settings store");
+      check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == "typed-net",
+            "the typed line wrote the SSID");
+    }
+  }
+
+  Furble::Settings::save<std::string>(Furble::Settings::WIFI_SSID, "seed-network");
+  Furble::Settings::save<std::string>(Furble::Settings::WIFI_PSK, "seed-passphrase");
+  Furble::Settings::save<uint8_t>(Furble::Settings::BRIGHTNESS, 111);
+
+  // An oversized line. The console must refuse it rather than clip it, because
+  // a clipped base64 blob can still decode into a shorter valid bundle.
+  {
+    Furble::ProvisionTLV::ProvisionBundle bundle;
+    bundle.wifiSsid = textBytes("seed-network");
+    bundle.wifiPsk = std::vector<uint8_t>(63, 'p');
+    bundle.companionPassword = std::vector<uint8_t>(63, 'c');
+    Furble::ProvisionTLV::SettingValue theme;
+    theme.wireId = 3;
+    theme.type = Furble::ProvisionTLV::ValueType::STRING;
+    theme.value = std::vector<uint8_t>(63, 't');
+    bundle.settings.push_back(theme);
+    Furble::ProvisionTLV::SettingValue brightness;
+    brightness.wireId = 1;
+    brightness.type = Furble::ProvisionTLV::ValueType::U8;
+    brightness.value = {200};
+    bundle.settings.push_back(brightness);
+    std::vector<uint8_t> encoded;
+    if (check(Furble::ProvisionTLV::encode(bundle, encoded), "the oversized bundle encodes")) {
+      const std::string line = "provision base64:" + toBase64(encoded);
+      check(line.size() > 255, "the test line really is over the console limit");
+      const std::string output = ConsoleHost::runLine(line);
+      checkContains(output, "error: line longer than 255 bytes, command not run",
+                    "the console refuses the whole line");
+      check(!contains(output, "provision: decoded"),
+            "a refused line is never handed to the command");
+      check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 111,
+            "a refused line changes no setting");
+      check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == "seed-network",
+            "a refused line leaves the SSID alone");
+    }
+  }
+
+  // An SSID over the 32-byte field limit.
+  {
+    const auto bytes = provisionRecord(SSID_TAG, Furble::ProvisionTLV::ValueType::STRING,
+                                       std::vector<uint8_t>(33, 's'));
+    const std::string output = ConsoleHost::runLine("provision " + toHex(bytes));
+    checkContains(output, "error: provision: value too long at byte 0",
+                  "an over-long SSID is rejected by the field limit");
+    check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == "seed-network",
+          "a rejected SSID changes nothing");
+  }
+
+  // A passphrase over the 63-byte field limit.
+  {
+    const auto bytes = provisionRecord(PSK_TAG, Furble::ProvisionTLV::ValueType::STRING,
+                                       std::vector<uint8_t>(64, 'p'));
+    const std::string output = ConsoleHost::runLine("provision " + toHex(bytes));
+    checkContains(output, "error: provision: value too long at byte 0",
+                  "an over-long passphrase is rejected by the field limit");
+    check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK) == "seed-passphrase",
+          "a rejected passphrase changes nothing");
+  }
+
+  // A frame that stops in the middle of its value.
+  {
+    std::vector<uint8_t> bytes =
+        provisionRecord(SSID_TAG, Furble::ProvisionTLV::ValueType::STRING, textBytes("typed-net"));
+    appendBytes(bytes, provisionRecord(SETTING_TAG, Furble::ProvisionTLV::ValueType::U8, {1, 200}));
+    bytes.pop_back();
+    const std::string output = ConsoleHost::runLine("provision " + toHex(bytes));
+    checkContains(output, "error: provision: truncated record", "a truncated frame is rejected");
+    check(Furble::Settings::load<uint8_t>(Furble::Settings::BRIGHTNESS) == 111,
+          "a truncated frame changes nothing");
+  }
+
+  // The same field twice, which is what a retried or duplicated frame looks
+  // like after a line has been reassembled.
+  {
+    std::vector<uint8_t> bytes =
+        provisionRecord(SSID_TAG, Furble::ProvisionTLV::ValueType::STRING, textBytes("typed-net"));
+    appendBytes(bytes, provisionRecord(SSID_TAG, Furble::ProvisionTLV::ValueType::STRING,
+                                       textBytes("other-net")));
+    const std::string output = ConsoleHost::runLine("provision " + toHex(bytes));
+    checkContains(output, "error: provision: duplicate field at byte 12",
+                  "a repeated frame is rejected");
+    check(!contains(output, "field(s) applied"), "a repeated frame reports no summary");
+    check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == "seed-network",
+          "a repeated frame changes nothing");
+  }
+
+  // The device answers the next command, so a failure above never wedges the
+  // console the browser is holding open.
+  checkContains(ConsoleHost::runLine("version"), "version: host",
+                "the console still answers after a rejected frame");
+}
+
 // Test 12. WiFi and NTP commands route to the real handlers and their
 // hardware-facing boundary, represented by the host double.
 void testWiFiAndNtpCommands(void) {
@@ -2250,7 +2447,7 @@ void testConsoleTaskTransport(void) {
   const std::string blank = ConsoleHost::runLine("");
   check(blank.empty(), "an empty line prints nothing but the prompt");
 
-  // Overlong input is truncated at the line limit instead of overflowing.
+  // A long unknown line is a plain unknown command, not an overflow.
   const long overStart = ConsoleHost::captureOffset();
   ConsoleHost::feedBytes(std::string(200, 'z') + "\n");
   const bool rejected = waitFor(
@@ -2258,7 +2455,7 @@ void testConsoleTaskTransport(void) {
         return contains(ConsoleHost::capturedSince(overStart), "error: unknown command");
       },
       5000);
-  check(rejected, "an overlong line is truncated and rejected, not overflowed");
+  check(rejected, "a long unknown line is reported as an unknown command");
 }
 
 // Test 14. The debug dump family against a live camera through the real
@@ -2630,6 +2827,7 @@ int main(void) {
   testFlashStateMachine();
   testLogLevels();
   testProvision();
+  testProvisionReceivePath();
   testWiFiAndNtpCommands();
   testErrorPaths();
   testConsoleTaskTransport();

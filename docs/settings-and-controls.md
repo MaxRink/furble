@@ -437,7 +437,9 @@ default Off, the two credentials default empty, and the NTP server defaults
 `pool.ntp.org`. Set them from the console with `wifi set ssid|psk`,
 `wifi enable|disable`, `ntp set server <host>` and `ntp enable|disable|sync`,
 or from the companion app, an authenticated WebUI settings write, SD import and
-export, and provisioning. See [console commands](console-commands.md).
+export, and provisioning. The browser installer's provisioning step sets both
+WiFi credentials over serial right after flashing a debug build, so a device
+with no terminal can join a network. See [console commands](console-commands.md).
 
 The other settings with no `Settings` page row are already documented above on
 this page: `Companion password` (wire id 47) under Features, `GPS Signals` (48),

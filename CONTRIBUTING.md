@@ -409,6 +409,13 @@ attempt to infer changed paths without a pull request or push comparison base.
   `control-connect-camera-race: PASS`. Check this shell contract without a
   compiler with `sh tests/host/run_tsan_race_contract.sh`.
 
+- The web installer's browser code is tested under Node. The Python tooling
+  suite runs it, so `python3 -m unittest discover -s tests -p 'test_*.py'`
+  covers it and skips it when Node is not installed. Run it alone with
+  `node tests/web-installer/provision.test.cjs`. The provisioning encoder and
+  the firmware codec are both pinned to
+  `tests/web-installer/provision-fixture.json`.
+
 - Run the fuzz gate before building a hardware image:
 
   ```sh

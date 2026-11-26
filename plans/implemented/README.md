@@ -37,6 +37,7 @@ stay in the parent [`plans/`](../README.md) directory.
 | [113-connection-state-sim-coverage.md](113-connection-state-sim-coverage.md) | Plan 113: connection-state sim coverage |
 | [113-per-board-ota-slots.md](113-per-board-ota-slots.md) | 113 - Per-board OTA slot sizing for boards with spare flash |
 | [114-provision-parser.md](114-provision-parser.md) | 114 - One-shot provisioning parser and console apply |
+| [114-flasher-provisioning.md](114-flasher-provisioning.md) | 114b - Web flasher WiFi and settings provisioning |
 | [115-ota-engine.md](115-ota-engine.md) | 115 - Transport-independent OTA engine |
 | [116-companion-password.md](116-companion-password.md) | Shared-secret gate for privileged companion operations |
 | [117-sim-mqtt-coverage.md](117-sim-mqtt-coverage.md) | 117 - Sim MQTT coverage |

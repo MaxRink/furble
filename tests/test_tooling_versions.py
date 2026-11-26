@@ -65,6 +65,18 @@ class ToolingVersionTest(unittest.TestCase):
         self.assertIn("port.close", preflight)
         self.assertIn("cp web-installer/pmic-preflight.js site/pmic-preflight.js", workflow)
 
+    def test_web_installer_ships_the_provisioning_encoder(self):
+        index = (ROOT / "web-installer" / "index.html").read_text()
+        provision = (ROOT / "web-installer" / "provision.js").read_text()
+        workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text()
+
+        # The page loads the encoder as a classic script, so the Pages deploy has
+        # to copy it next to index.html.
+        self.assertIn('src="./provision.js"', index)
+        self.assertIn("provision base64:", provision)
+        self.assertIn("cp web-installer/provision.js site/provision.js", workflow)
+        self.assertIn("provision.js", (ROOT / "web-installer" / "CLAUDE.md").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

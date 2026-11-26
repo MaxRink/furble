@@ -141,6 +141,7 @@ jobs:
         run: |
           cp web-installer/index.html site/index.html
           cp web-installer/pmic-preflight.js site/pmic-preflight.js
+          cp web-installer/provision.js site/provision.js
 
       - name: Validate installer assets
         run: python tools/verify_web_installer.py site

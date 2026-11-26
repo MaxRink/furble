@@ -27,6 +27,11 @@ Log output shares the port, so `log * warn` is usually the first thing worth
 typing. Every command prints one fact per line as `key: value`, so a host script
 can parse it with a split on the first colon.
 
+The console runs at most 255 characters per line, because `esp_console_run()`
+copies the line into a 256-byte buffer with `strlcpy()`. A longer line is
+refused with `error: line longer than 255 bytes, command not run` and is never
+clipped, so a truncated command cannot look like a complete one.
+
 The console distorts power measurements, so do not take power numbers from a
 build that contains it. On the ESP32 boards the console holds an APB frequency
 lock for its lifetime. On the M5StickS3 no lock is needed.
@@ -234,6 +239,30 @@ derived zone is fresh and `timezone_source: utc` after the 30-minute fallback or
 immediately when a fresh fix is outside the 30-degree nearest-zone radius.
 See the [settings and controls reference](Settings-Reference) for every
 setting, its default, and when it applies.
+
+## provision
+
+`provision <hex|base64 TLV blob>` decodes one provisioning batch and applies
+every setting in it. The blob is a tag, type, length, value record sequence; an
+explicit `hex:` or `base64:` prefix selects the encoding. On success the command
+prints `provision: decoded <n> bytes as base64` and one line per applied field,
+then `provision: <n> field(s) applied, <m> field(s) deferred`. On failure it
+prints `error: provision: <code> at <n>` and returns 1. Settings are validated
+before the first write, so a rejected batch changes nothing.
+
+The line limit also bounds the blob: with the 17-character `provision base64:`
+prefix, about 178 blob bytes fit in one line. Send a smaller bundle rather than
+a clipped one.
+
+The [web installer](https://maxrink.github.io/furble/) sends this command over
+Web Serial in its "WiFi and settings provisioning" step, so WiFi credentials,
+the companion password, the theme, TX power and the MQTT settings can be set
+right after flashing a debug build, with no terminal. A release build has no
+console and cannot be provisioned this way.
+
+The record layout, the tags and every error code are in the
+[companion GATT page](../protocols/companion-gatt.md#provisioning-tlv). The full
+command reference is [console commands](../console-commands.md#provision).
 
 ## companion
 

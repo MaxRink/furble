@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ from tools.verify_web_installer import (
   build_family_error,
   expected_manifests,
   flash_offset_error,
+  page_script_errors,
   validate,
 )
 from tools.web_installer_layout import (
@@ -77,6 +79,12 @@ def render(platform):
 
 def write_site(root, platforms, legacy_platform=None):
   """Write a deploy tree the way pages.yml assembles one."""
+  # The deploy also copies the page and every local script it loads, and
+  # validate() now checks that each reference resolves.
+  page = PAGE.read_text(encoding="utf-8")
+  (root / "index.html").write_text(page, encoding="utf-8")
+  for script in re.findall(r'<script[^>]*\bsrc="\./([^"]+)"', page):
+    (root / script).write_bytes((INSTALLER / script).read_bytes())
   for platform in platforms:
     document = render(platform)
     if platform == legacy_platform:
@@ -242,6 +250,11 @@ class WebInstallerChipFamilyTest(unittest.TestCase):
     self.assertIn("`./manifest_${radio.value}${variant}.json`", page)
 
 
+PROVISION_JS = ROOT / "web-installer" / "provision.js"
+PROVISION_FIXTURE = ROOT / "tests" / "web-installer" / "provision-fixture.json"
+PROVISION_NODE_TEST = ROOT / "tests" / "web-installer" / "provision.test.cjs"
+
+
 class WebInstallerOffsetTest(unittest.TestCase):
   def test_core_debug_manifest_is_not_expected(self):
     manifests = expected_manifests()
@@ -332,6 +345,286 @@ class WebInstallerPageTest(unittest.TestCase):
     # loses it also disappears from this mapping. The count pins the six.
     page = PAGE.read_text(encoding="utf-8")
     self.assertEqual(len(radio_families(page)), len(RELEASE_PLATFORMS))
+
+
+class WebInstallerPageScriptTest(unittest.TestCase):
+  """The Pages deploy copies each page script by hand, so validate the copies."""
+
+  def test_a_missing_page_script_is_an_error(self):
+    with tempfile.TemporaryDirectory() as directory:
+      site = Path(directory)
+      (site / "index.html").write_text(
+        '<script src="./provision.js"></script>', encoding="utf-8"
+      )
+      errors = page_script_errors(site)
+      self.assertEqual(errors, ["missing or empty page script provision.js"])
+
+  def test_an_empty_page_script_is_an_error(self):
+    with tempfile.TemporaryDirectory() as directory:
+      site = Path(directory)
+      (site / "index.html").write_text(
+        '<script src="./provision.js"></script>', encoding="utf-8"
+      )
+      (site / "provision.js").write_text("", encoding="utf-8")
+      self.assertEqual(page_script_errors(site), ["missing or empty page script provision.js"])
+
+  def test_a_missing_index_is_an_error(self):
+    with tempfile.TemporaryDirectory() as directory:
+      self.assertEqual(
+        page_script_errors(Path(directory)),
+        ["index.html is missing from the site"],
+      )
+
+  def test_a_page_without_local_scripts_is_an_error(self):
+    with tempfile.TemporaryDirectory() as directory:
+      site = Path(directory)
+      (site / "index.html").write_text(
+        '<script src="https://example.com/button.js?module"></script>',
+        encoding="utf-8",
+      )
+      self.assertEqual(page_script_errors(site), ["index.html loads no local scripts"])
+
+  def test_the_real_page_references_only_present_scripts(self):
+    site_files = {
+      "index.html": (ROOT / "web-installer" / "index.html").read_text(encoding="utf-8"),
+      "provision.js": PROVISION_JS.read_text(encoding="utf-8"),
+      "pmic-preflight.js": (
+        ROOT / "web-installer" / "pmic-preflight.js"
+      ).read_text(encoding="utf-8"),
+    }
+    with tempfile.TemporaryDirectory() as directory:
+      site = Path(directory)
+      for name, text in site_files.items():
+        (site / name).write_text(text, encoding="utf-8")
+      self.assertEqual(page_script_errors(site), [])
+
+  def test_the_page_loads_the_provisioning_encoder(self):
+    index = (ROOT / "web-installer" / "index.html").read_text(encoding="utf-8")
+    self.assertIn('src="./provision.js"', index)
+    for element in (
+      "provisionPanel",
+      "provisionUnsupported",
+      "provisionNeedsDebug",
+      "provisionSupported",
+      "provSsid",
+      "provPsk",
+      "provCompanion",
+      "provTheme",
+      "provTxPower",
+      "provMqttGroup",
+      "provMqttUri",
+      "provMqttBase",
+      "provMqttUser",
+      "provMqttPass",
+      "provSend",
+      "provStatus",
+      "provResult",
+    ):
+      self.assertIn(f'id="{element}"', index)
+    # A release build has no console, so the panel must require the debug build
+    # instead of pretending to provision.
+    self.assertIn("el.debug.checked", index)
+
+
+def javascript_integer(name, source):
+  match = re.search(rf"\b{re.escape(name)}\s*[:=]\s*(\d+)", source)
+  if match is None:
+    raise AssertionError(f"{name} is not defined")
+  return int(match.group(1))
+
+
+class ProvisioningContractTest(unittest.TestCase):
+  """Pin the browser constants to the firmware they mirror."""
+
+  @classmethod
+  def setUpClass(cls):
+    cls.js = PROVISION_JS.read_text(encoding="utf-8")
+    cls.header = (ROOT / "lib" / "furble" / "protocol" / "ProvisionTLV.h").read_text(
+      encoding="utf-8"
+    )
+    cls.console = (ROOT / "src" / "FurbleConsole.cpp").read_text(encoding="utf-8")
+    cls.settings = (ROOT / "src" / "FurbleSettings.cpp").read_text(encoding="utf-8")
+    cls.settings_header = (ROOT / "include" / "FurbleSettings.h").read_text(
+      encoding="utf-8"
+    )
+    cls.network_settings = (ROOT / "src" / "FurbleNetworkSettings.cpp").read_text(
+      encoding="utf-8"
+    )
+
+  def test_field_limits_match_the_production_parser(self):
+    limits = {
+      "MAX_BLOB_BYTES": "blobBytes",
+      "MAX_RECORDS": "records",
+      "MAX_WIFI_SSID_BYTES": "ssidBytes",
+      "MAX_WIFI_PSK_BYTES": "pskBytes",
+      "MAX_COMPANION_PASSWORD_BYTES": "companionPasswordBytes",
+      "MAX_MQTT_FIELD_BYTES": "mqttFieldBytes",
+      "MAX_STRING_BYTES": "settingStringBytes",
+    }
+    for header_name, js_name in limits.items():
+      header = re.search(rf"{header_name}\s*=\s*(\d+)", self.header)
+      self.assertIsNotNone(header, f"{header_name} is defined in ProvisionTLV.h")
+      self.assertEqual(
+        int(header.group(1)),
+        javascript_integer(js_name, self.js),
+        f"{js_name} mirrors {header_name}",
+      )
+
+  def test_passphrase_range_matches_the_settings_validator(self):
+    # WPA2-PSK and WPA3-SAE take 8 to 63 characters. The page and the firmware
+    # must refuse the same range, because a 3-byte passphrase is stored and
+    # reported as applied on a device that can never associate.
+    minimum = re.search(r"WIFI_PSK_MIN_LENGTH\s*=\s*(\d+)", self.settings_header)
+    maximum = re.search(r"WIFI_PSK_MAX_LENGTH\s*=\s*(\d+)", self.settings_header)
+    self.assertIsNotNone(minimum, "FurbleSettings.h defines WIFI_PSK_MIN_LENGTH")
+    self.assertIsNotNone(maximum, "FurbleSettings.h defines WIFI_PSK_MAX_LENGTH")
+    self.assertEqual(int(minimum.group(1)), javascript_integer("pskMinBytes", self.js))
+    self.assertEqual(int(maximum.group(1)), javascript_integer("pskBytes", self.js))
+    self.assertEqual(8, int(minimum.group(1)), "the WPA2 and WPA3-SAE minimum is 8")
+
+    # The firmware validator must use both bounds, and keep the empty value.
+    validator = re.search(
+      r"case WIFI_PSK:(.*?)case NTP_SERVER:", self.network_settings, re.S
+    )
+    self.assertIsNotNone(validator, "validNetworkString has a WIFI_PSK case")
+    self.assertIn("value.empty()", validator.group(1))
+    self.assertIn("WIFI_PSK_MIN_LENGTH", validator.group(1))
+    self.assertIn("WIFI_PSK_MAX_LENGTH", validator.group(1))
+
+    # The console tells the user the same range.
+    self.assertIn("passphrase must be empty or 8 to 63 characters", self.console)
+
+  def test_tx_power_bound_matches_the_settings_header(self):
+    maximum = re.search(r"TX_POWER_MAX\s*=\s*(\d+)", self.settings_header)
+    self.assertIsNotNone(maximum, "FurbleSettings.h defines TX_POWER_MAX")
+    self.assertEqual(int(maximum.group(1)), javascript_integer("txPowerMax", self.js))
+    provision = (ROOT / "src" / "FurbleProvision.cpp").read_text(encoding="utf-8")
+    self.assertIn("TX power must be 0 (P3), 1 (P6) or 2 (P9)", provision)
+    self.assertIn("Settings::TX_POWER_MAX", provision)
+
+  def test_theme_set_matches_the_firmware_and_the_page(self):
+    validator = re.search(
+      r"bool Settings::validTheme\(const std::string &value\) \{(.*?)\}",
+      self.network_settings,
+      re.S,
+    )
+    self.assertIsNotNone(validator, "Settings::validTheme is defined")
+    firmware = re.findall(r'value == "([^"]+)"', validator.group(1))
+    self.assertEqual(firmware, ["Dark", "Default", "Mono Furble"])
+
+    js = re.search(r"var THEMES = \[(.*?)\];", self.js)
+    self.assertIsNotNone(js, "provision.js lists its themes")
+    self.assertEqual(re.findall(r'"([^"]+)"', js.group(1)), firmware)
+
+    page = (ROOT / "web-installer" / "index.html").read_text(encoding="utf-8")
+    select = re.search(r'id="provTheme">(.*?)</select>', page, re.S)
+    self.assertIsNotNone(select, "the page has a theme select")
+    options = [
+      value for value in re.findall(r'<option value="([^"]*)"', select.group(1)) if value
+    ]
+    self.assertEqual(options, firmware, "the page offers exactly the accepted themes")
+
+  def test_command_limit_is_one_below_the_console_buffer(self):
+    max_line = re.search(r"constexpr size_t MAX_LINE = (\d+);", self.console)
+    self.assertIsNotNone(max_line, "FurbleConsole.cpp defines MAX_LINE")
+    self.assertEqual(
+      int(max_line.group(1)) - 1,
+      javascript_integer("MAX_COMMAND_CHARS", self.js),
+      "the browser limit is the longest line esp_console_run() keeps",
+    )
+    self.assertIn(
+      "line longer than %u bytes, command not run",
+      self.console,
+      "the console refuses an oversized line instead of clipping it",
+    )
+
+  def test_setting_wire_ids_match_the_settings_table(self):
+    self.assertEqual(
+      3, javascript_integer("THEME", self.js), "theme is wire id 3"
+    )
+    self.assertEqual(
+      4, javascript_integer("TX_POWER", self.js), "TX power is wire id 4"
+    )
+    self.assertIn('{THEME, 3, "Theme"', self.settings)
+    self.assertIn('{TX_POWER, 4, "TX Power"', self.settings)
+
+  def test_mqtt_fields_are_omitted_on_boards_without_the_backend(self):
+    page = (ROOT / "web-installer" / "index.html").read_text(encoding="utf-8")
+    radios = set(re.findall(r'name="type" value="([^"]+)"', page))
+    self.assertTrue(radios, "the page lists the supported boards")
+
+    mqtt_envs = set()
+    current = None
+    for line in (ROOT / "platformio.ini").read_text(encoding="utf-8").splitlines():
+      stripped = line.strip()
+      if stripped.startswith("[env:") and stripped.endswith("]"):
+        current = stripped[len("[env:") : -1]
+      elif current and "-DFURBLE_MQTT=1" in stripped and not current.endswith("-debug"):
+        mqtt_envs.add(current)
+
+    block = re.search(r"BOARD_HAS_MQTT = \{(.*?)\};", PROVISION_JS.read_text(encoding="utf-8"), re.S)
+    self.assertIsNotNone(block, "provision.js declares its board capability map")
+    js_mqtt = set(re.findall(r'"([^"]+)": true', block.group(1)))
+
+    self.assertEqual(
+      js_mqtt,
+      mqtt_envs & radios,
+      "the MQTT boards in provision.js are the MQTT builds the page offers",
+    )
+
+
+class ProvisioningFixtureTest(unittest.TestCase):
+  """The fixture is one bundle that both codecs must reproduce."""
+
+  def test_the_fixture_derives_its_base64_and_command_length(self):
+    document = json.loads(PROVISION_FIXTURE.read_text(encoding="utf-8"))
+    payload = bytes.fromhex(document["expectedHex"])
+    self.assertEqual(len(payload), document["expectedByteCount"])
+    self.assertEqual(
+      base64.b64encode(payload).decode("ascii"),
+      document["expectedBase64"],
+      "expectedBase64 is the base64 of expectedHex",
+    )
+    self.assertEqual(
+      len("provision base64:") + len(document["expectedBase64"]),
+      document["expectedCommandChars"],
+      "expectedCommandChars is the console line length",
+    )
+
+  def test_the_fixture_fields_are_the_bundle_the_firmware_test_builds(self):
+    document = json.loads(PROVISION_FIXTURE.read_text(encoding="utf-8"))
+    fields = document["fields"]
+    source = (ROOT / "tests" / "host" / "provision_tlv_test.cpp").read_text(encoding="utf-8")
+    for value in (
+      fields["wifiSsid"],
+      fields["wifiPsk"],
+      fields["companionPassword"],
+      fields["mqttUri"],
+      fields["mqttUsername"],
+      fields["mqttPassword"],
+      fields["mqttBaseTopic"],
+    ):
+      self.assertIn(f'text("{value}")', source, f"the firmware test builds {value}")
+    self.assertIn('theme.value = text("Dark")', source)
+    self.assertIn("power.value = {2};", source)
+
+
+class ProvisioningBrowserTest(unittest.TestCase):
+  """Run the browser encoder and parser tests under Node."""
+
+  def test_the_browser_encoder_and_parser_pass(self):
+    node = shutil.which("node")
+    if node is None:
+      self.skipTest("node is not installed")
+    result = subprocess.run(
+      [node, str(PROVISION_NODE_TEST)],
+      capture_output=True,
+      text=True,
+      timeout=180,
+      check=False,
+    )
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertIn("0 failure(s)", result.stderr)
 
 
 if __name__ == "__main__":

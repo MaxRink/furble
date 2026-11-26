@@ -29,6 +29,13 @@ refuses an image that does not match the board you selected: the ESP32 boards
 and the ESP32-S3 boards load their bootloader at different offsets, so the wrong
 image does not boot until the board is re-flashed over USB.
 
+The installer can also provision a freshly flashed debug build. Its "WiFi and
+settings provisioning" step sends the WiFi credentials, the companion password,
+the theme, TX power and the MQTT broker settings over the same USB cable, using
+the debug console. A release image has no console, so tick "Debug build" first.
+The step writes settings and never erases NVS, so run it again to change a value
+or to retry.
+
 To build and flash from source instead, furble is an ESP-IDF 5.x project built
 with PlatformIO:
 
