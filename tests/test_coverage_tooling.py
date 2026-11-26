@@ -356,11 +356,12 @@ class CommittedFloorTest(unittest.TestCase):
     measured = [COVERAGE.sim_stack_name(board) for board in COVERAGE.SIM_BOARDS]
     required = ["host", *measured, "sim union"]
     mqtt = COVERAGE.sim_stack_name(COVERAGE.sim_mqtt_board(), "mqtt")
-    # The MQTT-transport stack is measured but has no floor yet: a floor is only
-    # comparable within one pinned clang major, and the number has to come from
-    # the clang-18 run rather than from whichever compiler wrote this branch.
-    # plans/356-sim-memory-certify.md records the measured value and the floor
-    # it should get.
+    # The MQTT-transport stack is measured but may hold no floor. The clang-18
+    # number exists (plans/356-sim-memory-certify.md records 4,915 of 28,651 and
+    # the 16.15 floor it justifies); what blocks the floor is floor_failures(),
+    # which fails an entry the run did not measure. A floor here would redden
+    # `--stack host` and every other partial run, so writing it needs an
+    # optional-stack concept in the floor document first.
     self.assertLessEqual(set(self.floor["stacks"]), set(required) | {mqtt})
     self.assertLessEqual(set(required), set(self.floor["stacks"]))
     self.assertEqual(sorted(self.floor["files"]), sorted(COVERAGE.CRITICAL_FILES))

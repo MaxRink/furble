@@ -88,16 +88,27 @@ constexpr uint32_t CAPS_DEFAULT = 0x1000;
  * the precedence heapCountedAllocCaps already used.
  *
  * The model has one internal pool and no separate IRAM or RTC pool, so
- * MALLOC_CAP_EXEC, MALLOC_CAP_IRAM_8BIT and MALLOC_CAP_RETENTION are answered
- * from internal RAM. The S3 boards enable CONFIG_ESP_SYSTEM_MEMPROT_FEATURE,
- * which drops EXEC from DIRAM (memory_layout.c lines 44 to 50), and
- * sim/shim/... has no IRAM heap either way.
+ * MALLOC_CAP_EXEC, MALLOC_CAP_IRAM_8BIT, MALLOC_CAP_RETENTION and
+ * MALLOC_CAP_RTCRAM are answered from internal RAM. The S3 boards enable
+ * CONFIG_ESP_SYSTEM_MEMPROT_FEATURE, which drops EXEC from DIRAM
+ * (memory_layout.c lines 44 to 50), and sim/shim/... has no IRAM heap either
+ * way.
  *
- * This over-reports in two ways. MALLOC_CAP_RETENTION is a DIRAM capability
+ * This over-reports three ways. MALLOC_CAP_RETENTION is a DIRAM capability
  * (memory_layout.c line 45), so the device answers with the DIRAM free size and
- * this answers with the whole merged internal pool. And a set no heap carries,
+ * this answers with the whole merged internal pool. MALLOC_CAP_RTCRAM is its
+ * own 8 KiB region and type row (memory_layout.c line 66 and line 106), so the
+ * device answers with the RTC fast-memory free size and this answers with the
+ * merged internal pool, which holds none of it. And a set no heap carries,
  * such as MALLOC_CAP_SPIRAM together with MALLOC_CAP_INTERNAL, resolves to one
  * pool here where heap_caps_get_* return zero. No caller uses any of them.
+ *
+ * The priority table above is the allocation order. heap_caps_get_free_size()
+ * and its siblings match a different way: heap_caps_match() tests the OR of a
+ * heap's whole prioritised set (heap_private.h get_ored_caps, used at
+ * heap_caps.c line 73), and esp_psram.c line 470 puts MALLOC_CAP_DEFAULT in
+ * PSRAM's first slot, so a DEFAULT query sums both pools on the device. The
+ * model agrees with that result by a different route.
  */
 constexpr uint32_t CAPS_INTERNAL_ONLY = MALLOC_CAP_EXEC | MALLOC_CAP_DMA | MALLOC_CAP_RETENTION
                                         | MALLOC_CAP_IRAM_8BIT | MALLOC_CAP_RTCRAM | MALLOC_CAP_TCM;
@@ -1112,6 +1123,10 @@ extern "C" size_t furble_sim_heap_minimum(uint32_t capabilities) {
  * describes one heap. A MALLOC_CAP_8BIT or MALLOC_CAP_DEFAULT read therefore
  * reports the internal pool alone.
  *
+ * Every field, the watermark included, comes from that one pool, so a
+ * MALLOC_CAP_SPIRAM read and furble_sim_heap_minimum(MALLOC_CAP_SPIRAM) report
+ * the same watermark.
+ *
  * Three fields describe the model rather than a device TLSF walk:
  * total_allocated_bytes and allocated_blocks count only the blocks the model
  * charged, so a seeded baseline that already includes boot allocations has no
@@ -1128,9 +1143,11 @@ extern "C" void furble_sim_heap_info(multi_heap_info_t *info, uint32_t capabilit
   const size_t freeBytes = external ? heap.psramFree : heap.freeBytes;
   info->total_free_bytes = freeBytes;
   info->largest_free_block = external ? heap.psramLargest : heap.largestBlock;
-  // One watermark for both pools: this is the figure
-  // furble_sim_heap_minimum() reports for every caps set.
-  info->minimum_free_bytes = heap.minimumFree;
+  // The watermark of the pool this query resolved, which is what
+  // multi_heap_get_info() reports for one heap. furble_sim_heap_minimum()
+  // aggregates the pools the whole set matches, so the two agree on a single
+  // pool: a MALLOC_CAP_SPIRAM read returns the PSRAM watermark from both.
+  info->minimum_free_bytes = external ? heap.psramMinimumFree : heap.minimumFree;
   info->total_allocated_bytes = external ? heap.countedExternal : heap.countedInternal;
   info->allocated_blocks = external ? heap.liveExternalBlocks : heap.liveInternalBlocks;
   info->free_blocks = (freeBytes > 0) ? 1 : 0;

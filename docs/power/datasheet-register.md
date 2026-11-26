@@ -381,14 +381,14 @@ was opened. Every `unknown` names the artifact that closes it.
 
 | Board | MCU and radio | PMIC, charger, gauge | Display and touch | IMU | Audio or other | Battery | FCC | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1, read 2026-11-26 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | no board-level filing found; module grant only | documented, battery gap and no board FCC ID |
-| `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3, read 2026-11-26 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | no board-level filing found; module grant only | documented, RTC and battery gaps, no board FCC ID |
+| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1, read 2026-11-26 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | 2AN3WM5STICKC, grant 2019-06-04 | documented, battery gap; board FCC ID found |
+| `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3, read 2026-11-26 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | 2AN3WM5STICKCPLUS (product code M5STICKCPLUS, device name "M5StickC-Plus SE"), grant 2026-01-23 | documented, RTC and battery gaps; Plus board FCC ID found, no Plus2 ID found |
 | `m5stick-s3` | ESP32-S3 v2.2, PICO-1 N8R8 v1.2 | M5PM1 V1.9 | ST7789P3 v0.1 2022/03, 276 pages, sha256 26e62a24, read 2026-11-26 | BMI270 revision 1.6 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | 2AN3WM5STICKS3, K150 grant 12/16/2025, read from a page render (OCR-derived) | documented, audio and battery gaps; panel and FCC closed |
 | `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26 | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | no board-level filing found; module grant only | documented, IMU, SD and battery gaps, no board FCC ID |
 | `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26, plus FT6336U, still not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | Core2 2AN3WM5STACK-CORE2, K010 grant 08/20/2020; Tough 2AN3W-M5STACK-TOUGH, K034 grant 04/19/2021 | documented for AXP192; AXP2101 datasheet is an open gap; FCC closed |
-| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 Ver 1.1.0 | none | none | none | microSD, WS2812 | none | no board-level filing; the product page contains no occurrence of FCC, so it relies on the module grant 2AC7Z-ESPS3WROOM1 | documented; W5500 and module FCC closed, no board FCC ID |
+| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 Ver 1.1.0 | none | none | none | microSD, WS2812 | none | no board-level filing found. The product page contains no occurrence of FCC, and the FCC ID search endpoint returned HTTP 403 to the research agent, so this is a page-level negative and not a database search. It relies on the module grant 2AC7Z-ESPS3WROOM1 | documented; W5500 and module FCC closed, board FCC unverified |
 | `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | module grant 2AC7Z-ESPS3WROOM1 applies to the WROOM-1 module, not to a devkit assembly | documented for the SoC, board document missing |
-| `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26 | as Core | as Core | as Core | as Core, no board-level filing | same gaps as Core |
+| `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26 | as Core | as Core | as Core | as Core, no board-level filing found | same gaps as Core |
 
 ### 13.2 Batteries
 
@@ -410,9 +410,9 @@ arithmetic estimate on a nominal capacity, not a measured runtime.
 | Item | Status | Evidence or closing artifact |
 | --- | --- | --- |
 | FCC ID for the ESP32-S3-WROOM-1 module | 2AC7Z-ESPS3WROOM1, grant 01/21/2022, Nemko North America, single modular | Espressif certification PDF, https://documentation.espressif.com/ESP32-S3-WROOM-1%20FCC%20Certification.pdf, SHA-256 `edb08720467ab0b1bff5269dec375847836179f60c038a7f977e1127aeeb7908`, text layer, read 2026-11-25 |
-| FCC IDs for the assembled M5Stack boards | StickS3 2AN3WM5STICKS3 (K150, grant 12/16/2025); Core2 2AN3WM5STACK-CORE2 (K010, grant 08/20/2020); Tough 2AN3W-M5STACK-TOUGH (K034, grant 04/19/2021) | Vendor-hosted grants under https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/certification/, read 2026-11-25. The StickS3 grant has no text layer, so its ID was read from a 300 dpi page render and is OCR-derived; the other two were read from their text layers. No board-level filing was found for the StickC, StickC Plus, Plus2 or Core Basic |
-| FCC ID for the assembled Waveshare board | none; certified through the module grant | The ESP32-S3-ETH product page, https://docs.waveshare.com/ESP32-S3-ETH, SHA-256 `00fd70c1b2406485a4636b8f046084311544a166fffa1769783c8fafa034cf0d`, contains zero occurrences of FCC, so no board-level filing is claimed |
-| FCC exhibit databases | inaccessible | fccid.io and fcc.report returned HTTP 403 to the research agent, so no claim is made about schematics or internal photos in any of these filings |
+| FCC IDs for the assembled M5Stack boards | StickS3 2AN3WM5STICKS3 (K150, grant 12/16/2025); Core2 2AN3WM5STACK-CORE2 (K010, grant 08/20/2020); Tough 2AN3W-M5STACK-TOUGH (K034, grant 04/19/2021) | Vendor-hosted grants under https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/certification/, read 2026-11-25. The StickS3 grant has no text layer, so its ID was read from a 300 dpi page render and is OCR-derived; the other two were read from their text layers. No board-level filing was found for the Plus2 or the Core Basic. The StickC and the StickC Plus do have one: 2AN3WM5STICKC (grant 2019-06-04) and 2AN3WM5STICKCPLUS (grant 2026-01-23), both read from fccid.io, which mirrors the FCC database, on 2026-11-26. This row said none was found until the retrospective review checked the ID database rather than only the vendor-hosted certification files |
+| FCC ID for the assembled Waveshare board | none found; certified through the module grant | The ESP32-S3-ETH product page, https://docs.waveshare.com/ESP32-S3-ETH, SHA-256 `00fd70c1b2406485a4636b8f046084311544a166fffa1769783c8fafa034cf0d`, contains zero occurrences of FCC, so no board-level filing is claimed by the vendor. Silence on a product page is not evidence that no filing exists: the ID-database search endpoint returned HTTP 403 to the research agent, so this row is a not-found, not a negative |
+| FCC exhibit databases | search inaccessible, per-ID pages readable | The fccid.io and fcc.report search endpoints returned HTTP 403 to the research agent, so no claim is made about schematics or internal photos in any of these filings. A per-FCC-ID page is served, which is how 2AN3WM5STICKC and 2AN3WM5STICKCPLUS were read on 2026-11-26 |
 | FCC ID for the ESP32-WROOM-32 module | unknown | No Espressif or M5Stack grant for a WROOM-32 module on a supported board was located. Close from the module label or a vendor-hosted grant |
 | Vendor board manuals | vendor page | Product pages and wikis in sections 5 and 7. No PDF manual for the M5Stack boards is in the tree |
 | Vendor camera manuals | out of this register | They live in the private corpus `docs/research/model-manuals-*.md` |
@@ -428,9 +428,10 @@ arithmetic estimate on a nominal capacity, not a measured runtime.
 - The open document gaps are the Core Basic IMU part, the StickS3 panel, the
   touch controller current, the RTC, the audio parts, the SD slot, the
   ESP32-WROOM-32 module FCC ID, and the cell datasheets. Each is listed with its
-  closing artifact. The assembled-board FCC gaps for the StickS3, Core2 and
-  Tough are closed, and the Waveshare board is recorded as having no board-level
-  filing.
+  closing artifact. The assembled-board FCC gaps for the StickS3, Core2, Tough,
+  StickC and StickC Plus are closed. The Waveshare board is recorded as having
+  no board-level filing found, which is a product-page negative: the ID-database
+  search was blocked, so the row says unverified rather than none.
 - No gap blocks a safe-now change. Every gap blocks only a number that the
   bench plan already marks as measurement-gated.
 - No errata or application note is invented to fill a row.

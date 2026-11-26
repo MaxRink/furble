@@ -123,9 +123,11 @@ Three fields describe the model rather than a device TLSF walk:
   `xTaskCreate` allocates and what the model already charges.
 - `free_blocks` is one for a non-empty pool, because the model is one
   contiguous region per capability set and carries no fragmentation.
-- `minimum_free_bytes` is the model's internal watermark for every caps set. It
-  is not the per-pool figure `heap_caps_get_minimum_free_size()` now returns for
-  a PSRAM query.
+- `minimum_free_bytes` is the watermark of the pool the query resolved, so it
+  agrees with `heap_caps_get_minimum_free_size()` on a single pool. It did not
+  when this plan merged: the field carried the internal watermark for either
+  pool, which the #506 review flagged and the follow-up at the end of this file
+  fixed.
 
 The model gained a per-pool live block count for `allocated_blocks`. It is
 incremented where a block is charged and decremented where one is refunded, with
@@ -227,9 +229,11 @@ sees it.
   capability set matches, so a `MALLOC_CAP_8BIT` or `MALLOC_CAP_DEFAULT` query
   reports the internal pool alone, where the per-caps getters aggregate both
   pools since #472.
-- The model keeps one minimum watermark in the struct, so a PSRAM
+- ~~The model keeps one minimum watermark in the struct, so a PSRAM
   `minimum_free_bytes` is the internal figure. A per-pool watermark in the
-  struct is a model change, not a shim change.
+  struct is a model change, not a shim change.~~ Closed by the follow-up: the
+  model already had `heapPsramMinimumFree()` from #472, so selecting it for an
+  external read is a shim fix, not the model change this row assumed.
 - `free_blocks` is one for a non-empty pool, because the model carries no
   fragmentation, so the field and any fragmentation-sensitive gate built on it
   say nothing about a device TLSF walk.
@@ -270,9 +274,8 @@ job. It covers:
   two pools seeded an order of magnitude apart so a caps-blind implementation
   cannot satisfy both, plus the block ledger (`allocated_blocks`,
   `total_allocated_bytes`, `free_blocks`, `total_blocks`) across an allocation
-  and a free. `minimum_free_bytes` is asserted only against the model's own
-  single watermark, not against the per-caps getter, because a per-pool
-  watermark would change what that getter returns; the gap is listed above.
+  and a free. `minimum_free_bytes` is asserted against
+  `heap_caps_get_minimum_free_size()` for both pools after the follow-up below.
 
 The zeroing case is a real gate on the CI lane and a vacuous one on a macOS
 developer host: glibc hands a freed block of that size straight back out of the
@@ -369,3 +372,21 @@ conflicts by keeping both sides, #472 changed what the per-caps getters return s
 Gap 3's claims about them are restated, and the CMake entry point finding was
 fixed rather than deferred because it makes a documented entry point produce an
 aborting binary.
+
+## Follow-up: the info watermark ignored the pool
+
+Source: the retrospective review of #506 (`plans/357-review-feedback.md`).
+
+`heap_caps_get_info()` resolves one pool per query from the SPIRAM bit, but it
+took `minimum_free_bytes` from the internal pool whichever pool it resolved. So
+`heap_caps_get_info(&info, MALLOC_CAP_SPIRAM).minimum_free_bytes` returned the
+internal watermark while `heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM)`
+returned the PSRAM one, and the code comment claimed the field matched the
+getter "for every caps set". ESP-IDF sums the matching heaps and each heap
+reports its own `multi_heap_get_info()` watermark, so the device never mixes the
+two.
+
+Fixed by selecting `heapPsramMinimumFree()` for the external pool. The model
+already carried the figure from #472, so this was a shim bug, not a model gap.
+`sim_heap_caps_shim_test` now asserts the info field against the per-caps getter
+for both pools, and that the two pools report different watermarks.
