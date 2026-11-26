@@ -203,23 +203,27 @@ removed. A future board that wants GPS names `PROFILE` and its own pair.
 ## Overlap with the Waveshare board row
 
 A separate change, `fix/waveshare-board-row` (plan 349), also gives
-`board_M5StampS3` a row and a case, and it adds a `powerOffPath` column. Both
-changes land on the same row, so they have to end up as one row with both
-column sets, never as two rows or two `case` labels. This branch is shaped so
-that merge is mechanical:
+`board_M5StampS3` a row and a case, and it adds a `powerOffPath` column. That
+row and column merged as #500, and #497 (`fix/core-family`, plan 354) then
+rewrote every row of the table and merged as 535ad7d6. All three land on the
+same table, so they have to end up as one row with every column set, never as
+two rows or two `case` labels. The rebase onto 535ad7d6 resolved to that shape:
 
 - The three GPS columns are appended after `gpsRail` at the end of the struct,
-  and the Waveshare row sits after `TOUGH` where the other change puts its row,
-  so the power-off column (`powerOffPath`, after `canPowerOff`) and the GPS
-  columns do not overlap in the struct.
-- The row in this branch copies every non-GPS column from the unknown row, so
-  this change moves nothing except the GPS decision. Plan 349 owns the
-  power-off columns of that row (`canPowerOff` and `powerOffPath` false).
-- A scratch cherry-pick of that commit onto this branch resolved to one
-  `WAVESHARE` row carrying `powerOffPath` false and `GpsPinSource::NONE`, and
-  one `case m5::board_t::board_M5StampS3`. The combined tree passes both
-  `board-profile` and `platform-power-off`. Whichever change merges second
-  rebases onto that shape; the GPS columns here survive unchanged.
+  and the Waveshare row sits after `TOUGH`, so `powerOffPath` (which follows
+  `canPowerOff`) and the GPS columns do not overlap in the struct.
+- The resolution keeps #497's rows verbatim, including the capacities it
+  corrected (Core 110, Core2 500, Tough 390), the Tough speaker, SD slot and
+  RTC alarm, and its power-off comments, and re-appends only the three GPS
+  columns. There is one `WAVESHARE` row carrying `powerOffPath` false and
+  `GpsPinSource::NONE`, and one `case m5::board_t::board_M5StampS3`.
+- The Core row keeps `canPowerOff` false, which is the UI policy gate for its
+  coarse IP5306 level and absent charging state, and `powerOffPath` true, which
+  is the deferred cut #497 reconciled with #500. The GPS columns take neither
+  side of that argument: the row simply claims no pin.
+- `tests/host/board_profile_test.cpp` carries the same resolution in its
+  `EXPECTED` table, so `board-profile` and `platform-power-off` pin both column
+  sets at once.
 
 ## Test coverage
 

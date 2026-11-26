@@ -13,10 +13,11 @@ positions in the tree this PR produces on master.
 | # | Finding | Resolution | Evidence |
 | ---: | :--- | :--- | :--- |
 | 1 | The Waveshare ESP32-S3-ETH row now names `GpsPinSource::NONE`, so furble installs no GPS UART on that board, but `docs/power/board-power.md` still described it as "GPS only through the Pico header". That is the one board-facing doc the change did not update, and it leaves a reader believing the receiver still has a port. | Fixed. The row now says the profile names no GPS UART, that GPIO13 is the W5500 SPI clock, and that a receiver on the Pico header therefore has no port. | `docs/power/board-power.md`, the `waveshare-s3-eth` rails row. |
-| 2 | `docs/power/board-power.md` still attributed the Port A pin lookup to `src/FurbleGPS.cpp:168-169` and the UART setup to `:160-180`. This change deletes that lookup from `src/FurbleGPS.cpp` and inserts the pin seam above the setup block, so both citations were wrong on two axes: wrong file and wrong lines. | Fixed. The paragraph now names `Board::gpsPins()` and `src/FurbleBoard.cpp:180-181`, and the setup block is cited at `:188-215`. | `grep -c 'M5.getPin' src/FurbleGPS.cpp` is 0 after this change; the two calls are at `src/FurbleBoard.cpp:180-181`. |
-| 3 | Eight documentation citations the rebase rotated: `docs/components/at6668.md`, `docs/components/board-map.md`, `plans/00-hardware-experiments.md`, `plans/50-companion-app-design.md`, `plans/implemented/14-gps-pcas.md` (two), `plans/implemented/15-gps-power.md`, `plans/implemented/21-imu-dead-reckoning.md`. The branch's own rotation commit was correct against its base; master's #505 and this rebase moved the symbols again. | Fixed, all eight re-pointed to where the symbol now sits. | `python3 tools/check_doc_citations.py` reports `0 errors of 2871 citations in 157 files`. |
+| 2 | `docs/power/board-power.md` still attributed the Port A pin lookup to `src/FurbleGPS.cpp:168-169` and the UART setup to `:160-180`. This change deletes that lookup from `src/FurbleGPS.cpp` and inserts the pin seam above the setup block, so both citations were wrong on two axes: wrong file and wrong lines. | Fixed. The paragraph now names `Board::gpsPins()` and `src/FurbleBoard.cpp:205-206`, and the setup block is cited at `:188-233`. | `grep -c 'M5.getPin' src/FurbleGPS.cpp` is 0 after this change; the two calls are at `src/FurbleBoard.cpp:205-206`, and the setup block runs from the `uart_config_t` initialiser at `:188` to `uart_flush()` at `:233`. |
+| 3 | Eight documentation citations the rebase rotated: `docs/components/at6668.md`, `docs/components/board-map.md`, `plans/00-hardware-experiments.md`, `plans/50-companion-app-design.md`, `plans/implemented/14-gps-pcas.md` (two), `plans/implemented/15-gps-power.md`, `plans/implemented/21-imu-dead-reckoning.md`. The branch's own rotation commit was correct against its base; master's #505 and this rebase moved the symbols again. | Fixed, all eight re-pointed to where the symbol now sits. | `python3 tools/check_doc_citations.py` reports 0 errors. |
 | 4 | **#509 merged during the review and guards the same function.** It returns early when `uart_driver_install()` fails and deliberately leaves `m_Enabled` to the stored setting, and its scenario `gps-uart-install-failure.txt` asserts `gps.enabled 1` with `gps.receiver absent`. This branch returns early on the same `m_Task == NULL` for a board with no port and clears `m_Enabled`, and its scenario asserts `gps.enabled 0`. A naive merge would have made the two paths indistinguishable and broken one of the two scenarios. | Fixed. One guard on the missing task distinguishes the causes: `m_UartInstallFailed` keeps the stored setting and the receiver absent, and a `NONE` row clears `m_Enabled` as well. `getInstance()` keeps #509's failure flag in its condition, so neither path retries. | `src/FurbleGPS.cpp`, `GPS::enable()`. Both `waveshare-no-gps-uart.txt` (`gps.enabled 0`) and `e2e/gps-uart-install-failure.txt` (`gps.enabled 1`) pass on the rebased tree. |
-| 5 | **A #509 scenario stayed certified for the Core, where this change closes the UART.** `e2e/gps-uart-install-failure.txt` seeds a failed `uart_driver_install()` and asserts `gps.enabled 1`, but on the Core the row names `GpsPinSource::NONE`, so the install never runs and the guard correctly reports `gps.enabled 0`. The manifest still listed `m5stack-core`, so `sim-e2e` failed on the alternate-board pass. `e2e/gps-cycle-wait.txt` was left with the same problem in the benign direction: it asserts a ceiling on `gps.timeouts`, which is vacuously true with no driver, so it passed without testing anything. | Fixed. Both entries drop `m5stack-core`, which is the rule `sim/CLAUDE.md` already states for scenarios that drive the fake UART and assert receiver behaviour. The Core keeps the page-only scenarios. | `sim/scenarios/manifest.json`; `python3 tools/check_sim_scenarios.py` and `tools/check_sim_coverage.py` both pass, and the full `sim-e2e` alternate-board pass is green on this head. |
+| 5 | Two more citations in the same file were stale and the gate cannot see them. RL-02 cited `src/FurbleGPS.cpp:118-122` for the rail cut and RL-03 cited the same range for the only `setExtOutput` caller, but that range holds the anonymous namespace's stack constants now. The UART setup was cited as `:188-215`, which stops inside the `uart_config_t` initialiser and never reaches `uart_set_pin()` at `:230`, the line RL-02 is about. | Fixed. RL-02 cites the rail drop at `src/FurbleGPS.cpp:604-605` and the setup at `:188-233`; RL-03 cites `GPS::setRailPower` at `:2402` and the same setup range; the pin seam paragraph cites `src/FurbleBoard.cpp:205-206`. | `git show 464b5493:src/FurbleGPS.cpp` shows `:118-122` was `setRailPower()` when the citation was written, and on this head `grep -n 'void GPS::setRailPower'` gives 2402, `uart_set_pin` 230 and `setRailPower(false)` at 605. |
+| 6 | **A #509 scenario stayed certified for the Core, where this change closes the UART.** `e2e/gps-uart-install-failure.txt` seeds a failed `uart_driver_install()` and asserts `gps.enabled 1`, but on the Core the row names `GpsPinSource::NONE`, so the install never runs and the guard correctly reports `gps.enabled 0`. The manifest still listed `m5stack-core`, so `sim-e2e` failed on the alternate-board pass. `e2e/gps-cycle-wait.txt` was left with the same problem in the benign direction: it asserts a ceiling on `gps.timeouts`, which is vacuously true with no driver, so it passed without testing anything. | Fixed. Both entries drop `m5stack-core`, which is the rule `sim/CLAUDE.md` already states for scenarios that drive the fake UART and assert receiver behaviour. The Core keeps the page-only scenarios. | `sim/scenarios/manifest.json`; `python3 tools/check_sim_scenarios.py` and `tools/check_sim_coverage.py` both pass, and the full `sim-e2e` alternate-board pass is green on this head. |
 
 ## Checked and not findings
 
@@ -84,25 +85,70 @@ looked suspicious and are not.
   guards every `uart_*` entry point with a `p_uart_obj[uart_num]` check, and the
   simulator's fake UART has no driver state to dereference, so the call fails
   instead of crashing.
-- **The row shape reconciles with #505 and with #500, which both merged.** #505
+- **The row shape reconciles with #505, #500 and #497, which all merged.** #505
   added `ledActiveLow` and `irMarkLow` after `gpsRail`; #500 added the
   `powerOffPath` column and its own `WAVESHARE` row and
-  `case board_M5StampS3`. The rebase keeps every one of those and appends the
-  three GPS columns at the end, so there is exactly one row per board, one
-  `case` label, and #500's `WAVESHARE` row now carries
-  `GpsPinSource::NONE`. No `STAMPS3` row of this branch survives.
+  `case board_M5StampS3`; #497 rewrote every row and its comments and merged as
+  535ad7d6. The rebase keeps every one of those and appends the three GPS
+  columns at the end, so there is exactly one row per board, one `case` label,
+  and the merged `WAVESHARE` row carries `GpsPinSource::NONE`. No `STAMPS3` row
+  of this branch survives. The details of that rebase are in the next section.
 - **No em-dashes were added.** `CONTRIBUTING.md` forbids them; `tools/
   pre_review.py` passes.
 
+## Rebase onto #497
+
+#497 (`fix/core-family`, plan 354) merged as 535ad7d6 while this change was
+open, and it rewrote the same board profile table. Three files conflicted with
+real content and ten more with citations.
+
+| File | Conflict | Resolution |
+| :--- | :--- | :--- |
+| `src/FurbleBoard.cpp` | #497 rewrote every row and the comments around them: capacities corrected to Core 110, Core2 500 and Tough 390, the Tough speaker, SD slot and RTC alarm facts, the `powerOffPath` column from #500, and the Waveshare row. This change appended three GPS columns and carried its own `STAMPS3` and `WAVESHARE` rows. | Kept #497's rows and comments verbatim and re-appended only `gpsPinSource`, `gpsRxPin` and `gpsTxPin`: `NONE` for the Core and the Waveshare, `BOARD_SUPPORT` for the other seven rows including the unknown one. `powerOffPath` stays as #497 left it, true on the Core and false only on the Waveshare. No `STAMPS3` row survives. |
+| `tests/host/board_profile_test.cpp` | The same table in the `EXPECTED` initialisers, and the expectation struct had to carry both column sets. | Same resolution. The struct keeps `canPowerOff` and `powerOffPath` side by side, followed by `gps`, `gpsRx` and `gpsTx`, and `board-profile` compares all six per row. |
+| `include/CLAUDE.md` | #497 added the Tough sentence to the board row bullet; this change added the `gpsPins()` bullet. | Kept both. The `gpsPins()` bullet follows the board row bullet, so it reads as the pin seam rather than as another hardware claim. |
+
+Ten further files conflicted with citation-only changes: `docs/power/ble.md`,
+`docs/power/board-power.md`, `plans/25-multiconnect-ui.md`,
+`plans/34-ota-partitions.md`, `plans/64-debug-tooling.md`,
+`plans/349-waveshare-board-row.md`, `plans/implemented/04-bulb-timer.md`,
+`plans/implemented/19-interval-deep-sleep.md`,
+`plans/implemented/107-ui-layout-audit.md` and
+`plans/implemented/26-pm1-watchdog.md`. Each took the master text and was
+re-pointed after the conflict. Three symbols had moved far enough that the
+checker could not place them from its own hint, so they were fixed by hand:
+`CameraList::clear()` at `src/FurbleUI.cpp:9595`, the `STATE_FINISHED` arm and
+its `clearResume()` at `:7828-7831`, and the 5 ms `vTaskDelay` at `:13518`.
+
+The merged rows say what #497 and #500 say, with the GPS decision added:
+
+| Row | `canPowerOff` | `powerOffPath` | `gpsPinSource` |
+| :--- | :--- | :--- | :--- |
+| Core | false (coarse IP5306 level, no charging state) | true (deferred IP5306 cut) | `NONE` (Port A is the I2C bus) |
+| Waveshare | false | false (no PMIC, no cell, no rail) | `NONE` (GPIO13 is the W5500 clock) |
+| Core2, Tough, StickC, StickC+, StickC+2, StickS3, unknown | as on master | as on master | `BOARD_SUPPORT` |
+
+The Core row therefore claims no GPS UART and a working deferred power-off
+path, which is the combination #497 and #500 settled on, and the GPS columns
+take neither side of it. `plans/336-gps-pin-seam.md` had an overlap section
+written in the future tense about a merge that had not happened yet; it now
+records this resolution instead.
+
 ## Gates
+
+All of these were re-run on the tree this record describes, which is the
+branch rebased onto 535ad7d6.
 
 | Gate | Command | Result |
 | :--- | :--- | :--- |
-| Host suite | `ctest --test-dir /tmp/rv510-build --output-on-failure -j 6` | `100% tests passed out of 211` |
-| Pre-review | `python3 tools/pre_review.py --base origin/master` | 13 gates |
+| Host suite | `cmake -S tests/host -B /tmp/rv510-build -G Ninja && ninja -C /tmp/rv510-build && ctest --test-dir /tmp/rv510-build --output-on-failure -j 6` | `100% tests passed out of 214` |
+| Pre-review | `python3 tools/pre_review.py --base origin/master` | `PASS: 13 gates` |
 | Doc tokens | `sh sim/scripts/check-doc-tokens.sh` | tokens present |
 | Scenario manifest | `python3 tools/check_sim_scenarios.py` | complete |
-| Doc citations | `python3 tools/check_doc_citations.py` | 0 errors |
+| Simulator coverage | `python3 tools/check_sim_coverage.py` | complete |
+| Doc citations | `python3 tools/check_doc_citations.py` | `0 errors of 3059 citations in 172 files` |
 | Format | `python3 tools/check_format.py --base origin/master` | 12 changed files formatted |
-| Simulator | `sh sim/build.sh` on the branch tree, `waveshare-no-gps-uart` and `gps-no-receiver` by `--script` | both pass; the seed-removed copy fails as recorded above |
+| Power gate | the `power-gate` CI step run locally: `sh sim/build.sh`, then the eleven certified `power-gate` scenarios for `m5stick-s3` through `tools/power-model/compare.py` against `tools/power-model/baseline` | 11 of 11 `PASS`; `waveshare-no-gps-uart` and `connected-gps-active-30s` at `+0.00%`, `gps-duty-standby-cycle` at `-1.56%`, the rest inside the threshold |
+| Core bug hunt | `FURBLE_SIM_FURBLE_BOARD=FURBLE_M5COREX FURBLE_SIM_M5GFX_BOARD=board_M5Stack sh sim/build.sh`, then the 51 certified `bughunt` scenarios for `m5stack-core` with `FURBLE_SIM_IR=1 FURBLE_SIM_FEEDBACK=1 FURBLE_SIM_SD=1` | 51 of 51 pass |
+| GPS scenarios | `waveshare-no-gps-uart` and `e2e/gps-no-receiver` by `--script` on the S3 build | both pass; the seed-removed copy fails as recorded above |
 | Firmware | `build (m5stack-core)`, `build (waveshare-s3-eth)` and the matrix in CI | CI is the authority |
