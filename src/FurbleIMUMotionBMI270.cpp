@@ -24,14 +24,14 @@ constexpr uint8_t IMU_ADDRESS = 0x68;
 // bmi2_defs.h BMI2_CHIP_ID_ADDR, datasheet 5.2.1. BMI270 reads 0x24.
 constexpr uint8_t CHIP_ID = 0x00;
 constexpr uint8_t EXPECTED_CHIP_ID = 0x24;
-// bmi2_defs.h BMI2_INT_STATUS_0_ADDR, datasheet 5.2.9.
+// bmi2_defs.h BMI2_INT_STATUS_0_ADDR, datasheet 5.2.28.
 constexpr uint8_t INTERRUPT_STATUS_0 = 0x1C;
-// bmi2_defs.h BMI2_INTERNAL_STATUS_ADDR, datasheet 5.2.14. The low nibble is
+// bmi2_defs.h BMI2_INTERNAL_STATUS_ADDR, datasheet 5.2.33. The low nibble is
 // the message field and reads BMI2_INIT_OK once the config file is loaded.
 constexpr uint8_t INTERNAL_STATUS = 0x21;
 constexpr uint8_t INTERNAL_STATUS_MESSAGE = 0x0F;
 constexpr uint8_t INTERNAL_STATUS_INIT_OK = 0x01;
-// bmi2_defs.h BMI2_FEAT_PAGE_ADDR and BMI2_FEATURES_REG_ADDR, datasheet 5.2.24.
+// bmi2_defs.h BMI2_FEAT_PAGE_ADDR and BMI2_FEATURES_REG_ADDR, datasheet 5.2.39 and 5.2.40.
 // The feature window is BMI2_FEAT_SIZE_IN_BYTES wide.
 constexpr uint8_t FEATURE_PAGE = 0x2F;
 constexpr uint8_t FEATURES_REG = 0x30;
@@ -45,9 +45,9 @@ constexpr uint8_t INT1_IO_CONTROL_DISABLED = 0x00;
 // bmi2_defs.h BMI2_INT_LATCH_ADDR, datasheet 5.2.38. 0x00 is non-latched, so
 // the pin releases without a bus transaction and light sleep stays re-entrant.
 constexpr uint8_t INTERRUPT_LATCH = 0x55;
-// bmi2_defs.h BMI2_INT1_MAP_FEAT_ADDR, datasheet 5.2.39.
+// bmi2_defs.h BMI2_INT1_MAP_FEAT_ADDR, datasheet 5.2.61.
 constexpr uint8_t INT1_MAP_FEATURE = 0x56;
-// bmi2_defs.h BMI2_INT_MAP_DATA_ADDR, datasheet 5.2.40. Bits 3:0 map the data
+// bmi2_defs.h BMI2_INT_MAP_DATA_ADDR, datasheet 5.2.63. Bits 3:0 map the data
 // interrupts to INT1, bits 7:4 to INT2. M5Unified writes 0xFF here during
 // begin() (BMI270_Class.cpp:60), which maps data-ready to both pins. Enabling
 // the INT1 output without clearing that turns the wake line into a ~100 Hz

@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """Measure firmware line coverage across the host and simulator test stacks.
 
-Both stacks compile the same firmware sources, so neither number alone says how
+Every stack compiles the same firmware sources, so no single number says how
 much of the firmware the tests reach. This tool builds each stack with clang
 source-based coverage, runs the same suites CI runs, exports lcov, and unions
 the per-line hit data so one grand-union percentage covers the firmware tree.
+
+There are three measured stacks: the host harness, the simulator on each
+modelled panel, and one optional-transport simulator build. The last one exists
+because `src/FurbleMQTT.cpp` is an empty translation unit unless `FURBLE_MQTT`
+is defined, so the production MQTT owner is measured by no other build. It is
+built with `FURBLE_SIM_MQTT=1` from the same `sim/build.sh` the other simulator
+stacks use, and it runs the certified scenarios the manifest scopes to that
+transport.
 
 Firmware sources are the files under src/, lib/furble/, lib/preferences/,
 lib/blowfish/ and include/. Everything else (LVGL, M5GFX, M5Unified, the test
@@ -21,6 +29,7 @@ Usage:
   python3 tools/coverage.py --ratchet
   python3 tools/coverage.py --ratchet --lower --reason "..."
   python3 tools/coverage.py --stack host --skip-build
+  python3 tools/coverage.py --stack sim-mqtt
 
 Requires clang, cmake and the matching llvm-profdata and llvm-cov. Override
 tool discovery with LLVM_COV and LLVM_PROFDATA.
@@ -67,6 +76,20 @@ SIM_ENV = {
     "FURBLE_SIM_SD": "1",
 }
 
+# The optional MQTT-transport build. src/FurbleMQTT.cpp compiles to nothing
+# unless FURBLE_MQTT is defined, so the production MQTT owner is measured here
+# and nowhere else. Only the 135x240 panel carries those scenarios; the manifest
+# decides which ones, this is the board they are certified on.
+SIM_MQTT_BOARD_ID = "m5stick-s3"
+
+# The transport talks to a closed port, so every run exercises the production
+# retry accounting and needs no broker, exactly as sim/scripts/run-memory.sh
+# documents.
+SIM_MQTT_ENV = {
+    "FURBLE_SIM_MQTT_URI": "mqtt://127.0.0.1:1",
+    "FURBLE_SIM_MQTT_FAST_RECONNECT": "1",
+}
+
 # Every suite tools/check_sim_scenarios.py owns. Which boards each one runs on
 # comes from the manifest, so this list never needs a per-board exception.
 SIM_SUITES = ("bughunt", "e2e", "invalid", "power-gate")
@@ -99,6 +122,32 @@ SCENARIO_OUTPUT_TAIL_BYTES = 64 * 1024
 
 class CoverageError(RuntimeError):
   """A coverage run could not be completed."""
+
+
+def sim_mqtt_board() -> tuple[str, str, str, str]:
+  """Return the panel tuple the MQTT-transport build models."""
+
+  for board in SIM_BOARDS:
+    if board[0] == SIM_MQTT_BOARD_ID:
+      return board
+  raise CoverageError(f"{SIM_MQTT_BOARD_ID} is not a modelled panel")
+
+
+def sim_stack_name(board, transport: str = "default") -> str:
+  """Return the report name for one simulator build.
+
+  The `sim ` prefix is load bearing: build_summary() unions every stack that
+  carries it into the `sim union` row.
+  """
+
+  suffix = "" if transport == "default" else f" {transport}"
+  return f"sim {board[0]}{suffix} ({board[3]})"
+
+
+def sim_build_suffix(transport: str) -> str:
+  """Return the build-dir suffix that keeps the transports apart."""
+
+  return "" if transport == "default" else f"-{transport}"
 
 
 def scenario_output_tail(output: str | bytes | None) -> str:
@@ -832,24 +881,26 @@ def measure_host(args, root: Path, llvm_cov: str, llvm_profdata: str) -> dict:
   return export_lcov(llvm_cov, profdata, ctest_binaries(build_dir), root)
 
 
-def build_simulator(args, root: Path, board: tuple[str, str, str, str]) -> Path:
+def build_simulator(args, root: Path, board: tuple[str, str, str, str],
+                    transport: str = "default") -> Path:
   board_id, furble_board, m5gfx_board, _ = board
-  build_dir = args.build_dir / f"sim-{board_id}"
+  build_dir = args.build_dir / f"sim-{board_id}{sim_build_suffix(transport)}"
   if not args.skip_build:
-    run(
-        ["sh", str(root / "sim/build.sh")],
-        cwd=root,
-        env={
-            "FURBLE_SIM_BUILD_DIR": str(build_dir),
-            "FURBLE_SIM_COVERAGE": "1",
-            "FURBLE_SIM_FURBLE_BOARD": furble_board,
-            "FURBLE_SIM_M5GFX_BOARD": m5gfx_board,
-            "FURBLE_DEP_ROOT": args.dep_root,
-            "FURBLE_LVGL_DIR": args.lvgl_dir,
-            "CC": args.cc,
-            "CXX": args.cxx,
-        },
-    )
+    env = {
+        "FURBLE_SIM_BUILD_DIR": str(build_dir),
+        "FURBLE_SIM_COVERAGE": "1",
+        "FURBLE_SIM_FURBLE_BOARD": furble_board,
+        "FURBLE_SIM_M5GFX_BOARD": m5gfx_board,
+        "FURBLE_DEP_ROOT": args.dep_root,
+        "FURBLE_LVGL_DIR": args.lvgl_dir,
+        "CC": args.cc,
+        "CXX": args.cxx,
+    }
+    if transport != "default":
+      # build.sh keeps a separate object cache per transport because the flag
+      # stamp carries this value, so the plain and MQTT objects never mix.
+      env["FURBLE_SIM_MQTT"] = "1"
+    run(["sh", str(root / "sim/build.sh")], cwd=root, env=env)
   binary = build_dir / "furble-sim"
   if not binary.is_file():
     raise CoverageError(f"simulator binary is missing at {binary}")
@@ -891,7 +942,8 @@ def incomplete_scenarios(results, timeout_s: float) -> list[str]:
   return failures
 
 
-def certified_scenarios(root: Path, suite: str, board: str) -> list[str]:
+def certified_scenarios(root: Path, suite: str, board: str,
+                        transport: str = "default") -> list[str]:
   result = run(
       [
           sys.executable,
@@ -901,42 +953,51 @@ def certified_scenarios(root: Path, suite: str, board: str) -> list[str]:
           suite,
           "--board",
           board,
+          "--transport",
+          transport,
       ],
       capture=True,
   )
   # An empty selection is a fact about the manifest, not an error. The
   # power-gate and invalid suites are modeled on the 135x240 panel only, so
-  # the other two boards legitimately select nothing.
+  # the other two boards legitimately select nothing; no suite certifies a
+  # scenario for the MQTT transport on any other panel.
   return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def measure_sim_board(
-    args, root: Path, board, llvm_cov: str, llvm_profdata: str
+    args, root: Path, board, llvm_cov: str, llvm_profdata: str,
+    transport: str = "default",
 ) -> dict:
   board_id = board[0]
-  binary = build_simulator(args, root, board)
-  profile_dir = args.build_dir / "profiles" / f"sim-{board_id}"
+  suffix = sim_build_suffix(transport)
+  binary = build_simulator(args, root, board, transport)
+  profile_dir = args.build_dir / "profiles" / f"sim-{board_id}{suffix}"
   shutil.rmtree(profile_dir, ignore_errors=True)
   profile_dir.mkdir(parents=True, exist_ok=True)
-  state_dir = args.build_dir / "state" / f"sim-{board_id}"
+  state_dir = args.build_dir / "state" / f"sim-{board_id}{suffix}"
   shutil.rmtree(state_dir, ignore_errors=True)
   state_dir.mkdir(parents=True, exist_ok=True)
   report_dir = args.build_dir / "power-reports" / board_id
   report_dir.mkdir(parents=True, exist_ok=True)
 
-  # Every suite the manifest owns, asked per board. Which boards a suite runs
-  # on is the manifest's answer, not a constant here: power-gate and invalid
-  # are modeled on the 135x240 panel only, so the other two boards select
+  # Every suite the manifest owns, asked per board and per transport. Which
+  # boards a suite runs on, and which binary a scenario needs, are the
+  # manifest's answers, not constants here: power-gate and invalid are modeled
+  # on the 135x240 panel only, so the other two boards legitimately select
   # nothing and the loop simply produces no jobs for them.
   jobs: list[tuple[str, list[str]]] = []
   for suite in SIM_SUITES:
-    for scenario in certified_scenarios(root, suite, board_id):
+    for scenario in certified_scenarios(root, suite, board_id, transport):
       command = [str(binary), "--script", str(root / scenario)]
       if suite == "power-gate":
         command.extend(["--report-dir", str(report_dir)])
       jobs.append((scenario, command))
   if not jobs:
-    raise CoverageError(f"the manifest selected no scenarios for {board_id}")
+    raise CoverageError(
+        f"the manifest selected no scenarios for {board_id} over the "
+        f"{transport} transport"
+    )
 
   def run_scenario(indexed) -> tuple[str, int | None, str]:
     index, (label, command) = indexed
@@ -944,8 +1005,12 @@ def measure_sim_board(
     # scenarios stay independent of each other and of run order.
     env = dict(os.environ)
     env.update(SIM_ENV)
+    if transport != "default":
+      # Set here rather than only in run-memory.sh so a coverage run of the
+      # MQTT stack needs no broker and no shell wrapper.
+      env.update(SIM_MQTT_ENV)
     env["LLVM_PROFILE_FILE"] = str(
-        profile_dir / f"{board_id}-{index:04d}-%p.profraw"
+        profile_dir / f"{board_id}{suffix}-{index:04d}-%p.profraw"
     )
     env["FURBLE_SIM_PREFS"] = str(state_dir / f"prefs-{index:04d}.bin")
     try:
@@ -1011,9 +1076,10 @@ def measure_sim_board(
         + "\n- ".join(incomplete)
     )
 
-  if board_id == "m5stick-s3":
+  if board_id == "m5stick-s3" and transport == "default":
     # run-invalid.sh also drives command-line and environment rejection paths
-    # that no scenario file reaches, and the restart seam re-exec.
+    # that no scenario file reaches, and the restart seam re-exec. It is a
+    # property of the plain build, so the MQTT stack does not repeat it.
     env = dict(os.environ)
     env.update(SIM_ENV)
     env["LLVM_PROFILE_FILE"] = str(profile_dir / f"{board_id}-cli-%p.profraw")
@@ -1024,7 +1090,7 @@ def measure_sim_board(
         cwd=root, env=env, check=False, capture=True,
     )
 
-  profdata = args.build_dir / f"sim-{board_id}.profdata"
+  profdata = args.build_dir / f"sim-{board_id}{suffix}.profdata"
   merge_profiles(llvm_profdata, profile_dir, profdata)
   return export_lcov(llvm_cov, profdata, [binary], root)
 
@@ -1130,8 +1196,8 @@ def parse_args(argv=None):
       help="scratch directory for builds and profiles. Keep it short: one "
            "host test truncates paths into a 64 byte buffer.")
   parser.add_argument(
-      "--stack", action="append", choices=["host", "sim"],
-      help="measure only these stacks (default: both)")
+      "--stack", action="append", choices=["host", "sim", "sim-mqtt"],
+      help="measure only these stacks (default: all of them)")
   parser.add_argument(
       "--board", action="append",
       choices=[board[0] for board in SIM_BOARDS],
@@ -1205,7 +1271,7 @@ def main(argv=None) -> int:
     llvm_profdata = find_llvm_tool("llvm-profdata", "LLVM_PROFDATA", clang_major)
     args.build_dir.mkdir(parents=True, exist_ok=True)
 
-    stacks = args.stack or ["host", "sim"]
+    stacks = args.stack or ["host", "sim", "sim-mqtt"]
     boards = [
         board for board in SIM_BOARDS
         if not args.board or board[0] in args.board
@@ -1223,8 +1289,7 @@ def main(argv=None) -> int:
         )
     if "sim" in stacks:
       for board in boards:
-        name = f"sim {board[0]} ({board[3]})"
-        reports[name] = measure_sim_board(
+        reports[sim_stack_name(board)] = measure_sim_board(
             args, root, board, llvm_cov, llvm_profdata
         )
         if args.html:
@@ -1234,6 +1299,22 @@ def main(argv=None) -> int:
               [args.build_dir / f"sim-{board[0]}" / "furble-sim"],
               root,
               args.html / f"sim-{board[0]}",
+          )
+    if "sim-mqtt" in stacks:
+      # One board only: the manifest certifies the MQTT-transport scenarios on
+      # the 135x240 panel, so there is nothing to measure on the other two.
+      board = sim_mqtt_board()
+      if not args.board or board[0] in args.board:
+        reports[sim_stack_name(board, "mqtt")] = measure_sim_board(
+            args, root, board, llvm_cov, llvm_profdata, transport="mqtt"
+        )
+        if args.html:
+          write_html(
+              llvm_cov,
+              args.build_dir / f"sim-{board[0]}-mqtt.profdata",
+              [args.build_dir / f"sim-{board[0]}-mqtt" / "furble-sim"],
+              root,
+              args.html / f"sim-{board[0]}-mqtt",
           )
     if not reports:
       raise CoverageError("no stack was measured")

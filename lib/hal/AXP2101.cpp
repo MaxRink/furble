@@ -4,6 +4,11 @@ namespace Furble {
 namespace HAL {
 
 namespace {
+// Register addresses, X-Powers "AXP2101 Single Cell NVDC PMU with E-gauge"
+// datasheet revision 1.0, 2021-05-31, section 6.13.2 Register Description.
+// AXP2101.h cites the subsection for most registers; REG 03 is absent from the
+// revision 1.0 map and REG 41 carries no subsection there. Both are recorded,
+// with the rest of the open questions, in docs/components/axp2101.md.
 constexpr uint8_t REG_STATUS1 = 0x00;
 constexpr uint8_t REG_STATUS2 = 0x01;
 constexpr uint8_t REG_CHIP_ID = 0x03;

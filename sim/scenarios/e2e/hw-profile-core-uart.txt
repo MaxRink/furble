@@ -20,7 +20,9 @@ assert hw.ble yes
 assert hw.ir yes
 assert hw.sd yes
 assert hw.audio yes
-assert hw.rtc yes
+# The Core has no calendar RTC chip (docs/console-commands.md).
+assert hw.rtc no
+assert hw.rtc_capability match
 assert hw.gauge four_level
 assert mem.internal_total 532480
 assert mem.component.main_stack 16384

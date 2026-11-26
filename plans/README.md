@@ -101,6 +101,7 @@ the git history. They are no longer ownership rows.
 | [313-sim-only-status.md](313-sim-only-status.md) | Sim-only closeout: exact gate results, hardware-deferred items and resume criteria |
 | [314-memory-resilience.md](314-memory-resilience.md) | Memory resilience: sim heap fidelity and abort parity, load shedding, static and dynamic memory gates |
 | [314-review-feedback.md](314-review-feedback.md) | Review-feedback record for the plan 314 memory resilience series |
+| [356-sim-memory-certify.md](356-sim-memory-certify.md) | Simulator memory certification: the four MQTT memory scenarios certified, a `FURBLE_SIM_MQTT=1` coverage build, and the measured `src/FurbleMQTT.cpp` number |
 | [323-plans-refresh-review-feedback.md](323-plans-refresh-review-feedback.md) | Review-feedback record for the plans refresh, PR #441 |
 | [315-stickc-layout-regressions.md](implemented/315-stickc-layout-regressions.md) | M5StickC header battery anchor, Cameras page double reserve and Time page scroll fixes |
 | [316-docs-capture-companion-reject.md](implemented/316-docs-capture-companion-reject.md) | Docs capture: rename the hardware-model action that shadowed the companion pairing Reject |
@@ -116,6 +117,7 @@ the git history. They are no longer ownership rows.
 | [328-reference-docs-audit.md](328-reference-docs-audit.md) | Reference documentation audit: settings and console claims re-verified against the code, with the fixes and the claims that did not hold |
 | [342-wifi-lost-ip.md](342-wifi-lost-ip.md) | Lost DHCP lease: `IP_EVENT_STA_LOST_IP` clears the WiFi cache, and the WebUI gate and status page read the live station address |
 | [342-review-feedback.md](342-review-feedback.md) | Review-feedback record for the lost-lease fix: doc paragraph, deliberate-stop gate test, and five recorded follow-ups |
+| [339-mqtt-retry-backoff.md](339-mqtt-retry-backoff.md) | Capped exponential MQTT retry backoff and a WiFi-style failure classifier, so an outage never blocks the hub |
 | [332-vendor-document-verification.md](332-vendor-document-verification.md) | Vendor document verification: ESP32 and ESP32-S3 TRMs, S3 and PICO-1 datasheets, SX1262 Rev 2.2, W5500 1.1.0, M5PM1 V1.9 and the FCC grants, with revision, page and hash for every fact |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [337-sim-mem-shims.md](337-sim-mem-shims.md) | Simulator heap_caps calloc, realloc and get_info shims, and the PSRAM task-stack abort |
@@ -170,6 +172,7 @@ the git history. They are no longer ownership rows.
 | [287-mcu-portability-and-bundle-hardware.md](287-mcu-portability-and-bundle-hardware.md) | Whole-stack MCU portability, battery model, GPS quality, and buyable BLE plus GNSS hardware |
 | [322-hardware-abstraction.md](322-hardware-abstraction.md) | Hardware abstraction for the next boards: dependency audit, pure chip drivers, board profile and power backend |
 | [322-review-feedback.md](322-review-feedback.md) | Review-feedback record for the plan 322 hardware abstraction branches |
+| [333-datasheet-corpus.md](333-datasheet-corpus.md) | Datasheet citation corpus: one page per part, document revision and section per register fact, the citation gate, and the zero-PDF licence decision |
 | [473-review-feedback.md](473-review-feedback.md) | Review-feedback record for the #473 hardware-trap corrections and the per-panel display dwell rule |
 
 ## Next hardware
@@ -233,6 +236,7 @@ implemented.
 | [118-sim-ethernet-coverage.md](implemented/118-sim-ethernet-coverage.md) | Host Ethernet netif coverage for the transport-neutral MQTT seam |
 | [119-companion-gatt-sim.md](implemented/119-companion-gatt-sim.md) | Companion GATT host coverage, implemented by the companion harness |
 | [121-sim-usage-fault-docs.md](implemented/121-sim-usage-fault-docs.md) | Simulator usage and fault-injection reference, implemented |
+| [355-sim-cmake-entry-point.md](355-sim-cmake-entry-point.md) | Finding: the documented CMake entry point builds a simulator that aborts in the M5GFX SDL panel while the sim/build.sh binary runs the same scenario, with the exact reproduction |
 | [343-apple-ui-snapshot.md](343-apple-ui-snapshot.md) | First Apple UI snapshot: the shipped Status section body compared to a committed 1x baseline in the existing `swift test` target |
 | [343-review-feedback.md](343-review-feedback.md) | Review-feedback record for PR 480: baseline provenance on the `macos-15` image, the comparison the CI job reports, and the List row-flattening test |
 

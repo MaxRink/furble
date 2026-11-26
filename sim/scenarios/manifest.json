@@ -4496,8 +4496,8 @@
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+      "certified": true,
+      "transport": "mqtt"
     },
     {
       "path": "sim/scenarios/e2e/memory-mqtt-low-heap-retry-limit.txt",
@@ -4508,8 +4508,8 @@
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+      "certified": true,
+      "transport": "mqtt"
     },
     {
       "path": "sim/scenarios/e2e/memory-mqtt-unreachable.txt",
@@ -4520,8 +4520,8 @@
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+      "certified": true,
+      "transport": "mqtt"
     },
     {
       "path": "sim/scenarios/e2e/memory-pressure-mqtt-shed.txt",
@@ -4532,8 +4532,8 @@
       ],
       "capabilities": [],
       "expected_exit": 0,
-      "certified": false,
-      "reason": "Requires the optional FURBLE_SIM_MQTT=1 build and an unreachable broker URI; run by sim/scripts/run-memory.sh."
+      "certified": true,
+      "transport": "mqtt"
     },
     {
       "path": "sim/scenarios/e2e/memory-counted-camera-connect.txt",
@@ -4921,6 +4921,57 @@
         "m5stick-s3"
       ],
       "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-ir-rail-cut-in-flight.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-pmic-5vin-latch-blocks-wake.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-rtc-capability.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-pmic-pwr-cfg-lost-update.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps"
+      ],
       "expected_exit": 0,
       "certified": true
     },

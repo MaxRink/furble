@@ -18,7 +18,9 @@ assert hw.ble yes
 assert hw.ir no
 assert hw.sd no
 assert hw.audio no
-assert hw.rtc yes
+# The headless S3 row has no display, PMIC or RTC (docs/power/board-power.md).
+assert hw.rtc no
+assert hw.rtc_capability match
 assert pmic.watchdog unavailable
 assert mem.internal_total 524288
 assert mem.psram_total 8388608

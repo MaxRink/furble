@@ -1,0 +1,23 @@
+# The StickS3 has no RTC. The board-level pass found the model claiming one, and
+# nothing validated the capability, so every profile answered yes.
+#
+# docs/console-commands.md records that M5Unified finds no calendar RTC chip on
+# the StickS3 or the Core. The model now carries one verified row per profile and
+# checks the pair when a profile is selected and at boot.
+#
+# Teeth: set .rtc back to true for the StickS3 profile and hw.rtc reads yes, so
+# the first pair of asserts fails. Drop the check and the flipped capability
+# still reads match with fail_closed no, so the second block fails.
+seed hw_profile sticks3
+wait 100
+assert hw.profile sticks3
+assert hw.rtc no
+assert hw.rtc_capability match
+assert hw.fail_closed no
+
+# The check has to detect a wrong answer, not just agree with a constant.
+action hw-rtc-mismatch
+assert hw.rtc yes
+assert hw.rtc_capability mismatch
+assert hw.fail_closed yes
+exit

@@ -34,5 +34,7 @@ assert hw.gauge none
 assert hw.ir no
 assert hw.sd yes
 assert hw.audio no
-assert hw.rtc yes
+# The StampS3 on this board adds no RTC.
+assert hw.rtc no
+assert hw.rtc_capability match
 exit

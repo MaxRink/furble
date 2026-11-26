@@ -241,6 +241,11 @@ settings-touching rebase.
   `APPLIED`, `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; malformed direct
   actions fail closed. Keep this overload and result enum simulator-only so
   firmware builds retain the production header surface.
+- Under `FURBLE_SIM`, `FurblePlatform.h` declares and befriends the simulator
+  readers for the retained PMIC model: `watchdogState`, `motionWakeState`,
+  `pmicIrqState`, `pmicIrqStatus` and the two injected PMIC events. They exist
+  only so a scenario can observe the aggregated IRQ line and the watchdog
+  cycle, and firmware has no callers for any of them.
 - FurbleWiFi.h exposes station provisioning and NTP status for the app layer.
   `hasAssignedAddress()` is the live station readiness query: it asks esp-netif
   for an up netif with a non-zero IPv4 address instead of reading the cached
@@ -275,12 +280,15 @@ settings-touching rebase.
   when the queue is there) and never frees, because a stopped client may still
   deliver a late callback. `m_IncomingMutex` guards `m_Incoming` for
   overlapping clients; hold it only across filling and queueing the copy.
-  `m_Received` belongs to the owner task alone. Lifecycle events carry only the
-  client and event id. Without PSRAM the start gate reserves
-  `EVENT_STORAGE_BYTES`, the queue plus both copies. A failed
-  allocation aborts on every board, so the queue and the copies pick PSRAM from a
-  fresh largest-block reading before allocating, never by trying and falling
-  back, and an internal choice re-runs the start gate first.
+  `m_Received` belongs to the owner task alone. A lifecycle event carries the
+  client, the event id and the esp-mqtt error type and CONNACK code, copied
+  before the callback returns because the owner classifies the failure later.
+  The retry backoff (`m_RetryDelayMs`, `m_NextAttemptMs`) is under `m_Mutex`.
+  Without PSRAM the start gate reserves `EVENT_STORAGE_BYTES`, the queue plus
+  both copies. A failed allocation aborts on every board, so the queue and the
+  copies pick PSRAM from a fresh largest-block reading before allocating, never
+  by trying and falling back, and an internal choice re-runs the start gate
+  first.
 - `FurbleUIMemory.h` owns the panel-sized LVGL draw-buffer contract. Narrow
   panels use one buffer and wait for the SPI DMA before `lv_disp_flush_ready()`;
   wide panels keep two buffers. Both stay DMA-capable internal RAM. Update

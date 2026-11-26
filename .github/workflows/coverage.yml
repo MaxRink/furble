@@ -8,6 +8,11 @@ name: Coverage floor
 # run on all three modeled panels, unions the per-line hit data, and compares
 # the result against tests/coverage_floor.json. Below any floor fails the job.
 #
+# A fourth build compiles the simulator with FURBLE_SIM_MQTT=1 and runs the
+# scenarios the manifest scopes to that transport. src/FurbleMQTT.cpp is an
+# empty translation unit without it, so the production MQTT owner is measured
+# by no other build. That is why libmosquitto and cJSON are installed here.
+#
 # The report is written to the job summary rather than a pull request comment
 # on purpose. tools/check_ci_workflows.py forbids `pull-requests: write` in any
 # workflow with a `pull_request` trigger, which is the same reason the firmware
@@ -53,7 +58,7 @@ jobs:
   coverage:
     name: Measure firmware coverage and enforce the floor
     runs-on: ubuntu-latest
-    # Three instrumented simulator builds run one file at a time, so the wall
+    # Four instrumented simulator builds run one file at a time, so the wall
     # clock is dominated by compilation, not by the scenarios. A full run is
     # about ten minutes, so this is a wedge detector, not a budget.
     timeout-minutes: 45
@@ -86,12 +91,17 @@ jobs:
       # produced the numbers in the artifact. libclang-rt-18-dev holds the
       # profile and sanitizer runtimes; clang-18 only recommends it, so
       # --no-install-recommends drops it unless it is named here.
-      - name: Install SDL2 and the pinned Clang and LLVM
+      # libmosquitto-dev and libcjson-dev are the native transport the fourth
+      # build compiles against; without them sim/build.sh exits on
+      # FURBLE_SIM_MQTT=1 rather than measuring less.
+      - name: Install SDL2, the MQTT transport and the pinned Clang and LLVM
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            clang-18 llvm-18 libclang-rt-18-dev libsdl2-dev
+            clang-18 llvm-18 libclang-rt-18-dev libsdl2-dev \
+            libmosquitto-dev libcjson-dev
           test -f "$(clang-18 -print-file-name=libclang_rt.profile-x86_64.a)"
+          pkg-config --exists libmosquitto
           "$CXX" --version
           "$LLVM_COV" --version
 

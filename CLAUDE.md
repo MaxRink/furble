@@ -115,7 +115,8 @@ CLAUDE.md whose directory it touches.
   keep that permission on the publishing job, not on firmware build jobs.
   All simulator scenarios are listed in
   `sim/scenarios/manifest.json`, including their owner, board matrix,
-  capabilities, and expected exit status.
+  capabilities, expected exit status and, when the assertions need the optional
+  native MQTT transport, the transport they run on.
   The Android companion metadata table mirrors shipped firmware settings by
   wire ID. LEGEND wire 65 has values 0 (Buttons), 1 (Bottom), and 2 (Off);
   keep its protocol test aligned when that production enum changes.
@@ -168,8 +169,9 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners,
   clang-format 21 on the changed C and C++ files, the CI workflow and
-  simulator manifest checks, the coupling ratchet, and the scanner unit
-  tests. The ratchet fails when a per-file count of board
+  simulator manifest checks, the datasheet citation gate
+  (`tools/check_datasheet_citations.py`), the coupling ratchet, and the
+  scanner unit tests. The ratchet fails when a per-file count of board
   guards, `M5.` calls, `M5.getBoard()` or ESP/NimBLE public header types
   grows; after a reduction run `python3 tools/check_coupling_ratchet.py
   --update` and commit `tools/coupling_ratchet.json`. pre_review passes its
@@ -464,6 +466,16 @@ check.
   never put a 2,348-byte `queued_event_t` on its stack. It fills the owner's
   preallocated `m_Incoming` copy, and the owner receives into `m_Received`;
   both live with the queue and are never freed.
+- MQTT retries forever. A retryable failure (transport error, broker
+  unavailable, a refused admission gate) doubles the gap from 10 s to a 60 s
+  cap (`RETRY_INITIAL_MS`, `RETRY_MAX_MS`) and schedules the next start; it
+  never blocks. Only a classified credentials, protocol or client-id rejection
+  sets `m_Blocked`, and `mqtt connect` clears it. A retry destroys and
+  recreates the esp-mqtt client only, so every attempt passes the heap gates
+  again; the owner task, the event queue and the two event copies survive, and
+  a live connection resets the policy. Do not reintroduce a failure count that
+  stops the service: a broker outage longer than about a minute must not
+  silence the hub until a reboot.
 - Main task stack: keep the StickS3 at 12 KiB. The 8 KiB experiment overflowed
   in task main after MQTT was enabled. With MQTT connected `perf tasks` left
   3,020 of 12,288 bytes free on main, so it used about 9,268 bytes.

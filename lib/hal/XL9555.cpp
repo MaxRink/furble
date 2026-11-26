@@ -4,6 +4,10 @@ namespace Furble {
 namespace HAL {
 
 namespace {
+// Command bytes, XINLUDA "XL9535, XL9555 Product datasheet" Rev 2.3, section
+// 9.2.1 Table 6, as cited in XL9555.h. The retrieved copy confirmed Rev 2.3 but
+// not the section headings, so that part keeps the driver's citation; see
+// docs/components/xl9555.md.
 constexpr uint8_t REG_INPUT = 0x00;
 constexpr uint8_t REG_OUTPUT = 0x02;
 constexpr uint8_t REG_CONFIG = 0x06;

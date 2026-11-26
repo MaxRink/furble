@@ -18,6 +18,10 @@ Rules:
   section 15 of the SX1261/2 datasheet is the substitute for that part.
 - A datasheet number is not a local measurement. See `measurement-plan.md` for
   the boundary and promotion rules.
+- Per-part register and timing citations live in
+  [`docs/components/`](../components/README.md). This file records the document
+  inventory a power lane cited. That corpus records what the firmware depends on,
+  with the code location and a verification state per fact.
 
 ## 1. SoC, radio, and module datasheets
 
@@ -68,6 +72,7 @@ Rules:
 | WIZnet W5500 | WIZnet W5500 datasheet version 1.1.0, dated 17DEC2022, https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf, 1,893,745 bytes, sha256 `7b826b808084ccd986bcc22904c00a07a508ef42fb93d079fe7150a4c4f1a63d`. The corpus v1.0.6 link is a 404, checked 2026-11-25 | v1.1.0, 17DEC2022 | Section 1.1 page 10, `RSTn` pin 37: "RESET should be held low at least 500 us for W5500 reset". Section 5.5.1 page 60 and figure 22, Reset Timing: `TRC` minimum 500 us, `TPL` (RSTn released to internal PLOCK) maximum 1 ms. Section 5.5.2 page 60: regulator wake 10 us. Section 3.1 page 29, section 4.1 page 32, `SHAR` registers 0x0009 to 0x000E page 33. Section 5.3 page 59: `IDD1` 132 mA, `IDD2` 13 mA in PHY power-down. Section 5.4 page 60: link currents 128, 75 and 65 mA. The pinned PHY hard-codes 100 us (`components/esp_eth/src/spi/w5500/esp_eth_phy_w5500.c:160`), the defect recorded in `plans/implemented/42-waveshare-eth-node.md`; `src/FurbleEthernet.cpp` now drives the 500 us pulse itself in `resetW5500()`, which meets `TRC`, and passes `reset_gpio_num = -1` so the PHY adds no second, under-spec assertion. It adds no wait for `TPL`, so the release-to-PLL guard is an open item, not a compliance claim | Opened for the vendor document pass and for the RESETn fix; copy size and sha256 verified above | Board, Wi-Fi |
 | Vybronics VC1030B028F | Coin vibration motor datasheet, https://www.vybronics.com/coin-vibration-motors/with-brushes/v-c1030b028f | Not stated | 64 mA typical operating, 85 mA rated maximum, more at start and stall. Representative part because M5Stack names no motor | Quoted through the model | Board |
 | BM8563 RTC | BM8563 documentation, cited for the Plus2 alarm wake | Not stated | RTC alarm is the Plus2 timed-wake source | Cited, not opened | Board, SoC |
+| NXP PCF8563 | PCF8563 Real-Time Clock/Calendar product data sheet, https://www.nxp.com/docs/en/data-sheet/PCF8563.pdf | Rev. 11.1, 19 January 2026 | Timer control 0x0E and timer value 0x0F carry the Plus2 alarm wake. M5Unified writes 0x0E = 0x82 for a 1 Hz tick and 0x83 for a 1/60 Hz tick, so the same count means seconds or minutes. The register and timing facts are on docs/components/pcf8563.md | Front matter and the voltage-low section opened; the timer section number was not supplied | Board, SoC |
 | FT6336U touch controller | Core2 touch documentation and FT6336U datasheet | Not stated | Monitor and hibernate modes exist; current not in the tree; the datasheet was not opened by the Board lane | Not opened | Board, Display |
 | ES8311 codec and AW8737 amplifier | M5Stack StickS3 product page | Web page, no revision | Parts are named; quiescent currents are not in the tree | Cited, not opened | Board |
 

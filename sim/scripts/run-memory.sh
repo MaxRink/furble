@@ -4,6 +4,10 @@
 # No broker is required: the URI points at a closed port so every connection is
 # refused and the production retry accounting runs. Build the binary first with
 # FURBLE_SIM_MQTT=1; see docs/sim.md.
+#
+# The scenario list comes from sim/scenarios/manifest.json, so a run covers
+# exactly the entries certified for the MQTT transport and cannot drift from the
+# certification.
 
 set -eu
 
@@ -33,17 +37,25 @@ else
   exit 1
 fi
 
+# Certified MQTT-transport end-to-end scenarios. The board is the panel the
+# memory gates are modelled on; the manifest is the authority for both.
+if ! SCENARIOS=$(python3 "$ROOT/tools/check_sim_scenarios.py" \
+    --list-certified --suite e2e --board m5stick-s3 --transport mqtt); then
+  echo "Could not read the certified MQTT scenarios from the manifest." >&2
+  exit 1
+fi
+if [ -z "$SCENARIOS" ]; then
+  echo "The manifest certifies no MQTT-transport scenarios for m5stick-s3." >&2
+  exit 1
+fi
+
 status=0
 count=0
-for name in \
-  memory-mqtt-unreachable \
-  memory-mqtt-low-heap-retry-limit \
-  memory-pressure-mqtt-shed \
-  memory-boot-combination; do
-  scenario="$ROOT/sim/scenarios/e2e/$name.txt"
+for scenario in $SCENARIOS; do
+  name=$(basename "$scenario" .txt)
   count=$((count + 1))
   echo "=== $name ==="
-  if "$TIMEOUT" -k 10 "$SCENARIO_TIMEOUT" "$BIN" --script "$scenario"; then
+  if "$TIMEOUT" -k 10 "$SCENARIO_TIMEOUT" "$BIN" --script "$ROOT/$scenario"; then
     echo "PASS $name"
   else
     rc=$?

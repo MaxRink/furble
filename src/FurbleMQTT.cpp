@@ -235,6 +235,44 @@ bool acceptsEvent(esp_mqtt_client_handle_t client,
   return !offline_stop_pending || (event_id == MQTT_EVENT_PUBLISHED);
 }
 
+// Why an attempt failed, in the one class a retry can fix and the two it
+// cannot. Mirrors classifyDisconnect() in FurbleWiFi.cpp: only a confirmed
+// rejection stops the client, so an outage never silences the hub.
+enum class ConnectClass : uint8_t {
+  TRANSIENT,
+  AUTH,
+  CONFIG,
+};
+
+ConnectClass classifyFailure(int32_t error_type, int32_t connect_return_code) {
+  if (error_type != MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
+    // DNS, socket, TLS or timeout, or no reported cause at all: the broker, the
+    // router or the link is out. The WiFi classifier reports the same shapes as
+    // retryable, so a returning broker or a fixed trust store recovers without
+    // a reboot.
+    return ConnectClass::TRANSIENT;
+  }
+
+  switch (connect_return_code) {
+    case MQTT_CONNECTION_REFUSE_BAD_USERNAME:
+    case MQTT_CONNECTION_REFUSE_NOT_AUTHORIZED:
+      // A confirmed credential failure. Retrying cannot fix it; the operator
+      // must change the setting and run `mqtt connect`.
+      return ConnectClass::AUTH;
+    case MQTT_CONNECTION_REFUSE_PROTOCOL:
+    case MQTT_CONNECTION_REFUSE_ID_REJECTED:
+      // The client id and MQTT 3.1.1 are firmware constants, so a broker that
+      // rejects them rejects every attempt.
+      return ConnectClass::CONFIG;
+    case MQTT_CONNECTION_REFUSE_SERVER_UNAVAILABLE:
+      // A broker restart, a maintenance window or an overloaded broker.
+      // Bounded retries cover it.
+      return ConnectClass::TRANSIENT;
+    default:
+      return ConnectClass::TRANSIENT;
+  }
+}
+
 }  // namespace
 
 MQTT &MQTT::getInstance(void) {
@@ -274,6 +312,8 @@ void MQTT::reloadSetting(void) {
     m_Blocked = false;
     m_StopClient = false;
     m_ConnectFailures = 0;
+    m_RetryDelayMs = 0;
+    m_NextAttemptMs = 0;
   }
 
   if (!enabled && (m_Task == nullptr)) {
@@ -365,6 +405,10 @@ uint32_t MQTT::simConnectFailures(void) const {
   return m_ConnectFailures;
 }
 
+uint32_t MQTT::simRetryDelayMs(void) const {
+  return retryDelayMs();
+}
+
 bool MQTT::simBlocked(void) const {
   const std::lock_guard<std::mutex> lock(m_Mutex);
   return m_Blocked;
@@ -447,6 +491,37 @@ MQTT::start_extra_t MQTT::startExtra(void) const {
   }
   return {queueMissing + copiesMissing,
           queueMissing > copiesMissing ? queueMissing : copiesMissing};
+}
+
+uint32_t MQTT::retryDelayMs(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_RetryDelayMs;
+}
+
+bool MQTT::retryDue(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return (m_NextAttemptMs == 0) || (nowMs() >= m_NextAttemptMs);
+}
+
+void MQTT::scheduleRetry(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  m_ConnectFailures++;
+  // Double the gap up to the cap and never stop trying. The owner task, the
+  // event queue and the incoming copies all survive, so a retry rebuilds only
+  // the client and the admission gates are re-run for it.
+  m_RetryDelayMs =
+      (m_RetryDelayMs == 0) ? RETRY_INITIAL_MS : std::min(m_RetryDelayMs * 2, RETRY_MAX_MS);
+  m_NextAttemptMs = nowMs() + m_RetryDelayMs;
+  ESP_LOGW(MQTT_LOG_TAG, "MQTT attempt %lu failed, retrying in %lu ms.",
+           static_cast<unsigned long>(m_ConnectFailures),
+           static_cast<unsigned long>(m_RetryDelayMs));
+}
+
+void MQTT::clearRetry(void) {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  m_ConnectFailures = 0;
+  m_RetryDelayMs = 0;
+  m_NextAttemptMs = 0;
 }
 
 void MQTT::taskStep(void) {
@@ -533,16 +608,12 @@ void MQTT::taskStep(void) {
     return;
   }
 
-  if ((m_Client == nullptr) && networkReady()) {
+  if ((m_Client == nullptr) && networkReady() && retryDue()) {
     if (!startClient()) {
-      m_ConnectFailures++;
-      ESP_LOGW(MQTT_LOG_TAG, "MQTT client start failed, attempt %lu.",
-               static_cast<unsigned long>(m_ConnectFailures));
-      if (m_ConnectFailures >= MAX_CONNECT_FAILURES) {
-        const std::lock_guard<std::mutex> lock(m_Mutex);
-        m_Blocked = true;
-        ESP_LOGE(MQTT_LOG_TAG, "MQTT retry limit reached. Use mqtt connect to retry.");
-      }
+      // A refused admission gate, a failed allocation and a refused start are
+      // one failed attempt. The backoff schedules the next one; no path gives
+      // up, and the gates are re-run for every attempt.
+      scheduleRetry();
     }
   }
 
@@ -567,6 +638,20 @@ uint32_t MQTT::hostTaskWaitMs(void) const {
 void MQTT::hostTaskStep(void) {
   taskStep();
 }
+
+uint32_t MQTT::hostConnectFailures(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_ConnectFailures;
+}
+
+uint32_t MQTT::hostRetryDelayMs(void) const {
+  return retryDelayMs();
+}
+
+bool MQTT::hostBlocked(void) const {
+  const std::lock_guard<std::mutex> lock(m_Mutex);
+  return m_Blocked;
+}
 #endif
 
 bool MQTT::enqueueEvent(const queued_event_t &event) {
@@ -581,6 +666,8 @@ bool MQTT::enqueueEvent(const queued_event_t &event) {
 void MQTT::processLifecycleEvents(void) {
   esp_mqtt_client_handle_t client = nullptr;
   int32_t event_id = 0;
+  int32_t error_type = 0;
+  int32_t connect_return_code = 0;
   {
     const std::lock_guard<std::mutex> lock(m_LifecycleMutex);
     if (!m_LifecyclePending) {
@@ -588,13 +675,15 @@ void MQTT::processLifecycleEvents(void) {
     }
     client = m_LifecycleClient;
     event_id = m_LifecycleEvent;
+    error_type = m_LifecycleErrorType;
+    connect_return_code = m_LifecycleConnectReturnCode;
     m_LifecyclePending = false;
   }
 
   if ((event_id == 0) || !acceptsEvent(client, m_Client, m_OfflineStopPending, event_id)) {
     return;
   }
-  handleLifecycleEvent(event_id);
+  handleLifecycleEvent(event_id, error_type, connect_return_code);
 }
 
 void MQTT::clearQueuedEvents(void) {
@@ -724,7 +813,7 @@ bool MQTT::startClient(void) {
   if (!gate.open) {
     // Defer instead of letting esp-mqtt allocate its task and buffers into a
     // pool that cannot hold them. The owner counts this as a failed attempt, so
-    // the existing retry limit still stops a hopeless start.
+    // the backoff paces the next one instead of retrying every task period.
     ESP_LOGW(MQTT_LOG_TAG, FURBLE_MQTT_START_GATE_LOG, static_cast<unsigned>(gate.freeBytes),
              static_cast<unsigned>(gate.largestBlock), static_cast<unsigned>(gate.freeFloor),
              static_cast<unsigned>(gate.largestFloor));
@@ -819,6 +908,11 @@ bool MQTT::startClient(void) {
   config.session.keepalive = 60;
   config.session.disable_clean_session = false;
   config.session.protocol_ver = MQTT_PROTOCOL_V_3_1_1;
+  // The owner owns the retry cadence: it retires the client on the first
+  // retryable disconnect and starts a new one off the backoff deadline. This
+  // period is only the component's own backstop if that teardown is ever
+  // starved, so it stays short rather than following the backoff: the value
+  // also bounds the reconnect poll a stop has to wait out.
   config.network.reconnect_timeout_ms = 10000;
   config.network.timeout_ms = 10000;
   config.buffer.size = MQTTMemory::BUFFER_SIZE;
@@ -962,6 +1056,14 @@ void MQTT::eventHandler(void *handler_arg,
       const std::lock_guard<std::mutex> lock(mqtt->m_LifecycleMutex);
       mqtt->m_LifecycleClient = source->client;
       mqtt->m_LifecycleEvent = source->event_id;
+      // esp-mqtt reports a refused or aborted connection in the error handle
+      // and leaves it readable on the disconnect that follows. Copy the two
+      // fields the owner's classifier reads; nothing else is valid once this
+      // callback returns.
+      mqtt->m_LifecycleErrorType =
+          (source->error_handle != nullptr) ? source->error_handle->error_type : 0;
+      mqtt->m_LifecycleConnectReturnCode =
+          (source->error_handle != nullptr) ? source->error_handle->connect_return_code : 0;
       mqtt->m_LifecyclePending = true;
     }
     xTaskNotifyGive(mqtt->m_Task);
@@ -1014,14 +1116,14 @@ void MQTT::eventHandler(void *handler_arg,
   mqtt->enqueueEvent(event);
 }
 
-void MQTT::handleLifecycleEvent(int32_t event_id) {
+void MQTT::handleLifecycleEvent(int32_t event_id, int32_t error_type, int32_t connect_return_code) {
   // processLifecycleEvents() matched the event to m_Client, which only the
   // owner task's startClient() and stopClient() change.
   const esp_mqtt_client_handle_t client = m_Client;
   switch (event_id) {
     case MQTT_EVENT_CONNECTED:
       m_Connected.store(true);
-      m_ConnectFailures = 0;
+      clearRetry();
       BootTimeline::mark(BootTimeline::MQTT_CONNECTED);
       ESP_LOGI(MQTT_LOG_TAG, "MQTT connected.");
       publish(m_StatusTopic, "online", 1, true);
@@ -1046,16 +1148,31 @@ void MQTT::handleLifecycleEvent(int32_t event_id) {
         manual_disconnect = m_ManualDisconnect;
         stop_client = m_StopClient;
       }
-      if (!manual_disconnect && !stop_client) {
-        m_ConnectFailures++;
-        ESP_LOGW(MQTT_LOG_TAG, "MQTT disconnected, attempt %lu.",
-                 static_cast<unsigned long>(m_ConnectFailures));
-        if (m_ConnectFailures >= MAX_CONNECT_FAILURES) {
-          const std::lock_guard<std::mutex> lock(m_Mutex);
-          m_Blocked = true;
-          m_StopClient = true;
-        }
+      if (manual_disconnect || stop_client) {
+        break;
       }
+
+      const ConnectClass reason = classifyFailure(error_type, connect_return_code);
+      // Retire the client before scheduling the next attempt. This is the only
+      // place a retryable failure tears the client down, so esp-mqtt's own
+      // fixed reconnect period cannot outrun the owner's backoff, and the
+      // owner task, event queue and incoming copies stay where they are.
+      stopClient();
+
+      if (reason == ConnectClass::TRANSIENT) {
+        // A broker, router or link outage: retry forever with a growing gap.
+        scheduleRetry();
+        break;
+      }
+
+      {
+        const std::lock_guard<std::mutex> lock(m_Mutex);
+        m_ConnectFailures++;
+        m_Blocked = true;
+      }
+      ESP_LOGE(MQTT_LOG_TAG,
+               "MQTT %s rejected, retry stopped. Fix the setting and run mqtt connect.",
+               (reason == ConnectClass::AUTH) ? "credentials" : "protocol or client id");
       break;
     }
 

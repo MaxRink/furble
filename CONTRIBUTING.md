@@ -137,9 +137,10 @@ python3 tools/pre_review.py --base origin/master
 
 It runs the diff hygiene scanner, the settings contract scanner, clang-format
 21 on the changed C and C++ files (`tools/check_format.py`), the C++ safety
-scanner, the CI workflow checker, the simulator manifest checker, the coupling
-ratchet, and the scanner unit tests. It fails closed on review-blocking
-findings. A missing or non-21 clang-format fails the gate; install it with
+scanner, the CI workflow checker, the simulator manifest checker, the datasheet
+citation gate (`tools/check_datasheet_citations.py`), the coupling ratchet, and
+the scanner unit tests. It fails closed on review-blocking findings. A missing
+or non-21 clang-format fails the gate; install it with
 `python3 -m pip install -r .github/workflows/clang-format-requirements.txt`.
 
 The coupling ratchet, `tools/check_coupling_ratchet.py`, counts board identity

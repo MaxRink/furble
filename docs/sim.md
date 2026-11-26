@@ -119,12 +119,14 @@ sh sim/scripts/test-build-deps.sh
 The self-test performs one complete build and one incremental build. It leaves
 the project header timestamp unchanged when it exits.
 
-The CMake entry point has the same source and board defaults:
-
-```sh
-cmake -S sim -B sim/build-cmake
-cmake --build sim/build-cmake
-```
+The direct build is the only supported simulator entry point.
+`sim/CMakeLists.txt` exists, but the binary it builds does not run: on a stock
+scenario it aborts in `lgfx::v1::Panel_sdl::_event_proc()` on unmodified master,
+where the `sim/build.sh` binary runs the same script, so the two paths are not
+equivalent. No workflow builds that target.
+`.github/workflows/static-analysis.yml` only configures it to obtain a compile
+database. The reproduction with exact commands, and the difference that remains
+between the two paths, are in `plans/355-sim-cmake-entry-point.md`.
 
 ### Interactive on-screen buttons
 
@@ -487,7 +489,12 @@ u-blox constellation mask, power save and AssistNow Autonomous settings.
 a refused PMIC request), so `Platform::canCutGpsRail()` reports false.
 `gps_rail_refused` also keeps the rail on but leaves `canCutGpsRail()` true: the
 board can cut the rail, and the PMIC refuses one request (a Core2 on a low
-battery). `gps_m10_unresolved` makes the virtual M10 report a
+battery). Both are decided in the hardware model, which owns the one switched
+5 V output and returns the read-back `Platform::setRail()` answers with.
+`pmic_pwr_cfg_stale` keeps the PWR_CFG byte snapshot taken at boot and uses it
+for the next panel-off read-modify-write, so a rail change that landed in
+between is lost and `pmic.pwr_cfg_lost` records it.
+`gps_m10_unresolved` makes the virtual M10 report a
 3D fix whose time is valid but not fully resolved.
 All boolean seeds, including `gps_uart_noise`, reject malformed values during
 scenario loading.
@@ -583,8 +590,9 @@ full PSRAM test on or off.
 size in bytes.
 
 `FURBLE_SIM_MQTT_FAST_RECONNECT` only shortens the host transport's one-second
-reconnect cadence so ten refused connections finish inside a bounded scenario.
-It does not change the firmware retry limit.
+reconnect cadence so the first refused connection reaches the production owner
+inside a bounded scenario. It does not change the firmware retry backoff, whose
+gaps advance on the virtual clock.
 
 #### Board, PMIC, USB and memory-profile model
 
@@ -793,6 +801,11 @@ action companion-reconnect
 action companion-reject-central
 action audio-overcurrent
 action ir-timeout
+action ir-transmit
+action ir-transmit-end
+action hw-rtc-mismatch
+action pmic-irq-5vin
+action pmic-irq-clear
 action sd-present
 action sd-absent
 action sd-error
@@ -1073,9 +1086,18 @@ The other namespaces are:
 - `hw.*` reports profile identity and capabilities (`hw.profile`, `hw.mcu`,
   `hw.flash_kb`, `hw.psram`, `hw.pmic`, `hw.gauge`, `hw.usb`, `hw.display`,
   `hw.touch`, `hw.wifi`, `hw.ethernet`, `hw.ble`, `hw.ir`, `hw.sd`, `hw.audio`,
-  `hw.rtc`, `hw.battery`). `pmic.*` reports variant, gauge, battery, charging,
-  charger, charge current, watchdog, download lock, power latch, brownouts and
-  battery millivolts/percent.
+  `hw.rtc`, `hw.battery`). `hw.rtc_capability` is `match` when the profile's RTC
+  capability agrees with its verified row and `mismatch` when it does not, and
+  `hw.fail_closed` reports whether the model recorded a defect. `pmic.*` reports
+  variant, gauge, battery, charging, charger, charge current, watchdog, download
+  lock, power latch, brownouts, battery millivolts/percent, `pmic.pwr_cfg` (the
+  one M5PM1 PWR_CFG byte in decimal), `pmic.pwr_cfg_lost` (read-modify-write
+  losses the shared byte allowed) and `pmic.watchdog_cycles` (PMIC-driven system
+  power cycles). `rail.state` is `on` or `off`, `rail.holders` names the
+  consumers currently keeping it on (`none`, `gps`, `ir`, `gps+ir`) and
+  `rail.refusals` counts requests the board could not honour. `ir.state` is
+  `absent`, `idle`, `transmitting`, `unpowered` or `timeout`, with
+  `ir.transmits` and `ir.failures` beside it.
 - `power.*` reports the button state machine and one-event counters:
   `power.state`, `power.clicks`, `power.double_clicks`, `power.long_presses`,
   `power.resets`, `power.offs`, `power.downloads` and `power.recoveries`.
@@ -1109,10 +1131,14 @@ The other namespaces are:
   `webui.attempts` counts server admission attempts, `webui.fail_closed` is
   `yes` after a refusal and `webui.gate_message` is the exact production log
   sentence for `print`.
-- `mqtt.connected`, `mqtt.task` (`created` or `failed`), `mqtt.connect_failures`
-  and `mqtt.blocked` are available only in a `FURBLE_SIM_MQTT=1` build. They read
-  the production owner state. The bounded retry limit is
-  `MAX_CONNECT_FAILURES`, ten.
+- `mqtt.connected`, `mqtt.task` (`created` or `failed`), `mqtt.connect_failures`,
+  `mqtt.retry_delay` and `mqtt.blocked` are available only in a
+  `FURBLE_SIM_MQTT=1` build. They read the production owner state.
+  `mqtt.retry_delay` is the current backoff step in milliseconds, zero when no
+  retry is pending. An outage retries forever with a gap that doubles from
+  `RETRY_INITIAL_MS` to the `RETRY_MAX_MS` cap, 10 s to 60 s, and
+  `mqtt.blocked` is `yes` only after the failure classifier stops the client on
+  a refused credentials, protocol or client-id rejection.
 - `crash.recovered` is `yes` when this boot found and printed an unclean
   previous-boot record. `crash.pending` is `yes` between a
   `crash-inject-*` action and the reboot that consumes it. `crash.reset`,
@@ -1303,7 +1329,14 @@ names lose characters, which must be 0. A page with no spin row reports 0 and
   `setting.preset_picker`, `setting.show_title`, `setting.tx_adaptive`, and
   `setting.recon_backoff`: `1` or `0`. `setting.watchdog` is in the
   M5StickS3 build.
-- `platform.watchdog`: `armed`, `expired`, or `unsupported`.
+- `platform.watchdog`: `armed`, `cycled`, or `unavailable`. A PMIC watchdog
+  expiry is a system power cycle, so the state names what the chip did rather
+  than a flag it left behind.
+- `platform.motion_wake`: `armed`, `blocked`, `idle` or `unavailable`. `blocked`
+  means an unmasked PM1 interrupt latch is holding the aggregated IRQ line that
+  the motion path shares.
+- `platform.pmic_irq`: `asserted` or `idle`. `platform.pmic_irq_status` reports
+  both latched status registers as `<status1>,<status2>` in decimal.
 - `platform.timed_wake`: `yes` when the simulated board can schedule a timed
   power-on, otherwise `no`.
 

@@ -2,7 +2,8 @@
 #
 # The broker is down but the heap is not the limiting factor, so the transport
 # starts and the connection fails asynchronously. The production owner must
-# count the failures, stop at MAX_CONNECT_FAILURES and keep the UI alive.
+# retry forever with a capped exponential backoff: the gap doubles from 10 s to
+# 60 s and stays there, nothing blocks the service, and the UI stays alive.
 # Run with FURBLE_SIM_MQTT=1 and an unreachable URI, for example
 # FURBLE_SIM_MQTT_URI=mqtt://127.0.0.1:1.
 seed wifi_connected true
@@ -10,14 +11,52 @@ wait 100
 
 assert mqtt.task created
 assert mqtt.connected no
+assert mqtt.blocked no
 assert ui.page main
 
-# Retry accounting is wall-clock in the host transport, so use the wall-bound
-# assertion rather than a virtual-time wait.
-assert-eventually 30000 mqtt.blocked yes
-assert mqtt.connect_failures 10
+# The failed attempt is wall-clock in the host transport, so use the wall-bound
+# assertion rather than a virtual-time wait. The owner then retires the client
+# and holds the next start until the backoff deadline, which is virtual time.
+assert-eventually 30000 mqtt.connect_failures 1
+assert mqtt.retry_delay 10000
+assert mqtt.blocked no
+assert heap.alloc_failures 0
+
+# Cross the gap on the virtual clock. The 1 s steps after it hand the owner
+# task the turn a crossed deadline is released on and let the wall-clock
+# transport failure land before the wall-bound assertion; the retired client
+# leaves the heap flat between attempts.
+wait 10000
+wait 1000
+wait 1000
+assert-eventually 30000 mqtt.connect_failures 2
+assert mqtt.retry_delay 20000
+assert mqtt.blocked no
+
+wait 20000
+wait 1000
+wait 1000
+assert-eventually 30000 mqtt.connect_failures 3
+assert mqtt.retry_delay 40000
+assert heap.alloc_failures 0
+
+wait 40000
+wait 1000
+wait 1000
+assert-eventually 30000 mqtt.connect_failures 4
+assert mqtt.retry_delay 60000
+
+# The cap holds, so a broker that stays down costs one attempt a minute and
+# never a reboot.
+wait 60000
+wait 1000
+wait 1000
+assert-eventually 30000 mqtt.connect_failures 5
+assert mqtt.retry_delay 60000
+assert mqtt.blocked no
 assert mqtt.connected no
 assert heap.alloc_failures 0
+assert heap.last_failed_task none
 assert ui.page main
 assert platform.watchdog armed
 
