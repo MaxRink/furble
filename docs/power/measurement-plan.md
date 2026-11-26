@@ -323,8 +323,8 @@ of silently skipping it.
 | m5stick-c | `m5stick-c` | ESP32 | AXP192 | ST7735S 80x160 | 95 mAh | Yes, AXP192 | Light sleep, modem sleep | No hardware attached |
 | m5stick-c-plus | `m5stick-c-plus` | ESP32 | AXP192 | ST7789V 135x240 | 120 mAh | Yes, AXP192 | Light sleep, modem sleep | No hardware attached |
 | m5stick-c-plus2 | `m5stick-c-plus` | ESP32 | None | ST7789V 135x240 | 200 mAh | No | Light sleep | No hardware attached |
-| m5stack-core | `m5stack-core` | ESP32 | IP5306 | ILI9342C 320x240 | 0, unknown | No | No steady state below 45 mA | No hardware attached |
-| m5stack-core2 | `m5stack-core2` | ESP32 | AXP192 | ILI9342C 320x240 | 390 mAh | Yes, AXP192 | Light sleep, modem sleep | No hardware attached |
+| m5stack-core | `m5stack-core` | ESP32 | IP5306 | ILI9342C 320x240 | 110 mAh | No | Any state: boost held on for the session | No hardware attached |
+| m5stack-core2 | `m5stack-core2` | ESP32 | AXP192 | ILI9342C 320x240 | 500 mAh | Yes, AXP192 | Light sleep, modem sleep | No hardware attached |
 | m5stick-s3 | `m5stick-s3` | ESP32-S3 | M5PM1 | ST7789 135x240 | 250 mAh | No | Light sleep with `sleep_conn`; no deep sleep | Attached |
 | waveshare-s3-eth | `waveshare-s3-eth` | ESP32-S3 | None | None | Mains | No | Tickless idle off; DFS on | No hardware attached |
 

@@ -221,11 +221,15 @@ class GPS {
    * Switch the rail that powers the GPS unit.
    *
    * The only place firmware drives that rail. It goes through
-   * Platform::setRail(GPS), which switches the Port A 5 V output on boards
-   * whose profile has a GPS rail, reads it back and retries once for the
-   * M5PM1 wake. Other boards have no switch and the call does nothing.
-   * Returns whether the rail reached the requested state, so false where the
-   * board has no switch.
+   * Platform::setRail(GPS), which switches the external 5 V output on boards
+   * whose profile has a GPS rail. On the Core2 and Tough that output is one
+   * BUS_5V net shared by Grove Port A and the M-Bus, so a GPS power cycle also
+   * drops every other 5 V consumer there. The request is advisory: M5Unified
+   * refuses an enable on a low battery with VBUS current and no ACIN, which is
+   * why this returns the final readback rather than assuming success. Other
+   * boards have no switch and the call does nothing.
+   *
+   * @return true only when the rail read back in the requested state.
    */
   static bool setRailPower(bool enable);
 

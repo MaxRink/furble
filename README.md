@@ -759,9 +759,9 @@ Hiding it frees up space in the header for the status icons, which is welcome
 on the narrow stick displays.
 
 Fresh devices start with an Inactivity timeout of 60 seconds and Screen off set
-to Off. The M5Stack Core Basic keeps Dim because its IP5306 boost cuts the board
-below 45 mA after 64 seconds. Existing devices keep their stored choices, so an
-upgrade does not rewrite a chosen timeout or mode.
+to Off. The M5Stack Core holds its IP5306 boost on for the session, so a
+panel-off state no longer trips the PMIC's light-load cut. Existing devices keep
+their stored choices, so an upgrade does not rewrite a chosen timeout or mode.
 
 ### Themes
 

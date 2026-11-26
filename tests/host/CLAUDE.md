@@ -1,7 +1,11 @@
 # tests/host/ (host regression tests)
 
 Host tests must exercise real production control flow and preserve diagnostic
-output on failure. ThreadSanitizer wrappers are fail-closed: every sanitizer
+output on failure. Board and platform policy tests pin hardware constants to
+the vendor documents: `board-profile` covers every `Board::Profile` row,
+`settings-default-policy*` the board-conditional defaults, and `ip5306-policy`
+the IP5306 SYS_CTL0/SYS_CTL2 bits plus the boot keep-on write and readback on a
+fake PMIC. Change a constant only with a citation. ThreadSanitizer wrappers are fail-closed: every sanitizer
 warning and every non-zero child status fails, regardless of report names or
 the sanitizer's conventional exit code. The wrapper's exact completion marker
 is `control-connect-camera-race: PASS`; near matches do not count. Keep the

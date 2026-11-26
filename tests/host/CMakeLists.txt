@@ -288,6 +288,15 @@ target_include_directories(pin_share_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(pin_share_policy_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME pin-share-policy COMMAND pin_share_policy_test)
 
+# The IP5306 boost must stay on for the session: a panel-off Core draws less
+# than 45 mA and the light-load cut would remove its rail. This pins the
+# register bits from the Injoinic register document and the write-then-readback
+# policy used at boot.
+add_executable(ip5306_policy_test ip5306_policy_test.cpp)
+target_include_directories(ip5306_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(ip5306_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME ip5306-policy COMMAND ip5306_policy_test)
+
 # Companion reconnect advertising runs fast for a window after enable, boot,
 # disconnect or a button wake, then falls back to the slow interval.
 add_executable(companion_advertising_test companion_advertising_test.cpp)

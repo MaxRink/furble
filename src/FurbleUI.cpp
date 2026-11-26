@@ -13092,6 +13092,14 @@ void UI::processInactivity(void) {
     return;
   }
 
+  // If the IP5306 keep-on write did not read back, a panel-off load falls
+  // under the PMIC's 45 mA cutoff. Force the dim-only mode for this boot
+  // rather than powering the unit off. Working units keep their setting.
+  if (!Platform::canTurnDisplayOff() && (m_DisplayOffMode != 0)) {
+    ESP_LOGW(LOG_TAG, "IP5306 keep-on unset, forcing Dim");
+    m_DisplayOffMode = 0;
+  }
+
   switch (m_DisplayOffMode) {
     case 0:
     case 3:

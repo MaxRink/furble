@@ -353,8 +353,8 @@ result.
 | m5stick-c | `m5stick-c` | ESP32 | AXP192 | ST7735 80x160 | 95 mAh | Yes, AXP192 | Light sleep, modem sleep | End of life; 48 minimum brightness |
 | m5stick-c-plus | `m5stick-c-plus` | ESP32 | AXP192 | ST7789 135x240 | 120 mAh | Yes, AXP192 | Light sleep, modem sleep | Plus and Plus2 share the image; 48 minimum brightness |
 | m5stick-c-plus2 | `m5stick-c-plus` | ESP32 | None | ST7789 135x240 | 200 mAh | No | Light sleep | Voltage only; no charging telemetry; 32 minimum brightness |
-| m5stack-core | `m5stack-core` | ESP32 | IP5306 | ILI9342C 320x240 | 0, unknown | No | No steady state below 45 mA | Boost cuts off after 64 s below 45 mA |
-| m5stack-core2 | `m5stack-core2` | ESP32 | AXP192 | ILI9342C 320x240 | 390 mAh | Yes, AXP192 | Light sleep, modem sleep | Touch controller stays on; 32 minimum brightness |
+| m5stack-core | `m5stack-core` | ESP32 | IP5306 | ILI9342C 320x240 | 110 mAh | No | Any state: boost held on for the session | No PMIC shutdown command; the manual Off clears the keep-on bit and the light-load cut removes the boost 64 s later |
+| m5stack-core2 | `m5stack-core2` | ESP32 | AXP192 | ILI9342C 320x240 | 500 mAh | Yes, AXP192 | Light sleep, modem sleep | Touch controller stays on; 32 minimum brightness |
 | m5stick-s3 | `m5stick-s3` | ESP32-S3 | M5PM1 | ST7789 135x240 | 250 mAh | No | Light sleep with `sleep_conn`; no deep sleep | Watchdog, GPS power lock, 32 minimum brightness |
 | waveshare-s3-eth | `waveshare-s3-eth` | ESP32-S3 | None | None | Mains | No | Not applicable | W5500 Ethernet; DFS init and tickless idle are not enabled in its sdkconfig |
 
@@ -758,8 +758,8 @@ pairing is part of the handshake row, not a separate state.
 | B01 | Mixed 4 h profile, then full discharge | m5stick-c | 95 mAh cell; 1.8 h at 51.7 mA | T-discharge | I5 | unknown |
 | B02 | Mixed 4 h profile, then full discharge | m5stick-c-plus | 120 mAh cell; 2.0 h at 59.3 mA | T-discharge | I5 | unknown |
 | B03 | Mixed 4 h profile, then full discharge | m5stick-c-plus2 | 200 mAh cell; 3.4 h at 59.1 mA | T-discharge | I5 | unknown |
-| B04 | Mixed 4 h profile, then full discharge | m5stack-core | Cell capacity unknown; runtime only after capacity is measured | T-discharge | I5 | unknown |
-| B05 | Mixed 4 h profile, then full discharge | m5stack-core2 | 390 mAh cell; 5.8 h at 67.8 mA | T-discharge | I5 | unknown |
+| B04 | Mixed 4 h profile, then full discharge | m5stack-core | 110 mAh cell; runtime only after a discharge, the boost floor is unknown | T-discharge | I5 | unknown |
+| B05 | Mixed 4 h profile, then full discharge | m5stack-core2 | 500 mAh cell; 7.4 h at 67.8 mA | T-discharge | I5 | unknown |
 | B06 | Mixed 4 h profile, then full discharge | m5stick-s3 | 250 mAh cell; 3.1 h at 80.5 mA | T-discharge | I5 | unknown |
 
 The runtimes are arithmetic from the firmware capacity constant and the

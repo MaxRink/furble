@@ -16,8 +16,10 @@ int main() {
     ok = false;
   }
 #if defined(FURBLE_M5STACK_CORE)
-  if (Furble::SettingsDefaults::displayOff() != 0) {
-    std::fprintf(stderr, "Core Basic DISPLAY_OFF default is not Dim\n");
+  // The Core keeps the boost on for the session, so its display-off default is
+  // Off like every other board (plan 354).
+  if (Furble::SettingsDefaults::displayOff() != 1) {
+    std::fprintf(stderr, "Core Basic DISPLAY_OFF default is not Off\n");
     ok = false;
   }
 #else

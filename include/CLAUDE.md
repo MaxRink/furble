@@ -346,7 +346,10 @@ settings-touching rebase.
   `canPowerOff` is the UI policy gate for the Auto off and Low battery rollers
   and is already false on the Core, which keeps its IP5306 path. `powerOffPath`
   says whether `Platform::powerOff()` can remove power at all, and only the
-  Waveshare row is false. See plans/349-waveshare-board-row.md.
+  Waveshare row is false. See plans/349-waveshare-board-row.md. The Tough row
+  carries the hardware's SD slot, NS4168 speaker, BT1-backed BM8563 and RTC
+  alarm wake; the Core2 row keeps `TimedWake::NONE` because the 2023.2 revision
+  removed its RTC backup cell (plans/354).
 - `FurblePinShare.h` is the ownership contract for one pin shared by the
   feedback LED and the IR emitter (Plus2 G19). Feedback calls
   `PinShare::requestLed()`; IR brackets a frame with `beginIr()` and

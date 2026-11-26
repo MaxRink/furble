@@ -55,7 +55,10 @@ class PowerBackend {
  *  - battery_t readBattery(void): unsupported measurements read as zero
  *  - uint16_t getBatteryCapacity(void): mAh, zero if unknown
  *  - bool setRail(Rail rail, bool on): false when the board has no switch or
- *    the rail does not read back in the requested state
+ *    the rail does not read back in the requested state. The request is
+ *    advisory: the PMIC may refuse an enable. Rail::GPS names the external
+ *    5 V output; on the Core2 and Tough that is one BUS_5V net shared by Grove
+ *    Port A and the M-Bus.
  *  - uint8_t getPWRClickCount(void): PMIC key clicks since the last call
  *  - bool powerOff(void): never returns on success
  *  - bool canTimedWake(void)

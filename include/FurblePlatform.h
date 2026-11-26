@@ -127,8 +127,23 @@ class Platform: public PowerBackend {
   /**
    * Power off the device.
    *
-   * On success this call never returns. Returns false if the PMIC refused the
-   * shutdown, with the hardware watchdog re-armed if it was armed before.
+   * Refuses with false before any teardown in two cases. A row whose
+   * `powerOffPath` is false has no way to remove power
+   * (`PlatformPolicy::powerOffAction`); only the Waveshare ESP32-S3-ETH is in
+   * that state, because with no PMIC the call it would otherwise reach arms no
+   * wake source. Then, on every other board, an SD writer that did not
+   * acknowledge the unmount refuses too, because cutting the rail with a track
+   * open loses its tail (#494).
+   *
+   * Otherwise success never returns, and a PMIC refusal returns false with the
+   * hardware watchdog left as the user set it.
+   *
+   * On the IP5306 Core there is no shutdown command, so the Off is the
+   * vendor's deferred cut rather than an immediate one: M5Unified sleeps the
+   * panel, clears the boost keep-on bit and deep sleeps, and the charger
+   * removes the boost once the sleeping load has stayed under 45 mA for the
+   * SYS_CTL2 window. On an AXP192, AXP2101 or M5PM1 board the rail drops
+   * mid-call.
    */
   bool powerOff(void);
 
@@ -202,13 +217,13 @@ class Platform: public PowerBackend {
   void clearMotionWake(void);
 
   /**
-   * Largest early wake the StickC Plus and Plus2 RTC can produce for a valid
-   * request.
+   * Largest early wake the BM8563 can produce for a valid request.
    *
    * The BM8563 has one-second resolution up to 255 seconds and minute
    * resolution above that, so a correct timer can fire up to 60 seconds before
    * the requested delay. The resume record is the shot deadline, which already
    * sits one wake margin later, so its early bound is the margin plus this.
+   * The Plus2 and the Tough both use this timer path.
    */
   static constexpr uint32_t TIMED_WAKE_MAX_EARLY_S = 60;
 
@@ -220,8 +235,17 @@ class Platform: public PowerBackend {
   /**
    * Power off and arrange for a timed power-on.
    *
+   * On boards whose BM8563 INT drives the PMIC power key (the Tough), this
+   * arms the timer, unmounts the SD card and cuts PMIC power; it does not
+   * return on success. The Plus2 arms the same BM8563 timer and releases its
+   * hold pin, returning true once the request is accepted.
+   *
+   * A refusal unwinds what it armed: an SD writer that never acknowledges
+   * refuses the cut with the card mounted, the countdown cleared and, on the
+   * M5PM1 path, the wake timer, the RTC RAM marker and the watchdog restored.
+   *
    * @return true after the wake timer and power-off request were accepted;
-   * false if setup failed and the device remains awake.
+   * false if setup failed or a handshake refused, and the device stays awake.
    */
   bool powerOffUntil(uint32_t seconds);
 
@@ -273,16 +297,31 @@ class Platform: public PowerBackend {
   static bool hasGpsBackupSupply(void);
 
   /**
-   * Can the board switch the GPS receiver's supply off?
+   * Can the board switch the external 5 V output off?
    *
    * The board profile's `gpsRail` column: the StickC, StickC Plus, StickS3,
-   * Core2 and Tough switch the Grove Port A 5 V rail through their PMIC. On
-   * the Core (IP5306), the StickC Plus2 and the Waveshare board the rail is
-   * always on, and the headless profile has no rail control. A receiver on a
-   * rail that cannot be cut must never be stopped for a save-on-shutdown,
-   * because nothing would ever restart it. Valid after Platform::init().
+   * Core2 and Tough switch the external 5 V output through their PMIC. On the
+   * Core2 and Tough it is one BUS_5V net shared by Grove Port A and the M-Bus,
+   * so Rail::GPS is the whole external 5 V net rather than a private GPS rail.
+   * On the Core (IP5306), the StickC Plus2 and the Waveshare board the rail is
+   * always on, and the headless profile has no rail control. The switch request
+   * is advisory: M5Unified refuses an enable on low battery with VBUS current
+   * and no ACIN, which Platform::setRail() reports through its readback. A
+   * receiver on a rail that cannot be cut must never be stopped for a
+   * save-on-shutdown, because nothing would ever restart it. Valid after
+   * Platform::init().
    */
   static bool canCutGpsRail(void);
+
+  /**
+   * Can the panel be turned off without the PMIC removing power?
+   *
+   * True on every board except an IP5306 board whose boost keep-on write did
+   * not read back at boot. That write is the only thing that keeps a panel-off
+   * load above the PMIC's 45 mA light-load threshold, so the UI must fall back
+   * to Dim when it failed.
+   */
+  static bool canTurnDisplayOff(void);
 
   /**
    * Get the battery measurements supported by this board.
@@ -403,6 +442,19 @@ class Platform: public PowerBackend {
    * Record which battery measurements this board supports.
    */
   void initBattery(void);
+
+  /**
+   * Hold the IP5306 boost on for the session.
+   *
+   * No-op unless the detected PMIC is an IP5306. M5Unified clears SYS_CTL0
+   * bit 1 at M5.begin(), which lets the PMIC cut the 5 V boost after the
+   * light-load window whenever the load stays below 45 mA, as a panel-off Core
+   * does. Logs and leaves the bit clear if the write or readback fails.
+   */
+  void keepIp5306BoostOn(void);
+
+  /** True until an IP5306 keep-on write fails to read back. */
+  static bool m_Ip5306BoostHeld;
 
 #if FURBLE_HAS_M5PM1
   /** Ensure the PMIC long-press download recovery path is not locked. */

@@ -11,16 +11,12 @@ namespace SettingsDefaults {
 constexpr uint8_t INACTIVITY = 2;  // 60 secs
 
 constexpr uint8_t displayOff() {
-#if defined(FURBLE_M5STACK_CORE)
-  // The Core Basic's IP5306 boost cuts the board below 45 mA after 64 s.
-  // M5Unified 0.2.20 writes SYS_CTL2 (0x02) = 0x6C at M5.begin(); bits 3:2 =
-  // 11 select the 64 s light-load timeout, not the 32 s power-on default.
-  // Keep the panel dim rather than Off so a fresh Core is not powered down
-  // by its own low-power default.
-  return 0;  // Dim
-#else
+  // Every board now starts at Off. The IP5306 Core used to seed Dim because a
+  // panel-off state falls under the 45 mA light-load threshold and the boost
+  // cut looked like a power off. Platform::keepIp5306BoostOn() holds SYS_CTL0
+  // bit 1 for the whole session, so that cut cannot fire and the workaround is
+  // no longer needed (plan 354).
   return 1;  // Off
-#endif
 }
 
 constexpr bool sleepConn() {
