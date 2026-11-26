@@ -2,12 +2,13 @@
 #
 # The real writer task, mount decision, failure counter and dated GPX path run
 # against a host SD/SPI/VFS double over real POSIX file I/O. Mount, write,
-# full-card failure, removed card, power-off and a hung writer that refuses the
-# shutdown handshake are asserted.
+# full-card failure, removed card, power-off, a hung writer that refuses the
+# shutdown handshake and a writer that never takes the request are asserted.
 #
 # Runner: sh sim/scripts/run-boundary-conformance.sh
 # Tests: boundary-sd-mount-write, boundary-sd-mount-fail,
-#        boundary-sd-full, boundary-sd-removed, boundary-sd-shutdown-refused
+#        boundary-sd-full, boundary-sd-removed, boundary-sd-shutdown-refused,
+#        boundary-sd-shutdown-undelivered
 #
 # Expected production tokens:
 # sd.mount state=mounted calls=1
@@ -19,3 +20,5 @@
 # sd.removed mount_failures=3 gpx_disabled=1
 # sd.shutdown_refused acknowledged=0 wait_ms>=8000 unmount_entered=1
 # sd.shutdown_refused.released unmounted=1 track_complete=1
+# sd.shutdown_undelivered acknowledged=0 queued=8 wait_ms<1000
+# sd.shutdown_undelivered.released drained=1 track_complete=1

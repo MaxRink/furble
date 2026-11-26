@@ -2393,7 +2393,8 @@
         "sd.write",
         "sd.full",
         "sd.removed",
-        "sd.shutdown_refused"
+        "sd.shutdown_refused",
+        "sd.shutdown_undelivered"
       ],
       "status": "modeled",
       "note": "Production writer, mount/failure policy and GPX path over host VFS/SD double and real POSIX I/O.",

@@ -795,11 +795,20 @@ bool SD::logPoint(const GPX::point_t &point) {
 }
 
 bool SD::powerOff(void) {
-  if (!request(request_t::POWER_OFF)) {
-    // no card slot, no writer task, or a queue that never took the request:
-    // there is no acknowledgement to wait for, so the caller keeps its own off
-    // path
+  if (m_Queue == nullptr) {
+    // no card slot, so no writer task and nothing open to settle
     return true;
+  }
+
+  if (!request(request_t::POWER_OFF)) {
+    // The writer exists but its queue did not take the request, so it is not
+    // draining and the track it holds is still open. A full queue is the wedged
+    // writer this handshake exists for, not a reason to drop the rail.
+    ESP_LOGE(LOG_TAG,
+             "SD writer task '%s' did not take the power off request in %u ms, refusing to "
+             "power off.",
+             WRITER_TASK_NAME, static_cast<unsigned>(REQUEST_SEND_TIMEOUT_MS));
+    return false;
   }
 
   if (xSemaphoreTake(m_PowerOffDone, pdMS_TO_TICKS(POWER_OFF_WAIT_MS)) == pdTRUE) {

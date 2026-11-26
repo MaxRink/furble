@@ -178,6 +178,37 @@ bool waitForFile(const std::string &path, uint32_t timeout_ms = 5000) {
   return fileIsComplete(path);
 }
 
+// The first point of an open track file, without waiting for its closers: the
+// track a released writer drains into is still open when the queue empties.
+bool fileHasPoint(const std::string &path) {
+  std::ifstream file(path);
+  const std::string contents((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
+  return contents.find("<trkpt") != std::string::npos;
+}
+
+bool waitForExistingFile(const std::string &path, uint32_t timeout_ms = 5000) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (fileHasPoint(path)) {
+      return true;
+    }
+    sleepMs(10);
+  }
+  return fileHasPoint(path);
+}
+
+bool waitForUnmountEntered(uint32_t timeout_ms = 5000) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (g_UnmountEntered.load() > 0) {
+      return true;
+    }
+    sleepMs(10);
+  }
+  return g_UnmountEntered.load() > 0;
+}
+
 void runMountWrite(void) {
   clearMount();
   initializeSettings(true);
@@ -338,6 +369,63 @@ void runShutdownRefused(void) {
   std::cout << "sd.shutdown_refused.released unmounted=1 track_complete=1\n";
 }
 
+// A writer that has stopped draining cannot even take the power-off request, so
+// there is no acknowledgement to wait for. That is the same unsettled card as a
+// missed acknowledgement: its queue holds track points, so the handshake must
+// refuse rather than let the rail drop on a writer it never reached.
+void runShutdownUndelivered(void) {
+  clearMount();
+  initializeSettings(true);
+  setupBoard();
+
+  Furble::SD::init();
+  check(waitFor(Furble::SD::card_state_t::MOUNTED),
+        "SD card did not mount for the undelivered case");
+  check(Furble::SD::getInstance().logPoint(point(6, 52.52, 13.405)),
+        "the undelivered-case point was not queued");
+  const std::string path = gpxPath(6);
+  check(waitForFile(path), "the undelivered-case GPX file was not created");
+
+  // Turn logging off and hold the unmount the reload asks for, which is how a
+  // wedged FAT flush stops the writer draining its queue.
+  g_UnmountHang = true;
+  Furble::Settings::save<bool>(Furble::Settings::SD_GPX, false);
+  check(Furble::SD::getInstance().request(Furble::SD::request_t::RELOAD),
+        "the reload request was not queued");
+  check(waitForUnmountEntered(), "the writer never reached the held unmount");
+
+  // The writer took the reload and is inside the held unmount, so the queue is
+  // empty and these fill it to its length. Points are dropped by logPoint() once
+  // it is full, which is the production behaviour.
+  uint32_t queued = 0;
+  for (uint32_t index = 0; index < 12; index++) {
+    if (Furble::SD::getInstance().logPoint(point(7, 52.52 + index * 0.001, 13.405))) {
+      queued++;
+    }
+  }
+  check(queued == 8, "the writer queue did not fill to its declared length");
+
+  const auto start = std::chrono::steady_clock::now();
+  const bool acknowledged = Furble::SD::getInstance().powerOff();
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start);
+
+  check(!acknowledged, "a writer that never took the request still reported a settled power off");
+  check(elapsed.count() < 1000, "the undelivered request still blocked for a full wait");
+  check(BoundaryHost::logContains("did not take the power off request"),
+        "the undelivered-request log is missing");
+  std::cout << "sd.shutdown_undelivered acknowledged=" << (acknowledged ? 1 : 0)
+            << " queued=" << queued << " wait_ms=" << elapsed.count() << '\n';
+
+  // The refusal must leave a live writer, not one the rail cut hid. Releasing the
+  // unmount lets it finish the reload and drain the queue it never reached.
+  releaseUnmount();
+  check(waitFor(Furble::SD::card_state_t::UNMOUNTED),
+        "the released writer did not finish the held unmount");
+  check(fileIsComplete(path), "the closed GPX track lost its tail");
+  std::cout << "sd.shutdown_undelivered.released drained=1 track_complete=1\n";
+}
+
 }  // namespace
 
 extern "C" {
@@ -405,6 +493,8 @@ int main(int argc, char **argv) {
     runRemoved();
   } else if (mode == "shutdown-refused") {
     runShutdownRefused();
+  } else if (mode == "shutdown-undelivered") {
+    runShutdownUndelivered();
   } else {
     std::cerr << "unknown SD boundary mode: " << mode << '\n';
     return 2;

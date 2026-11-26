@@ -63,10 +63,11 @@ class SD {
   /**
    * Close the track and unmount from the writer task, waits for completion.
    *
-   * Returns true when there is no writer to wait for or it acknowledged, so
-   * tracking and the filesystem are settled. Returns false when the writer did
-   * not acknowledge inside the timeout plus its one extension, which means the
-   * card may still be writing; the caller must then keep the rails up.
+   * Returns true when there is no writer to wait for, or the writer
+   * acknowledged, so tracking and the filesystem are settled. Returns false when
+   * the writer did not take the request or did not acknowledge inside the
+   * timeout plus its one extension, which means the card may still be writing;
+   * the caller must then keep the rails up.
    */
   bool powerOff(void);
 
