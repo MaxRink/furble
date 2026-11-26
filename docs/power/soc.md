@@ -836,7 +836,7 @@ This is a documentation and build consistency item, not a separate power lever.
   `m_StatsMutex` is held.
 - **Evidence:** inferred (code-read). Release builds compile at
   `CONFIG_LOG_DEFAULT_LEVEL=3` and `CONFIG_LOG_MAXIMUM_LEVEL=3`
-  (`sdkconfig.m5stick-s3:2582-2594`), so INFO is printed and DEBUG is compiled
+  (`sdkconfig.m5stick-s3:1975-1985`), so INFO is printed and DEBUG is compiled
   out. The DEBUG form would cost nothing in release.
 - **Estimated saving:** Small and `unknown`. It removes UART and USB
   Serial/JTAG traffic and string formatting on every lock transition, and it
@@ -850,7 +850,7 @@ This is a documentation and build consistency item, not a separate power lever.
   the simulator power scenarios. Confirm `power stats` still reports counts and
   held time.
 - **Citation:** `src/FurblePower.cpp:54-124`, `src/FurbleConsole.cpp:1399-1421`,
-  `sdkconfig.m5stick-s3:2582-2594`.
+  `sdkconfig.m5stick-s3:1975-1985`.
 
 ### LOG-02 Audit recurring INFO sites
 
@@ -870,7 +870,7 @@ This is a documentation and build consistency item, not a separate power lever.
   configuration, and a 10 minute idle run on the StickS3. Count lines per state
   and confirm the retained lines still tell the support story.
 - **Citation:** `src/FurbleGPS.cpp:995`, `1062`, `src/FurbleControl.cpp:137-160`,
-  `sdkconfig.m5stick-s3:2582-2594`.
+  `sdkconfig.m5stick-s3:1975-1985`.
 
 ### LOG-03 Change the release default log level, keeping INFO available
 
@@ -879,7 +879,7 @@ This is a documentation and build consistency item, not a separate power lever.
   compiled but are not printed by default. A diagnostic build or a console
   `log * info` can raise the level at runtime.
 - **Current behavior:** Default INFO and maximum INFO
-  (`sdkconfig.m5stick-s3:2582-2594`, `sdkconfig.m5stick-c:2152-2157`). Every
+  (`sdkconfig.m5stick-s3:1975-1985`, `sdkconfig.m5stick-c:1710-1720`). Every
   `ESP_LOGI` prints. The debug environments pass
   `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE`, which raises the compiled maximum of
   every translation unit in the image rather than furble's alone, but the
@@ -900,7 +900,7 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Required test:** Build all boards. Capture boot-to-console time and the log
   line count in boot, connect, and idle. On a console build, verify
   `log * info` restores the lines. Run the full host and simulator suites.
-- **Citation:** `sdkconfig.m5stick-s3:2582-2594`, `sdkconfig.m5stick-c:2152-2157`,
+- **Citation:** `sdkconfig.m5stick-s3:1975-1985`, `sdkconfig.m5stick-c:1710-1720`,
   IDF `log/Kconfig.level:1-77`, `src/FurbleConsole.cpp:2433-2463`.
 
 ## Console and USB serial

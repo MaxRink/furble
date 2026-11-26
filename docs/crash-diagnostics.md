@@ -22,8 +22,10 @@ boot prints plain text instead of nested escape sequences. This does not change
 the 96-byte record field, the 484-byte record size, or the console output.
 
 Only lines the image actually emits reach the tail, and the compiled log
-maximum bounds what it can emit. Release images cap at
-`CONFIG_LOG_MAXIMUM_LEVEL=3`, so their tail holds INFO and above. The debug
+maximum bounds what it can emit. The six release images cap at
+`CONFIG_LOG_MAXIMUM_LEVEL=3`, so their tail holds INFO and above, and the
+developer `esp32-s3-headless` hub image is the one image outside the debug set
+that already caps at VERBOSE (`sdkconfig.esp32-s3-headless:1981-1991`). The debug
 environments pass `-DLOG_LOCAL_LEVEL=ESP_LOG_VERBOSE` and compile the DEBUG and
 VERBOSE strings as well; those lines reach the tail once a console
 `log <tag> debug` raises the runtime level. Compiling a lane at a lower maximum

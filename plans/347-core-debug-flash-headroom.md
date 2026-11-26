@@ -69,9 +69,9 @@ budget steps all stay as they are.
 as fitting the slot. Two builds of the same tree that differ only in that flag
 measure the trade: 1,740,528 bytes at `ESP_LOG_VERBOSE` and 1,715,696 at
 `ESP_LOG_INFO`, 24,832 bytes on the #518 base. That is not furble's own
-logging: `src/`, `lib/furble/` and `lib/hal/` hold 37 `ESP_LOGD` and `ESP_LOGV`
-sites in total, which cannot account for 24,832 bytes, and the rest is the
-DEBUG and VERBOSE strings of ESP-IDF, LVGL, M5GFX and M5Unified. The lane
+logging: `src/`, `lib/furble/` and `lib/hal/` hold 33 `ESP_LOGD` sites and no
+`ESP_LOGV` site at all, which cannot account for 24,832 bytes, and the rest is
+the DEBUG and VERBOSE strings of ESP-IDF, LVGL, M5GFX and M5Unified. The lane
 exists for field diagnostics, so selling its log maximum
 for bytes is the one trade it cannot make, and the console `log <tag> debug`
 path plus the crash record's retained tail both lost lines to it. Rejected: the
@@ -112,7 +112,7 @@ the same define measures the guard there:
 | :--- | ---: | ---: | ---: |
 | `m5stack-core-debug` (VERBOSE) | 1,740,480 | 1,731,648 | 8,832 |
 | `m5stack-core` (INFO, release) | 1,627,648 | 1,618,496 | 9,152 |
-| `m5stack-core-usb-debug` (VERBOSE) | 1,765,888 | 1,756,768 | 9,120 |
+| `m5stack-core-usb-debug` (VERBOSE) | 1,765,888 | 1,756,784 | 9,104 |
 
 `m5stick-s3` (1,862,496) and `m5stack-core2` (1,912,976) pass
 `-DFURBLE_IMU_BMI270=1` and the macro already defaulted to 1, so they have one
@@ -122,20 +122,37 @@ still calls `m5::BMI270_Class::begin` from the IMU probe.
 
 Two clean builds of one tree differ by a few hundred bytes because ESP-IDF
 archive order moves longcall relaxation (plan 106 review, finding 3), so each
-row is one build and the headroom, not a byte-exact delta, is the claim. A
+row is one build and the headroom, not a byte-exact delta, is the claim, and
+every figure in the tables above and in Gates below is the same build. The
+review on `plans/347-review-feedback.md` rebuilt five of these lanes on another
+host and landed within that drift: 1,714,848 and 1,731,648 exactly, 1,740,768
+unguarded, 1,756,448 for the USB lane and 1,862,480 for the StickS3. A
 second clean build of the guarded tree measured 1,731,344 bytes, 9,456 bytes of
 headroom, and the two are the same tree.
 
 ## Cost
 
-Only the StickS3 carries the part. It names the macro at 1, Core2 names it at 1
-as well, and the default is 1 anyway, so the driver stays wherever it might be
+Only the StickS3 carries the part: `docs/components/bmi270.md` says so, and it
+is the one lane that depends on the driver for motion wake. It names the macro
+at 1 and the default is 1 anyway, so the driver stays wherever it might be
 needed and only the Core family opts out. What the Core loses is a probe that
-cannot
-succeed on hardware it is pinned to; `M5Unified` still probes the MPU6886,
-MPU9250, SH200Q, BMM150 and AK8963 the Core and Core2 can have, and
-`Furble::IMU` still creates its BMI270 backend only where `M5Unified` reports
-one. Nothing in `src/` reads `M5.Imu` through BMI270-specific types.
+cannot succeed on hardware it is pinned to: `M5Unified` reaches the BMI270 arm
+only after its MPU6886 probe has failed on the bus `board_M5Stack` selects
+(`In_I2C` on GPIO 21/22), and the Core answers there as an MPU6886 or MPU9250.
+`M5Unified` still probes the MPU6886, MPU9250, SH200Q, BMM150 and AK8963 all
+the same, and `Furble::IMU` still creates its BMI270 backend only where
+`M5Unified` reports one. Nothing in `src/` reads `M5.Imu` through
+BMI270-specific types.
+
+`m5stack-core2` also names the macro at 1, and that one is a conservative
+choice rather than a measured need. `docs/components/mpu6886.md` puts an MPU6886
+in the Core2 and a M5Tough, so on this repo's own part inventory the Core2 lane
+could opt out the same way and take the 8 KiB. It does not, because nothing in
+this PR audited the Core2 and Tough part inventory board by board the way the
+Core's was audited, and its app slot has more than 4 MB free
+(1,912,976 of 6,291,456 bytes). A future PR that settles that inventory can
+flip it; until then the define keeps the ambiguous lane safe and says so beside
+the flag in `platformio.ini`.
 
 The Core debug profiles keep the full log maximum, so the console `log <tag>
 debug` path and the crash record's retained tail behave exactly as they do on
@@ -164,7 +181,7 @@ the other five debug envs, which is the point of this PR.
 | `pio run` on the other four | SUCCESS: `m5stack-core` 1,618,496, `m5stack-core-usb-debug` 1,756,784, `m5stick-s3` 1,862,496, `m5stack-core2` 1,912,976 |
 | `tools/check_size_budget.py --env <each>` | `PASS m5stack-core-debug: flash 1,731,648/1,740,800, dram 56,212/57,344, iram 119,036/119,808`; `PASS m5stack-core: flash 1,618,496/1,740,800, dram 55,148/56,320, iram 115,668/116,736`; `PASS m5stack-core-usb-debug: flash 1,756,784/4,063,232, dram 56,268/57,344, iram 119,756/120,832`; `PASS m5stick-s3: flash 1,862,496/3,145,728, dram 47,496/48,128, iram 114,688/115,712`; `PASS m5stack-core2: flash 1,912,976/6,291,456, dram 56,768/57,344, iram 121,036/121,856` |
 | `tools/stack_budget.py --env <each>` | PASS for the same five envs, every task under its bound, no new recursion or dynamic bound |
-| BMI270 still linked on the boards that have it | `m5::bmi270_config_file` (8,192 bytes) and a `call8` to `m5::BMI270_Class::begin` from the IMU probe are in the `m5stick-s3` and `m5stack-core2` ELFs; the three Core ELFs have no `bmi270` symbol at all |
+| BMI270 still linked on the boards that have it | `m5::bmi270_config_file` (8,192 bytes) and a `call8` to `m5::BMI270_Class::begin` from the IMU probe are in the `m5stick-s3` and `m5stack-core2` ELFs. The three Core ELFs have **no `m5` symbol whose name contains `bmi270`**: filter `nm -S firmware.elf` to `bmi270` and then to the `_ZN2m5` mangling and nothing matches, so `m5::BMI270_Class` and the blob are both gone. They do keep furble's own `Furble::IMU::BMI270Backend` and `Furble::IMU::createBMI270Backend`, 16 symbols, because the guard is on M5Unified and not on `src/`: that backend identifies the chip by register reads and falls through to the MPU6886 backend when the part is absent, exactly as it did before |
 | `tools/pre_review.py --base origin/master` | `PASS: 13 gates` |
 | `sh sim/scripts/check-doc-tokens.sh` | `sim documentation tokens are present` |
 | `tools/check_doc_citations.py` | `0 errors of 2757 citations in 147 files` |
@@ -179,4 +196,6 @@ single gate. The StickC and StickC Plus profiles inherit the default
 `FURBLE_IMU_BMI270=1`, so neither image changes here. Their parts are MPU6886
 and SH200Q per `docs/components/README.md`, which suggests the same 8 KiB is
 dead weight there too, but their part inventory needs checking against each
-variant before a lane opts out.
+variant before a lane opts out. The same holds for `m5stack-core2`, which this
+PR keeps on the driver for the reason in Cost: settle whether every Core2 and
+Tough revision carries an MPU6886 before dropping its define.
