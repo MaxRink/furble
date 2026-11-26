@@ -51,7 +51,10 @@ PRs. The current sim-only closeout state is in
   distinct operation is verified from protocol evidence and hardware.
 - A Ricoh standby wake is a link sequence: drop, settle, reconnect, then poll a
   fresh OperationMode read for CAPTURE inside a stated bound. It is never a
-  CameraPower write, and a notification never authorizes it. Record any
+  CameraPower write, and a notification never authorizes it. State each stage's
+  bound for what it really covers: the settle is a minimum, the connect timeout
+  is the GAP connect, and the security handshake inside the reconnect waits on
+  the peer. Never claim the wake as a whole is bounded by their sum. Record any
   measured timing as hardware evidence and update plan 149, not just the
   constants.
 - Numbering: 0x small improvements, 1x-2x phased features, 30+ framework work,

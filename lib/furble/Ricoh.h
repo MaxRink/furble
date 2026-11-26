@@ -249,7 +249,7 @@ class Ricoh: public Camera {
   ModeRead readOperationMode(uint8_t &mode);
   GateResult captureGate(uint8_t &mode);
   bool wakeFromStandby(uint8_t asleepMode);
-  void wakePause(uint32_t milliseconds);
+  bool wakePause(uint32_t milliseconds);
   bool writeByte(NimBLERemoteCharacteristic *pChr, uint8_t value, const char *label);
   bool writeOperation(OperationCode code, OperationParameter parameter);
   bool subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char *label);

@@ -166,7 +166,20 @@ protocol core.
   client self-delete on success and returns the client to the pool on failure.
   It deliberately leaves `m_Active`, `m_Paired` and the target ownership alone:
   a wake is not a connect cycle. Do not reimplement it in a vendor class, and do
-  not call it while holding another Camera lock.
+  not call it while holding another Camera lock. Its connect timeout bounds the
+  GAP connect only: the vendor `_connect()` also runs a security handshake that
+  waits on the peer, so never describe the call as bounded by that timeout. On
+  the failure path it runs the vendor `_disconnect()` while `m_Connected` still
+  describes the link, so a vendor teardown may keep gating on `isConnected()`.
+  A caller must check `connectCancelled()` before it drops a working link: a
+  press that arrives during a teardown must not relink the camera.
+- Any wait on the connect path goes through `Camera::pollDelay()`, never a bare
+  `vTaskDelay` or `sleep_for` and never a vendor class's own copy. It slices the
+  wait and polls the cancel token in its own body, which is the plan 170 rule
+  `tests/test_connect_cancel_contract.py` enforces, and it owns the
+  scheduler-clock-versus-wall-clock choice. Do not include `<freertos/*>` from a
+  vendor class to get `vTaskDelay`: the host and simulator shims declare
+  conflicting queue types and clang-tidy fails the translation unit.
 - Vendor GATT traffic goes through the protected `Camera::gattWrite`,
   `gattRead`, and `gattSubscribe` wrappers. The console-only journal hooks
   live at that seam, so companion traffic and raw explorer traffic stay out

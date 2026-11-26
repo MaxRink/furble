@@ -320,7 +320,7 @@ comes back the row says connected again.
 ### RSSI
 
 `Camera` does not expose RSSI. `m_Client` is protected
-(`lib/furble/Camera.h:679`). `NimBLEClient::getRssi()` exists and returns `int`
+(`lib/furble/Camera.h:697`). `NimBLEClient::getRssi()` exists and returns `int`
 (esp-nimble-cpp 2.5.0, `components/esp-nimble-cpp/src/NimBLEClient.h:65`).
 
 Add to `lib/furble/Camera.h` next to `isConnected()` at line 119:

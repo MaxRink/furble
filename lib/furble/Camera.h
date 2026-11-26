@@ -575,6 +575,24 @@ class Camera: public NimBLEClientCallbacks {
   bool reconnectInPlace(uint32_t timeout, uint32_t settleMs);
 
   /**
+   * Block this task for a bounded interval, in slices that poll the cancel
+   * token.
+   *
+   * Every wait on the connect path has to be abortable inside its own body
+   * (plan 170): Control::disconnect() cannot otherwise settle the target while
+   * the wait runs. The scheduler's clock is used where FreeRTOS is present, so
+   * the simulator's virtual time advances, and the wall clock otherwise. One
+   * implementation keeps the FreeRTOS include out of the vendor classes, where
+   * it collides with the host test shims.
+   *
+   * @param[in] milliseconds How long to block for.
+   * @param[in] sliceMs How often to poll the cancel token.
+   *
+   * @return false when the cancel token was set during the interval.
+   */
+  bool pollDelay(uint32_t milliseconds, uint32_t sliceMs);
+
+  /**
    * BLE security IO capability for this camera type.
    *
    * @return the IO capability to advertise during pairing.

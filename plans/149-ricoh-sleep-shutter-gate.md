@@ -6,7 +6,8 @@ Phase 1 implemented. Phase 2 (wake) implemented in the host-tested state
 machine below. Both phases are hardware bench pending: the awake capture is
 unchanged, the asleep refusal does not freeze the camera, and whether a reconnect
 actually wakes a GR IV is unproven. Nothing in this plan replaces the fresh
-OperationMode gate: a body that does not report CAPTURE is never written to.
+OperationMode gate: a body that does not report CAPTURE never receives a capture
+write.
 
 ## Root cause
 
@@ -20,11 +21,21 @@ forced power off.
 ## Invariant
 
 Power ON is not sufficient to authorize capture. BLE_STARTUP (`0x02`) and
-POWER_OFF_TRANSFER (`0x04`) must block all side-effect writes. Only a fresh
-OperationMode read of `0x00` CAPTURE authorizes capture. A held connection can
-return stale BLE_STARTUP (or stale CAPTURE) forever, so the pre-capture read
-must be fresh; cached state is never an authorization source. A non-CAPTURE
-reading is always a safe refusal.
+POWER_OFF_TRANSFER (`0x04`) must block every capture write: the ShootingFlavor
+`0x00` select and the OperationRequest `{0x01, 0x01}` start are the pair that
+cold boots a sleeping body. Only a fresh OperationMode read of `0x00` CAPTURE
+authorizes those two writes. A held connection can return stale BLE_STARTUP (or
+stale CAPTURE) forever, so the pre-capture read must be fresh; cached state is
+never an authorization source. A non-CAPTURE reading is always a safe refusal.
+
+The invariant is about capture writes, not about every write on the link. Since
+phase 2 a standby body is relinked, and the reconnect re-runs the connect
+handshake, which writes the paired-device identity (Bluetooth Control service)
+and the four CCCD subscriptions before any CAPTURE read exists. Those are the
+writes furble already performs on every cold connect to a sleeping body; the
+phase 1 test was narrowed to say exactly that, and no source shows they are any
+safer or any more dangerous in standby than the capture pair. Whether they are
+harmless in BLE standby is hardware gate 5 below.
 
 ## Phase 1 change (implemented, hardware bench pending)
 
@@ -57,8 +68,9 @@ into the target task, so a refusal currently surfaces as ESP_LOGW lines only
 when the wake does not confirm, `Ricoh shutter refused: camera did not wake`.
 Changing the signature to propagate a refusal to the console `shutter` command
 and the UI is follow-up work for a separate slice. It matters more now: a press
-that has to wake a body can occupy the target task for up to about 7 s before
-the refusal line appears.
+that has to wake a body occupies the target task for at least the settle time
+and the probe budget, and for the whole reconnect on a body that never wakes.
+See "How long the wake waits" for what the three budgets do and do not bound.
 
 ## Phase 2: the wake sequence
 
@@ -122,9 +134,39 @@ declared in `lib/furble/Ricoh.h`:
 | `FURBLE_RICOH_WAKE_CONNECT_TIMEOUT_MS` | 5000 ms | The reconnect's own connect timeout, for an already bonded peer. |
 | `FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS` | 2000 ms | The whole bounded wait for a fresh CAPTURE read after the link is back, polled every 50 ms. |
 
-Worst case is therefore a settle plus a connect that can reach its 5 s cap plus
-the 2 s probe, all on the target task. Every one of these numbers is a design
-bound, not a measurement.
+The three numbers bound three different things, and only two of them are hard
+bounds:
+
+- The settle is a fixed `vTaskDelay`, so it is a minimum, not a cap: the link is
+  kept down at least that long and the camera's own terminate latency is added
+  to it.
+- `FURBLE_RICOH_WAKE_CONNECT_TIMEOUT_MS` reaches
+  `NimBLEClient::setConnectTimeout()`, which bounds the GAP connect only.
+- The probe budget is checked between reads, so one blocking ATT read can
+  overrun it by that read's own timeout, and the 50 ms cadence is added to the
+  last pass.
+
+`_connect()` is therefore **not** bounded by the connect timeout. Between the
+link coming up and the return from `_connect()` sit `secureConnection()`,
+service discovery, the identity write and four subscriptions.
+`NimBLEClient::secureConnection()` waits `BLE_NPL_TIME_FOREVER` on the GAP
+encryption event (`components/esp-nimble-cpp/src/NimBLEClient.cpp`), so it is
+bounded only by the peer, the supervision timeout, or
+`Camera::abortBlockingConnect()`; the same class is already recorded at 29.85 s
+on the X100VI bench in `lib/furble/Camera.cpp`. A wake that hits it therefore
+occupies the target task for roughly settle + connect timeout + that wait +
+probe, not 7.2 s.
+
+That matters because `Control::disconnect()` waits `DISCONNECT_WAIT_MAX_MS`
+(30 s) for a target task to stop, and reaps a drained target's client at
+`DISCONNECT_DRAIN_RECLAIM_MS` (2 s) once the task has stopped. A wake inside a
+secure-timeout stall can consume the whole teardown wait. A user cancel does
+reach it: `Control::disconnect()` calls `Camera::abortBlockingConnect()`, which
+terminates the client this path publishes through `m_CancelClient`.
+
+Every number here is a design bound, not a measurement, and the honest way to
+state the wake's cost is "at least 200 ms of settle plus up to 5 s of GAP
+connect plus the 2 s probe, and more if the security handshake stalls".
 
 ### State machine
 
@@ -133,20 +175,31 @@ pass, each transition logged as `Ricoh wake <FROM> -> <TO>: <reason>`:
 
 | State | Entry | Work | Exits |
 | :--- | :--- | :--- | :--- |
-| `IDLE` | No wake attempted on this connection | None | `RELINK` when the gate reads `BLE_STARTUP` |
+| `IDLE` | No wake attempted on this connection | None | `RELINK` when the gate reads `BLE_STARTUP` and the session is not being torn down; `FAILED` on a cancel |
 | `RELINK` | Gate returned ASLEEP | `Camera::reconnectInPlace()` | `PROBE` on a live link, `FAILED` otherwise |
 | `PROBE` | Link is back | One fresh `OperationMode` read, then a 50 ms pause | `AWAKE` on CAPTURE, `FAILED` on another mode, a lost link, a cancel, or the deadline |
 | `AWAKE` | Fresh CAPTURE read | Hands the authorization to `shutterPress()` | Terminal for this press |
-| `FAILED` | Any refusal | Writes nothing at all | Terminal for this press |
+| `FAILED` | Any refusal | Writes no capture command. A `RELINK` that failed after the handshake reached the identity write has already written that and the subscriptions. | Terminal for this press |
 
 `shutterPress()` runs the phase 1 gate first, and only `ASLEEP` enters the
 machine. The terminal CAPTURE read of `PROBE` is the authorization, so the
 capture writes follow it directly instead of being re-authorized by a second
-read. `FAILED` leaves the connection in whatever state `RELINK` reached: on a
-probe timeout the relinked connection stays up and the next press retries, and
-on a relink failure the client is reclaimed and the camera reports disconnected,
-which is the same state a failed connect leaves. Neither path freezes the
-camera, and neither path writes a capture.
+read. A cancel is honoured before the link is touched, so a press that arrives
+while the session is being torn down writes nothing and relinks nothing.
+`FAILED` leaves the connection in whatever state `RELINK` reached: on a probe
+timeout the relinked connection stays up and the next press retries, and on a
+relink failure the client is reclaimed and the camera reports disconnected,
+which is the same state a failed connect leaves. `Control` sees the target is no
+longer connected on its next 250 ms tick and runs its ordinary reconnect cycle,
+so a failed wake is not a dead session. Neither path freezes the camera, and
+neither path writes a capture.
+
+A wake is not a connect cycle for the Control session either: `m_Active`,
+`m_Paired` and the target ownership are untouched. The link itself is really
+down for the relink window, so a status reader (the companion snapshot, the MQTT
+camera state) does see the camera disconnected and its connect progress reset
+there. That is the link, not a published connect cycle: Control stays in its
+active state, publishes no `CONNECTING` state and starts no connect attempt.
 
 ### Phase 2 tests
 
@@ -163,10 +216,16 @@ path against the extended virtual peer:
 - `PLAYBACK`, `OTHER` and `POWER_OFF_TRANSFER` still refuse with zero writes and
   no relink, so the wake only ever fires for `BLE_STARTUP`.
 - A failed `OperationMode` read refuses without relinking.
-- A wake whose reconnect fails writes nothing and leaves the camera reported
-  disconnected, which is the RELINK to FAILED edge and the client reclaim.
-- A wake that runs after a cancel stops in the probe instead of spending the
-  budget (the plan 148 cancel contract) and still writes nothing.
+- A wake whose reconnect fails writes no capture command and leaves the camera
+  reported disconnected, which is the RELINK to FAILED edge and the client
+  reclaim. The journal is asserted on capture writes, because the reconnect's
+  identity write happens before the handshake can fail.
+- A press that arrives after the cancel token is set relinks nothing, writes
+  nothing at all, keeps the link up, and returns without spending the budget
+  (the plan 148 cancel contract).
+- A cancel delivered after the relink, from a helper thread that waits for the
+  peer to accept the reconnect, stops the probe instead of letting it spend the
+  budget, and still writes no capture.
 
 The virtual peer gained a sleeping-body model (`setSleepingBody()`,
 `linkSessions()`, `reconnectCount()`, `operationModeReadCount()`,
@@ -223,9 +282,12 @@ unverified until a bench run records it:
    invisible. "Should be" is not a measurement.
 7. Whether a body that was woken but not captured drops straight back into
    standby, which would make a quick second press pay for another wake.
-8. What the user sees when a wake fails: up to about 7 s of blocked target task
-   and then a refusal on the debug log only, because the refusal has no UI
-   surface yet (see below).
+8. What the user sees when a wake fails: the target task is blocked for the
+   settle, the reconnect and the probe, and the takeover is only visible as a
+   refusal on the debug log because the refusal has no UI surface yet (see
+   below). How long that really is depends on the body's terminate and security
+   timings, which is why the budgets are stated per stage rather than as one
+   number.
 
 ## Citations
 

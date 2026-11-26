@@ -128,13 +128,16 @@ The following devices have been tested and confirmed to work:
      layout and the injected answer are covered by the host peer handshake and
      the simulator, but no GR IV has run it on a bench yet.
    - A GR IV in BLE standby keeps the link up and still reports CameraPower ON,
-     so a shutter press is gated on a fresh OperationMode read and nothing is
-     written unless it reports CAPTURE. A standby body instead gets one bounded
-     wake attempt: furble drops the link, reconnects, and waits up to two
-     seconds for a fresh CAPTURE reading before allowing the capture writes. If
-     the body does not report CAPTURE, the press is refused and the connection
-     stays up. Untested on hardware: no bench run has shown that a reconnect
-     wakes a GR IV, or how long the body needs.
+     so a shutter press is gated on a fresh OperationMode read and no capture is
+     written unless it reports CAPTURE. A standby body instead gets one wake
+     attempt: furble drops the link, reconnects with a five second connect
+     timeout, and then polls a fresh CAPTURE reading for up to two seconds
+     before allowing the capture writes. If the body does not report CAPTURE,
+     the press is refused and the connection stays up. The reconnect repeats the
+     connect-path identification and subscription writes, and a body that stalls
+     the security handshake can hold the press longer than those two budgets.
+     Untested on hardware: no bench run has shown that a reconnect wakes a GR
+     IV, or how long the body needs.
 - Nikon
    - Nikon COOLPIX B600
    - Nikon Z6 III ([@herrfrei](https://github.com/herrfrei))

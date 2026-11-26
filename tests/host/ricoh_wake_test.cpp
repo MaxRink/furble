@@ -1,6 +1,8 @@
+#include <atomic>
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -98,6 +100,27 @@ bool checkWakeNotification(const Peer &peer) {
   }
   return check(operation_mode, "wake announces OperationMode CAPTURE on the notification stream")
          && check(camera_power, "wake announces CameraPower ON on the notification stream");
+}
+
+// State for the probe-time cancel. The host build compiles Ricoh.cpp's wait on
+// the wall clock, so there is no delay hook to reach; a helper thread delivers
+// the token once the peer has accepted the reconnect the wake performed, which
+// is the PROBE state.
+Peer *s_CancelPeer = nullptr;
+Furble::Ricoh *s_CancelCamera = nullptr;
+std::atomic<bool> s_CancelDelivered {false};
+std::atomic<bool> s_CancelStop {false};
+
+void cancelDuringProbe(void) {
+  while (!s_CancelStop.load()) {
+    if ((s_CancelPeer != nullptr) && (s_CancelCamera != nullptr)
+        && (s_CancelPeer->reconnectCount() >= 1)) {
+      s_CancelCamera->cancelConnect();
+      s_CancelDelivered = true;
+      return;
+    }
+    std::this_thread::yield();
+  }
 }
 
 }  // namespace
@@ -233,8 +256,10 @@ int main() {
     NimBLEDevice::setMockPeer(nullptr);
   }
 
-  // A wake that runs while the user cancelled must stop in the probe instead of
-  // burning the whole budget (plan 148 cancel contract), and must still refuse.
+  // A press that arrives after the session is already being torn down must not
+  // drop a working link. Control::disconnect() sets the cancel token before it
+  // posts the teardown, so the wake has to unwind without relinking, writing, or
+  // spending the budget (plan 148 cancel contract).
   {
     Peer peer(makeConfig(0x22334455cc00ULL));
     peer.setSleepingBody(false, 0);
@@ -250,10 +275,50 @@ int main() {
     const uint32_t started = nowMs();
     camera.shutterPress();
     const uint32_t elapsed = nowMs() - started;
-    passed &= check(captureWrites(peer.writes()).empty(), "a cancelled wake writes no capture");
+    passed &= check(captureWrites(peer.writes()).empty(), "a cancelled press writes no capture");
+    passed &= check(peer.writes().empty(), "a cancelled press writes nothing at all");
     passed &= check(elapsed < (WAKE_PROBE_TIMEOUT_MS / 2),
-                    "a cancelled wake stops in the probe instead of waiting out the budget");
-    passed &= check(peer.reconnectCount() == 1, "a cancelled wake still relinked once");
+                    "a cancelled press returns instead of waiting out the budget");
+    passed &= check(peer.reconnectCount() == 0,
+                    "a cancelled press does not drop a working link to wake the body");
+    passed &= check(camera.isConnected(), "a cancelled press leaves the camera connected");
+    camera.clearConnectCancel();
+    camera.disconnect();
+    NimBLEDevice::setMockPeer(nullptr);
+  }
+
+  // A cancel that lands after the relink still has to stop the probe instead of
+  // burning the whole budget. The delay hook fires on the production wake's own
+  // pause, so the token arrives with the new link already up.
+  {
+    Peer peer(makeConfig(0x22334455cc11ULL));
+    peer.setSleepingBody(false, 0);
+    NimBLEDevice::setMockPeer(&peer);
+    const auto advertisement = peer.advertisement();
+    Furble::Ricoh camera(&advertisement);
+    if (!check(camera.connect(Furble::TxPower::P3, 1000),
+               "probe cancel test reaches the connected production path")) {
+      return 1;
+    }
+    peer.clearEvents();
+    s_CancelPeer = &peer;
+    s_CancelCamera = &camera;
+    s_CancelDelivered = false;
+    s_CancelStop = false;
+    std::thread cancelThread(cancelDuringProbe);
+    const uint32_t started = nowMs();
+    camera.shutterPress();
+    const uint32_t elapsed = nowMs() - started;
+    s_CancelStop = true;
+    cancelThread.join();
+    s_CancelPeer = nullptr;
+    s_CancelCamera = nullptr;
+    passed &=
+        check(s_CancelDelivered.load(), "the probe-time cancel was delivered on the live link");
+    passed &= check(captureWrites(peer.writes()).empty(), "a probe-time cancel writes no capture");
+    passed &= check(peer.reconnectCount() == 1, "a probe-time cancel had already relinked once");
+    passed &= check(elapsed < WAKE_PROBE_TIMEOUT_MS,
+                    "a probe-time cancel stops in the probe instead of spending the budget");
     camera.clearConnectCancel();
     camera.disconnect();
     NimBLEDevice::setMockPeer(nullptr);

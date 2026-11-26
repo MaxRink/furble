@@ -46,7 +46,12 @@ asleep (`captureRequestsWhileAsleep()`), and that a wake timeout refuses while
 the relinked connection stays usable. `ricoh-sleep-gate` owns the phase 1
 invariant on the same peer and asserts it as "no capture write", not "no write":
 the wake repeats the connect-path identity write. Keep both: a peer that only
-models a refusal cannot show that the gate survives a wake.
+models a refusal cannot show that the gate survives a wake. Both cancel cases
+must stay: the host build compiles `Ricoh.cpp`'s wait on the wall clock, so the
+delay hook cannot reach it, and the probe-time cancel is delivered by a helper
+thread that waits for the peer to accept the reconnect. Do not replace that with
+a pre-press `cancelConnect()`, which the pre-relink check short-circuits before
+the probe runs.
 
 Provisioning tests cover Legend Off through the production apply path and NVS
 store. Keep `Furble::Settings` qualified outside its namespace; run both the

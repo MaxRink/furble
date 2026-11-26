@@ -13,20 +13,6 @@
 #include <NimBLEUtils.h>
 #include <esp_timer.h>
 
-// The wake bounded wait has to use the scheduler's tick wherever FreeRTOS is
-// present: the simulator runs on a virtual clock its scenarios advance, so a
-// wall-clock sleep would pass in no real time and the probe would never see the
-// body wake. Host targets that link no FreeRTOS shim fall back to the wall
-// clock. Same rule as Camera.cpp and Fujifilm.cpp.
-#if __has_include(<freertos/FreeRTOS.h>)
-#define FURBLE_RICOH_WAIT_USES_TICKS 1
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#else
-#include <chrono>
-#include <thread>
-#endif
-
 #include "Device.h"
 #include "Ricoh.h"
 #include "protocol/AdvertisementProtocol.h"
@@ -63,6 +49,9 @@ constexpr uint32_t GPS_MIN_INTERVAL_MS = 10 * 1000;
 // documents the cadence a GR IV wants, so this only needs to be short against
 // FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS and long enough not to flood the link.
 constexpr uint32_t WAKE_POLL_MS = 50;
+// Slice the wake pause so a teardown that lands during it is honoured inside
+// the wait itself (plan 170), without a second read per slice.
+constexpr uint32_t WAKE_PAUSE_SLICE_MS = 10;
 constexpr double GPS_MIN_DELTA_DEG = 0.00001;
 constexpr double GPS_MIN_DELTA_ALT_M = 1.0;
 
@@ -494,12 +483,11 @@ const char *Ricoh::wakeStateName(WakeState state) {
   return "?";
 }
 
-void Ricoh::wakePause(uint32_t milliseconds) {
-#if defined(FURBLE_RICOH_WAIT_USES_TICKS)
-  vTaskDelay(pdMS_TO_TICKS(milliseconds));
-#else
-  std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
-#endif
+bool Ricoh::wakePause(uint32_t milliseconds) {
+  // One implementation of a cancellable wait, on the Camera side: it owns the
+  // scheduler-clock rule and the plan 170 poll. Ten millisecond slices keep the
+  // probe responsive to a teardown without spraying reads.
+  return pollDelay(milliseconds, WAKE_PAUSE_SLICE_MS);
 }
 
 bool Ricoh::wakeFromStandby(uint8_t asleepMode) {
@@ -516,9 +504,24 @@ bool Ricoh::wakeFromStandby(uint8_t asleepMode) {
   // freshly re-established link can repeat a stale value, so a notification is a
   // diagnostic here and never a verdict.
   //
-  // FAILED writes nothing at all and leaves the link in whatever state RELINK
-  // reached, so the user keeps a usable connection and the next press can try
-  // again.
+  // FAILED writes no capture command, and leaves the link in whatever state
+  // RELINK reached, so the user keeps a usable connection and the next press can
+  // try again. The reconnect handshake itself repeats the connect-path identity
+  // write and the subscriptions before any CAPTURE read authorizes a capture;
+  // the invariant this path protects is the capture writes.
+  //
+  // A press that arrives while the session is already being torn down must not
+  // drop a working link. Control::disconnect() sets the cancel token before it
+  // posts the teardown, so relinking here can only lengthen the drain, and the
+  // teardown then has to take down the link this path just rebuilt. The plan 148
+  // cancel contract is that a cancelled press unwinds without touching the
+  // camera.
+  if (connectCancelled()) {
+    ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: cancelled by the user", wakeStateName(WakeState::IDLE),
+             wakeStateName(WakeState::FAILED));
+    return false;
+  }
+
   WakeState state = WakeState::RELINK;
   ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: camera asleep (mode 0x%02X %s)",
            wakeStateName(WakeState::IDLE), wakeStateName(state), asleepMode,
@@ -586,7 +589,12 @@ bool Ricoh::wakeFromStandby(uint8_t asleepMode) {
       state = WakeState::FAILED;
       break;
     }
-    wakePause(WAKE_POLL_MS);
+    if (!wakePause(WAKE_POLL_MS)) {
+      ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: cancelled during the probe", wakeStateName(state),
+               wakeStateName(WakeState::FAILED));
+      state = WakeState::FAILED;
+      break;
+    }
   }
 
   return state == WakeState::AWAKE;
