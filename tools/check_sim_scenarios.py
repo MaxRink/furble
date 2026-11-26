@@ -58,7 +58,14 @@ WORKFLOW_CAPABILITIES = {
 }
 SUITES = set(OWNERS)
 REQUIRED = {"path", "suite", "owner", "boards", "capabilities", "expected_exit", "certified"}
-OPTIONAL = {"reason"}
+OPTIONAL = {"reason", "transport"}
+
+# Which simulator binary a certified scenario needs. The default build compiles
+# the MQTT transport out (src/FurbleMQTT.cpp is an empty translation unit unless
+# FURBLE_MQTT is defined), so a scenario that asserts the production MQTT owner
+# cannot run there. `mqtt` marks the optional FURBLE_SIM_MQTT=1 build, and every
+# runner selects per transport so neither build runs the other's scenarios.
+TRANSPORTS = {"default", "mqtt"}
 
 def expected_suite(path: str) -> str | None:
   candidate = PurePosixPath(path)
@@ -107,6 +114,8 @@ def check_manifest(root: Path, manifest_path: Path) -> list[str]:
     if not isinstance(path, str):
       errors.append(f"{label} path is not a string")
       continue
+    if "transport" in entry and entry["transport"] not in TRANSPORTS:
+      errors.append(f"{path}: transport must be one of {', '.join(sorted(TRANSPORTS))}")
     paths.append(path)
     if not (root / path).is_file():
       errors.append(f"stale manifest entry: {path}")
@@ -166,13 +175,16 @@ def check_manifest(root: Path, manifest_path: Path) -> list[str]:
         errors.append(f"{suite}: no certified scenarios for required board {board}")
   return errors
 
-def certified_paths(root: Path, manifest_path: Path, suite: str, board: str) -> list[str]:
+def certified_paths(root: Path, manifest_path: Path, suite: str, board: str,
+                    transport: str = "default") -> list[str]:
   errors = check_manifest(root, manifest_path)
   if errors:
     raise ValueError("\n".join(errors))
   document = json.loads(manifest_path.read_text(encoding="utf-8"))
   return sorted(entry["path"] for entry in document["scenarios"]
-                if entry["certified"] and entry["suite"] == suite and board in entry["boards"])
+                if entry["certified"] and entry["suite"] == suite
+                and board in entry["boards"]
+                and entry.get("transport", "default") == transport)
 
 def main() -> int:
   parser = argparse.ArgumentParser()
@@ -181,6 +193,10 @@ def main() -> int:
   parser.add_argument("--list-certified", action="store_true")
   parser.add_argument("--suite", choices=sorted(SUITES))
   parser.add_argument("--board", choices=sorted(BOARDS), default="m5stick-s3")
+  parser.add_argument("--transport", choices=sorted(TRANSPORTS),
+                      default="default",
+                      help="binary a scenario needs: the default build, or the "
+                           "optional FURBLE_SIM_MQTT=1 build (default: default)")
   args = parser.parse_args()
   manifest = args.manifest or args.root / "sim/scenarios/manifest.json"
   errors = check_manifest(args.root, manifest)
@@ -190,7 +206,8 @@ def main() -> int:
   if args.list_certified:
     if args.suite is None:
       parser.error("--list-certified requires --suite")
-    print("\n".join(certified_paths(args.root, manifest, args.suite, args.board)))
+    print("\n".join(certified_paths(
+        args.root, manifest, args.suite, args.board, args.transport)))
     return 0
   print("sim scenario manifest is complete")
   return 0

@@ -353,10 +353,16 @@ class CommittedFloorTest(unittest.TestCase):
   def test_shape(self):
     self.assertLessEqual(set(self.floor), {"files", "stacks", "union", "lowered"})
     self.assertLessEqual({"files", "stacks", "union"}, set(self.floor))
-    expected_stacks = ["host"] + [
-        f"sim {board[0]} ({board[3]})" for board in COVERAGE.SIM_BOARDS
-    ] + ["sim union"]
-    self.assertEqual(sorted(self.floor["stacks"]), sorted(expected_stacks))
+    measured = [COVERAGE.sim_stack_name(board) for board in COVERAGE.SIM_BOARDS]
+    required = ["host", *measured, "sim union"]
+    mqtt = COVERAGE.sim_stack_name(COVERAGE.sim_mqtt_board(), "mqtt")
+    # The MQTT-transport stack is measured but has no floor yet: a floor is only
+    # comparable within one pinned clang major, and the number has to come from
+    # the clang-18 run rather than from whichever compiler wrote this branch.
+    # plans/356-sim-memory-certify.md records the measured value and the floor
+    # it should get.
+    self.assertLessEqual(set(self.floor["stacks"]), set(required) | {mqtt})
+    self.assertLessEqual(set(required), set(self.floor["stacks"]))
     self.assertEqual(sorted(self.floor["files"]), sorted(COVERAGE.CRITICAL_FILES))
 
   def test_every_value_is_a_percentage(self):
