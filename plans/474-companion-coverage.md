@@ -1,5 +1,15 @@
 # 474 - Companion coverage audit, screenshot gallery and the golden corpus
 
+## State
+
+Landed as pull request 512. One input moved while this ran: PR 480 merged as
+`c7af92ea`, so the Apple status-view snapshot and the `List` row count are on
+`master` and `FurbleCompanionCoreTests` counts 46 tests. The audit below measured
+44, which is why the `swift test` transcript in the verification section says
+44 tests in 4 suites; that transcript is the run this plan made. The living
+references, [docs/companion-test-coverage.md](../docs/companion-test-coverage.md)
+and `companion/apple/README.md`, state the current 46 core and 105 Apple totals.
+
 ## Why
 
 The Android companion gained its first UI snapshot test in plan 344 (PR 483) and
@@ -22,7 +32,7 @@ is the deliverable. Its shape:
 | App | Automated layers | CI job | Nothing |
 | --- | --- | --- | --- |
 | Android | 28 JVM tests, 6 golden-corpus tests, 6 UI snapshot baselines | `android.yml`, job `build`, one `./gradlew test` step | Instrumented tests, BLE, pairing, reconnect, settings sync, camera commands |
-| Apple | 44 core tests, 59 CLI tests | `apple.yml`, jobs `swift-package` and `apple-project` | Any UI test on `master`, XCUITest, CoreBluetooth, Keychain, pairing |
+| Apple | 46 core tests, 59 CLI tests | `apple.yml`, jobs `swift-package` and `apple-project` | Any interaction UI test, XCUITest, CoreBluetooth, Keychain, pairing |
 | Both | 2 Python source contracts, the C++ golden-corpus suite | `main.yml` job `Python tooling tests`, `protocol-tests.yml` job `protocol` | An Android-only pull request runs neither Python module |
 
 ## Gaps found
@@ -141,8 +151,10 @@ reproduce off this host.
 
 ## Left alone, with the reason
 
-- **The Apple UI snapshot.** PR 480 owns it. Its two open findings are resolved
-  on that branch and I confirmed both from the run logs rather than the body:
+- **The Apple UI snapshot.** PR 480 owned it and merged as `c7af92ea` while this
+  ran, which is what moved the core bundle from 44 to 46 tests. Its two open
+  findings were resolved on that branch and I confirmed both from the run logs
+  rather than the body:
   `apple.yml` run `45742432751` on `macos-15` printed
   `snapshot comparison: ... matched a fresh render on Version 15.8.2 (Build
   24H232): 360x168, 60480 pixels, 49 beyond 8/255 (0.08%, budget 1.00%), largest

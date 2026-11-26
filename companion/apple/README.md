@@ -199,7 +199,7 @@ SVG generation for the plotter.
 
 | Suite | Contents | `swift test` (`swift-package` job) | `xcodebuild test` (`apple-project` job) |
 | --- | --- | --- | --- |
-| `FurbleCompanionCoreTests`, 44 tests | Codecs, auth state machine, Keychain policy, connection state machine, device selection, error mapping | Yes | Yes, on both the iOS simulator and macOS targets |
+| `FurbleCompanionCoreTests`, 46 tests | Codecs, auth state machine, Keychain policy, connection state machine, device selection, error mapping, the status-view snapshot and the `List` row count | Yes | Yes, on both the iOS simulator and macOS targets |
 | `FurbleCompanionCLIKitTests`, 59 tests | CLI parsing, monitor policy and CSV, USB recovery, ROM banner, password resolution | Yes | No: the Xcode project does not build this target |
 
 The iOS simulator lane builds and unit-tests the app but never touches its UI;
