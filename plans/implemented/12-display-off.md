@@ -128,7 +128,7 @@ at `src/FurbleUI.cpp:53-76`.
   `M5.Display.wakeup()`, clear the flag, call `lv_display_trigger_activity()`,
   and report `LV_INDEV_STATE_RELEASED` until the button reports released again.
   This prevents the waking press from clicking whatever widget has focus.
-- `buttonPEKRead` (`src/FurbleUI.cpp:323-330`) reads a click count from
+- `buttonPEKRead` (`src/FurbleUI.cpp:1589-1608`) reads a click count from
   `Platform::getPWRClickCount()`. Swallowing there means consuming the count so
   it is not replayed.
 - Blind remote. With `DISPLAY_OFF == 2` and `m_ControlMode == ControlMode::SHUTTER`

@@ -54,9 +54,9 @@ link being up.
 - `allConnected()` is `isConnected()` for every target
   (`src/FurbleControl.cpp:220-228`).
 - `Camera::isConnected()` is `m_Connected && m_Client && m_Client->isConnected()`
-  (`lib/furble/Camera.cpp:92-99`). It is purely link state. Nothing about
+  (`lib/furble/Camera.cpp:1458`). It is purely link state. Nothing about
   registration or `m_Configured`.
-- `Fujifilm::m_Configured` (`lib/furble/Fujifilm.h:67`) is set only by the
+- `Fujifilm::m_Configured` (`lib/furble/Fujifilm.h:112`) is set only by the
   `CHR_NOT1_UUID` notification handler (`lib/furble/Fujifilm.cpp:24-27`) and is
   read only inside a `#if 0` block in the Basic path
   (`lib/furble/FujifilmBasic.cpp:116-125`). The Secure path never reads it. A
@@ -88,7 +88,7 @@ Call chain during the stall:
    (`src/FurbleControl.cpp:104`)
 -> `Camera::connect()` holding `Camera::m_Mutex`
    (`lib/furble/Camera.cpp:28`)
--> `FujifilmSecure::_connect()` (`lib/furble/Camera.cpp:50`).
+-> `FujifilmSecure::_connect()` (`lib/furble/Camera.cpp:610`).
 
 `_connect()` prints `Connected` at `lib/furble/FujifilmSecure.cpp:107` right
 after `m_Client->connect(m_Address)` succeeds. That is the `Connected` line seen
@@ -120,7 +120,7 @@ can tell them apart:
    the ATT layer it returns false and the attempt fails.
 2. One step returns false quickly, `_connect()` returns false, `Camera::connect`
    tears the link down (`lib/furble/Camera.cpp:53-54`), `connectAll` counts a
-   failure and returns `STATE_CONNECT` (`src/FurbleControl.cpp:130-135`), and
+   failure and returns `STATE_CONNECT` (`src/FurbleControl.cpp:452-455`), and
    the control task retries. With reconnect enabled
    (`Settings::RECONNECT`, `src/FurbleUI.cpp:1438`) it retries forever, so the
    UI shows `connecting` indefinitely; each retry hits the same stale-session
@@ -140,7 +140,7 @@ the stale-session sensitivity lives.
 ### Confirming side effect
 
 During the stall the control task holds both `Control::m_Mutex`
-(`src/FurbleControl.cpp:104`) and `Camera::m_Mutex` (`lib/furble/Camera.cpp:28`).
+(`src/FurbleControl.cpp:104`) and `Camera::m_Mutex` (`lib/furble/Camera.cpp:532`).
 `Control::getTargetStatus` takes `Control::m_Mutex`
 (`src/FurbleControl.cpp:235`) and per-camera `isConnected` takes `Camera::m_Mutex`
 (`lib/furble/Camera.cpp:93`), so the console `status` command should block while

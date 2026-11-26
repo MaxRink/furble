@@ -200,7 +200,7 @@ it only uses `age_ms` to start the staleness clock at the correct point.
 furble already has one authority on GPS freshness. `GPS::update()` runs on a 1 s
 LVGL timer, checks `location.age() < MAX_AGE_MS` with `MAX_AGE_MS = 30 s`
 (`include/FurbleGPS.h:38`), sets `m_HasFix`, drives the status bar icon, and
-calls `Control::updateGPS()` (`src/FurbleGPS.cpp:161-192`).
+calls `Control::updateGPS()` (`src/FurbleGPS.cpp:2675`).
 
 The companion service does not call `Control::updateGPS()` directly. It hands
 the record to `Furble::GPS` through a new method, for example
@@ -336,7 +336,7 @@ uint8  op       // 0 shutter release, 1 shutter press, 2 focus press,
 uint16 hold_ms  // op 4 only
 ```
 
-Mapping to `Control::sendCommand()` (`include/FurbleControl.h:84`):
+Mapping to `Control::sendCommand()` (`include/FurbleControl.h:139`):
 
 | op | command |
 |---|---|
@@ -618,7 +618,7 @@ strongest protection the stack offers.
   comparison is the right association model: both devices show a six digit
   number, the user confirms it on both. This reuses the existing IO capability,
   `SecurityMode::SECURE_DISPLAY_YESNO`, which is the class default in
-  `Camera` (`lib/furble/Camera.h:42-45,188`). Choosing numeric comparison rather
+  `Camera` (`lib/furble/Camera.h:168,188`). Choosing numeric comparison rather
   than passkey entry means the host wide IO capability does not have to be
   switched between the central and peripheral roles, which avoids a race against
   a camera connect that happens to be in progress.

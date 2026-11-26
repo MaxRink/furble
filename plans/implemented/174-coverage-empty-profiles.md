@@ -26,7 +26,7 @@ The #276 review found two more defects on the way:
 - `console_shim.cpp` `xTaskCreate()` accepted a task created after
   `furbleHostStopTasks()` had copied the list it joins, so that task is never
   joined and outlives `main()` exactly as a detached task did.
-  `control_e2e/freertos_shim.cpp:55` already rejects it.
+  `tests/host/control_e2e/freertos_shim.cpp:55` already rejects it.
 - `crashed_host_tests()` latched its summary-block header on the first line
   merely containing it. ctest runs with `--output-on-failure`, so a failing
   test's own stdout is echoed above the real block: a test that printed the

@@ -102,12 +102,14 @@ state machine and every Compose screen. Only the bottom layer is swapped.
 
 `Furble::Companion` today mixes three concerns in one class. Advertising and
 bonding are NimBLE. The GATT callbacks are NimBLE. The service logic underneath
-them is not NimBLE at all. `Companion::handleLocation` at
-`lib/furble/Companion.cpp:613` takes a `NimBLEAttValue`, copies it into a
-`companion_fix_t`, and hands the result to `GPS::setExternalFix`. Nothing in
-that function needs Bluetooth. The same is true of `getStatus` at `:412`,
-`handleSettings` at `:790`, `handleTrigger` at `:894`, `allowTrigger` at `:881`
-and `releaseHeldCommands` at `:955`.
+them is not NimBLE at all. `CompanionGatt::onWrite` takes a `NimBLEAttValue`
+and passes only its bytes on (`src/FurbleCompanion.cpp:928`), and
+`CompanionService::handleLocation` copies them into a `companion_fix_t` and
+hands the result to `GPS::setExternalFix`
+(`src/FurbleCompanionService.cpp:304`). Nothing in that function needs
+Bluetooth. The same is true of `getStatus` (`:215`), `handleSettings` (`:1027`),
+`allowTrigger` (`:1213`), `handleTrigger` (`:1226`) and
+`releaseHeldCommands` (`:1293`) in the same file.
 
 Split the class in two.
 

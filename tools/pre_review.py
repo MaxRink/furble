@@ -78,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
        [PYTHON, "tools/check_datasheet_citations.py", "--root", str(root)]),
       ("M5GFX board pinning",
        [PYTHON, "tools/check_m5gfx_pinning.py", "--root", str(root)]),
+      ("documentation citations",
+       [PYTHON, "tools/check_doc_citations.py", "--root", str(root)]),
   ]
   if not args.skip_unit:
     gates.append(("scanner unit tests",
@@ -89,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
                    "tests.test_check_datasheet_citations",
                    "tests.test_check_format",
                    "tests.test_check_m5gfx_pinning",
+                   "tests.test_check_doc_citations",
                    "tests.test_plot_companion_power"]))
   if args.sanitized:
     gates.append(("sanitized host subset",

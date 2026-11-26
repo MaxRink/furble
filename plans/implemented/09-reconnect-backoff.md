@@ -83,7 +83,7 @@ item when `RECONNECT` is off, using the same event pattern already used for the
   - a successful connect (`src/FurbleControl.cpp:115-118`),
   - `Control::connectAll(bool)` being called by the user
     (`src/FurbleControl.cpp:216-220`),
-  - `Control::disconnect()` (`src/FurbleControl.cpp:222-244`).
+  - `Control::disconnect()` (`src/FurbleControl.cpp:960-1175`).
 - The delay must be interruptible. Today the code blocks the control task for
   5 s while holding `m_Mutex`, and `Control::disconnect()` waits on that mutex.
   A 120 s block would freeze the disconnect button for two minutes. Sleep in

@@ -25,7 +25,7 @@ the simulator receiver is `sim/ubx_m10.cpp`.
 | 7+n | 1 | checksum B | IFD 3.4 |
 
 The checksum is the 8-bit Fletcher over class, id, length and payload, computed
-by `checksum()` (`lib/furble/protocol/GpsUbx.h:124-125`). Overhead is 8 bytes and
+by `checksum()` (`lib/furble/protocol/GpsUbx.h:121-122`). Overhead is 8 bytes and
 the largest accepted payload is 1024 bytes (`lib/furble/protocol/GpsUbx.h:30-42`).
 
 ## Stream rules

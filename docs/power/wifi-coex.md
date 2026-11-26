@@ -314,7 +314,7 @@ The coordinator assigns `P-xxx` identifiers when these rows are merged into
 
 - **Change:** switch the station to `WIFI_PS_MAX_MODEM` with `listen_interval`
   3 (about 307 ms of downlink latency) and make it a setting, not a default.
-- **Current behavior:** `WIFI_PS_MIN_MODEM` (`src/FurbleWiFi.cpp:275`), which is
+- **Current behavior:** `WIFI_PS_MIN_MODEM` (`src/FurbleWiFi.cpp:465`), which is
   also the driver default (D9). The station wakes at every DTIM.
 - **Evidence:** `inferred` for the mechanism; the only size evidence is
   `measured-vendor` at the AP-side DTIM (D11).
@@ -507,7 +507,7 @@ The coordinator assigns `P-xxx` identifiers when these rows are merged into
   A refusal from the Control-state gate must leave the fallback scan available
   so a later idle retry can use it.
 - **Current behavior:** the worker sets `g_ScanAttempted = true` before it calls
-  `scanForNetwork()` (`src/FurbleWiFi.cpp:512-523`). A refused scan therefore
+  `scanForNetwork()` (`src/FurbleWiFi.cpp:608-660`). A refused scan therefore
   consumes the only fallback scan for that failure streak. The worker is not
   parked: it still calls `connectAttempt()` and receives the same disconnect
   notifications (`src/FurbleWiFi.cpp:525-533`). The defect is the lost scan, not
@@ -652,9 +652,9 @@ The coordinator assigns `P-xxx` identifiers when these rows are merged into
   Stop on a confirmed authentication error, allow six attempts for no-AP
   reasons, and allow ten attempts for other transient failures. `wifi connect`
   clears the stop. Implemented as P-028.
-- **Current behavior:** `classifyDisconnect()` maps `WIFI_REASON_AUTH_FAIL` to
-  `AUTH`, the no-AP reasons to `NO_AP`, and everything else, including handshake
-  timeouts, to `TRANSIENT` (`src/FurbleWiFi.cpp:105-125`). The handler stops
+- **Current behavior:** `classifyDisconnect()` (`src/FurbleWiFi.cpp:158`) maps
+  `WIFI_REASON_AUTH_FAIL` to `AUTH`, the no-AP reasons to `NO_AP`, and everything
+  else, including handshake timeouts, to `TRANSIENT`. The handler stops
   after one `AUTH`, after `NO_AP_MAX_ATTEMPTS` (6), or after
   `TRANSIENT_MAX_ATTEMPTS` (10), with capped backoff for the retries
   (`src/FurbleWiFi.cpp:552-600`). `NO_AP_FOUND` is therefore not treated as a

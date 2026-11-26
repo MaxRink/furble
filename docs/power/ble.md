@@ -200,10 +200,10 @@ measured.
 
 **Current behavior.** `Scan::start(NimBLEScanCallbacks *, uint32_t duration, bool
 wantDuplicates)` calls `applyMode(Mode::FULL)` unconditionally before every
-targeted scan (`lib/furble/Scan.cpp:324`). `FujifilmSecure::_connect` and
-`Nikon::_connect` use that overload with `SCAN_TIME_MS = 60000`
-(`lib/furble/FujifilmSecure.cpp:157-174`, `lib/furble/Nikon.cpp:82-100`,
-`lib/furble/FujifilmSecure.h:106`, `lib/furble/Nikon.h:49`). The discovery
+targeted scan (`lib/furble/Scan.cpp:324`). `FujifilmSecure::_connect` uses that
+overload with `SCAN_TIME_MS = 60000` (`lib/furble/FujifilmSecure.cpp:157-174`,
+`lib/furble/FujifilmSecure.h:105`), and `Nikon::_connect` does the same
+(`lib/furble/Nikon.cpp:82-100`, `lib/furble/Nikon.h:59`). The discovery
 preset is deliberately ignored on this path.
 
 **Evidence.** Inferred. The behavior is read from the code. The energy claim is
@@ -338,7 +338,7 @@ restart, which clears the controller duplicate cache and can re-report devices.
 
 **Effort.** Medium. A timer and a restart path in the UI, plus preservation of
 the found list across the restart. The current `startScan()` clears
-`CameraList` (`src/FurbleUI.cpp:6741-6752`), so a plain restart would drop rows.
+`CameraList` (`src/FurbleUI.cpp:9582`), so a plain restart would drop rows.
 
 **Required test.** Simulator scenario that advances past the decay and asserts a
 second scan start at the decayed preset, with the found rows still present. Host
@@ -1133,7 +1133,7 @@ One documentation conflict to resolve before designing a fix: plan 10's 2026-08-
 hardware note says active geotagging keeps the link permanently fast because
 "every geotag write counts as activity". The current code does not call
 `noteConnActivity` on the GPS path; `CMD_GPS_UPDATE` only calls
-`updateGeoData` (`src/FurbleControl.cpp:153-156`). The likely mechanism is a
+`updateGeoData` (`src/FurbleControl.cpp:197-198`). The likely mechanism is a
 peer parameter override or the target task staying busy, not an activity
 timestamp. Re-verify before changing the geotag path for power.
 
@@ -1269,7 +1269,7 @@ to the power-gate suite.
 `radio_ma = (radio_connected_ms * connected_idle + radio_event_count * radio_tx * 2.0) / duration`
 (`sim/power_profiler.cpp:1242-1244`; the `2.0` charges 2 ms at the transmit
 current per event). `radio_connected` is set only by
-`profilerSetRadioConnected` (`sim/power_profiler.cpp:1730-1736`), and a grep over
+`profilerSetRadioConnected` (`sim/power_profiler.cpp:1773-1778`), and a grep over
 `sim/`, `src/`, `lib/`, `include/` and `tests/` finds no caller. The only radio
 events are shutter, focus and GPS command events from the virtual peer
 (`sim/BleSim.cpp:392-407`). The virtual radio advertises every 100 ms and is not

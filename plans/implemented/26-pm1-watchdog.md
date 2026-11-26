@@ -200,8 +200,8 @@ change beyond the two declarations.
 
 ### Where to feed
 
-Feed from `Platform::update()` (`src/FurblePlatform.cpp:82-101`), rate limited
-to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:51-53`).
+Feed from `Platform::update()` (`src/FurblePlatform.cpp:992-1020`), rate limited
+to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:338-340`).
 
 `Platform::update()` is called from `UI::task` at `src/FurbleUI.cpp:2125`, once
 every loop, and the loop delays 5 ms at line 2133. So the feed is attempted
@@ -242,7 +242,7 @@ with `light_sleep_enable` at lines 65-72. `CONFIG_PM_ENABLE=y`
 Automatic light sleep does not break the feed. The ESP-IDF power management
 documentation states that sleep duration is computed from FreeRTOS tasks blocked
 with finite timeouts, and the chip wakes before the nearest one. `UI::task`
-blocks on a 5 ms `vTaskDelay` (`src/FurbleUI.cpp:2133`), so today the longest
+blocks on a 5 ms `vTaskDelay` (`src/FurbleUI.cpp:13474`), so today the longest
 the chip can sleep between two feeds is 5 ms. The 10 s timeout has enormous
 margin.
 
@@ -270,7 +270,7 @@ easy to get wrong:
 Disarm before anything that intentionally stops the firmware, otherwise the PM1
 resets a device the user asked to switch off:
 
-- `Platform::powerOff()` (`src/FurblePlatform.cpp:74-80`). Call
+- `Platform::powerOff()` (`src/FurblePlatform.cpp:442-466`). Call
   `watchdogEnable(false)` before `m_M5PM1.shutdown()` at line 76.
 - The Theme page restart button, which calls `esp_restart()` at
   `src/FurbleUI.cpp:1990`. A reset re-runs `Platform::getInstance()` and

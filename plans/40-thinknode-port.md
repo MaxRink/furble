@@ -132,7 +132,7 @@ entire platform layer and the entire BLE plumbing. Concretely:
 
 - `lib/furble` is hard-coupled to esp-nimble-cpp. `Camera` inherits
   `NimBLEClientCallbacks` and owns a `NimBLEClient *`
-  (`lib/furble/Camera.h:20,168`). A count across `lib/furble` finds roughly 25
+  (`lib/furble/Camera.h:47,606`). A count across `lib/furble` finds roughly 25
   distinct `NimBLEClient` calls plus heavy use of `NimBLEUUID`,
   `NimBLERemoteCharacteristic`, `NimBLERemoteService`, `NimBLEAdvertisedDevice`,
   `NimBLEScan` and `NimBLEAddress`. On nRF52 the realistic stacks are the
