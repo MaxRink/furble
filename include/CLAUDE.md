@@ -350,6 +350,18 @@ settings-touching rebase.
   carries the hardware's SD slot, NS4168 speaker, BT1-backed BM8563 and RTC
   alarm wake; the Core2 row keeps `TimedWake::NONE` because the 2023.2 revision
   removed its RTC backup cell (plans/354).
+- `Board::gpsPins()` is the only GPS UART pin source. `BOARD_SUPPORT` reads
+  M5Unified's Port A table in `src/FurbleBoard.cpp`; a board M5Unified cannot
+  describe sets `GpsPinSource::PROFILE` and carries `gpsRxPin`/`gpsTxPin` in its
+  row; `GpsPinSource::NONE` means the board has no GPS UART and claims no pin.
+  `NONE` is for a board whose Port A belongs to another peripheral, not a
+  fallback: the Core (Port A is the internal I2C bus with the IP5306 and
+  MPU6886) and the Waveshare ESP32-S3-ETH (GPIO13 is the W5500 SPI clock) both
+  hit a live defect before it existed. `FurbleGPS` installs nothing on `NONE`
+  and reports the receiver absent, so never add a pin fallback there, and never
+  give `board_M5StampS3` `BOARD_SUPPORT` because M5Unified reports the id. -1
+  means no pin and is what `uart_set_pin` receives on the other sources. See
+  plans/336-gps-pin-seam.md.
 - `FurblePinShare.h` is the ownership contract for one pin shared by the
   feedback LED and the IR emitter (Plus2 G19). Feedback calls
   `PinShare::requestLed()`; IR brackets a frame with `beginIr()` and

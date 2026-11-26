@@ -6,6 +6,9 @@
 #
 # The binary side is driven at the same time: uart-mode malformed corrupts every
 # CASIC acknowledgement, and the UART driver error events are injected on top.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_baud 9600
 seed gps_sats malformed

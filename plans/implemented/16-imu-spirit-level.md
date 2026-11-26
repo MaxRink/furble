@@ -75,7 +75,7 @@ PR05 is not merged yet, put the live page under `Sensors` and move it in a
 follow-up.
 
 `m_Menu` grid coordinates are only meaningful for the Core grid layout
-(`src/FurbleUI.cpp:415`). Take the next free `{col,row}` on the Settings
+(`src/FurbleUI.cpp:426-426`). Take the next free `{col,row}` on the Settings
 page. PR01 (Power), PR05 (Diagnostics) and PR08 (Bluetooth) also add cells, so
 the final grid must be settled by whichever of those lands last.
 

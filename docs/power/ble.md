@@ -338,7 +338,7 @@ restart, which clears the controller duplicate cache and can re-report devices.
 
 **Effort.** Medium. A timer and a restart path in the UI, plus preservation of
 the found list across the restart. The current `startScan()` clears
-`CameraList::clear()` (`src/FurbleUI.cpp:9582`), so a plain restart would drop rows.
+`CameraList::clear()` (`src/FurbleUI.cpp:9595`), so a plain restart would drop rows.
 
 **Required test.** Simulator scenario that advances past the decay and asserts a
 second scan start at the decayed preset, with the found rows still present. Host

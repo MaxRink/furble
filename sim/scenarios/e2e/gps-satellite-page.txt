@@ -1,6 +1,9 @@
 # The satellite page enables GSV/GSA capture and renders the parsed fixture from
 # the fake UART. This keeps the documentation screenshot tied to a real route,
 # rather than merely proving that a page button exists.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 wait 300
 action nav gps_sats

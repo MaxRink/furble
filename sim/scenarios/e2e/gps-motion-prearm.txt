@@ -1,5 +1,8 @@
 # GPS applies its persisted motion preference before the shared source is armed.
 # The source lifecycle then changes without a settings write or GPS reload.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_motion true
 seed gps_motion_prearm true

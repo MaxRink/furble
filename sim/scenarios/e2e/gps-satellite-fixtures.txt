@@ -7,6 +7,9 @@
 # driven to both scroll ends rather than asserted to fit. The parsed counts are
 # read from the production parser, so a rendering that silently lost rows still
 # fails on the count.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_baud 9600
 seed gps_uart_mode ack

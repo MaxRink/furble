@@ -10,11 +10,17 @@ enum class board_t {
   board_M5StickCPlus2,
   board_M5StickS3,
   board_M5Tough,
+  // profileFor() names the row the Waveshare ESP32-S3-ETH image reports.
   board_M5StampS3,
 };
 
-enum class pin_name_t {
+// Unscoped, like m5::pin_name_t in M5Unified 0.2.20, so m5::port_a_pin1 names
+// the enumerator the way production code does.
+enum pin_name_t {
   sd_spi_cs,
+  // FurbleBoard::gpsPins() asks for Port A; the stub answers every pin with 4.
+  port_a_pin1,
+  port_a_pin2,
 };
 }  // namespace m5
 

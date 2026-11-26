@@ -114,7 +114,7 @@ Needs per-board validation: yes, tightest at 80x160.
 Evidence: `docs/img/settings-gps.png` (`Baud 115200`),
 `docs/img/settings-power.png` (`Sleep when...`),
 `docs/img/settings-bluetooth.png` (`Active Connection`). These toggle rows are
-built by `addSettingItem` (`src/FurbleUI.cpp:2878-3111`) with the label in
+built by `addSettingItem` (`src/FurbleUI.cpp:2889-3122`) with the label in
 `LV_LABEL_LONG_SCROLL_CIRCULAR` (line 1486) and a switch beside it. At 135px the
 labels are wider than their column, so they marquee-scroll continuously. This is
 by-design and readable, but constant scrolling on several rows is distracting on

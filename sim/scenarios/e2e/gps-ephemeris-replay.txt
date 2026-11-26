@@ -11,6 +11,9 @@
 # stream is dated at the capture date and the replay commits once the receiver
 # has said what time it thinks it is. gps-ephemeris-stale moves that clock and
 # covers the refusal; gps-ephemeris-invalid covers a corrupted cache.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_baud 9600
 seed gps_assist 2

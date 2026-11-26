@@ -7,6 +7,9 @@
 # The ladder order is 115200, 9600, 38400, 57600, 19200, 4800 and each step is
 # bounded by Casic::Autobaud::STEP_MS, so the slowest rate costs six steps. The
 # waits below are generous multiples of that; they are not timing assertions.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps false
 seed gps_baud auto
 seed gps_uart_mode ack

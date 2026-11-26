@@ -30,6 +30,8 @@ namespace Furble {
 namespace {
 bool g_SuppressNextWatchdogFeed = false;
 Sim::boot_settings_t g_BootSettings = {false, 0};
+// The profile row a scenario selects, board_unknown to use the detected board.
+m5::board_t g_BoardProfile = m5::board_t::board_unknown;
 
 #if defined(FURBLE_M5STICKS3)
 using Watchdog::PM1_FEED_PERIOD_MS;
@@ -499,6 +501,14 @@ uint32_t Platform::getBatteryFailCount(void) {
 
 namespace Sim {
 
+void setBoardProfile(m5::board_t board) {
+  g_BoardProfile = board;
+}
+
+m5::board_t boardProfile(void) {
+  return g_BoardProfile;
+}
+
 void captureBootSettings(const boot_settings_t &settings) {
   g_BootSettings = settings;
 }
@@ -607,3 +617,13 @@ const char *displayOffState(void) {
 
 }  // namespace Sim
 }  // namespace Furble
+
+// The simulator's strong definition of the weak hook FurbleBoard.cpp declares:
+// the row a scenario selected, if any.
+extern "C" bool furble_sim_board_profile(m5::board_t *board) {
+  if (Furble::Sim::boardProfile() == m5::board_t::board_unknown) {
+    return false;
+  }
+  *board = Furble::Sim::boardProfile();
+  return true;
+}

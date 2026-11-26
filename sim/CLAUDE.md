@@ -53,6 +53,13 @@ include initial platform power configuration. Companion rig selection and
 persisted Companion state are separate concerns and must not be combined with
 this startup ordering contract.
 
+`Sim::setBoardProfile()` selects the `Board::profile()` row a scenario exercises
+and is applied with the scenario settings, before platform construction,
+because the platform and the GPS task read the row. `sim/FurblePlatformSim.cpp`
+defines the strong form of the weak `furble_sim_board_profile` hook that
+`src/FurbleBoard.cpp` declares under `FURBLE_SIM`, and firmware links the weak
+default, so a run without the `board` seed keeps the detected board.
+
 `sim/FurblePlatformSim.cpp` records the `IMU` and `FB_OUTPUT` values loaded at
 the platform boundary as `boot_settings_imu` and `boot_settings_fb_output`.
 These are query-only observations of boot inputs. The SDL platform still forces
@@ -1218,6 +1225,16 @@ reads `mqtt.retry_delay`.
 - GPS docs use `nav gps_sats` and the `gps-satellite-page` scenario. The fake
   UART includes a fixed GSV/GSA fixture, so the capture proves the satellite
   page route and parsed counts without implying live AT6668 hardware coverage.
+- A scenario that drives the fake UART and asserts receiver behaviour (the
+  autobaud ladder, the acquisition deadline, the ephemeris tiers, NMEA parsing,
+  the satellite pages, MON-HW, the motion detector, the GPS time-zone source,
+  the failed-install path and the cycle-wait bound) lists only boards whose
+  profile row names a GPS UART. `m5stack-core` left
+  those matrices with plan 336 because its row is `Board::GpsPinSource::NONE`
+  and `GPS::getInstance()` installs no driver there, so no seeded receiver can
+  appear. The Core keeps the scenarios that only need the pages to exist
+  (`page-matrix`, `overflow-sweep`, `connstate-page-sweep`), which is why the
+  GPS surfaces stay gated on the setting rather than on `isEnabled()`.
 - The fake UART models a receiver, not just a byte source. It records the rate
   the driver programmed and answers only when the modelled receiver rate
   matches, which is what makes the autobaud ladder and the no-receiver state

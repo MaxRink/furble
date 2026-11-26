@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <limits>
 
-#include <M5Unified.h>
 #include <TinyGPS++.h>
 #include <esp_timer.h>
 
@@ -17,6 +16,7 @@
 #include "icons.h"
 #endif
 
+#include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
 #include "FurbleConsole.h"
 #include "FurbleControl.h"
@@ -164,9 +164,25 @@ GPS &GPS::getInstance() {
   static GPS instance;
 
   if ((instance.m_Task == NULL) && !instance.m_UartInstallFailed.load()) {
-    //  RX=33, TX=32 for Module GPS v2.1, currently unsupported
-    const int8_t tx = M5.getPin(m5::port_a_pin2);
-    const int8_t rx = M5.getPin(m5::port_a_pin1);
+    // The board profile names where the GPS UART pins come from: the M5
+    // boards ask M5Unified's pin table, a board M5Unified cannot describe
+    // reads its own row, and a board whose Port A belongs to another
+    // peripheral names no source at all.
+    int8_t rx = -1;
+    int8_t tx = -1;
+    if (!Board::gpsPins(rx, tx)) {
+      // No GPS UART on this board, so no pin may be claimed: uart_set_pin on
+      // the Core's 22/21 would take the internal I2C bus from the IP5306 and
+      // the MPU6886, and GPIO13 on the Waveshare ESP32-S3-ETH is the W5500 SPI
+      // clock. Report the receiver absent and install nothing; every entry
+      // point below returns early while the task is missing.
+      if (!instance.m_NoUartLogged) {
+        instance.m_NoUartLogged = true;
+        ESP_LOGI(LOG_TAG, "No GPS UART on this board.");
+      }
+      instance.m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::ABSENT));
+      return instance;
+    }
 
     const int baud = Settings::load<Settings::GPS_BAUD>();
     const uart_config_t uart_config = {
@@ -382,11 +398,19 @@ void GPS::resetAcquisition(uint32_t now) {
 }
 
 void GPS::enable(void) {
-  // uart_driver_install() failed, so there is no queue and no task to service
-  // a cycle. Report the state the autobaud no-receiver path leaves behind and
-  // arm nothing: no cycle, no configuration, no power lock, no allocation. The
-  // setting still decides m_Enabled, which reloadSetting() has already applied.
-  if (m_UartInstallFailed.load()) {
+  // No task means nothing to configure or park, for either cause: the board
+  // names no GPS UART (GpsPinSource::NONE), or uart_driver_install() failed.
+  // Both leave the receiver absent and arm nothing: no cycle, no configuration,
+  // no power lock, no allocation.
+  if (m_Task == NULL) {
+    if (m_UartInstallFailed.load()) {
+      // The install failed on a board that does have a port, so the stored
+      // setting still owns m_Enabled and only the receiver is absent (#509).
+      m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::ABSENT));
+      return;
+    }
+    // The board has no port at all, so no stored enable state may claim one.
+    m_Enabled = false;
     m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::ABSENT));
     return;
   }
@@ -2315,6 +2339,11 @@ void GPS::servicePoll(void) {
 
 void GPS::disable(void) {
   m_Enabled = false;
+  if (m_Task == NULL) {
+    // No GPS UART on this board, so nothing to wind down and no pin to release.
+    m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::ABSENT));
+    return;
+  }
   wakeGPSService(m_Queue);
   const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
   // A planned power cut: let a u-blox receiver without V_BCKP save its BBR

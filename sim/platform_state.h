@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#include <M5Unified.h>
+
 namespace Furble::Sim {
 
 /** Settings loaded at the simulated platform construction boundary. */
@@ -53,6 +55,18 @@ bool pmicClearSystemIrq(void);
 
 /** Return the panel-off state the PM1 status LED level models. */
 const char *displayOffState(void);
+
+/**
+ * Select the board profile row a scenario exercises.
+ *
+ * M5Unified's host build reports the detected board, so without this a scenario
+ * could only reach the row that board maps to. board_unknown keeps the detected
+ * board. Board::profile() asks through the weak furble_sim_board_profile hook.
+ */
+void setBoardProfile(m5::board_t board);
+
+/** The scenario-selected row, or board_unknown for the detected board. */
+m5::board_t boardProfile(void);
 
 }  // namespace Furble::Sim
 

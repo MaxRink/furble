@@ -2,6 +2,9 @@
 # ACQUIRING forever: NO_LIGHT_SLEEP stayed held and the 5 V rail stayed on.
 # The acquisition deadline must drop the rail, release the lock, and enter the
 # normal absent state with its one retry.
+#
+# No m5stack-core run: that row names no GPS UART
+# (Board::GpsPinSource::NONE, plan 336), so no receiver can appear there.
 seed gps true
 seed gps_baud 9600
 seed gps_receiver none
