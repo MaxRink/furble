@@ -365,6 +365,13 @@ jobs:
       - name: Check size budget (${{ matrix.platform }})
         run: python3 tools/check_size_budget.py --env "${{ matrix.platform }}"
 
+      # A pinned image tells M5GFX which board it is, which is what removes the
+      # other boards' probes. The check reads the M5GFX source this build just
+      # patched and fails when the pinned board no longer matches anything in
+      # the branch the env compiles.
+      - name: Check M5GFX board pinning (${{ matrix.platform }})
+        run: python3 tools/check_m5gfx_pinning.py --env "${{ matrix.platform }}" --require-source
+
       - name: Extract firmware size (${{ matrix.platform }})
         shell: bash
         env:

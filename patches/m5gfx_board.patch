@@ -1,11 +1,13 @@
 --- a/src/M5GFX.cpp
 +++ b/src/M5GFX.cpp
-@@ -1147,4 +1147,9 @@
+@@ -1147,4 +1147,11 @@
    board_t M5GFX::autodetect(bool use_reset, board_t board)
    {
 +#if defined ( M5GFX_BOARD )
-+    // furble: a single-board image pins its board, so the compiler drops
-+    // every other board's probe, panel and touch driver.
++    // furble: a single-board image pins its board, so only that pin's arm
++    // below can match and every other board's probe is unreachable. A pinned
++    // board with no arm of its own returns from the ESP32-S3 section before
++    // the first probe runs.
 +    board = M5GFX_BOARD;
 +#endif
      auto bus_spi = new Bus_SPI();

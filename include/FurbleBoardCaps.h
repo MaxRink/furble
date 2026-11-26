@@ -56,6 +56,16 @@
 #define FURBLE_HAS_VBUS_SENSE 1
 #endif
 
+// An internal I2C bus with devices M5Unified can identify. The Waveshare has
+// none: the pins M5Unified would use for one are the camera header and W5500
+// pins, so opening In_I2C there manufactures bus traffic on a pin that is not
+// a bus.
+#if defined(FURBLE_WAVESHARE_S3_ETH)
+#define FURBLE_HAS_INTERNAL_I2C 0
+#else
+#define FURBLE_HAS_INTERNAL_I2C 1
+#endif
+
 // Panel classes. At most one is 1. Headless profiles have none.
 #if defined(FURBLE_M5STICKC)
 #define FURBLE_PANEL_80X160 1

@@ -1196,14 +1196,20 @@ the StickC debug images; this change makes it unnecessary.
 | `CONFIG_LOG_VERSION_2` (ESP-IDF Log V2) | all | about 31 KB of format strings plus smaller call sites; S3 release 80 KB with the two below |
 | `CONFIG_LWIP_DHCPS=n`: only SoftAP used it, and SoftAP is compiled out | all | 2,916 bytes |
 | `CONFIG_MBEDTLS_GCM_SUPPORT_NON_AES_CIPHER=n`: only AES-GCM is used | all | 1,804 bytes |
-| `M5GFX_BOARD` pins the board in `M5GFX::autodetect` | `m5stick-c`, `m5stack-core`, `m5stick-s3` | about 22 KB on ESP32 |
+| `M5GFX_BOARD` pins the board in `M5GFX::autodetect` | `m5stick-c`, `m5stack-core`, `m5stick-s3`, `waveshare-s3-eth` | about 22 KB on ESP32 |
 
-`patches/m5gfx_board.patch` adds a three-line `#if defined(M5GFX_BOARD)` in
-`autodetect`, so the compiler drops every other board's probe, panel and
-touch driver. PlatformIO installs `lib_deps` after `pre:` scripts run, so
-`post:patches/m5gfx_board.py` applies it through the existing locked,
+`patches/m5gfx_board.patch` adds an `#if defined(M5GFX_BOARD)` assignment at
+the top of `autodetect`, so only the pinned board's arm can match and the
+compiler drops every other board's probe, panel and touch driver. A pinned
+board with no arm of its own, the display-less StampS3 on the Waveshare, is
+returned from the ESP32-S3 section before the first probe; plan
+[352](352-m5gfx-board-pin.md) records why the assignment alone did not
+suppress it. PlatformIO installs `lib_deps` after `pre:` scripts run, so
+`post:patches/m5gfx_board.py` applies the patch through the existing locked,
 marker-checked `apply_patch`. A fresh libdeps directory was verified.
 StickC Plus/Plus2 and Core2/Tough share an image and keep autodetect.
+`tools/check_m5gfx_pinning.py` fails a branch where a pin stops taking
+effect.
 
 Log V2 writes one record as three vprintf calls: prefix, message, newline.
 `FurbleCrashLog::logVprintf` now joins fragments up to the newline under its

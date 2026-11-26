@@ -195,6 +195,7 @@ implemented.
 |---|---|
 | [75-false-connected.md](implemented/75-false-connected.md) | False Connected when the camera is not in pairing mode. Promotion to ACTIVE is gated on GATT plumbing, not on the camera-side registration confirmation |
 | [80-camera-lifetime.md](implemented/80-camera-lifetime.md) | Use after free: CameraList owns Cameras by unique_ptr and load()/clear() free them while Control holds raw pointers across an in-flight connect. Own Cameras by shared_ptr so a connecting or active Camera outlives the list |
+| [352-m5gfx-board-pin.md](352-m5gfx-board-pin.md) | M5GFX board pinning: the Waveshare pin named a board with no `autodetect` arm, so the retry fell back to `board_unknown` and M5Unified probed GPIO 4, 8, 10, 12 and 38; the no-probe patch returns the display-less family before the first probe, with a build-time check |
 
 ## Simulator stability
 
