@@ -275,11 +275,14 @@ struct pmic_state_t {
   bool powerLatch = true;
   uint32_t brownouts = 0;
   // M5PM1 v1.0.6 register 0x06. One byte, so every field in it shares a
-  // read-modify-write hazard with the others.
+  // read-modify-write hazard with the others. 0x1F is the post-init
+  // PWR_CFG_BOOT: the manual's reset value is 0x17 with the 5 V boost off, and
+  // M5Unified's output_power default sets the boost bit. hwStart() applies
+  // both steps; the constants below carry the citations.
   uint8_t pwrCfg = 0x1F;
   uint32_t pwrCfgLostUpdates = 0;
   bool pwrCfgStale = false;
-  // The boot-time copy a stale write carries. Only the seed that asks for a
+  // The post-init copy a stale write carries. Only the seed that asks for a
   // stale write and the boot path fill it, so a later rail change cannot make
   // the write fresh by accident.
   uint8_t pwrCfgSnapshot = 0x1F;
@@ -618,9 +621,18 @@ constexpr uint8_t PWR_CFG_DCDC_EN = 1U << 1;
 constexpr uint8_t PWR_CFG_LDO_EN = 1U << 2;
 constexpr uint8_t PWR_CFG_BOOST_EN = 1U << 3;
 constexpr uint8_t PWR_CFG_LED_CTRL = 1U << 4;
-// Charge, both regulated rails, the switched 5 V output and the status LED lit.
-constexpr uint8_t PWR_CFG_BOOT =
-    PWR_CFG_CHG_EN | PWR_CFG_DCDC_EN | PWR_CFG_LDO_EN | PWR_CFG_BOOST_EN | PWR_CFG_LED_CTRL;
+// M5PM1-UM section 2 register (7), PWR_CFG 0x06, page 13 of 33, as recorded in
+// docs/components/m5pm1.md: the chip resets this byte to 0x17, with the 5 V
+// boost off. Charge, both regulated rails and the status LED are on.
+constexpr uint8_t PWR_CFG_RESET =
+    PWR_CFG_CHG_EN | PWR_CFG_DCDC_EN | PWR_CFG_LDO_EN | PWR_CFG_LED_CTRL;
+// The board does not stay at the reset value: M5Unified's config_t
+// output_power defaults to true (M5Unified.hpp) and M5Unified::_begin() calls
+// Power.setExtOutput(cfg.output_power), which sets BOOST_EN (M5Unified.cpp).
+// PWR_CFG_BOOT is that post-init byte, not the register default.
+constexpr uint8_t PWR_CFG_BOOT = PWR_CFG_RESET | PWR_CFG_BOOST_EN;
+static_assert(PWR_CFG_RESET == 0x17, "M5PM1-UM section 2 register (7) reset value");
+static_assert(PWR_CFG_BOOT == 0x1F, "post-init PWR_CFG with the 5 V boost on");
 
 /** The rail follows the one output bit, so a lost update moves it. */
 void applyRailFromPwrCfgLocked(hardware_state_t &hw) {
@@ -648,6 +660,19 @@ uint8_t pwrCfgWriteMaskedLocked(hardware_state_t &hw, uint8_t mask, uint8_t valu
   hw.pmic.pwrCfg = next;
   applyRailFromPwrCfgLocked(hw);
   return next;
+}
+
+/**
+ * Model the output_power step M5Unified performs after the PMIC resets.
+ *
+ * The M5PM1-UM reset value has BOOST_EN off. M5Unified's config_t
+ * `output_power` defaults to true and `M5Unified::_begin()` calls
+ * `Power.setExtOutput(cfg.output_power)`, which sets the bit on the StickS3
+ * M5PM1 path. Keeping the two steps separate is what makes the model's
+ * starting byte the documented one and the firmware's rail enable explicit.
+ */
+void applyBootOutputPowerLocked(hardware_state_t &hw) {
+  (void)pwrCfgWriteMaskedLocked(hw, PWR_CFG_BOOST_EN, PWR_CFG_BOOST_EN, false);
 }
 
 /** True when the model's PMIC is the one that owns PWR_CFG on this board. */
@@ -1235,11 +1260,13 @@ void hwStart(void) {
   hw.power.state = power_state_t::ON;
   hw.usb.mode = usb_mode_t::APP;
 
-  // The one PWR_CFG byte starts with every modelled output on, and the stale
-  // snapshot a scenario asked for is taken here, before any boot step can move
-  // the rail.
-  hw.pmic.pwrCfg = PWR_CFG_BOOT;
+  // Two steps, not one constant: the PMIC resets PWR_CFG to the documented
+  // 0x17 with the 5 V boost off, then M5Unified's output_power default sets
+  // BOOST_EN during M5.begin(). The stale snapshot a scenario asked for is
+  // taken after both, before any scenario step can move the rail.
+  hw.pmic.pwrCfg = PWR_CFG_RESET;
   applyRailFromPwrCfgLocked(hw);
+  applyBootOutputPowerLocked(hw);
   hw.pmic.pwrCfgSnapshot = hw.pmic.pwrCfg;
 
   // The RTC capability is a board-level fact, so check the pair at boot as well
@@ -2424,8 +2451,11 @@ void hwNoteWatchdogCycle(void) {
   hw.power.state = power_state_t::ON;
   hw.resetReason = ESP_RST_POWERON;
   hw.resetReasonName = "pmic_watchdog";
-  hw.pmic.pwrCfg = PWR_CFG_BOOT;
+  // A power cycle returns PWR_CFG to the documented reset value, then the SoC
+  // boots and M5Unified's output_power default enables the 5 V boost again.
+  hw.pmic.pwrCfg = PWR_CFG_RESET;
   applyRailFromPwrCfgLocked(hw);
+  applyBootOutputPowerLocked(hw);
   hw.pmic.pwrCfgSnapshot = hw.pmic.pwrCfg;
   ESP_LOGW(LOG_TAG, "PMIC watchdog expired; system power cycle %u",
            static_cast<unsigned>(hw.pmic.watchdogCycles));
