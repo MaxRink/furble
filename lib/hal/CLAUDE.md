@@ -14,7 +14,30 @@ the board support library does not know. Design and board gap tables are in
   supplies the fakes. A new driver gets cases there and a CMake source entry.
 - Cite the datasheet title, revision and section next to every register,
   bit and command. The test states expected values from the datasheet, never
-  from the driver constants. Do not commit datasheet PDFs.
+  from the driver constants. Record each part on its page under
+  `docs/components/` with the document URL, retrieval date, the facts furble
+  relies on and a `file:line` for each one.
+- `tools/check_datasheet_citations.py` is a pre-review gate. It reads `REG_`,
+  `CMD_`, `OPCODE_`, `ADDRESS` and `CHIP_ID` names and `_US`/`_MS` timings from
+  `constexpr`, `static const`, `const` and `#define` in every file here,
+  recursively. Each one needs a well formed reference within six lines: a
+  dotted or plain section, a table, or a section sign. A cited comment covers the
+  code run it heads, up to 16 lines, and a trailing `//` comment on the constant
+  counts. It counts only an integer literal initialiser: bare, in parentheses or
+  in braces, one of several declarators on a line, with any integer suffix. A
+  name initialised with an expression (`0x10 | 0x01`), a cast, or a value on the
+  next line is not a token and the gate is silent for it. That is the one
+  fail-open path: keep the register a literal so the gate can see it, and add
+  the gap row when it has no section. A test in
+  `tests/test_check_datasheet_citations.py` asserts the skip, so the blind spot
+  cannot widen unnoticed. A register with no section belongs in that page's
+  `Citation gaps` table, whose four documented columns the gate validates.
+  Anything else fails and the message names the page. Add the table row rather
+  than an unnarrated constant.
+- Do not commit a datasheet PDF unless its licence plainly permits
+  redistribution: then record the licence statement with its URL on the page and
+  add a LICENSE or README note in the directory. Otherwise cite it only, and
+  never commit a copy taken from a mirror.
 - Bus pacing belongs to the driver. A chip with a bus-free time or a poll-rate
   rule gets its gap from `RegisterBus::delayUs()` at the call, cited, never
   from a fixed sleep in the adapter. The hook's default is a no-op for host

@@ -169,8 +169,9 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners,
   clang-format 21 on the changed C and C++ files, the CI workflow and
-  simulator manifest checks, the coupling ratchet, and the scanner unit
-  tests. The ratchet fails when a per-file count of board
+  simulator manifest checks, the datasheet citation gate
+  (`tools/check_datasheet_citations.py`), the coupling ratchet, and the
+  scanner unit tests. The ratchet fails when a per-file count of board
   guards, `M5.` calls, `M5.getBoard()` or ESP/NimBLE public header types
   grows; after a reduction run `python3 tools/check_coupling_ratchet.py
   --update` and commit `tools/coupling_ratchet.json`. pre_review passes its

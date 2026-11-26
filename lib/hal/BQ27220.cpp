@@ -6,6 +6,11 @@ namespace Furble {
 namespace HAL {
 
 namespace {
+// Standard commands, TI "BQ27220 Technical Reference Manual" SLUUBD4A (April
+// 2016, revised November 2022), section 2.1 Standard Commands, Table 2-1. The
+// per-command sections below were checked against the same revision:
+// Voltage section 2.6, BatteryStatus section 2.7, Current section 2.8,
+// TimeToEmpty section 2.11, StateOfCharge section 2.21.
 constexpr uint8_t CMD_VOLTAGE = 0x08;
 constexpr uint8_t CMD_BATTERY_STATUS = 0x0A;
 constexpr uint8_t CMD_CURRENT = 0x0C;

@@ -302,6 +302,19 @@ These are common suggestions that fail a requirement.
 | Particle Tracker One | nRF52840, GNSS and LTE, no display, about 240 USD. Poor value for this use case. |
 | nRF52840 Dongle | USB stick. No display, no battery, no GPS. |
 
+## Datasheet citations
+
+The device documents this project relies on are recorded per part in
+[components/README.md](components/README.md). That corpus holds one page per part
+furble drives or plans to drive, with the document title, revision, URL,
+retrieval date, the register and timing facts the firmware depends on, their
+section numbers, the code location and what is still unverified.
+
+The buying guide above and the corpus answer different questions. This page says
+what to buy. The corpus says which document justifies each register write, and
+`tools/check_datasheet_citations.py` fails when a `lib/hal` driver names a
+register, command or timing without a datasheet line nearby.
+
 ## Integration notes
 
 These decide whether the hardware works in the hand, not just on the datasheet.
