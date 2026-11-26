@@ -289,6 +289,15 @@ CLAUDE.md whose directory it touches.
   missing rpath raises a desktop dialog per process. The sim-e2e S3 job runs
   `sim/scripts/run-env-order.sh`, which fails any setenv that adds a variable
   while SDL is live (issue #283).
+- Machine-checked companion claims live in `docs/companion-test-coverage.md`:
+  the per-app layer matrix, the CI job for each layer, and the flows no test
+  reaches. State a new companion test there and in the matching README in the
+  same PR. The Android module runs 40 tests inside one `./gradlew test` step;
+  `FurbleGoldenCorpusTest` reads `tests/protocol/golden/`, so regenerate it with
+  `make -C tests/protocol generate` and commit the fixtures with a firmware
+  packet change. The generated test results are printed by the Gradle test task
+  (`testLogging`), so a missing `matches ... with N differing pixels` line in an
+  Android run means the step did not run.
 - The USB console (debug builds, `FURBLE_CONSOLE`) is the automation surface:
   settings get/set, gps subcommands, shutter, status.
 - Hardware verification on the attached M5StickS3 happens before PRs.

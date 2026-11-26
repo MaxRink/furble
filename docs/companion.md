@@ -67,6 +67,33 @@ records and command responses. Notifications carry changed camera state.
 The companion radio advertises for 60 seconds after companion mode is opened.
 Reopen companion mode to pair another phone.
 
+## Shutter and focus trigger
+
+Both apps send hold-and-release trigger packets on the Trigger characteristic
+`b57f4f62-087b-4740-b71d-8262cf26ebbc` (write, encrypted and authenticated). The
+length depends on the operation, and the firmware rejects anything else:
+
+```text
+uint8 version   // 1
+uint8 op        // 0 release, 1 shutter press, 2 focus press, 3 focus release
+```
+
+Operations 0 to 3 are exactly two bytes. The timed shutter is the only operation
+that carries a hold field, and it is exactly four bytes:
+
+```text
+uint8  version  // 1
+uint8  op       // 4 timed shutter
+uint16 hold_ms  // little endian
+```
+
+A press, release or focus packet carrying a hold field is dropped, and so is a
+timed shutter without one. The committed golden corpus in `tests/protocol/golden`
+encodes the same lengths: the Android client is checked against every fixture in
+that corpus, and the Apple client asserts the lengths in its own protocol test.
+[companion-test-coverage.md](companion-test-coverage.md) records which of these
+paths an automated test actually reaches and which need hardware.
+
 ## Pairing and link security
 
 The service starts the BLE security procedure as soon as an accepted companion

@@ -18,8 +18,9 @@ Gradle wrapper is configured for Gradle 9.4.1 and Android Gradle Plugin 9.2.1.
 
 ## Tests
 
-`./gradlew test` runs the JVM unit tests and the Robolectric UI snapshot test.
-The Android CI job already invokes it before the debug APK build:
+`./gradlew test` runs the JVM unit tests, the golden-corpus contract test and the
+Robolectric UI snapshot tests. The Android CI job already invokes it before the
+debug APK build:
 
 ```sh
 cd companion/android
@@ -27,15 +28,52 @@ cd companion/android
 ```
 
 The protocol, camera catalog, auth gate and GATT contract tests are plain JVM
-tests. `CompanionScreenshotTest` is the only test that starts an Android
-runtime: it composes the main screen from `CompanionScreens.kt` with
-Robolectric's native graphics mode, renders it at 720x1440 pixels and compares
-the bitmap with the committed baseline
-`app/src/test/screenshots/companion-main.png`. The comparison allows a channel
-difference of 2 and 0.1 percent of differing pixels, which is 1036 of the
-1,036,800 pixels in the capture.
+tests. Three test classes start an Android runtime or read the shared firmware
+corpus:
 
-That budget makes the test a layout gate, not a copy gate. Layout-scale changes
+- `FurbleGoldenCorpusTest` reads `tests/protocol/golden/` from the checkout and
+  re-decodes or re-encodes every location, status, settings and trigger fixture
+  the firmware generates, plus `companion_auth.json`. That corpus is produced by
+  `make -C tests/protocol generate` from the firmware sources and diffed by the
+  Companion protocol tests workflow, so a wire change on the firmware side
+  cannot land without failing this module. Run
+  `make -C tests/protocol generate` after changing a firmware packet and commit
+  the regenerated fixtures with the firmware change.
+- `CompanionScreenshotTest` and `CompanionScreenGalleryTest` compose the shipped
+  screens with Robolectric's native graphics mode and compare each 720x1440
+  bitmap with a committed baseline in `app/src/test/screenshots`.
+
+A normal run prints one line per comparison, for example `The main screen
+matches companion-main.png at 720x1440 with 0 differing pixels.`, and both CI
+and a local run show it. Absence of those lines means the test task did not run,
+not that the screens matched.
+
+### Screenshot gallery
+
+These are the committed baselines, rendered by the tests above at 360x720 dp,
+density 2. They are the app's only screenshots; there is no hand-captured set.
+
+| Screen | Baseline | What it shows |
+| --- | --- | --- |
+| Main, first launch | `app/src/test/screenshots/companion-main.png` | The default repository state: no association, no capability, so the Settings and Cameras tabs stay hidden |
+| Permission rationale | `app/src/test/screenshots/companion-rationale.png` | The gate before the shell renders, after a denied request |
+| Connected status | `app/src/test/screenshots/companion-status.png` | Association, authenticated password card, phone GPS with fixes sent |
+| Cameras | `app/src/test/screenshots/companion-cameras.png` | Two saved cameras with selection, connection state and RSSI |
+| Settings | `app/src/test/screenshots/companion-settings.png` | Metadata-driven rows grouped by section, with the restart and immediate flags |
+| Trigger | `app/src/test/screenshots/companion-trigger.png` | Shutter, focus and timed shutter controls |
+
+The screenshots render the shipped composables, so they cannot drift from the
+source without failing the comparison. They are not evidence of Bluetooth
+behavior: see [the companion coverage matrix](../../docs/companion-test-coverage.md)
+for the layers that no automated test reaches, including pairing, reconnect,
+settings sync against firmware, camera commands and the hold/release path.
+
+### What the pixel comparison detects
+
+The comparison allows a channel difference of 2 and 0.1 percent of differing
+pixels, which is 1036 of the 1,036,800 pixels in a capture.
+
+That budget makes each test a layout gate, not a copy gate. Layout-scale changes
 fail with an order of magnitude to spare: 1 dp more spacing in the status list
 changed 27,667 pixels, 27 times the budget. A text change only fails once it
 reaches roughly a dozen characters: an appended period changed 12 pixels and an
@@ -43,31 +81,29 @@ appended short word 654, while a one-character substitution can land on either
 side of the budget, because the count follows the glyphs that move rather than
 the characters edited.
 
-The slack is insurance for an unproven runner, not a measured requirement. The
-baseline was rendered on macOS arm64 and matched a linux/amd64 render with 0
-differing pixels, so nothing observed needs it. It exists so the first CI run
-cannot fail on glyph noise before that run shows what the runner renders. A
-failure writes the rendered screen to
-`app/build/outputs/screenshots/companion-main-actual.png` and names that path.
+The slack is insurance for a runner the baselines were not produced on, not a
+measured requirement: the committed baselines were rendered on macOS arm64 and
+matched a linux/amd64 render with 0 differing pixels, and the CI logs print the
+same 0 for the runner. A failure writes the rendered screen to
+`app/build/outputs/screenshots/<name>-actual.png` and names that path.
 
 Every rendering input is pinned so the same source produces the same pixels:
 API 35 and the `en-rUS` locale through `@Config`, density 2 and font scale 1
-through the composition, and a 360dp x 720dp capture region. The test restores
-the calling JVM locale afterwards. The screen shows no clock, no location fix
-and no network value, so no wall-clock or device state reaches the bitmap. Two
-known nodes, the top bar and the session state line, are asserted before the
-capture, so an asynchronous repository change fails on the node that moved
-instead of on a pixel count.
+through the composition, and a 360dp x 720dp capture region. The tests restore
+the calling JVM locale afterwards. The captured screens show no clock, no
+location fix and no network value. Each capture asserts known nodes first, so an
+asynchronous repository change fails on the node that moved instead of on a
+pixel count.
 
-Regenerate the baseline only after reviewing an intended UI change, then commit
-the new PNG with that change:
+Regenerate the baselines only after reviewing an intended UI change, then commit
+the new PNGs with that change:
 
 ```sh
 cd companion/android
-./gradlew testDebugUnitTest --tests '*CompanionScreenshotTest*' -PupdateScreenshots
+./gradlew testDebugUnitTest --tests '*Companion*Test*' -PupdateScreenshots
 ```
 
-Update mode turns off both the up-to-date check and the build cache, because the
+Update mode turns off both the up-to-date check and the build cache, because a
 regenerated image is also the test task's input, and it writes through a temp
 file so an interrupted run cannot leave a truncated baseline.
 
@@ -75,6 +111,35 @@ Robolectric downloads the Android 15 platform jar, about 197 MB, and its native
 runtime on the first run and reuses them from the Maven cache afterwards. The
 emulator smoke job is unaffected: it installs the debug APK and keeps its launch
 and logcat checks.
+
+### What the emulator job does and does not prove
+
+`android.yml` has a second job, `smoke`, that installs the debug APK in an API 35
+emulator, launches it with `monkey`, greps logcat for `FATAL EXCEPTION` and
+checks that the process is still alive. It runs weekly and on manual dispatch,
+never on a pull request, and it is marked `continue-on-error`, so it cannot fail
+a change. It proves the APK starts. It does not prove any screen renders
+correctly, and it does not touch Bluetooth, `CompanionDeviceManager`, the
+Keystore or location.
+
+There is no `app/src/androidTest` source set, so no instrumented test exists.
+Nothing in CI runs the app against a device or against firmware.
+
+### Source contracts outside this module
+
+Two Python modules, `tests/test_companion_location_contract.py` and
+`tests/test_companion_identity_enable_contract.py`, read this app's manifest and
+the Apple `Info.plist` and assert that the documented permissions and providers
+are still there. `main.yml` ignores `companion/android/**` on pull requests and
+`pre-review.yml` does not filter on companion paths, so an Android-only pull
+request runs neither workflow and those two guards run only on `master` pushes
+and on pull requests that touch `tests/` or `docs/`. Run them directly before
+touching the manifest:
+
+```sh
+python3 -m unittest tests.test_companion_location_contract \
+  tests.test_companion_identity_enable_contract
+```
 
 ## Protocol
 

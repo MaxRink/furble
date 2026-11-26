@@ -79,6 +79,11 @@ kotlin {
 }
 
 tasks.withType<Test>().configureEach {
+    // Gradle hides test stdout unless the task asks for it, and the UI snapshot
+    // result is a printed line. Without this a passing comparison is invisible in
+    // the CI log, so nobody can tell a real runner-side match from a skipped
+    // test.
+    testLogging { showStandardStreams = true }
     // The committed baseline is a test input. Without this a regenerated image
     // leaves testDebugUnitTest up to date and the comparison never runs.
     inputs.files(fileTree(appScreenshotDir) { include("*.png") })

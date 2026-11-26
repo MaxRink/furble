@@ -307,21 +307,32 @@ void generateSettings(const std::string &root,
              {0, 1, 1, 2, 0x20}, false, "declared response value is truncated");
 }
 
+// CompanionService::handleTrigger accepts exactly two bytes for operations 0 to
+// 3 and exactly four for the timed shutter at operation 4, so a press, release
+// or focus packet carrying a hold field is dropped. Both companion clients send
+// those lengths; the fixtures have to describe the same wire, or a client
+// written from this corpus emits packets the firmware ignores.
 void generateTriggers(const fs::path &golden, std::vector<ManifestEntry> &manifest) {
   const char *names[] = {"release", "shutter-press", "focus-press", "focus-release", "timed"};
   for (uint8_t operation = 0; operation <= 4; ++operation) {
-    const uint16_t holdMs = operation == 4 ? 300 : 0;
+    const bool timed = operation == 4;
+    const uint16_t holdMs = timed ? 300 : 0;
+    Bytes packet = {1, operation};
+    if (timed) {
+      packet.push_back(static_cast<uint8_t>(holdMs & 0xff));
+      packet.push_back(static_cast<uint8_t>((holdMs >> 8) & 0xff));
+    }
     addFixture(golden, manifest, "trigger/" + std::string(names[operation]) + ".bin", "trigger",
-               {1, operation, static_cast<uint8_t>(holdMs & 0xff),
-                static_cast<uint8_t>((holdMs >> 8) & 0xff)},
-               true, "trigger operation " + std::to_string(operation));
+               packet, true, "trigger operation " + std::to_string(operation));
   }
   addFixture(golden, manifest, "trigger/timed-max.bin", "trigger", {1, 4, 0xff, 0xff}, true,
              "maximum timed hold");
-  addFixture(golden, manifest, "trigger/invalid-version.bin", "trigger", {0, 0, 0, 0}, false,
+  addFixture(golden, manifest, "trigger/invalid-version.bin", "trigger", {0, 0}, false,
              "version zero is rejected");
-  addFixture(golden, manifest, "trigger/short.bin", "trigger", {1, 0}, false,
-             "short trigger packet is rejected");
+  addFixture(golden, manifest, "trigger/short.bin", "trigger", {1}, false,
+             "a one-byte trigger packet is rejected");
+  addFixture(golden, manifest, "trigger/overlong-release.bin", "trigger", {1, 0, 0, 0}, false,
+             "a press, release or focus packet carrying a hold field is rejected");
   addFixture(golden, manifest, "trigger/timed-short.bin", "trigger", {1, 4, 0}, false,
              "timed trigger needs a hold field");
   addFixture(golden, manifest, "trigger/unknown-op.bin", "trigger", {1, 5, 0, 0}, false,
