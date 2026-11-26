@@ -119,12 +119,14 @@ sh sim/scripts/test-build-deps.sh
 The self-test performs one complete build and one incremental build. It leaves
 the project header timestamp unchanged when it exits.
 
-The CMake entry point has the same source and board defaults:
-
-```sh
-cmake -S sim -B sim/build-cmake
-cmake --build sim/build-cmake
-```
+The direct build is the only supported simulator entry point.
+`sim/CMakeLists.txt` exists, but the binary it builds does not run: on a stock
+scenario it aborts in `lgfx::v1::Panel_sdl::_event_proc()` on unmodified master,
+where the `sim/build.sh` binary runs the same script, so the two paths are not
+equivalent. No workflow builds that target.
+`.github/workflows/static-analysis.yml` only configures it to obtain a compile
+database. The reproduction with exact commands, and the difference that remains
+between the two paths, are in `plans/355-sim-cmake-entry-point.md`.
 
 ### Interactive on-screen buttons
 

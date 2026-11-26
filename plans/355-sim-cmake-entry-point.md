@@ -1,7 +1,9 @@
 # 355: the documented CMake entry point builds a simulator that aborts
 
-State: finding only. Nothing here is fixed by the plan 348 PR. Recorded so the
-build path or the doc claim can be fixed on its own.
+State: finding recorded, build path unfixed. The false doc sentence is
+corrected in this PR: `docs/sim.md` now names `sh sim/build.sh` as the only
+supported entry point. Repairing `sim/CMakeLists.txt` and adding the smoke step
+remain open.
 
 ## What two agents reported
 
@@ -97,10 +99,10 @@ Checked, so nobody re-derives it:
 
 The build path is wrong. The docs sentence is wrong in consequence.
 
-- `sim/CMakeLists.txt` and `docs/sim.md` say the CMake entry point has "the same
-  source and board defaults" as the direct build. For sources and defines that
-  holds. It does not hold in effect: the binary this path produces aborts on its
-  first scenario on unmodified master.
+- `docs/sim.md` said the CMake entry point has "the same source and board
+  defaults" as the direct build, with `sim/CMakeLists.txt` as that entry point.
+  For sources and defines that holds. It does not hold in effect: the binary
+  this path produces aborts on its first scenario on unmodified master.
 - No workflow builds or runs that binary. `.github/workflows/static-analysis.yml`
   runs `cmake -S sim -B build-sim-static` only to obtain a compile database; it
   never compiles the target, so every gate stays green while the path is broken.
@@ -109,6 +111,6 @@ The build path is wrong. The docs sentence is wrong in consequence.
 
 Fix: repair `sim/CMakeLists.txt` (start with the LVGL sub-build and the PMIC
 access difference above) and add a smoke step that builds the CMake target and
-runs one scenario through it. Until that passes, `docs/sim.md` should name
+runs one scenario through it. Until that passes, `docs/sim.md` names
 `sh sim/build.sh` as the only entry point rather than presenting both as
-equivalent.
+equivalent, which this PR changed.
