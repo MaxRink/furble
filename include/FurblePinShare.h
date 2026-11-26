@@ -103,7 +103,15 @@ class Arbiter {
   bool m_LedKnown = false;
 };
 
-#if defined(FURBLE_PIN_SHARE) || defined(FURBLE_SIM)
+/*
+ * The glue is compiled only where a profile gives the LED and the emitter one
+ * pin, which is the Plus2 in the m5stick-c-plus image, so the capability is set
+ * on the two StickC family envs and on the boundary targets that drive the
+ * production drivers. It is deliberately not keyed on FURBLE_SIM: the
+ * simulator shims FurbleFeedback.h and FurbleIR.h and never compiles this
+ * source, so declaring the functions there would only create a link trap.
+ */
+#if defined(FURBLE_PIN_SHARE)
 
 /**
  * Record a Feedback LED level and drive it while the LED owns the pin.
@@ -126,7 +134,9 @@ bool beginIr(int ir_pin);
  *
  * Returns false when IR did not own the pin. The pad is moved back to the
  * plain GPIO output path, because the RMT driver leaves it muxed to its
- * channel signal after rmt_disable().
+ * channel signal after rmt_disable(). When Feedback never recorded a level the
+ * pad is parked at the board's inactive level, which the profile row names,
+ * rather than at a level invented from the frame.
  */
 bool endIr(void);
 

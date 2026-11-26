@@ -316,15 +316,17 @@ unknown. Do not invent one in a power document.
 | All Core boards | SD slot | microSD | No load switch; the card stays powered when inserted |
 | Waveshare | microSD, WS2812, W5500 | Unused slot, status LED, Ethernet | SD slot unused; WS2812 off; W5500 started at boot |
 
-**EXTEN is already on at boot on the StickC and Plus.** M5GFX 0.2.27
-`Light_M5StickC::init()` writes AXP192 `0x12 = 0x4D` during `M5.begin()`, and bit
-6 of that register is EXTEN per M5Unified 0.2.20 `AXP192_Class::setEXTEN()`. So
-the Grove 5 V rail is live before the GPS driver runs, `setExtOutput(true)` is
-normally a no-op there, and a GPS unit on Port A is powered from boot even when
-GPS is disabled in settings. The EXTEN-to-Grove-5V routing itself stays
-`unverified`: the StickC and Plus schematics were not available in this pass, and
-neither were the AXP192 register details beyond the values M5Unified writes
-(plan 350).
+**EXTEN is already on at boot on the StickC and Plus.** Two writes during
+`M5.begin()` reach it: M5Unified 0.2.20 calls `Power.setExtOutput(cfg.output_power)`
+with the default `output_power = true` (`M5Unified.hpp`, `M5Unified.cpp`), which
+reaches `Axp192.setEXTEN(true)` on that board pair, and M5GFX 0.2.27
+`Light_M5StickC::init()` writes AXP192 `0x12 = 0x4D`. Bit 6 of that register is
+EXTEN per `AXP192_Class::setEXTEN()`. So the Grove 5 V rail is live before the
+GPS driver runs, `setExtOutput(true)` is normally a no-op there, and a GPS unit
+on Port A is powered from boot even when GPS is disabled in settings. The
+EXTEN-to-Grove-5V routing itself stays `unverified`: the StickC and Plus
+schematics were not available in this pass, and neither were the AXP192 register
+details beyond the values M5Unified writes (plan 350).
 
 Two consequences follow. First, the only true peripheral power controls in
 furble are the Grove 5 V rail and the panel backlight. Everything else is
@@ -998,8 +1000,8 @@ Estimates are not measurements unless the label says `measured-local`.
 - Risk: medium on the Plus2. Driving GPIO19 high keys the emitter through the
   same transistor, so the off level is 0 there. The current firmware leaves the
   pin an input until the LED feature is enabled and hands the pad back to the
-  GPIO path after every IR frame, where an unrecorded level is released as an
-  input rather than driven.
+  GPIO path after every IR frame, where an unrecorded level is parked at the
+  board's inactive level rather than left floating.
 - Effort: small on StickC, Plus, and S3.
 - Required test: measure the IR pin current with the feature off and the pin
   floating versus driven low. Verify no IR emission with a phone camera.
@@ -1465,7 +1467,7 @@ given so the next reader does not reopen them without new facts.
 | RL-09 | Change the StickS3 codec or amplifier policy | The speaker is already ended after init and after each pattern; the remaining current is unmeasured but the policy is correct | 0 | n/a (rejected) | `code` |
 | RL-10 | Remove the Plus2 battery divider | Board fixture, no firmware control | 0 | n/a (rejected) | `code`, schematic needed |
 | LK-02 | Make the StickC MPU6886 interrupt push-pull | The SYS_INT net is shared with the BM8563 RTC and is open-drain; push-pull can short the RTC | 0 | n/a (rejected) | `code` |
-| LK-03 | Drive every IR pin low at boot | Plus2 GPIO19 doubles as the LED and the polarity is unverified; the other boards show no measured leakage | 0 | n/a (rejected) | `code` |
+| LK-03 | Drive every IR pin low at boot | The driven stage polarity is a profile fact on the StickC family (plan 350): the StickC and Plus are active low and the Plus2 is active high, so one blanket level would key one family. The StickS3 polarity is still unverified, and the other boards show no measured leakage | 0 | n/a (rejected) | `code` |
 | LK-04 | Disable internal pulls during sleep now | Deep sleep is unused; the change can float a wake pin | 0 | n/a (rejected) | `code`, sdkconfig |
 | PL-09 | Change TX power or add 2M PHY as a power project | The average saving is below 0.5 mA; the connected floor dominates | 0 | n/a (rejected) | `code`, `model` |
 | PL-10 | Remove the charging `NO_LIGHT_SLEEP` lock | External power, no battery runtime; the lock's origin is undocumented | 0 | n/a (rejected) | `code` |

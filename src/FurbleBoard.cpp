@@ -24,11 +24,14 @@ namespace {
 // through AXP192 EXTEN on the StickC and StickC Plus, the M5PM1 on the
 // StickS3, and AXP192 GPIO0 or AXP2101 BLDO2 on the Core2 and Tough. It does
 // nothing on the Plus2, the Core or any other board furble supports. On the
-// StickC and Plus the rail is already on before the GPS driver runs: M5GFX
-// 0.2.27 Light_M5StickC::init() writes AXP192 0x12 = 0x4D during M5.begin(),
-// and bit 6 of that register is EXTEN (M5Unified AXP192_Class::setEXTEN()).
-// The EXTEN-to-Grove-5V routing itself is UNVERIFIED: the schematics were not
-// available in this pass (plan 350).
+// StickC and Plus the rail is already on before the GPS driver runs, by two
+// writes during M5.begin(): M5Unified calls Power.setExtOutput(cfg.output_power)
+// with the default output_power = true (M5Unified.cpp), which reaches
+// Axp192.setEXTEN(true) for that board pair, and M5GFX 0.2.27
+// Light_M5StickC::init() writes AXP192 0x12 = 0x4D. Bit 6 of that register is
+// EXTEN (M5Unified AXP192_Class::setEXTEN()). The EXTEN-to-Grove-5V routing
+// itself is UNVERIFIED: the schematics were not available in this pass
+// (plan 350).
 //
 // Timed wake: the Plus2 keeps its BM8563 alive across a HOLD power-off so the
 // timer can wake the device (plan 320), and on the StickC Plus the same BM8563
@@ -43,8 +46,12 @@ namespace {
 //
 // LED and IR polarity: the StickC and StickC Plus put the IR emitter anode on
 // 3.3 V with the cathode on GPIO9, so light is emitted on a low pin and the RMT
-// image is inverted for those rows (StickC Plus schematic, LED1 LED_IR). Their
-// LEDs are wired the same way. The Plus2 drives an NPN stage from GPIO19 for
+// image is inverted for those rows (StickC Plus schematic, LED1 LED_IR; the
+// StickC row follows that page because both boards put the emitter on G9, and
+// no StickC-specific schematic was available). Their LEDs are wired the same
+// way, which M5Unified's own LED setup agrees with: Power_Class.cpp configures
+// the StickC and Plus status LED with invert = true on G10 and the Plus2 LED
+// with invert = false on G19. The Plus2 drives an NPN stage from GPIO19 for
 // both the red LED and the emitter, so it is active high and its RMT image is
 // not inverted. The StickS3 emitter wiring was not available in this pass, so
 // its row keeps the previous non-inverted image and is UNVERIFIED.

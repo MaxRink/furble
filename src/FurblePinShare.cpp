@@ -5,7 +5,7 @@
 #include "FurbleBoard.h"
 #include "FurblePinShare.h"
 
-#if defined(FURBLE_PIN_SHARE) || defined(FURBLE_SIM)
+#if defined(FURBLE_PIN_SHARE)
 
 /*
  * One pin, two drivers (see include/FurblePinShare.h).
@@ -62,11 +62,15 @@ bool endIr(void) {
   }
 
   if (!g_Arbiter.ledKnown()) {
-    // Feedback never asked for a level on this boot, so do not invent one: on
-    // the Plus2 the pin drives an NPN stage that keys the LED and the emitter
-    // together. Release the pad as an input, which is the state the boot path
-    // leaves it in when light feedback is off.
-    (void)gpio_set_direction(static_cast<gpio_num_t>(pin), GPIO_MODE_INPUT);
+    // Feedback never asked for a level on this boot. Do not invent one from the
+    // frame: park the pad at the board's inactive level, which the profile row
+    // names. Releasing the pad as an input instead would leave an NPN base
+    // floating on the Plus2 and would not restore the state M5Unified sets up
+    // (Power_Class.cpp puts G19 on the output path for that board), and a later
+    // gpio_set_level() could not reach an input pad.
+    const uint8_t idle = ledLevel(false, Board::profile().ledActiveLow);
+    (void)gpio_set_level(static_cast<gpio_num_t>(pin), idle);
+    (void)gpio_set_direction(static_cast<gpio_num_t>(pin), GPIO_MODE_OUTPUT);
     return true;
   }
 

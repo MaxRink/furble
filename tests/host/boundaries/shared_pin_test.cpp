@@ -13,6 +13,10 @@
 //              restored.
 //   separate   the StickC puts the LED on G10 and the emitter on G9, so the
 //              hand-over must stay completely inert.
+//   shared-off the same Plus2 pin with light feedback off, so Feedback never
+//              recorded a level. The frame must still hand the pad back on the
+//              GPIO output path, parked at the profile's inactive level, not
+//              left floating and not driven to a level read from the frame.
 //
 // The GPIO double does not model the output matrix: gpio_set_level() always
 // reaches the pad here. That is deliberate, because it keeps a regression
@@ -93,7 +97,19 @@ bool waitForTransmits(int count) {
 }
 
 // The hand-over runs after rmt_disable(), so the pad is polled rather than
-// sampled once the transmit was recorded.
+// sampled once the transmit was recorded. A direction poll is used where the
+// pad may already read as GPIO before the frame muxed it.
+bool waitForDirection(int pin, int direction) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (BoundaryHost::gpioDirection(pin) == direction) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return BoundaryHost::gpioDirection(pin) == direction;
+}
+
 bool waitForPad(int pin, int pad) {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
   while (std::chrono::steady_clock::now() < deadline) {
@@ -207,6 +223,34 @@ void runSeparate(void) {
   std::cout << "pin.separate frames=1 switch_gpio=0 blink=unchanged\n";
 }
 
+// The same shared pin with light feedback off. Feedback never asks for a level,
+// so the arbiter has nothing to restore and the hand-over must park the pad at
+// the inactive level the profile row names. An input here would leave the NPN
+// base floating and would make a later gpio_set_level() inert.
+void runSharedOff(void) {
+  using Furble::Feedback;
+
+  initialize(Feedback::OUTPUT_OFF);
+  M5.board = m5::board_t::board_M5StickCPlus2;
+  M5.Speaker = m5::Speaker_Class {};
+  M5.Power = m5::Power_Class {};
+
+  Feedback::init();
+  Furble::IR::init();
+  check(Furble::IR::getInstance().isSupported(), "IR is not supported on the Plus2 row");
+
+  Furble::IR::getInstance().fire();
+  check(waitForTransmits(1), "the light-off frame did not transmit");
+  // The hand-over is observable only as the direction write, because the pad is
+  // already GPIO before the frame muxes it.
+  check(waitForDirection(19, GPIO_MODE_OUTPUT),
+        "the untracked pin was released as an input instead of being parked");
+  check(BoundaryHost::gpioPad(19) == BoundaryHost::GPIO_PAD_GPIO,
+        "the pin was not handed back after the frame");
+  check(BoundaryHost::gpioLevel(19) == 0, "the parked level is not the Plus2 inactive level");
+  std::cout << "pin.shared-off handover=returned direction=output parked_level=0\n";
+}
+
 }  // namespace
 
 extern "C" {
@@ -308,6 +352,8 @@ int main(int argc, char **argv) {
 
   if (mode == "shared") {
     runShared();
+  } else if (mode == "shared-off") {
+    runSharedOff();
   } else if (mode == "separate") {
     runSeparate();
   } else {

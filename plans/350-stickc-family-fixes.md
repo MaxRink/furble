@@ -49,8 +49,8 @@ and re-selects the default output signal
 signal with `rmt_tx_switch_gpio()`. Nothing is allocated, the lock is one short
 mutex per call, and it is never held across `rmt_tx_wait_all_done()`. A board
 whose LED and emitter pins differ never enters the path, and an LED that was
-never driven is released as an input instead of being driven to an invented
-level.
+never driven is parked at the profile's inactive level (`ledActiveLow`) instead
+of being driven to a level invented from the frame.
 
 ### 2. The Plus2 reported an unbacked RTC and skipped the BM8563 voltage-low flag
 
@@ -69,6 +69,15 @@ calendar on a backed RTC only. The timed-wake path
 backing flag, so the Plus2 rejection behaviour, including
 `verifyPlus2Timer()`'s register readback and `TIMED_WAKE_MAX_EARLY_S`, is
 unchanged.
+
+The same flag also suppresses the NVS shutdown checkpoint on that row
+(`TimeKeeper`'s `needsNvsCheckpoint = !g_RtcBatteryBacked`), so the BM8563 is
+now the only retention mechanism across a Plus2 power-off. That is the point of
+the change, but it is a consequence worth stating: if the BM8563 does not
+survive a HOLD power-off, which is a hardware gate this plan records, the next
+boot sees the voltage-low flag, rejects the calendar and falls back to the last
+NVS record, which is at most six hours old. The failure mode is a stale clock,
+never a fabricated one.
 
 ### 3. The AXP192 ADC mask was justified by a Core2/Tough-only behaviour
 
@@ -150,12 +159,17 @@ shared log strings now say "StickC family RTC" instead of naming the Plus2.
 
 ### 8. The StickC and Plus GPS rail is already on before the GPS driver runs
 
-`M5GFX` 0.2.27 `Light_M5StickC::init()` writes AXP192 `0x12 = 0x4D` during
-`M5.begin()`, and bit 6 of that register is EXTEN (M5Unified 0.2.20
-`AXP192_Class::setEXTEN()`), so the Grove 5 V rail is live before furble's GPS
-driver exists. `GPS::enable()`'s "power on" comment assumed an off-to-on edge,
-and a GPS unit on Port A is powered from boot even when GPS is disabled in
-settings.
+Two writes during `M5.begin()` reach AXP192 EXTEN on the StickC and Plus:
+
+- M5Unified 0.2.20 `M5Unified.cpp` calls `Power.setExtOutput(cfg.output_power)`
+  with the default `output_power = true` (`M5Unified.hpp:133`), and
+  `Power_Class.cpp` sends that board pair to `Axp192.setEXTEN(enable)`.
+- M5GFX 0.2.27 `Light_M5StickC::init()` writes `0x12 = 0x4D`, whose bit 6 is
+  EXTEN (M5Unified 0.2.20 `AXP192_Class::setEXTEN()`).
+
+So the Grove 5 V rail is live before furble's GPS driver exists. `GPS::enable()`'s
+"power on" comment assumed an off-to-on edge, and a GPS unit on Port A is powered
+from boot even when GPS is disabled in settings.
 
 Fix: the rail comment in `src/FurbleBoard.cpp`, the `enable()` comment and the
 `beginWindow()` `RAIL_OFF` branch now distinguish "ensure the rail is on" from
@@ -177,8 +191,9 @@ also remove power from any other device on Port A.
 | AXP192 power-key IRQ is enabled and its status is `0x46` | M5Unified 0.2.20 `Power_Class.cpp` AXP192 register block (`0x42, 0x03`), `AXP192_Class.cpp:275-280` |
 | `setExtOutput()` reads VBUS current on Core2/Tough only | M5Unified 0.2.20 `Power_Class.cpp:951-981` |
 | AXP192 ADC mask registers and the all-on default | M5Unified 0.2.20 `Power_Class.cpp` (`0x82, 0xFF`, `0x83, 0x80`, `0x84, 0x32`) |
-| EXTEN is register `0x12` bit 6, and M5GFX writes `0x4D` at boot | M5Unified 0.2.20 `AXP192_Class.cpp:228-240`; M5GFX 0.2.27 `src/M5GFX.cpp:460-467` (`Light_M5StickC::init`) |
-| StickC and Plus emitter cathode on GPIO9, anode on 3.3 V; Plus2 NPN stage on GPIO19 | StickC Plus schematic page supplied by the second audit pass (`LED1`, `LED_IR`), and the Plus2 NPN stage from the same pass. Not confirmed against a vendor PDF in this tree |
+| EXTEN is register `0x12` bit 6, and both M5Unified and M5GFX set it at boot | M5Unified 0.2.20 `AXP192_Class.cpp:228-240`; `M5Unified.cpp` `Power.setExtOutput(cfg.output_power)` with `output_power = true` (`M5Unified.hpp:133`) and `Power_Class.cpp`'s StickC/Plus `Axp192.setEXTEN(enable)`; M5GFX 0.2.27 `src/M5GFX.cpp:465` (`Light_M5StickC::init`, `0x12 = 0x4D`) |
+| The status LED polarity per board | M5Unified 0.2.20 `Power_Class.cpp:1216-1246`: `Light_PWM` config uses `invert = true` on GPIO10 for the StickC and Plus and `invert = false` on GPIO19 for the Plus2, and `Power_Class.cpp:577-585` puts GPIO19 on the output path for the Plus2 at `Power.begin()` |
+| StickC and Plus emitter cathode on GPIO9, anode on 3.3 V; Plus2 NPN stage on GPIO19 | StickC Plus schematic page supplied by the second audit pass (`LED1`, `LED_IR`), and the Plus2 NPN stage from the same pass. Not confirmed against a vendor PDF in this tree, and the StickC row follows the Plus page because both boards put the emitter on G9 |
 
 ## What stays UNVERIFIED
 
@@ -189,6 +204,11 @@ also remove power from any other device on Port A.
   EXTEN-to-Grove-5V routing stays UNVERIFIED even though `0x12 = 0x4D` and
   EXTEN on bit 6 are library facts. `docs/power/board-power.md` says so at the
   rail table and in PM-04, LK-02 and LK-03.
+- A StickC-specific schematic. The IR emitter wiring for that row is copied from
+  the StickC Plus page, because both boards put the emitter on G9 and M5Unified
+  drives the status LED the same way on both. `ledActiveLow` on all three StickC
+  family rows is independently confirmed by M5Unified's own LED `invert` flags.
+  Only the emitter side of the StickC row rests on the Plus page.
 - The StickS3 emitter polarity. No source in this pass, so its row keeps the
   previous non-inverted image.
 - The Plus BM8563-to-AXP192 power-key coupling through R401 and C401, which is
@@ -203,6 +223,7 @@ also remove power from any other device on Port A.
 | :--- | :--- |
 | `pin_share_policy_test` | PASS. Ownership, suppression during a frame, restore of the mid-frame level, refused nested begin and hand-over, refused hand-over without a frame, the untouched pin, `ledSharesIr()` and `ledLevel()`. |
 | `boundary_shared_pin_test shared` | PASS. Plus2: boot leaves G19 low (active high), a blink during a blocked frame cannot write the pin, the pad returns from the RMT signal, the mid-frame level is restored, and a second frame re-selects the RMT signal once. |
+| `boundary_shared_pin_test shared-off` | PASS. Plus2 with light feedback off: a frame parks G19 at the profile's inactive level (low) on the GPIO output path, so the pad is never left floating and a later level write still reaches it. |
 | `boundary_shared_pin_test separate` | PASS. StickC: no hand-over, the LED keeps its own pin, and the channel is inverted. |
 | `boundary_ir_polarity_{stickc,stickc-plus,stickc-plus2}` | PASS. `invert_out` 1/1/0, emitter mark level 0/0/1, optical duty 333/333/667 permille. |
 | `board_profile_test` | PASS. New `ledActiveLow` and `irMarkLow` columns, the Plus2 RTC backing row, the Plus timed-wake row, and the pin-share assertion. |

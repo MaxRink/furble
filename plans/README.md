@@ -181,6 +181,7 @@ the git history. They are no longer ownership rows.
 | [354-gnss-datasheet-verification.md](354-gnss-datasheet-verification.md) | GNSS datasheet verification: the AT6668 datasheet and both CASIC protocol revisions read against the pages, the M10 module documents opened, and the facts that stay open |
 | [473-review-feedback.md](473-review-feedback.md) | Review-feedback record for the #473 hardware-trap corrections and the per-panel display dwell rule |
 | [350-stickc-family-fixes.md](350-stickc-family-fixes.md) | StickC family fixes: shared LED/IR pin ownership, LED and IR polarity, Plus2 RTC backing, AXP192 ADC mask reason, GPIO35 third source, StickC Plus timed wake, GPS rail already on |
+| [350-review-feedback.md](350-review-feedback.md) | Review-feedback record for PR #505: the arbiter build gate, the unrecorded-level fallback, the boot-time EXTEN writes, and the polarity and RTC questions this review closed |
 
 ## Next hardware
 

@@ -36,9 +36,12 @@ struct Profile {
   const char *name;  // boot info block
   PowerBackend::battery_caps_t battery;
   uint16_t batteryCapacityMah;  // 0 when unknown
-  bool rtcBatteryBacked;        // the RTC calendar survives a power-off, by a
-                                // cell or by a rail the board keeps alive
-  int8_t irPin;                 // -1 when the board has no IR emitter
+  // True when the board is expected to keep its calendar across a power-off, so
+  // the RTC is the retention mechanism: a cell, or a rail the board keeps
+  // alive. The chip's voltage-low flag stays the guard for a calendar that did
+  // stop, and it is read on a backed row only.
+  bool rtcBatteryBacked;
+  int8_t irPin;  // -1 when the board has no IR emitter
   MotionWake motionWake;
   int8_t motionWakePin;  // SoC pin for motionWake, -1 for NONE
   TimedWake timedWake;

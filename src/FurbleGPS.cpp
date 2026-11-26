@@ -391,11 +391,14 @@ void GPS::enable(void) {
   reset();
 
   // Ensure the rail is on; no mutex may be held across the PMIC access. On the
-  // StickC and StickC Plus it already is: M5GFX enables AXP192 EXTEN (register
-  // 0x12 = 0x4D, bit 6) during M5.begin(), so the receiver has been powered
-  // since boot and this call normally changes nothing. It is not a power-on
-  // edge, so nothing below may depend on the receiver having restarted; the
-  // acquisition deadline is anchored to this call instead (plan 350).
+  // StickC and StickC Plus it already is: M5Unified calls
+  // Power.setExtOutput(cfg.output_power) with the default output_power = true
+  // during M5.begin(), which reaches AXP192 EXTEN, and M5GFX also writes
+  // 0x12 = 0x4D (bit 6 is EXTEN) in the same boot. So the receiver has been
+  // powered since boot and this call normally changes nothing. It is not a
+  // power-on edge, so nothing below may depend on the receiver having
+  // restarted; the acquisition deadline is anchored to this call instead
+  // (plan 350).
   setRailPower(true);
 
   {

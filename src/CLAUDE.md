@@ -116,7 +116,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   returns the pad to the GPIO path (`rmt_disable` leaves it muxed to the RMT
   signal). The mutex there is taken per call and never held across a transfer or
   an RMT wait. Boards whose LED and emitter pins differ never enter the path,
-  and an unrecorded level is released as an input instead of being invented.
+  and an unrecorded level parks the pad at the profile's inactive level
+  instead of being invented from the frame. The glue is compiled only where
+  `FURBLE_PIN_SHARE` is defined, which the two StickC family envs and the
+  boundary targets set; the simulator shims Feedback and IR and does not
+  compile it.
 - `FurbleFeedback`: optional sound, LED and vibration event outputs. DFS-safe
   by construction: all sound paths go through I2S and the IDF i2s driver holds
   `ESP_PM_APB_FREQ_MAX` while the channel is enabled, so no extra pm lock is
@@ -498,10 +502,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   the M5PM1 readback and single retry. It returns `Platform::setRail()`'s
   final read-back, which `railOffOrRestart()` uses to restart a receiver
   whose cut did not take. On the StickC and Plus the rail is already on before
-  this runs: M5GFX writes AXP192 `0x12 = 0x4D` during `M5.begin()` and bit 6 is
-  EXTEN, so `enable()` may not assume a power-on edge. Only the `RAIL_OFF` cycle
-  state is a real off-to-on transition. The EXTEN-to-Grove-5V routing is
-  UNVERIFIED; see plans/350.
+  this runs: `M5.begin()` calls `Power.setExtOutput(cfg.output_power)` with the
+  default `output_power = true`, which reaches AXP192 EXTEN, and M5GFX also
+  writes `0x12 = 0x4D` (bit 6 is EXTEN) in the same boot. `enable()` may not
+  assume a power-on edge. Only the `RAIL_OFF` cycle state is a real off-to-on
+  transition. The EXTEN-to-Grove-5V routing is UNVERIFIED; see plans/350.
 - Under `FURBLE_SIM`, battery policy is exercised through the deterministic
   `Furble::Sim::battery_reading_t` seam. Keep `Platform::readBattery()` as the
   production boundary; scenario seeds/actions may replace its sample and
