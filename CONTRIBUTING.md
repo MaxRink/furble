@@ -242,7 +242,7 @@ with exit 2, when the base oid is missing, when the API errors, and when a
 workflow at that commit cannot be fetched or parsed, so a broken base is never
 a pass. The checkout-reading local mode is a test-only fallback: `--pr` is
 mandatory, so the gate never reaches it. The defect and its evidence are in
-[plans/331-merge-gate-base.md](plans/331-merge-gate-base.md).
+[plans/implemented/331-merge-gate-base.md](plans/implemented/331-merge-gate-base.md).
 It also fails when the pull request head has no check runs at all, or any
 check is still running or did not pass. Actions was once disabled on the
 fork for three weeks, and pull requests merged with no CI; a head without

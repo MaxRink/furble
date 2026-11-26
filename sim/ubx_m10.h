@@ -19,7 +19,7 @@ namespace Sim {
  * navigation epoch at a time. That keeps it free of the simulator scheduler, so
  * the host suite tests the same state machine the scenarios drive.
  *
- * Modelled from the official documents listed in plans/321-ublox-m10-driver.md:
+ * Modelled from the official documents listed in plans/implemented/321-ublox-m10-driver.md:
  * the configuration database with RAM, BBR and default layers and the VALSET
  * validity rules (IFD 3.10, 4.3, 4.9.21), MON-VER, ACK/NAK, RXM-PMREQ software
  * standby (IM 3.6.3.2), CFG-RST, UPD-SOS without a flash, power save modes, and

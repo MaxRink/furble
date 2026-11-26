@@ -417,7 +417,7 @@ live in the pinned `libdeps` copy, not in this tree. Review record:
    (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`), so both waits are furble's, and
    together they satisfy all four panels. The earlier deferral that proposed
    dropping the wake wait is withdrawn. The reversal appeared in
-   `include/FurbleUI.h:1135`, `plans/322-hardware-abstraction.md`, the display
+   `include/FurbleUI.h:1135`, `plans/implemented/322-hardware-abstraction.md`, the display
    trap above, `docs/power/display.md`,
    `plans/287-mcu-portability-and-bundle-hardware.md`,
    `plans/implemented/12-display-off.md`, `docs/power/board-power.md` and

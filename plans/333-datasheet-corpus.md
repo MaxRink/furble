@@ -17,9 +17,9 @@ revision, the page and the date read. See
 [Second pass, ten power and sensor pages](#second-pass-ten-power-and-sensor-pages).
 The GNSS and SoC pages belong to a separate change.
 
-Related: [322](322-hardware-abstraction.md) (the drivers the corpus documents),
+Related: [322](implemented/322-hardware-abstraction.md) (the drivers the corpus documents),
 [287](287-mcu-portability-and-bundle-hardware.md) (the board survey),
-[321](321-ublox-m10-driver.md) (the M10 interface description),
+[321](implemented/321-ublox-m10-driver.md) (the M10 interface description),
 [95](95-engineering-lessons.md) (the hardware traps).
 
 ## Why

@@ -73,7 +73,7 @@ asks first.
 | :--- | :--- |
 | shipped | The firmware drives the part on a supported board and a board profile selects it. |
 | board support | M5Unified or M5GFX drives it. furble configures or reads it through that library and holds no register table. |
-| future | A pure driver exists in `lib/hal/`, or a page exists for a planned board, and no shipped board instantiates it. The only caller today is `tests/host/hal_drivers_test.cpp`, and `plans/322-hardware-abstraction.md` is the first board that will use the part. |
+| future | A pure driver exists in `lib/hal/`, or a page exists for a planned board, and no shipped board instantiates it. The only caller today is `tests/host/hal_drivers_test.cpp`, and `plans/implemented/322-hardware-abstraction.md` is the first board that will use the part. |
 
 A second pass on the same day covered the ten power and sensor pages again and
 every fact it supplied was reopened here before it was written down, so those
@@ -200,7 +200,7 @@ revision and page, not by deleting the row.
 
 - No SH1106 or CST9217 vendor document could be confirmed on 2026-11-25. Those
   two pages carry no document-backed register fact. The SH1106 page records
-  only what `plans/322-hardware-abstraction.md` claims, marked UNVERIFIED, and
+  only what `plans/implemented/322-hardware-abstraction.md` claims, marked UNVERIFIED, and
   the copy a distributor mirror serves is not a vendor document. QMI8658A is no
   longer in this list: Rev D is on QST's own site and [qmi8658.md](qmi8658.md)
   now cites it.

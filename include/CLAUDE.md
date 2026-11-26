@@ -344,4 +344,4 @@ settings-touching rebase.
   boards and the simulator; a new board family supplies its own `Platform`
   file on the drivers in `lib/hal`. Never make it virtual: a vtable defeats
   `--gc-sections` and pushed the headless Waveshare image over its IRAM budget.
-  See plans/322-hardware-abstraction.md.
+  See plans/implemented/322-hardware-abstraction.md.

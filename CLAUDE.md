@@ -384,7 +384,7 @@ changes what CI runs and the base filters cannot see a broadened filter. The
 gate fails closed, with exit 2, when the base oid is
 missing, when the API errors, and when a base workflow cannot be fetched or
 parsed. The checkout-reading local mode is a test-only fallback: `--pr` is
-mandatory, so the gate never reaches it. See `plans/331-merge-gate-base.md`.
+mandatory, so the gate never reaches it. See `plans/implemented/331-merge-gate-base.md`.
 Record the audit in `plans/NN-review-feedback.md`. Run the final
 gate set before pushing or merging: `python3 tools/pre_review.py --base
 origin/master`, `sh sim/scripts/check-doc-tokens.sh`, and the review-thread

@@ -3,11 +3,12 @@
 Status: documentation only. No code, setting, build or hardware behaviour
 changes. Every corrected claim was checked against the file that now holds the
 truth, and the review findings are recorded in
-[326-review-feedback.md](326-review-feedback.md).
+[326-review-feedback.md](326-review-feedback.md). Archived to
+`plans/implemented/` on 2026-11-25.
 
 Related: [322](322-hardware-abstraction.md) (the HAL status line),
 [323](323-plans-refresh-review-feedback.md) (the plans refresh record),
-[314](314-memory-resilience.md) (the memory and fuzz evidence).
+[314](../314-memory-resilience.md) (the memory and fuzz evidence).
 
 ## Why
 
@@ -33,10 +34,11 @@ tree that no longer exists.
 
 ## What changed
 
-- `plans/322-hardware-abstraction.md`: merged status, current `M5.getBoard()`
-  census, 19-field row, explicit "new macro" wording, UBX stack marked merged.
-- `plans/323-plans-refresh-review-feedback.md`: row 14 records the removed
-  false note.
+- `plans/implemented/322-hardware-abstraction.md`: merged status, current
+  `M5.getBoard()` census, 19-field row, explicit "new macro" wording, UBX stack
+  marked merged.
+- `plans/implemented/323-plans-refresh-review-feedback.md`: row 14 records the
+  removed false note.
 - `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `sim/CLAUDE.md`,
   `tests/host/README.md`, `docs/sim-coverage.md`, `docs/sim.md`: the committed
   evidence numbers, with the boundary runner named separately because no

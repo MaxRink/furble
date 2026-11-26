@@ -1,8 +1,8 @@
 # 304 - Review feedback for the #381 and #390 closeout
 
 Implementation state (2026-11-14): every finding below is fixed on
-`fix/381-390-review`. Hardware validation of both issues is still deferred
-(plans 302, 304 and 313).
+`fix/381-390-review`, merged as #456 (`592ec019`). Hardware validation of both
+issues is still deferred (plans 302, 304 and 313).
 
 ## Scope
 

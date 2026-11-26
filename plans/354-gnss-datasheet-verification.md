@@ -10,7 +10,7 @@ onto the newest head of that branch before it is pushed, because more than one
 agent is pushing to it.
 
 Related: [333](333-datasheet-corpus.md) (the corpus and its gate),
-[321](321-ublox-m10-driver.md) (the M10 driver),
+[321](implemented/321-ublox-m10-driver.md) (the M10 driver),
 [98](98-power-optimization-audit.md) (the power model),
 [00](00-hardware-experiments.md) (Experiment B, the rail-cut cold start).
 

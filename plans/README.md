@@ -21,6 +21,18 @@ by the plans in the table below.
 
 Fully implemented plans are archived under [implemented/](implemented/README.md).
 
+## Plans cleanup (plan 346)
+
+[346-plans-cleanup.md](346-plans-cleanup.md) lists every document this cleanup
+moved, every status line it corrected and every plan it left alone with the
+reason. A row below that links into `implemented/` is archived; the row keeps
+its phase position so the roadmap order stays readable.
+
+The sim-only paragraph above is dated 2026-11-13 and describes master at
+`e66e8807` (#439). Master has moved on since: this cleanup lands on
+`85b89931` (#494). Those gate results were not re-run, and
+[313-sim-only-status.md](313-sim-only-status.md) still holds them unchanged.
+
 ## Open issue ownership (2026-11-06)
 
 Every open issue maps to one owning plan. The plan records the implementation
@@ -32,13 +44,14 @@ state and the remaining gate; the issue stays open until that gate lands.
 | #289 | [173](173-sim-scheduler-visibility.md) | All five items done. The item 4 settle failure was `Scan::stop()` waiting on a plain condition variable for a radio-task callback, invisible to the simulator scheduler. It is now `scan_condition_t`, a scheduler-visible type under `FURBLE_SIM`. 6,000 container runs passed with no breaker parks; the last 3,600 ran at a median loadavg of 81.5. |
 | #381 | [302](302-companion-restart-reconnect.md) | Open. Long USB console runs reset into the ROM USB-JTAG unit. The 5 s command timeout and monitor fixes are merged. Host-side recovery is implemented: the USB monitor reopens a lost port, reports ROM reset lines and app restarts, and hard resets only with `--usb-hard-reset`, with a fake-transport test. A UART0 panic capture and the hardware retest of the recovery remain. |
 | #390 | [304](304-webui-stick-memory.md) | Open. The WebUI now fails closed on the StickS3 instead of boot-looping, and the TLS identity is generated before WiFi and the companion. Simulator work is complete: `hw-memory-webui-first-boot` covers a first boot with WiFi, BLE, the companion and a camera connect, on the inferred 25,911 / 24,148 heap. A connect now sheds the WebUI before its target task starts, the icon cache lives in PSRAM and is dropped at disconnect, so HTTPS pauses for the camera session and returns after it. Review record: [304-review-feedback.md](304-review-feedback.md). A support claim still needs the hardware memory gate, a TLS handshake, a settings write and a soak; plan 304 holds the exact procedure. |
-| #451 | [325](325-peer-subscription-race.md) | Fixed on `fix/451-fuji-double-subscriptions`: the virtual camera subscription tables are thread safe. Closes on merge. |
 | #455 | [332](332-sim-rtc.md) | Implemented on `feat/455-sim-rtc` in #507: the simulator models a battery-backed RTC, and the deep-sleep scenarios cover a rejected stale record, an accepted valid record, an immediate late shot and a resume after the cell dropped. Closed against #507; the hardware item stays with the plan. |
-| #464 | [331](331-merge-gate-base.md) | Fixed on `fix/464-base-workflows`: the merge gate reads the workflow path filters at the PR base commit through `baseRefOid`, fails closed when they cannot be read, and keeps checkout reads for a run with no PR only. Closes on merge. |
 | upstream #316 | [359](359-sony-legacy-generation.md) | Fixed on `fix/316-sony-7rm4`: the 2019 advertisement generation is accepted, the ATT MTU floor is requested and verified with a graceful location skip, and a body without DD30/DD31 gets a best-effort DD11 write. Host and virtual peer only; a real ILCE-7RM4 capture remains, listed in the plan. |
 
-Closed issues #280, #281, #282, #288 and #290 are retained in their plans and in
-the git history. They are no longer ownership rows.
+Closed issues #280, #281, #282, #288, #290, #451 and #464 are retained in their
+plans and in the git history. They are no longer ownership rows. #451 closed
+with #453 (`139d884a`), whose message carries `Fixes #451`; plan 325 is archived
+under [implemented/](implemented/README.md). #464 closed with #478 (`b57f0118`),
+whose title carries it, and plan 331 is archived there with it.
 
 ## Engineering lessons
 
@@ -106,17 +119,17 @@ the git history. They are no longer ownership rows.
 | [335-review-feedback.md](335-review-feedback.md) | Review-feedback record for the withdrawn control cut: the omitted dispatch, the 25 percent line, and the checks that held |
 | [314-review-feedback.md](314-review-feedback.md) | Review-feedback record for the plan 314 memory resilience series |
 | [356-sim-memory-certify.md](356-sim-memory-certify.md) | Simulator memory certification: the four MQTT memory scenarios certified, a `FURBLE_SIM_MQTT=1` coverage build, and the measured `src/FurbleMQTT.cpp` number |
-| [323-plans-refresh-review-feedback.md](323-plans-refresh-review-feedback.md) | Review-feedback record for the plans refresh, PR #441 |
+| [323-plans-refresh-review-feedback.md](implemented/323-plans-refresh-review-feedback.md) | Review-feedback record for the plans refresh, PR #441 |
 | [315-stickc-layout-regressions.md](implemented/315-stickc-layout-regressions.md) | M5StickC header battery anchor, Cameras page double reserve and Time page scroll fixes |
 | [316-docs-capture-companion-reject.md](implemented/316-docs-capture-companion-reject.md) | Docs capture: rename the hardware-model action that shadowed the companion pairing Reject |
 | [317-notouch-regressions.md](317-notouch-regressions.md) | Physical-button suite: control drain wake, stale legend pass, info page padding, memory profile constants |
-| [321-ublox-m10-driver.md](321-ublox-m10-driver.md) | u-blox M10 UBX driver: codec, receiver backend seam, virtual M10 in the simulator, constellations, rate, power save, AssistNow Autonomous and warm start |
-| [321-review-feedback.md](321-review-feedback.md) | Review-feedback record for the u-blox M10 stack: tick-wrap gate, non-switchable rails, time resolution, ANA default, demux fuzzing, receiver encoder payload bound, source URLs |
-| [325-peer-subscription-race.md](325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
-| [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
-| [326-docs-accuracy.md](326-docs-accuracy.md) | Documentation accuracy refresh: stale plan status, wiki screenshot claims and gate numbers |
+| [321-ublox-m10-driver.md](implemented/321-ublox-m10-driver.md) | u-blox M10 UBX driver: codec, receiver backend seam, virtual M10 in the simulator, constellations, rate, power save, AssistNow Autonomous and warm start |
+| [321-review-feedback.md](implemented/321-review-feedback.md) | Review-feedback record for the u-blox M10 stack: tick-wrap gate, non-switchable rails, time resolution, ANA default, demux fuzzing, receiver encoder payload bound, source URLs |
+| [325-peer-subscription-race.md](implemented/325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
+| [325-review-feedback.md](implemented/325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
+| [326-docs-accuracy.md](implemented/326-docs-accuracy.md) | Documentation accuracy refresh: stale plan status, wiki screenshot claims and gate numbers |
 | [332-gnss-vendor-audit.md](332-gnss-vendor-audit.md) | GNSS configuration audit against the CASIC V6.3.2 and V4.2.0.3, AT6668 and u-blox M10 documents: `$PCAS03` field count, `$PCAS04` encoding, B1C rejections and write order |
-| [326-review-feedback.md](326-review-feedback.md) | Review-feedback record for the documentation accuracy refresh |
+| [326-review-feedback.md](implemented/326-review-feedback.md) | Review-feedback record for the documentation accuracy refresh |
 | [327-control-gps-race.md](327-control-gps-race.md) | Locked `Control::m_Targets` walk for the GPS fan-out and the control task's `STATE_ACTIVE` liveness check |
 | [328-reference-docs-audit.md](328-reference-docs-audit.md) | Reference documentation audit: settings and console claims re-verified against the code, with the fixes and the claims that did not hold |
 | [332-imu-motion-scale-audit.md](332-imu-motion-scale-audit.md) | IMU motion wake scale audit against the BMI270 revision 1.6, MPU-6886 revision 1.1 and QMI8658A Rev D documents; one scale definition shared by the backends, the simulator double and the host tests |
@@ -180,8 +193,8 @@ the git history. They are no longer ownership rows.
 | [41-alternative-hardware.md](41-alternative-hardware.md) | Alternative sidecar hardware |
 | [42-waveshare-eth-node.md](implemented/42-waveshare-eth-node.md) | Waveshare ESP32-S3-ETH wired MQTT node |
 | [287-mcu-portability-and-bundle-hardware.md](287-mcu-portability-and-bundle-hardware.md) | Whole-stack MCU portability, battery model, GPS quality, and buyable BLE plus GNSS hardware |
-| [322-hardware-abstraction.md](322-hardware-abstraction.md) | Hardware abstraction for the next boards: dependency audit, pure chip drivers, board profile and power backend |
-| [322-review-feedback.md](322-review-feedback.md) | Review-feedback record for the plan 322 hardware abstraction branches |
+| [322-hardware-abstraction.md](implemented/322-hardware-abstraction.md) | Hardware abstraction for the next boards: dependency audit, pure chip drivers, board profile and power backend |
+| [322-review-feedback.md](implemented/322-review-feedback.md) | Review-feedback record for the plan 322 hardware abstraction branches |
 | [333-datasheet-corpus.md](333-datasheet-corpus.md) | Datasheet citation corpus: one page per part, document revision and section per register fact, the citation gate, and the zero-PDF licence decision |
 | [354-gnss-datasheet-verification.md](354-gnss-datasheet-verification.md) | GNSS datasheet verification: the AT6668 datasheet and both CASIC protocol revisions read against the pages, the M10 module documents opened, and the facts that stay open |
 | [473-review-feedback.md](473-review-feedback.md) | Review-feedback record for the #473 hardware-trap corrections and the per-panel display dwell rule |
@@ -198,7 +211,7 @@ implemented.
 | [318-next-board-battery-gps.md](318-next-board-battery-gps.md) | Next board for battery life and GPS: 32.768 kHz crystal finding, T-Beam Supreme M10S first, UBX driver design and bench plan |
 | [319-meshtastic-dual-boot.md](319-meshtastic-dual-boot.md) | Design only: furble and Meshtastic on one ESP32-S3 node, slot ownership, private NVS and switching |
 | [320-rtc-use.md](320-rtc-use.md) | RTC domain use: wall clock across soft resets, timed-wake time restore, drift calibration, rejected ULP ideas |
-| [324-hw-research-review-feedback.md](324-hw-research-review-feedback.md) | Review-feedback record for the hardware research branch |
+| [324-hw-research-review-feedback.md](implemented/324-hw-research-review-feedback.md) | Review-feedback record for the hardware research branch |
 | [335-display-touch-datasheet-promotions.md](335-display-touch-datasheet-promotions.md) | Display and touch datasheet promotions: what was re-read on 2026-11-26, the page each number came from, the licence limits, and the items that stay unverified |
 
 ## Bug analyses
@@ -364,6 +377,8 @@ document is authoritative over any older summary.
 | [129-m5-dependencies-idf55.md](implemented/129-m5-dependencies-idf55.md) | M5 dependency compatibility slice |
 | [130-espressif32-613-idf553.md](implemented/130-espressif32-613-idf553.md) | Espressif32 6.13.0 and ESP-IDF 5.5.3 |
 | [141-ci-manual-dispatch.md](implemented/141-ci-manual-dispatch.md) | Reliable manual firmware CI |
+| [346-plans-cleanup.md](346-plans-cleanup.md) | Plans directory cleanup: archived plans, corrected status lines, repointed references and the documents left alone with the reason |
+| [346-review-feedback.md](346-review-feedback.md) | Review-feedback record for PR 484: the dead links master added after the base, the count of documents left alone, the duplicate plan number and the plan 167 justification |
 
 ## Design documents
 

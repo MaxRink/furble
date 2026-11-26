@@ -3,7 +3,11 @@
 Implementation state (2026-11-13): 33a #148, 33b #53, 33c #66 and 33d #90 have merged. Camera catalog sync, the per-camera
 device layer (`via_device`) and the `cmd/location` topic shipped in `src/FurbleMQTT.cpp`.
 The Core debug size deficit below was resolved by #435; the 8 MB and 16 MB boards use larger
-slots. Open: the headless LVGL exclusion and moving the intervalometer off the UI task.
+slots. Open: moving the intervalometer off the UI task. The headless LVGL
+exclusion has landed (`FURBLE_NO_DISPLAY` drops the UI sources at
+`src/CMakeLists.txt:49`, and `src/CMakeLists.txt:78-84` registers the component
+without `REQUIRES icons`; `esp32-s3-headless` also passes
+`-DEXCLUDE_COMPONENTS=icons` in `platformio.ini:74`).
 
 Upstream issues: [#248 WIFI feature](https://github.com/gkoh/furble/issues/248)
 and [#249 Board-Only support](https://github.com/gkoh/furble/issues/249).

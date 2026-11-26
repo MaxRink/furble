@@ -121,7 +121,7 @@ QMI8658 through this stack, and no board in `boards/` or `platformio.ini` fits
 one. The part appears only as an alternative-hardware candidate:
 `plans/41-alternative-hardware.md:147` and `plans/88-alternate-hardware.md:84`
 name it on the LilyGO T-Beam Supreme, and
-`plans/322-hardware-abstraction.md:105,238` records it as unsupported.
+`plans/implemented/322-hardware-abstraction.md:105,238` records it as unsupported.
 
 So the premise in the request, a QMI8658 backend that polls the accelerometer
 instead of using the co-processor, does not exist. Nothing polls it, and no

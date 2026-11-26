@@ -1,5 +1,7 @@
 # 326 - Review feedback
 
+Status: implemented on master (archived 2026-11-25).
+
 Two pre-merge subagent reviews of `docs/accuracy-refresh` returned CHANGES
 REQUIRED: eleven findings against `0f19e2f1`, then eight against the staged
 corrections that became `316225a4`. All nineteen are recorded here as fixed,
@@ -20,7 +22,7 @@ with the evidence that closed each. None was resolved without a change.
 | 11 | Pre-merge review | The three embedded PNGs were untracked, and the review rows were not recorded. | Fixed. The images are committed and this file records every finding. | `git show --stat`, this file |
 | 12 | Second pre-merge review | The eleven fixes were staged but never committed, so HEAD still held the rejected text. | Fixed. A second commit carries the whole change. | `git diff origin/master...HEAD --stat` |
 | 13 | Second pre-merge review | Plan 326 said the two hal branches no longer exist. Both refs are still present. | Fixed. The row says both refs still exist and can be deleted. | `git branch -a --list '*hal*'` |
-| 14 | Second pre-merge review | Plan 322 phase 4 still said 31 calls to 7 with six geometry switches, contradicting the corrected census above it. | Fixed. Phase 4 now splits four geometry and two input-wiring switches and names the simulator check as the eighth site. | `plans/322-hardware-abstraction.md:203-210` |
+| 14 | Second pre-merge review | Plan 322 phase 4 still said 31 calls to 7 with six geometry switches, contradicting the corrected census above it. | Fixed. Phase 4 now splits four geometry and two input-wiring switches and names the simulator check as the eighth site. | `plans/implemented/322-hardware-abstraction.md:254-259` |
 | 15 | Second pre-merge review | Two claim cells in plan 326 overstated the old text: the 31 figure was correct at `e66e8807`, and only one macro lacked the new marker. | Fixed. The cells say the census was a snapshot with no current count, and name the one macro that lacked the marker. | `git grep` at `e66e8807`, `plans/322` at origin/master |
 | 16 | Second pre-merge review | The 18-case citation stopped at `tests/host/CMakeLists.txt:2785-2802`, which holds 17; `real-wifi-lifecycle` is at `:2311`. | Fixed in both plan files. | `tests/host/CMakeLists.txt:2311` |
 | 17 | Second pre-merge review | Plan 326 described the old wiki text wrongly for the IR and Storage pages; they blamed the default simulator board, not the capture script. | Fixed. The row names the default board lacking the IR LED and SD card, and the splash being replaced before capture. | `docs/wiki/UI-Walkthrough.md` at origin/master |
