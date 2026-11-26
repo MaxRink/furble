@@ -137,5 +137,19 @@ int main() {
   CHECK(encode(loose, retained.data(), retained.size()) == RECORD_BYTES);
   CHECK(!restoreRetained(retained.data(), retained.size(), gps.epoch_us, kept));
   CHECK(kept.epoch_us == untouched.epoch_us && kept.uncertainty_ms == untouched.uncertainty_ms);
+
+  // RTC retention (plan 350). A battery-backed calendar is trusted to have
+  // kept time across a power-off, so a clear voltage-low flag lets it seed the
+  // clock with a two-second window. On an unbacked RTC the flag says nothing
+  // the checkpoint policy does not already cover, so that value keeps the
+  // ten-minute window and the flag is ignored.
+  CHECK(RTC_BACKED_UNCERTAINTY_MS == 2000);
+  CHECK(RTC_UNBACKED_UNCERTAINTY_MS == 10U * 60U * 1000U);
+  CHECK(rtcUncertaintyMs(true) == RTC_BACKED_UNCERTAINTY_MS);
+  CHECK(rtcUncertaintyMs(false) == RTC_UNBACKED_UNCERTAINTY_MS);
+  CHECK(rtcValueTrusted(true, false));
+  CHECK(!rtcValueTrusted(true, true));
+  CHECK(rtcValueTrusted(false, false));
+  CHECK(rtcValueTrusted(false, true));
   return 0;
 }

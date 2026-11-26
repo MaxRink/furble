@@ -18,12 +18,22 @@
 // The GPS rail column is new. It is copied from the boards that M5Unified
 // 0.2.20 Power_Class::setExtOutput() switches; every other board furble
 // supports falls through to its empty default.
+//
+// Deviations from the port-2 copy (plan 350). The Plus2 RTC backing row is
+// true: the board keeps its BM8563 alive across a HOLD power-off so the alarm
+// can wake it, so TimeKeeper applies the BM8563 voltage-low flag and the backed
+// uncertainty there, where `knownBatteryBackedRtc()` returned false. The
+// StickC Plus timed wake row is RTC_ALARM because its BM8563 INT reaches the
+// AXP192 power key through R401 and C401. The LED and IR polarity columns are
+// new: the StickC and Plus emitter cathodes are on the pin while the Plus2
+// drives an NPN base, so both rows differ between those families.
 
 #include <cstring>
 #include <iostream>
 #include <string>
 
 #include "FurbleBoard.h"
+#include "FurblePinShare.h"
 
 using Furble::Board::MotionWake;
 using Furble::Board::Profile;
@@ -100,38 +110,40 @@ struct Expected {
   bool sound, light, vibration;
   int ledPin;
   bool gpsRail;
+  bool ledActiveLow;
+  bool irMarkLow;
 };
 
 // clang-format off
 const Expected EXPECTED[] = {
   {m5::board_t::board_M5StickC,      "StickC",   true,  true,  true,  true,  95,  true,  9,
    MotionWake::DIRECT,    35, TimedWake::NONE,       -1, true,  false, true,  false, 48,
-   false, true,  false, 10, true},
+   false, true,  false, 10, true,  true,  true},
   {m5::board_t::board_M5StickCPlus,  "StickC+",  true,  true,  true,  true,  120, true,  9,
-   MotionWake::DIRECT,    35, TimedWake::NONE,       -1, true,  false, true,  false, 48,
-   true,  true,  false, 10, true},
-  {m5::board_t::board_M5StickCPlus2, "StickC+2", true,  true,  false, false, 200, false, 19,
+   MotionWake::DIRECT,    35, TimedWake::RTC_ALARM,  -1, true,  false, true,  false, 48,
+   true,  true,  false, 10, true,  true,  true},
+  {m5::board_t::board_M5StickCPlus2, "StickC+2", true,  true,  false, false, 200, true,  19,
    MotionWake::NONE,      -1, TimedWake::RTC_ALARM,  4,  false, false, true,  false, 32,
-   true,  true,  false, 19, false},
+   true,  true,  false, 19, false, false, false},
   {m5::board_t::board_M5StickS3,     "StickS3",  true,  true,  false, true,  250, false, 46,
    MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true,  true,  32,
-   true,  false, false, -1, true},
+   true,  false, false, -1, true,  true,  false},
   {m5::board_t::board_M5Stack,       "Core",     true,  false, false, false, 0,   false, -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, true,  false, false, 32,
-   true,  false, false, -1, false},
+   true,  false, false, -1, false, true,  false},
   {m5::board_t::board_M5StackCore2,  "Core2",    true,  true,  true,  true,  390, true,  -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, true,  true,  false, 32,
-   true,  false, true,  -1, true},
+   true,  false, true,  -1, true,  true,  false},
   {m5::board_t::board_M5Tough,       "Tough",    true,  true,  true,  true,  390, false, -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, true,  false, true,  false, 32,
-   false, false, false, -1, true},
+   false, false, false, -1, true,  true,  false},
   // Every other board, the Waveshare ESP32-S3-ETH and the CoreS3 included.
   {m5::board_t::board_unknown,       "M5",       false, false, false, false, 0,   false, -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  false, 32,
-   false, false, false, -1, false},
+   false, false, false, -1, false, true,  false},
   {m5::board_t::board_M5StackCoreS3, "M5",       false, false, false, false, 0,   false, -1,
    MotionWake::NONE,      -1, TimedWake::NONE,       -1, false, false, true,  false, 32,
-   false, false, false, -1, false},
+   false, false, false, -1, false, true,  false},
 };
 // clang-format on
 
@@ -161,6 +173,23 @@ int main() {
               && p.feedbackVibration == e.vibration && p.ledPin == e.ledPin,
           n + " feedback");
     check(p.gpsRail == e.gpsRail, n + " gps rail");
+    check(p.ledActiveLow == e.ledActiveLow, n + " led polarity");
+    check(p.irMarkLow == e.irMarkLow, n + " ir mark polarity");
+  }
+
+  // Only the Plus2 puts the LED and the IR emitter on one pin, which is what
+  // selects the PinShare hand-over; every other supported board keeps them
+  // apart or has no emitter (plan 350).
+  const Profile &plus2 = Furble::Board::profileFor(m5::board_t::board_M5StickCPlus2);
+  check(Furble::PinShare::ledSharesIr(plus2.ledPin, plus2.irPin),
+        "the Plus2 LED and IR emitter share G19");
+  for (const auto &e : EXPECTED) {
+    if (e.board == m5::board_t::board_M5StickCPlus2) {
+      continue;
+    }
+    const Profile &other = Furble::Board::profileFor(e.board);
+    check(!Furble::PinShare::ledSharesIr(other.ledPin, other.irPin),
+          std::string(e.name) + " does not share the LED and IR pins");
   }
 
   // profile() is the row for the detected board.

@@ -240,5 +240,17 @@ hardware check is needed before claiming the behavior.
 
 ## Implementation state
 
-Research only. No idea here is implemented. C1 is the recommended first
-change.
+Research only when written; C1 is the recommended first change.
+
+## Follow-up: StickC Plus timed wake landed as C4's Part
+
+State: implemented on `fix/stickc-family` as part of [350](350-stickc-family-fixes.md).
+The StickC Plus row is `TimedWake::RTC_ALARM`, so it reuses the Plus2 path rather
+than the deep-sleep design C4 sketches: `setAlarmIRQ()`, the countdown register
+readback, the early-wake rejection, `consumeTimedWake()`'s `getIRQstatus()` check
+and the intervalometer resume window are unchanged, and the sleep is a full
+AXP192 `powerOff()` because the board has no hold pin. The wake path is the
+BM8563 INT coupled into the AXP192 power key through R401 and C401, which is
+vendor-documented and not scoped here, so C4's hardware gate (G35 shared with
+the MPU6886 and the AXP192 IRQ, panel state, resume) still applies. C5's
+calendar alarm, C3's trim measurement, C6 and C7 remain open.

@@ -262,12 +262,13 @@ not verified for this register.
 
 | Part or area | Gap | Consequence |
 | --- | --- | --- |
-| AXP192 | No revision string in the fetched copy; cover says 2010 | A register claim must name the copy used, not a revision number |
+| AXP192 | No revision string in the fetched copy; cover says 2010 | A register claim must name the copy used, not a revision number. Plan 350 could not verify the register details in its pass either, so the ADC mask bits and the `0x12` output enables rest on the M5Unified and M5GFX writes quoted there |
+| W5500 | Datasheet not opened for PHY current; the reset minimum is quoted from version 1.1.0 section 5.5.1 while the linked copy is v1.0.6 | NB-02 and the Waveshare rows cannot quote a current |
 | FT6336U | Datasheet not opened; current not in the tree | P-069 uses a placeholder 0.5 to 2 mA range |
 | ES8311 and AW8737 | No documents opened; quiescent currents not in the tree | RL-09 assumes a closed speaker is idle, but does not measure it |
-| BM8563 | Documentation cited, not opened | The Plus2 alarm wake path is unverified |
+| BM8563 | Documentation cited, not opened | The Plus2 alarm wake path, the Plus BM8563-to-AXP192 power-key coupling through R401 and C401, and the voltage-low flag at register `0x02` bit 7 are read from the vendor documentation and M5Unified, not from a scope or a schematic in this tree |
 | M5Stack Core / Core2 SD | No card datasheet or slot current | RL-06 says the card's standby current is unmeasured |
-| M5StickC and Plus schematics | No PDF, netlist, or resistor value in the tree | GPIO35, IR LED series resistance, and divider values are unverified |
+| M5StickC and Plus schematics | No PDF, netlist, or resistor value in the tree. Plan 350 could not open them either, and worked from a third-party pass instead | GPIO35's three open-drain sources, the IR LED series resistance, and divider values are unverified. So is the EXTEN-to-Grove-5V routing: `AXP192 0x12 = 0x4D` at boot is a library write, not proof that bit 6 reaches the Grove 5 V pin |
 | Plus2 HOLD and PWR wake | Hardware behavior unverified | P-098 is a gate, not a saving |
 | ESP-IDF Kconfig at the pinned version | Wi-Fi lane read some help text from 5.4.2 while the build pins 5.5.3 | Recheck any Kconfig number at 5.5.3 before relying on it |
 | M5GFX SPI path | Whether M5GFX uses the IDF SPI master driver is not established | The APB lock claim for the panel bus has an unverified assumption |

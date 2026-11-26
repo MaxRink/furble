@@ -29,6 +29,7 @@ set(furble_sources
     FurbleOTAPartitionSinkArduino.cpp
     FurbleOTAReplayStore.cpp
     FurbleOTAReplayStoreNVS.cpp
+    FurblePinShare.cpp
     FurblePlatform.cpp
     FurblePower.cpp
     FurbleProvision.cpp

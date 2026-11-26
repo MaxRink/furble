@@ -45,6 +45,7 @@ class IR {
   static void taskEntry(void *param);
   void task(void);
   bool createChannel(void);
+  void releasePin(void);
   void transmit(protocol_t protocol);
   void transmitSymbols(uint32_t carrier_hz, const rmt_symbol_word_t *symbols, size_t symbol_count);
 
@@ -54,6 +55,12 @@ class IR {
   rmt_channel_handle_t m_Channel = nullptr;
   rmt_encoder_handle_t m_Encoder = nullptr;
   bool m_Initialized = false;
+  // The pad is muxed to the RMT signal only while a frame runs once the shared
+  // pin hand-over has returned it to the GPIO output path.
+  bool m_PinReleased = false;
+  // The emitter lights on a low pin on the StickC and StickC Plus, so the RMT
+  // output is inverted there and the symbol levels stay in mark/space form.
+  bool m_MarkLow = false;
 };
 }  // namespace Furble
 

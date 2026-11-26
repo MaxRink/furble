@@ -10,7 +10,7 @@ supply these numbers; they come from the board layout as it is written in
 `Board::profileFor()` picks a row from the detected board, not from a build
 macro, because one image serves several boards (`src/FurbleBoard.cpp:61-80`).
 The row layout is documented above the table in `src/FurbleBoard.cpp:25-28`, and
-the field list is `include/FurbleBoard.h:36-55`.
+the field list is `include/FurbleBoard.h:36-65`.
 
 | Field | StickC | StickC+ | StickC+2 | StickS3 | Core | Core2 | Tough | Unknown |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -166,7 +166,7 @@ HTTPS server needs (`src/FurbleUI.cpp:571-577`).
 ### Brightness floor
 
 The minimum brightness per board is a multiple of the slider step, so the slider
-cannot select a level the panel renders as off (`include/FurbleBoard.h:49`).
+cannot select a level the panel renders as off (`include/FurbleBoard.h:53`).
 The values are 48 on StickC and StickC Plus and 32 everywhere else
 (`src/FurbleBoard.cpp:31-56`, and the `minBrightness` row above).
 
@@ -230,7 +230,7 @@ The protocol timings are in [the IR remote page](../protocols/ir-remote.md).
 
 Which outputs a board has is the `feedbackSound`, `feedbackLight` and
 `feedbackVibration` fields of the board profile
-(`include/FurbleBoard.h:50-52`, `src/FurbleBoard.cpp:31-56`). A request for an
+(`include/FurbleBoard.h:54-56`, `src/FurbleBoard.cpp:65-92`). A request for an
 output the board lacks is skipped rather than logged as a failure
 (`src/FurbleFeedback.cpp:85-87`).
 

@@ -49,6 +49,21 @@ void bootWithUnbackedRtc(void) {
   Furble::TimeKeeper::init();
 }
 
+// The Plus2 keeps its BM8563 alive across a HOLD power-off so the alarm can
+// wake the device, so its profile row reports a battery-backed RTC even though
+// no cell backs the chip. A real outage is caught by the BM8563 voltage-low
+// flag instead of by the unbacked ten-minute window (plan 350).
+void bootPlus2(bool voltageLow) {
+  hostTimeResetReason() = ESP_RST_POWERON;
+  M5.board = m5::board_t::board_M5StickCPlus2;
+  M5.Rtc.enabled = true;
+  M5.Rtc.voltageLow = voltageLow;
+  M5.Rtc.value.date = {2024, 1, 1};
+  M5.Rtc.value.time = {12, 0, 0};
+  Furble::TimeKeeper::getInstance().resetForTest();
+  Furble::TimeKeeper::init();
+}
+
 bool readDurable(Furble::TimeSample &sample) {
   Furble::Preferences preferences;
   if (!preferences.begin("furble", true) || !preferences.isKey("time_state")) {
@@ -241,6 +256,28 @@ int main() {
   setTimeMs(2 * Furble::TimeKeeperPolicy::NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS);
   keeper.flush();
   CHECK(nvs_test_commit_count() == 2);
+
+  // The Plus2 row is battery backed, so the BM8563 calendar is trusted and
+  // carries the backed uncertainty rather than the ten-minute window an
+  // unbacked RTC pays.
+  nvs_test_reset();
+  setTimeMs(0);
+  bootPlus2(false);
+  CHECK(keeper.status().rtc_available);
+  CHECK(keeper.status().rtc_battery_backed);
+  CHECK(keeper.status().valid);
+  CHECK(keeper.status().source == Furble::TimeSource::RTC);
+  CHECK(keeper.status().uncertainty_ms == Furble::TimeKeeperPolicy::RTC_BACKED_UNCERTAINTY_MS);
+
+  // A set voltage-low flag means the backup supply fell below the retention
+  // threshold, so the calendar may have stopped. Fail closed instead of
+  // seeding the wall clock from it.
+  nvs_test_reset();
+  setTimeMs(0);
+  bootPlus2(true);
+  CHECK(keeper.status().rtc_available);
+  CHECK(keeper.status().rtc_battery_backed);
+  CHECK(!keeper.status().valid);
 
   // A failed setter never reaches durable storage. A simulated reboot must
   // therefore come up without a time record.

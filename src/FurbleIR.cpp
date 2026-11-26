@@ -12,6 +12,7 @@
 
 #include "FurbleBoard.h"
 #include "FurbleIR.h"
+#include "FurblePinShare.h"
 #include "FurbleSettings.h"
 #include "FurbleTypes.h"
 
@@ -154,7 +155,9 @@ void IR::init(void) {
   instance.m_Initialized = true;
   // The profile stores -1 for a board without an emitter. Only the S3 image
   // runs on a StickS3, and the S3 has GPIO 46.
-  const int8_t pin = Board::profile().irPin;
+  const auto &board = Board::profile();
+  const int8_t pin = board.irPin;
+  instance.m_MarkLow = board.irMarkLow;
   // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
   instance.m_Pin = (pin < 0) ? GPIO_NUM_NC : static_cast<gpio_num_t>(pin);
   if (!instance.isSupported()) {
@@ -236,6 +239,10 @@ bool IR::createChannel(void) {
   // ping-pong through the block via the threshold interrupt.
   tx.mem_block_symbols = SOC_RMT_MEM_WORDS_PER_CHANNEL;
   tx.trans_queue_depth = 4;
+  // The StickC and StickC Plus drive the emitter cathode from the pin, so light
+  // is emitted while the pad is low. Inverting the output keeps the encoded
+  // mark/space levels correct and leaves the idle level at "emitter off".
+  tx.flags.invert_out = m_MarkLow ? 1U : 0U;
 
   esp_err_t err = rmt_new_tx_channel(&tx, &m_Channel);
   if (err != ESP_OK) {
@@ -258,6 +265,14 @@ bool IR::createChannel(void) {
   return true;
 }
 
+void IR::releasePin(void) {
+  // endIr() is a no-op unless this frame took the pin, so boards that keep the
+  // LED and the emitter apart never touch it.
+  if (PinShare::endIr()) {
+    m_PinReleased = true;
+  }
+}
+
 void IR::transmitSymbols(uint32_t carrier_hz,
                          const rmt_symbol_word_t *symbols,
                          size_t symbol_count) {
@@ -265,14 +280,37 @@ void IR::transmitSymbols(uint32_t carrier_hz,
     return;
   }
 
+  // The Plus2 drives the red LED and the IR emitter from G19. Take the pin for
+  // the frame so a Feedback blink cannot write it mid-frame, and hand it back
+  // afterwards so the LED is not left at the RMT idle level. The arbitration
+  // lock is taken per call and never spans the transfer.
+  const bool shared = PinShare::beginIr(static_cast<int>(m_Pin));
+  if (shared && m_PinReleased) {
+    // The previous frame handed the pad back to the GPIO output path, so
+    // re-select the RMT signal before transmitting again. The inversion must
+    // match the channel configuration.
+    const esp_err_t attach = rmt_tx_switch_gpio(m_Channel, m_Pin, m_MarkLow);
+    if (attach != ESP_OK) {
+      ESP_LOGE(LOG_TAG, "Failed to reattach the IR pin (%s, 0x%x).", esp_err_to_name(attach),
+               static_cast<unsigned>(attach));
+      releasePin();
+      return;
+    }
+    m_PinReleased = false;
+  }
+
   rmt_carrier_config_t carrier = {};
   carrier.frequency_hz = carrier_hz;
-  carrier.duty_cycle = 0.33;
+  // The carrier gates the high level, and an inverted output turns that into
+  // the lit phase, so the electrical duty is flipped to keep the optical duty
+  // at a third on the active-low emitters.
+  carrier.duty_cycle = m_MarkLow ? (2.0F / 3.0F) : (1.0F / 3.0F);
 
   esp_err_t err = rmt_apply_carrier(m_Channel, &carrier);
   if (err != ESP_OK) {
     ESP_LOGE(LOG_TAG, "Failed to apply IR carrier (%s, 0x%x).", esp_err_to_name(err),
              static_cast<unsigned>(err));
+    releasePin();
     return;
   }
 
@@ -280,6 +318,7 @@ void IR::transmitSymbols(uint32_t carrier_hz,
   if (err != ESP_OK) {
     ESP_LOGE(LOG_TAG, "Failed to enable IR RMT channel (%s, 0x%x).", esp_err_to_name(err),
              static_cast<unsigned>(err));
+    releasePin();
     return;
   }
 
@@ -302,6 +341,8 @@ void IR::transmitSymbols(uint32_t carrier_hz,
     ESP_LOGE(LOG_TAG, "Failed to disable IR RMT channel (%s, 0x%x).", esp_err_to_name(disable_err),
              static_cast<unsigned>(disable_err));
   }
+
+  releasePin();
 }
 
 void IR::transmit(protocol_t protocol) {

@@ -49,6 +49,31 @@ constexpr uint64_t NVS_NORMAL_MIN_WRITE_INTERVAL_MS = 6ULL * 60ULL * 60ULL * 100
 constexpr uint64_t NVS_CHECKPOINT_MIN_WRITE_INTERVAL_MS =
     3ULL * 60ULL * 60ULL * 1000ULL + 30ULL * 60ULL * 1000ULL;
 
+// An RTC calendar that survives a power-off still pays the read and its
+// one-second register resolution, so a backed read carries a small window. An
+// RTC whose rail is not retained can have stopped for an unknown time between
+// checkpoints, so its value carries a ten-minute window instead.
+constexpr uint32_t RTC_BACKED_UNCERTAINTY_MS = 2000;
+constexpr uint32_t RTC_UNBACKED_UNCERTAINTY_MS = 10U * 60U * 1000U;
+
+/** Uncertainty a value read from the RTC chip carries. */
+constexpr uint32_t rtcUncertaintyMs(bool battery_backed) {
+  return battery_backed ? RTC_BACKED_UNCERTAINTY_MS : RTC_UNBACKED_UNCERTAINTY_MS;
+}
+
+/**
+ * Whether a read RTC value may seed the wall clock.
+ *
+ * The PCF8563 and BM8563 raise a voltage-low flag in register 0x02 bit 7 when
+ * the backup supply fell below the retention threshold, so the calendar may
+ * have stopped. Only a battery-backed RTC is trusted to have kept time across
+ * that kind of outage, so only there does the flag reject the value; without
+ * backing the flag says nothing extra and the unbacked uncertainty applies.
+ */
+constexpr bool rtcValueTrusted(bool battery_backed, bool voltage_low) {
+  return !battery_backed || !voltage_low;
+}
+
 uint8_t sourcePriority(TimeSource source);
 bool valid(const TimeSample &sample);
 bool validAt(const TimeSample &sample, uint64_t monotonic_ms);

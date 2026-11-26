@@ -277,9 +277,11 @@ constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true,  true,  false, true},  0, 
 ```
 
 The row has all 19 columns of `include/FurbleBoard.h:36-54`, and
-`rtcBatteryBacked` is the only value that changed in the 2026-11-25 pass. The
-trailing `false` is `gpsRail`: `M5.Power` does not switch this board's GPS
-rail, the AXP2101 does.
+`rtcBatteryBacked` is the only value that changed in the 2026-11-25 pass. Plan
+350 later appended two more columns, `ledActiveLow` and `irMarkLow`, so this row
+needs them before it compiles; both describe a driven stage and neither has a
+value for a board with no LED or emitter. The trailing `false` is `gpsRail`:
+`M5.Power` does not switch this board's GPS rail, the AXP2101 does.
 
 Battery level, voltage and charging come from the AXP2101 E-gauge and status
 registers; it has no current sense. Capacity is 0 because the 18650 is the

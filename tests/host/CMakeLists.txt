@@ -280,6 +280,14 @@ target_include_directories(pm1_poll_policy_test PRIVATE ${FURBLE_ROOT}/include)
 target_compile_options(pm1_poll_policy_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME pm1-poll-policy COMMAND pm1_poll_policy_test)
 
+# One pin, two drivers: the Plus2 red LED and IR emitter share G19. The policy
+# target pins the ownership state machine; the boundary targets below run the
+# same rule against the production Feedback and IR drivers.
+add_executable(pin_share_policy_test pin_share_policy_test.cpp)
+target_include_directories(pin_share_policy_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(pin_share_policy_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME pin-share-policy COMMAND pin_share_policy_test)
+
 # Companion reconnect advertising runs fast for a window after enable, boot,
 # disconnect or a button wake, then falls back to the slow interval.
 add_executable(companion_advertising_test companion_advertising_test.cpp)
@@ -2740,11 +2748,15 @@ add_executable(boundary_ir_test
                ${BOUNDARY_DIR}/ir_driver_test.cpp
                ${BOUNDARY_SUPPORT}
                ${BOUNDARY_SETTINGS_SOURCES}
-               ${FURBLE_ROOT}/src/FurbleIR.cpp)
+               ${FURBLE_ROOT}/src/FurbleIR.cpp
+               ${FURBLE_ROOT}/src/FurblePinShare.cpp)
 target_include_directories(boundary_ir_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
 target_compile_options(boundary_ir_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
                                                 -Wall -Wextra -Wno-unused-parameter)
-target_compile_definitions(boundary_ir_test PRIVATE FURBLE_M5STICKS3 CONFIG_SPIRAM
+# FURBLE_PIN_SHARE keeps the production pin arbiter compiled here: the glue is
+# only built where a board has an LED pin, and these cases drive the Plus2 and
+# StickC rows at runtime.
+target_compile_definitions(boundary_ir_test PRIVATE FURBLE_M5STICKS3 FURBLE_PIN_SHARE CONFIG_SPIRAM
                                                      CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=1)
 target_link_libraries(boundary_ir_test PRIVATE Threads::Threads)
 
@@ -2768,12 +2780,29 @@ add_executable(boundary_feedback_test
                ${BOUNDARY_DIR}/feedback_driver_test.cpp
                ${BOUNDARY_SUPPORT}
                ${BOUNDARY_SETTINGS_SOURCES}
-               ${FURBLE_ROOT}/src/FurbleFeedback.cpp)
+               ${FURBLE_ROOT}/src/FurbleFeedback.cpp
+               ${FURBLE_ROOT}/src/FurblePinShare.cpp)
 target_include_directories(boundary_feedback_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
 target_compile_options(boundary_feedback_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
                                                       -Wall -Wextra -Wno-unused-parameter)
-target_compile_definitions(boundary_feedback_test PRIVATE FURBLE_M5STICKS3)
+target_compile_definitions(boundary_feedback_test PRIVATE FURBLE_M5STICKS3 FURBLE_PIN_SHARE)
 target_link_libraries(boundary_feedback_test PRIVATE Threads::Threads)
+
+# The Plus2 drives the red LED and the IR emitter from one pin. This target
+# compiles the production Feedback, IR and pin-arbitration sources together so
+# the hand-over itself is what the cases measure (plan 350).
+add_executable(boundary_shared_pin_test
+               ${BOUNDARY_DIR}/shared_pin_test.cpp
+               ${BOUNDARY_SUPPORT}
+               ${BOUNDARY_SETTINGS_SOURCES}
+               ${FURBLE_ROOT}/src/FurbleFeedback.cpp
+               ${FURBLE_ROOT}/src/FurbleIR.cpp
+               ${FURBLE_ROOT}/src/FurblePinShare.cpp)
+target_include_directories(boundary_shared_pin_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
+target_compile_options(boundary_shared_pin_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
+                                                        -Wall -Wextra -Wno-unused-parameter)
+target_compile_definitions(boundary_shared_pin_test PRIVATE FURBLE_M5STICKS3 FURBLE_PIN_SHARE)
+target_link_libraries(boundary_shared_pin_test PRIVATE Threads::Threads)
 
 add_executable(boundary_ethernet_test
                ${BOUNDARY_DIR}/ethernet_w5500_test.cpp
@@ -2917,6 +2946,10 @@ if(BUILD_TESTING)
   foreach(mode protocols psram-fallback queue-timeout unsupported)
     add_test(NAME boundary-ir-${mode} COMMAND boundary_ir_test ${mode})
   endforeach()
+  # The emitter polarity is a board fact, so each family gets its own process.
+  foreach(family stickc stickc-plus stickc-plus2)
+    add_test(NAME boundary-ir-polarity-${family} COMMAND boundary_ir_test polarity ${family})
+  endforeach()
   foreach(mode mount-write mount-fail full removed)
     add_test(NAME boundary-sd-${mode} COMMAND boundary_sd_test ${mode})
   endforeach()
@@ -2925,6 +2958,9 @@ if(BUILD_TESTING)
                        PROPERTIES RESOURCE_LOCK boundary-sd)
   foreach(mode sound light overcurrent low-battery vibration)
     add_test(NAME boundary-feedback-${mode} COMMAND boundary_feedback_test ${mode})
+  endforeach()
+  foreach(mode shared shared-off separate)
+    add_test(NAME boundary-shared-pin-${mode} COMMAND boundary_shared_pin_test ${mode})
   endforeach()
   add_test(NAME boundary-ethernet-w5500 COMMAND boundary_ethernet_test)
   add_test(NAME boundary-companion-gatt COMMAND boundary_companion_test)

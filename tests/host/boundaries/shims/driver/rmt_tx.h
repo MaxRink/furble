@@ -29,6 +29,12 @@ struct rmt_tx_channel_config_t {
   uint32_t resolution_hz = 0;
   size_t mem_block_symbols = 0;
   size_t trans_queue_depth = 0;
+  // The production driver reads only invert_out from this block: it decides
+  // whether the pad drives the peripheral signal inverted, which is how an
+  // active-low IR emitter keeps a correct optical frame.
+  struct {
+    uint32_t invert_out : 1;
+  } flags = {};
 };
 
 struct rmt_copy_encoder_config_t {};
@@ -60,6 +66,7 @@ esp_err_t rmt_transmit(rmt_channel_handle_t channel,
                        size_t payload_bytes,
                        const rmt_transmit_config_t *config);
 esp_err_t rmt_tx_wait_all_done(rmt_channel_handle_t channel, int timeout_ms);
+esp_err_t rmt_tx_switch_gpio(rmt_channel_handle_t channel, gpio_num_t gpio_num, bool invert_out);
 
 #ifdef __cplusplus
 }
