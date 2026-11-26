@@ -12,6 +12,12 @@
 #include <sstream>
 #include <vector>
 
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#else
+#include <malloc.h>
+#endif
+
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_system.h>
@@ -26,6 +32,9 @@ constexpr const char *LOG_TAG = "heap";
 // DWARF of the m5stick-s3 image with the toolchain gdb. xTaskCreate makes two
 // pvPortMalloc blocks, the stack and the TCB, each with the TLSF block cost.
 constexpr size_t TASK_TCB_BYTES = 336;
+// Those two blocks are charged as one figure and counted as two, which is what
+// multi_heap_info_t.allocated_blocks reports for a live task.
+constexpr size_t TASK_BLOCKS = 2;
 // Default host model: a roomy internal pool. Existing scenarios seed nothing,
 // so every measured query and every gate stays on the same side it was before
 // the model existed.
@@ -229,6 +238,10 @@ struct heap_state_t {
   size_t countedInternal = 0;
   size_t countedExternal = 0;
   size_t countedTasks = 0;
+  // Live charged blocks per pool, for multi_heap_info_t.allocated_blocks. A
+  // task contributes two, its stack and its TCB.
+  size_t liveInternalBlocks = 0;
+  size_t liveExternalBlocks = 0;
   size_t minimumLargest = DEFAULT_LARGEST;
   uint32_t allocationFailures = 0;
   uint32_t allocationCount = 0;
@@ -348,6 +361,14 @@ bool failRuleMatchesLocked(const char *owner, size_t bytes) {
   return false;
 }
 
+/*
+ * Drop charged blocks from a pool's live count. Guarded, because a block freed
+ * through a path that never charged it must not wrap the count.
+ */
+void releaseBlocksLocked(size_t &live, size_t count) {
+  live = (live > count) ? (live - count) : 0;
+}
+
 }  // namespace
 
 namespace Furble::Sim {
@@ -440,6 +461,7 @@ bool heapCountedAllocCaps(size_t requested,
     *external = fromExternal;
     *charged = bytes;
     (fromExternal ? heap.countedExternal : heap.countedInternal) += bytes;
+    (fromExternal ? heap.liveExternalBlocks : heap.liveInternalBlocks)++;
     sampleTimelineLocked(false);
     return true;
   }
@@ -473,8 +495,10 @@ bool heapCountedAllocCaps(size_t requested,
   *charged = bytes;
   if (*external) {
     heap.countedExternal += bytes;
+    heap.liveExternalBlocks++;
   } else {
     heap.countedInternal += bytes;
+    heap.liveInternalBlocks++;
   }
   sampleTimelineLocked(false);
   return true;
@@ -514,10 +538,12 @@ void heapCountedFree(size_t charged, bool external) {
     heap.psramFree += charged;
     heap.psramLargest = std::min(heap.psramFree, heap.psramLargest + charged);
     heap.countedExternal -= charged;
+    releaseBlocksLocked(heap.liveExternalBlocks, 1);
   } else {
     heap.freeBytes += charged;
     heap.largestBlock = std::min(heap.freeBytes, heap.largestBlock + charged);
     heap.countedInternal -= charged;
+    releaseBlocksLocked(heap.liveInternalBlocks, 1);
   }
 }
 
@@ -742,6 +768,11 @@ bool heapTaskCreate(const char *name,
       ESP_LOGE(LOG_TAG, "SIM FAIL: PSRAM task stack requested with PSRAM %s",
                heap.psramState.c_str());
       heap.psramInitFailed = true;
+      // The stack cannot come from the pool the build asked for, so the
+      // allocation fails. Record it like the exhaustion path below: the
+      // hardware heap_caps_malloc aborts, and a silent false would let a
+      // firmware fallback pass for a configuration the device cannot run.
+      noteFailureLocked(stackBytes, name, CAPS_EXTERNAL);
       return false;
     }
     if (!takeExternalLocked(bytes)) {
@@ -751,6 +782,7 @@ bool heapTaskCreate(const char *name,
     if (deviceTask) {
       heap.countedExternal += bytes;
       heap.countedTasks += bytes;
+      heap.liveExternalBlocks += TASK_BLOCKS;
       if (counted != nullptr) {
         *counted = true;
       }
@@ -775,6 +807,7 @@ bool heapTaskCreate(const char *name,
   if (deviceTask) {
     heap.countedInternal += bytes;
     heap.countedTasks += bytes;
+    heap.liveInternalBlocks += TASK_BLOCKS;
     if (counted != nullptr) {
       *counted = true;
     }
@@ -791,6 +824,7 @@ void heapReleaseTask(size_t bytes, bool external, bool counted) {
   if (counted) {
     (external ? heap.countedExternal : heap.countedInternal) -= bytes;
     heap.countedTasks -= bytes;
+    releaseBlocksLocked(external ? heap.liveExternalBlocks : heap.liveInternalBlocks, TASK_BLOCKS);
   }
   if (external) {
     heap.psramFree += bytes;
@@ -980,6 +1014,22 @@ extern "C" __attribute__((weak)) void furble_sim_caps_free(void *pointer) {
   free(pointer);
 }
 
+/*
+ * The copy bound heap_caps_realloc needs. A host unit target links the model
+ * without sim/heap_count.cpp, so this fallback reports the host allocator's
+ * usable size for the block the weak furble_sim_caps_alloc made.
+ */
+extern "C" __attribute__((weak)) size_t furble_sim_caps_block_size(const void *pointer) {
+  if (pointer == nullptr) {
+    return 0;
+  }
+#if defined(__APPLE__)
+  return malloc_size(pointer);
+#else
+  return malloc_usable_size(const_cast<void *>(pointer));
+#endif
+}
+
 extern "C" void furble_sim_heap_alloc_failed(size_t bytes,
                                              uint32_t capabilities,
                                              const char *owner) {
@@ -1052,4 +1102,37 @@ extern "C" size_t furble_sim_heap_minimum(uint32_t capabilities) {
     bytes += Furble::Sim::heapPsramMinimumFree();
   }
   return bytes;
+}
+
+/*
+ * multi_heap_info_t for the modelled pool the caps name, read under one lock so
+ * the fields describe a single instant. This resolves one pool per query, which
+ * is not what the per-caps getters above now do: they aggregate every pool the
+ * capability set matches, and this shim cannot, because one multi_heap_info_t
+ * describes one heap. A MALLOC_CAP_8BIT or MALLOC_CAP_DEFAULT read therefore
+ * reports the internal pool alone.
+ *
+ * Three fields describe the model rather than a device TLSF walk:
+ * total_allocated_bytes and allocated_blocks count only the blocks the model
+ * charged, so a seeded baseline that already includes boot allocations has no
+ * block here and the figures are a lower bound. The model carries no
+ * fragmentation, so a non-empty pool is one free block.
+ */
+extern "C" void furble_sim_heap_info(multi_heap_info_t *info, uint32_t capabilities) {
+  if (info == nullptr) {
+    return;
+  }
+  const model_lock_t lock;
+  const heap_state_t &heap = state();
+  const bool external = (capabilities & MALLOC_CAP_SPIRAM) != 0;
+  const size_t freeBytes = external ? heap.psramFree : heap.freeBytes;
+  info->total_free_bytes = freeBytes;
+  info->largest_free_block = external ? heap.psramLargest : heap.largestBlock;
+  // One watermark for both pools: this is the figure
+  // furble_sim_heap_minimum() reports for every caps set.
+  info->minimum_free_bytes = heap.minimumFree;
+  info->total_allocated_bytes = external ? heap.countedExternal : heap.countedInternal;
+  info->allocated_blocks = external ? heap.liveExternalBlocks : heap.liveInternalBlocks;
+  info->free_blocks = (freeBytes > 0) ? 1 : 0;
+  info->total_blocks = info->allocated_blocks + info->free_blocks;
 }
