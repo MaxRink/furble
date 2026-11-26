@@ -22,7 +22,8 @@ CLAUDE.md whose directory it touches.
   just furble's, so it overrides the image-wide `CONFIG_LOG_MAXIMUM_LEVEL=3`
   cap from plan 106 group A and every component's DEBUG and VERBOSE format
   strings are linked. `m5stack-core-debug` pays for them with the BMI270 init
-  blob and driver it no longer links, 8,832 bytes (plans/347), and it is the
+  blob and driver it no longer links, 8,633 to 9,120 bytes depending on the
+  build (plans/347), and it is the
   one debug env that omits the stack protector.
 - `m5stack-core-usb-debug` is a developer-only USB-UART fallback with one
   factory app partition. It is not part of the six-board release or web

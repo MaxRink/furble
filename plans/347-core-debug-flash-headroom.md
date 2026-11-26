@@ -98,15 +98,24 @@ row says what the measurement was, and none of them is an estimate. Base
 | Tree | `firmware.bin` | Slack to 1,740,800 |
 | :--- | ---: | ---: |
 | base `81139818`, merged `ESP_LOG_INFO`, no guard | 1,714,848 | 25,952 |
-| `ESP_LOG_VERBOSE`, no guard | 1,740,480 | 320 |
-| `ESP_LOG_VERBOSE`, BMI270 guard, this PR | 1,731,648 | 9,152 |
+| `81139818`, `ESP_LOG_VERBOSE`, no guard | 1,740,480 | 320 |
+| `81139818`, `ESP_LOG_VERBOSE`, BMI270 guard | 1,731,648 | 9,152 |
+| `85b89931`, merged `ESP_LOG_INFO`, no guard | 1,717,408 | 23,392 |
+| `85b89931`, `ESP_LOG_VERBOSE`, no guard | 1,742,137 | **-1,337, does not build** |
+| `85b89931`, `ESP_LOG_VERBOSE`, BMI270 guard | 1,733,504 | 7,296 |
 
-Restoring the log maximum alone costs 25,632 bytes on this base and leaves 320,
-which is thinner than the 431 bytes #518 was written to escape: the guard is
-what turns the restoration into headroom.
+On `81139818` the restoration alone left 320 bytes, thinner than the 431 bytes
+#518 was written to escape. On `85b89931`, the master this branch now sits on,
+it does not fit at all: `ESP_LOG_VERBOSE` with no guard links at 1,742,137 bytes
+and PlatformIO's `checkprogsize` fails the build with "The program size
+(1742137 bytes) is greater than maximum allowed (1740800 bytes)". The guard
+recovers 8,633 bytes there and the lane builds at 1,733,504, 7,296 bytes under
+the slot. So the guard is not a margin improvement on the current base, it is
+what makes the restoration possible, and the margin is 7,296 bytes against a
+build that otherwise does not exist.
 
 The same two objects are the only difference on the other two Core profiles, so
-the same define measures the guard there:
+the same define measures the guard there. Base `81139818`:
 
 | Env | before the guard | with the guard | Guard |
 | :--- | ---: | ---: | ---: |
@@ -148,14 +157,17 @@ the same, and `Furble::IMU` still creates its BMI270 backend only where
 BMI270-specific types.
 
 `m5stack-core2` also names the macro at 1, and that one is a conservative
-choice rather than a measured need. `docs/components/mpu6886.md` puts an MPU6886
-in the Core2 and a M5Tough, so on this repo's own part inventory the Core2 lane
-could opt out the same way and take the 8 KiB. It does not, because nothing in
-this PR audited the Core2 and Tough part inventory board by board the way the
-Core's was audited, and its app slot has more than 4 MB free
-(1,912,976 of 6,291,456 bytes). A future PR that settles that inventory can
-flip it; until then the define keeps the ambiguous lane safe and says so beside
-the flag in `platformio.ini`.
+choice rather than a measured need. No page in this repo gives the board a Bosch
+part: `docs/components/bmi270.md` makes the StickS3 the only board that carries
+it, `docs/components/mpu6886.md` puts an MPU-6886 in the Core2 and a M5Tough,
+and the board table at `docs/power/datasheet-register.md` reads MPU-6886 v1.1
+off the Core2. So on this repo's own inventory the Core2 lane could opt out the
+way the Core does and take the 8 KiB. It does not, because nothing in this PR
+audited the Core2 and Tough part inventory board by board the way the Core's was
+audited, and its app slot has more than 4 MB free (1,912,976 of 6,291,456
+bytes). A future PR that settles that inventory can flip it; until then the
+define keeps the ambiguous lane safe and says so beside the flag in
+`platformio.ini`. Nothing in this change claims the Core2 carries a BMI270.
 
 The Core debug profiles keep the full log maximum, so the console `log <tag>
 debug` path and the crash record's retained tail behave exactly as they do on
@@ -184,7 +196,7 @@ the other five debug envs, which is the point of this PR.
 | `pio run` on the other four | SUCCESS: `m5stack-core` 1,618,496, `m5stack-core-usb-debug` 1,756,784, `m5stick-s3` 1,862,496, `m5stack-core2` 1,912,976 |
 | `tools/check_size_budget.py --env <each>` | `PASS m5stack-core-debug: flash 1,731,648/1,740,800, dram 56,212/57,344, iram 119,036/119,808`; `PASS m5stack-core: flash 1,618,496/1,740,800, dram 55,148/56,320, iram 115,668/116,736`; `PASS m5stack-core-usb-debug: flash 1,756,784/4,063,232, dram 56,268/57,344, iram 119,756/120,832`; `PASS m5stick-s3: flash 1,862,496/3,145,728, dram 47,496/48,128, iram 114,688/115,712`; `PASS m5stack-core2: flash 1,912,976/6,291,456, dram 56,768/57,344, iram 121,036/121,856` |
 | `tools/stack_budget.py --env <each>` | PASS for the same five envs, every task under its bound, no new recursion or dynamic bound |
-| BMI270 still linked on the boards that have it | `m5::bmi270_config_file` (8,192 bytes) and a `call8` to `m5::BMI270_Class::begin` from the IMU probe are in the `m5stick-s3` and `m5stack-core2` ELFs. The three Core ELFs have **no `m5` symbol whose name contains `bmi270`**: filter `nm -S firmware.elf` to `bmi270` and then to the `_ZN2m5` mangling and nothing matches, so `m5::BMI270_Class` and the blob are both gone. They do keep furble's own `Furble::IMU::BMI270Backend` and `Furble::IMU::createBMI270Backend`, 16 symbols, because the guard is on M5Unified and not on `src/`: that backend identifies the chip by register reads and falls through to the MPU6886 backend when the part is absent, exactly as it did before |
+| BMI270 still linked on the two lanes that keep it | `m5::bmi270_config_file` (8,192 bytes) and a `call8` to `m5::BMI270_Class::begin` from the IMU probe are in the `m5stick-s3` and `m5stack-core2` ELFs. The three Core ELFs have **no `m5` symbol whose name contains `bmi270`**: filter `nm -S firmware.elf` to `bmi270` and then to the `_ZN2m5` mangling and nothing matches, so `m5::BMI270_Class` and the blob are both gone. They do keep furble's own `Furble::IMU::BMI270Backend` and `Furble::IMU::createBMI270Backend`, 16 symbols, because the guard is on M5Unified and not on `src/`: that backend identifies the chip by register reads and falls through to the MPU6886 backend when the part is absent, exactly as it did before |
 | `tools/pre_review.py --base origin/master` | `PASS: 13 gates` |
 | `sh sim/scripts/check-doc-tokens.sh` | `sim documentation tokens are present` |
 | `tools/check_doc_citations.py` | `0 errors of 2757 citations in 147 files` |
@@ -193,7 +205,8 @@ the other five debug envs, which is the point of this PR.
 
 ## Follow-ups
 
-The lane has 9 KB of headroom instead of 431 bytes. Plan 106 item 3 (newlib
+The lane has 7,296 bytes of headroom on the master it now sits on, instead of
+nothing at all, and 9,152 on `81139818`. Plan 106 item 3 (newlib
 nano) is the next structural saving, and item 7 (`FURBLE_SD`) the largest
 single gate. The StickC and StickC Plus profiles inherit the default
 `FURBLE_IMU_BMI270=1`, so neither image changes here. Their parts are MPU6886

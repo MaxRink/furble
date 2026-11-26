@@ -31,8 +31,9 @@ reported below.
 | 2 | Important | plan 347 gave the guarded `m5stack-core-usb-debug` two different sizes in one document: the per-env table said 1,756,768 with a 9,120-byte guard, the gates table said 1,756,784 with 9,104, and the PR body repeated the second. A document that quotes one measurement two ways cannot be checked, and this is the lane the PR is also fixing. | Fixed. The per-env table now carries the gates figure, so every number in the plan comes from one build, and the drift paragraph says so and lists the figures this review rebuilt on another host. The rebuilt lane measured 1,756,448 here, which is neither of the printed pairs but is inside the few hundred bytes of longcall drift the plan already documents, so the defect was the duplicated figure and not the guard size. | Two `firmware.bin` builds of the same env on the same base, plus the plan's own drift paragraph. |
 | 3 | Minor | plan 347 justified its "this is not furble's own logging" argument with "`src/`, `lib/furble/` and `lib/hal/` hold 37 `ESP_LOGD` and `ESP_LOGV` sites in total". The tree holds 33 `ESP_LOGD` sites and no `ESP_LOGV` site at all. | Fixed to 33 and the fact that there is no VERBOSE site in furble, which strengthens the argument rather than weakening it. | `grep -rnE "ESP_LOG[VD]\(" src lib/furble lib/hal` gives 33, none of them `ESP_LOGV`; 15 in `src/`, 18 in `lib/furble/`, 0 in `lib/hal/`. |
 | 4 | Important | `docs/power/soc.md` cited `sdkconfig.m5stick-s3:2582-2594` and `sdkconfig.m5stick-c:2152-2157` as the LOG level block, five times. Those lines hold the USB-OTG host section and the PThreads section. The LOG block is at `sdkconfig.m5stick-s3:1975-1985` and `sdkconfig.m5stick-c:1710-1720`. The PR rewrote the sentence around them for exactly the reason that #518 mis-described its own scope, and left the numbers, so the corrected bullet quoted two right `platformio.ini` ranges next to two wrong sdkconfig ones. The citation gate cannot see this: two code spans in one clause are checked for path and range only, and 2582 is inside a 3,309-line file. | Fixed in all five places, not only the bullet this PR edits, so the document does not cite one fact two ways. | Corrected ranges re-read: both start at `# CONFIG_LOG_DEFAULT_LEVEL_NONE is not set` and end at `CONFIG_LOG_MAXIMUM_LEVEL=3`. `tools/check_doc_citations.py` still reports 0 errors of 2,757 citations in 147 files. |
-| 5 | Minor | `m5stack-core2` passes `-DFURBLE_IMU_BMI270=1` with no stated reason, and the tree says two things about that board. `docs/components/bmi270.md` says the StickS3 is the only board that carries the part; `docs/components/mpu6886.md:8` says `m5stack-core2` and a M5Tough carry an MPU6886. plan 347's Cost section read "Only the StickS3 carries the part. It names the macro at 1, Core2 names it at 1 as well", which does not explain why one MPU6886 board keeps an 8 KiB Bosch blob that the other MPU6886 board now drops. | Not a code change, and the safe direction is already taken: the define equals the default, so the lane keeps the part either way, and its ELF still has the blob. Clarified instead: a comment beside the `platformio.ini` flag and a Cost paragraph plus a follow-up now say the Core2 define is the conservative choice on a part inventory nothing here audited, on a lane with more than 4 MB of free app slot, and name the two pages that disagree. | `m5stack-core2` measures 1,912,976 on both trees with `m5::bmi270_config_file` at `0x2000` in the ELF, so the define changes nothing today. |
+| 5 | Minor | `m5stack-core2` passes `-DFURBLE_IMU_BMI270=1` with no stated reason, and no page in this repo gives that board a Bosch part: `docs/components/bmi270.md:7` makes the StickS3 the only board that carries it, and both `docs/components/mpu6886.md:8` and the board table at `docs/power/datasheet-register.md:388` give `m5stack-core2` an MPU-6886. plan 347's Cost section read "Only the StickS3 carries the part. It names the macro at 1, Core2 names it at 1 as well", which never says why a board documented with an InvenSense part keeps an 8 KiB Bosch blob that the Core, also documented with an InvenSense part, now drops. Left as written, the next reader either accepts a false premise about the Core2 or deletes a define nobody explained. | Not a code change, and the safe direction is already taken: the define equals the default, so the lane keeps the part either way, and its ELF still has the blob. Clarified instead. No doc now claims the Core2 carries a BMI270; a comment beside the `platformio.ini` flag, a Cost paragraph and a follow-up say the define is the conservative choice on a part inventory nothing here audited, that the repo documents an MPU-6886 there, and that the lane has more than 4 MB of free app slot. | `m5stack-core2` measures 1,912,976 on both trees with `m5::bmi270_config_file` at `0x2000` in the ELF, so the define changes nothing today. |
 | 6 | Minor | The new `docs/crash-diagnostics.md` paragraph said "Release images cap at `CONFIG_LOG_MAXIMUM_LEVEL=3`". That is true of the six release envs, but the tree also ships the developer `esp32-s3-headless` hub image with `CONFIG_LOG_MAXIMUM_LEVEL=5`, so the first reader who checks a second image gets "this doc is wrong about its scope", which is the failure that made #518 worth reverting. | Fixed with one clause and a citation, so the third case is stated rather than left for the reader. | `sdkconfig.esp32-s3-headless:1981-1991` is `CONFIG_LOG_DEFAULT_LEVEL=3` with `CONFIG_LOG_MAXIMUM_LEVEL_VERBOSE=y` and `CONFIG_LOG_MAXIMUM_LEVEL=5`. PlatformIO resolves an unspecified path to `sdkconfig.<PIOENV>`, so that file is the headless image's config. |
+| 7 | Critical | The plan argued for the guard with "restoring the log maximum alone costs 25,632 bytes on this base and leaves 320, which is thinner than the 431 bytes #518 was written to escape". On the master this branch now sits on that is false and it is false in the direction that understates the PR: `ESP_LOG_VERBOSE` with no guard links at 1,742,137 bytes against the 1,740,800-byte slot and PlatformIO's `checkprogsize` fails the build, so the restoration alone does not produce a 320-byte margin, it produces no image at all. A plan that says the guard improves a margin invites the next reader to try dropping it. | Fixed. The verified-figures table now carries both bases, the failing row is quoted with the exact build error, and the section says the guard is what makes the restoration possible on `85b89931` rather than what widens its margin. The follow-up sentence that promised 9 KB "instead of 431 bytes" is corrected the same way. | `pio run -e m5stack-core-debug` with `-DFURBLE_IMU_BMI270=1` and only that flag changed: `Flash: 100.1% (used 1742137 bytes from 1740800 bytes)`, `Error: The program size (1742137 bytes) is greater than maximum allowed (1740800 bytes)`, `[checkprogsize] Explicit exit, status 1`. The same tree at `=0` builds at 1,733,504. |
 
 ## Checked and sound
 
@@ -87,6 +88,9 @@ an `ESP_LOGV` at `components/esp_hw_support/spi_bus_lock.c:660` in ESP-IDF
 | `Reaped %u zombie target(s)` (`src/FurbleControl.cpp`) | DEBUG | 0 | 1 | 1 | 0 |
 | `Dropped camera command %d` (`src/FurbleControl.cpp`) | DEBUG | 0 | 1 | 1 | 0 |
 
+Every cell in that table was measured on both bases, `81139818` and `85b89931`,
+and the two agree, so the restoration is not an artefact of the rebase.
+
 The USB profile is the half of this the PR had to prove hardest, because #518
 never touched its flags directly: it inherited the cap from
 `m5stack-core-debug`. It was capped on master, 1,740,592 bytes in a 4,063,232
@@ -95,31 +99,49 @@ head, 1,756,448 bytes with 2,306,784 free.
 
 ## The BMI270 guard, proved both ways
 
-`nm -S` and `objdump -d` on the built ELFs, on both trees. The blob is a
-`static constexpr` array, so its symbol is the internal-linkage `_ZN2m5L18bmi270_config_fileE`.
+`nm -S` and `objdump -d` on the built ELFs. The blob is a `static constexpr`
+array, so its symbol is the internal-linkage `_ZN2m5L18bmi270_config_fileE`.
+Counting names that contain `m5::BMI270_Class` gives 15 on a lane that keeps the
+driver: 12 functions, the two constructor and destructor alias pairs, the vtable
+and the typeinfo. A count of the `_ZN2m5` mangling alone says 12, because the
+vtable and typeinfo are `_ZTV` and `_ZTI`. Both counts are in the table so the
+two ways of asking cannot disagree.
 
-| Tree | Env | `m5::bmi270_config_file` | `m5` BMI270 symbols | `call8` to `m5::BMI270_Class::begin` |
-| --- | --- | --- | ---: | ---: |
-| master `81139818` | `m5stack-core-debug` | 0x2000 | 12 | 1 |
-| master `81139818` | `m5stick-s3` | 0x2000 | 12 | 1 |
-| master `81139818` | `m5stack-core2` | 0x2000 | 12 | 1 (`4010b1a3`, the address the PR cites) |
-| PR `5c09dd24` | `m5stack-core-debug` | absent | 0 | 0 |
-| PR `5c09dd24` | `m5stack-core` | absent | 0 | 0 |
-| PR `5c09dd24` | `m5stack-core-usb-debug` | absent | 0 | 0 |
-| PR `5c09dd24` | `m5stick-s3` | 0x2000 | 12 | 1 |
-| PR `5c09dd24` | `m5stack-core2` | 0x2000 | 12 | 1 |
+On the master this branch ships against, `85b89931`:
 
-The A/B that isolates the guard from the log maximum: the same head tree built
-twice with only `-DFURBLE_IMU_BMI270` changed, at `ESP_LOG_VERBOSE` both times.
-With `=1` the image is 1,740,768 bytes, the blob is back at
-`_ZN2m5L18bmi270_config_fileE` and `call8` to `BMI270_Class::begin` is back.
-With `=0` the image is 1,731,648 bytes and both symbols are gone. The guard is
-worth 9,120 bytes and it is worth exactly those two objects.
+| Env | `m5::bmi270_config_file` | `m5::BMI270_Class` names | `call8` to `begin` | DEBUG and VERBOSE strings |
+| --- | --- | ---: | ---: | --- |
+| `m5stick-s3` | 0x2000 at `0x3c171b60` | 15 | 1 | none, it is a release image at INFO |
+| `m5stack-core2` | 0x2000 | 15 | 1 | none, release image at INFO |
+| `m5stack-core` | absent | 0 | 0 | none, release image at INFO |
+| `m5stack-core-debug` | absent | 0 | 0 | all four present |
+| `m5stack-core-usb-debug` | absent | 0 | 0 | all four present |
+
+On master `81139818` the same three probes find the blob at `0x2000` and the
+`call8` to `m5::BMI270_Class::begin` in `m5stack-core-debug`, and at
+`4010b1a3` on `m5stack-core2`, which is the address the PR quotes. So the guard
+reaches the Core family and only the Core family, and the probe a board needs is
+still there on both lanes that keep the driver.
+
+The A/B that isolates the guard from the log maximum, first on `81139818`: the
+same tree built twice with only `-DFURBLE_IMU_BMI270` changed, at
+`ESP_LOG_VERBOSE` both times. With `=1` the image is 1,740,768 bytes with the
+blob and the probe back. With `=0` it is 1,731,648 bytes with both gone. The
+guard is 9,120 bytes and it is exactly those two objects.
+
+Repeated on `85b89931`, which is the measurement that matters: with `=1` the
+link produces 1,742,137 bytes, `m5::bmi270_config_file` is back at `0x3f420fd8`
+with 12 `m5::BMI270_Class` function symbols, and that image fails its size check
+by 1,337 bytes. With `=0` the same tree links 1,733,504 bytes with both gone and
+passes. The guard is 8,633 bytes there, and the absence of the blob is the
+difference between a build and no build.
 
 ## Byte table
 
-Every row is a `firmware.bin` from a build of that tree.
-`m5stack-core-debug`'s slot is 1,740,800 bytes.
+Every row is a `firmware.bin` from a build of that tree, and each row is one
+build. Two clean builds of one tree differ by a few hundred bytes here, and by
+as much as 1,264 on `m5stick-s3` between the gate run and the re-verification
+build, which changes no conclusion because that lane has 1,281,552 bytes spare.
 
 | Env | master `81139818` | PR head `5c09dd24` | Change |
 | --- | ---: | ---: | ---: |
@@ -132,55 +154,59 @@ Every row is a `firmware.bin` from a build of that tree.
 The same five lanes, rebuilt after the rebase onto the master this branch now
 sits on:
 
-| Env | master `85b89931` | PR head, rebased | Change |
-| --- | ---: | ---: | ---: |
-| `m5stack-core-debug` | 1,717,408 (`ESP_LOG_INFO`, blob) | **1,733,504** (`ESP_LOG_VERBOSE`, no blob) | +16,096 |
-| `m5stack-core` | not rebuilt | 1,620,240 (release, no blob) | guard only |
-| `m5stack-core-usb-debug` | not rebuilt | 1,758,672 (`ESP_LOG_VERBOSE`, no blob) | log maximum plus guard |
-| `m5stick-s3` | 1,862,480 on `81139818` | 1,862,480 on `81139818` | 0 |
-| `m5stack-core2` | 1,912,976 on `81139818` | 1,912,976 on `81139818` | 0 |
+| Env | master `85b89931` | PR head, rebased | Slot | Margin |
+| --- | ---: | ---: | ---: | ---: |
+| `m5stack-core-debug` | 1,717,408 (`ESP_LOG_INFO`, blob) | **1,733,504** (`ESP_LOG_VERBOSE`, no blob) | 1,740,800 | **7,296** |
+| `m5stack-core-debug`, guard removed | 1,717,408 | **1,742,137, build fails** | 1,740,800 | -1,337 |
+| `m5stack-core` | not rebuilt | 1,620,240 (release, no blob) | 1,740,800 | 120,560 |
+| `m5stack-core-usb-debug` | not rebuilt | 1,758,672 (`ESP_LOG_VERBOSE`, no blob) | 4,063,232 | 2,304,560 |
+| `m5stick-s3` | not rebuilt | 1,864,176 (blob and probe kept) | 3,145,728 | 1,281,552 |
+| `m5stack-core2` | not rebuilt | 1,914,688 (blob and probe kept) | 6,291,456 | 4,376,768 |
 
-`m5stick-s3` and `m5stack-core2` are byte-for-byte the same size on the two
-trees, which is the strongest form of the claim that the guard does not reach
-them. The two release lanes move in opposite directions and that is correct:
-the Core release lane has no log maximum to restore, so it only loses the blob,
-9,136 bytes on this pair of builds against the 9,120 the same-tree A/B isolates
-on the debug lane, while the two debug lanes pay for the diagnostics they get
-back.
+Master's other four lanes were not rebuilt on `85b89931`. The constrained lane
+is the only one whose before-and-after decides anything, and it is the only lane
+on this base where the difference can go wrong.
 
-The constrained lane ends at **1,731,648 of 1,740,800, 9,152 bytes of margin on
-the base the PR was opened on, and at 1,733,504 of 1,740,800, 7,296 bytes on the
-master it now sits on**. Either is against the 320 bytes the same lane has with
-the log maximum restored and no guard, and against the 431 bytes #518 was
-written to escape. The plan's own decomposition is 25,632 bytes for the
-restoration less 9,120 for the guard, which nets the +16,800 this review
-measured end to end on `81139818`; the `85b89931` pair nets +16,096 because
-master's own nine commits moved both ends.
+On `81139818`, `m5stick-s3` and `m5stack-core2` are byte-for-byte the same size
+on the two trees, which is the strongest form of the claim that the guard does
+not reach them. The two release-family lanes move in opposite directions and
+that is correct: the Core release lane has no log maximum to restore, so it only
+loses the blob, 9,136 bytes on that pair against the 9,120 the same-tree A/B
+isolates on the debug lane, while the two debug lanes pay for the diagnostics
+they get back.
 
-Those two numbers are the answer to the question the merge was blocked on. PR
-488 is 80 bytes over and PR 493 needs about 848, so a lane with 7,296 bytes of
-margin is not merely out of the red, it is the headroom those two PRs land in.
+The line that decides the merge is the third row of the current-base table. On
+the master this branch now sits on, `m5stack-core-debug` at `ESP_LOG_VERBOSE`
+with the guard builds at **1,733,504 of 1,740,800, 7,296 bytes of margin**, and
+the same tree with the guard removed does not build at all: 1,742,137 bytes,
+1,337 over, `checkprogsize` exit 1. The guard is therefore not a margin
+improvement on this base, it is the difference between an image and no image,
+and the margin the two blocked PRs land in is 7,296 bytes, against the 80 bytes
+PR 488 needs and the 848 PR 493 needs.
+
+On the older base the same lane ends at 1,731,648 of 1,740,800, 9,152 bytes, and
+there the restoration alone did fit, at 320 bytes. The plan's original argument
+was written against that 320 and no longer holds.
 
 ## Gates
 
-Both bases, because the branch was rebased mid-review. `rebased` means
-`85b89931`, `original` means `81139818`.
+Final numbers, all on the rebased head over `85b89931`.
 
 | Gate | Result |
 | --- | --- |
-| `check_size_budget.py --env m5stack-core-debug` | `PASS m5stack-core-debug: flash 1,733,504/1,740,800, dram 56,212/57,344, iram 119,036/119,808` (rebased); `PASS ... flash 1,731,648/1,740,800` (original) |
-| `check_size_budget.py --env m5stack-core` | `PASS m5stack-core: flash 1,620,240/1,740,800, dram 55,148/56,320, iram 115,668/116,736` (rebased); `PASS ... flash 1,618,496/1,740,800` (original) |
-| `check_size_budget.py --env m5stack-core-usb-debug` | `PASS m5stack-core-usb-debug: flash 1,758,672/4,063,232, dram 56,268/57,344, iram 119,756/120,832` (rebased); `PASS ... flash 1,756,448/4,063,232` (original) |
-| `check_size_budget.py --env m5stick-s3` | `PASS m5stick-s3: flash 1,862,480/3,145,728, dram 47,496/48,128, iram 114,688/115,712` (original; unchanged lane) |
-| `check_size_budget.py --env m5stack-core2` | `PASS m5stack-core2: flash 1,912,976/6,291,456, dram 56,768/57,344, iram 121,036/121,856` (original; unchanged lane) |
-| `stack_budget.py --env m5stack-core-debug` | PASS, every task under its bound, deepest is `main` at 7,888 of 16,384 bytes. Run on both bases |
-| `stack_budget.py --env m5stack-core`, `m5stack-core-usb-debug` | PASS, every task under its bound, on both bases |
-| `stack_budget.py --env m5stick-s3` | PASS, 16 tasks, deepest `webui_tls` at 8,032 of 12,288 bytes |
-| `stack_budget.py --env m5stack-core2` | PASS, 16 tasks, exit 0 |
-| `python3 tools/check_doc_citations.py` | `0 errors of 2891 citations in 161 files` after the rebase and the corrections |
+| `check_size_budget.py --env m5stack-core-debug` | `PASS m5stack-core-debug: flash 1,733,504/1,740,800, dram 56,212/57,344, iram 119,036/119,808` |
+| `check_size_budget.py --env m5stack-core` | `PASS m5stack-core: flash 1,620,240/1,740,800, dram 55,148/56,320, iram 115,668/116,736` |
+| `check_size_budget.py --env m5stack-core-usb-debug` | `PASS m5stack-core-usb-debug: flash 1,758,672/4,063,232, dram 56,268/57,344, iram 119,756/120,832` |
+| `check_size_budget.py --env m5stick-s3` | `PASS m5stick-s3: flash 1,864,176/3,145,728, dram 47,496/48,128, iram 114,688/115,712` |
+| `check_size_budget.py --env m5stack-core2` | `PASS m5stack-core2: flash 1,914,688/6,291,456, dram 56,768/57,344, iram 121,036/121,856` |
+| `stack_budget.py`, all five envs | PASS, exit 0, every task under its bound, no new recursion or dynamic bound |
+| `check_m5gfx_pinning.py --env <env> --require-source` | `PASS: M5GFX board pinning` on the Core debug, Core and USB lanes |
+| `python3 -m unittest discover -s tests` | `Ran 636 tests`, `OK` |
+| `python3 tools/pre_review.py --base origin/master` | `PASS: 13 gates` |
+| `python3 tools/check_doc_citations.py` | `0 errors of 2891 citations in 161 files` |
 | `sh sim/scripts/check-doc-tokens.sh` | `sim documentation tokens are present` |
-| `tools/pre_review.py --base origin/master` | `PASS: 13 gates`, run before the rebase and re-run on it |
-| `tools/check_review_threads.py --repo MaxRink/furble --pr 524` | 0 review threads; checks had all passed on `5c09dd24`, and the rebased head starts a fresh set |
+| `patches/test_m5unified_bmi270.py` | 6 tests OK, wired into `reproducible.yml` |
+| `tools/check_review_threads.py --repo MaxRink/furble --pr 524` | 0 review threads; the rebased head runs its own check set |
 
 ## What this review could not do
 
@@ -190,5 +216,5 @@ Both bases, because the branch was rebased mid-review. `rebased` means
   objects, and proved the USB lane's blob is gone and its log maximum is back.
 * Reference hardware was not flashed, so the motion-wake claim rests on the
   linked symbols and on `arm()`'s unchanged chip-ID check rather than on a
-  device. That is the same evidence the PR offers, and it is now checked on both
-  boards that carry the part.
+  device. That is the same evidence the PR offers, and it is now checked on the
+  StickS3, the one board this repo documents a BMI270 on.
