@@ -97,6 +97,8 @@ A probe document in the scratch tree, plus small throwaway repositories, gave:
 | Two symbols in one clause | not symbol-checked | yes |
 | Symbol only in a comment on the cited line | passes | **no, now documented and tested** |
 | Comment inserted above a cited definition | passes | **no, now documented and tested** |
+| Drift inside one definition | passes; the cited line stays inside the span | yes |
+| Prose that contradicts a correct line | passes; the gate cannot read intent | yes |
 
 The last two are the ones a reader could have been misled by, so they were added
 to the docstring, `CONTRIBUTING.md` and the plan, and pinned with tests. The
