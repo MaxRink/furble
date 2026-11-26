@@ -200,6 +200,7 @@ implemented.
 | [75-false-connected.md](implemented/75-false-connected.md) | False Connected when the camera is not in pairing mode. Promotion to ACTIVE is gated on GATT plumbing, not on the camera-side registration confirmation |
 | [80-camera-lifetime.md](implemented/80-camera-lifetime.md) | Use after free: CameraList owns Cameras by unique_ptr and load()/clear() free them while Control holds raw pointers across an in-flight connect. Own Cameras by shared_ptr so a connecting or active Camera outlives the list |
 | [352-m5gfx-board-pin.md](352-m5gfx-board-pin.md) | M5GFX board pinning: the Waveshare pin named a board with no `autodetect` arm, so the retry fell back to `board_unknown` and M5Unified probed GPIO 4, 8, 10, 12 and 38; the no-probe patch returns the display-less family before the first probe, with a build-time check |
+| [352-review-feedback.md](352-review-feedback.md) | Review-feedback record for PR 499: the gate revert, the two-patch upgrade counterfactual, the `FURBLE_HAS_INTERNAL_I2C` board audit and three gate blind spots |
 
 ## Simulator stability
 
@@ -211,6 +212,8 @@ implemented.
 | [301-sim-ui-buttons.md](implemented/301-sim-ui-buttons.md) | Interactive on-screen A/B/C or A/B/PWR buttons in a top-view control window that drives the same emulated GPIOs as the keyboard, without covering the panel or its overlays |
 | [334-sim-hardware-alignment.md](334-sim-hardware-alignment.md) | Simulator and production alignment with verified vendor rules: W5500 RESETn 500 us, the IP5306 64 s cutoff, and the panel dwell the simulator cannot model |
 | [334-review-feedback.md](334-review-feedback.md) | Review-feedback record for PR 482: the README and L01 cutoff values, the opened W5500 datasheet revision, and the boundary test hardening |
+| [348-sticks3-sim-align.md](348-sticks3-sim-align.md) | Align the StickS3 simulator model with the verified board facts: RTC absence, the shared EXT 5 V output, the one PWR_CFG byte, the PMIC IRQ latches and a fuller M5PM1 shim |
+| [348-review-feedback.md](348-review-feedback.md) | Review-feedback record for PR 502: the PWR_CFG reset default against the M5PM1 manual, the RTC rows against the profile table and vendor pages, and the host and scenario revert proofs |
 
 ## Tooling and web installer
 
@@ -245,6 +248,7 @@ implemented.
 | [119-companion-gatt-sim.md](implemented/119-companion-gatt-sim.md) | Companion GATT host coverage, implemented by the companion harness |
 | [121-sim-usage-fault-docs.md](implemented/121-sim-usage-fault-docs.md) | Simulator usage and fault-injection reference, implemented |
 | [355-sim-cmake-entry-point.md](355-sim-cmake-entry-point.md) | The CMake simulator entry point's macOS abort: the SDL3-before-SDL2 link order behind it, the #506 fix, the two differences that remain against sim/build.sh, and the missing smoke step |
+| [355-review-feedback.md](355-review-feedback.md) | Review-feedback record for PR 517: the CMake build and three stock scenarios, the `nm -m` binding, and the reverted link order that returns exit 134 |
 | [343-apple-ui-snapshot.md](343-apple-ui-snapshot.md) | First Apple UI snapshot: the shipped Status section body compared to a committed 1x baseline in the existing `swift test` target |
 | [343-review-feedback.md](343-review-feedback.md) | Review-feedback record for PR 480: baseline provenance on the `macos-15` image, the comparison the CI job reports, and the List row-flattening test |
 

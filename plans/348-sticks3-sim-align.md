@@ -139,8 +139,13 @@ read that a rail change had invalidated was not representable at all.
 
 Model change:
 
-- `pmic.pwrCfg` is the one byte. `PWR_CFG_BOOT` is charge, DCDC, LDO, EXT 5 V
-  and the LED on (0x1F).
+- `pmic.pwrCfg` is the one byte. The model keeps two values, because the board
+  does: `PWR_CFG_RESET` is the M5PM1-UM register default 0x17 with the 5 V boost
+  off (`docs/components/m5pm1.md`, M5PM1-UM section 2 register (7), page 13 of
+  33), and `PWR_CFG_BOOT` adds `BOOST_EN` (0x1F) because M5Unified's
+  `output_power` config defaults to true and `M5Unified::_begin()` calls
+  `Power.setExtOutput(cfg.output_power)`. `hwStart()` and the watchdog power
+  cycle apply the reset byte and then the modelled output-power step.
 - `pwrCfgWriteMaskedLocked()` applies a masked write and, when the write carries
   a stale copy of the bits outside its mask, records `pmic.pwr_cfg_lost`. The
   rail follows the byte, so a lost update moves the output rather than being
@@ -148,14 +153,14 @@ Model change:
 - `Platform::setDisplayOff()` in the simulator drives `hwSetDisplayOff()`, which
   does the same save, clear and restore on the byte, and `platform.display_off`
   reads the LED state back.
-- `seed pmic_pwr_cfg_stale` keeps the boot snapshot for the next LED write,
+- `seed pmic_pwr_cfg_stale` keeps the post-init snapshot for the next LED write,
   which is what an interleaved rail change leaves behind.
 
 Scenario evidence: `sim/scenarios/e2e/hw-pmic-pwr-cfg-lost-update.txt` asserts
-31 (0x1F) at boot, 23 (0x17) after the GPS cut, then 15 (0x0F) with
-`pmic.pwr_cfg_lost 1` and `rail.state on` after the inactivity sleep writes the
-byte it read at boot. Modelling panel-off as its own flag leaves the counter at
-0 and the rail off, so the asserts fail.
+31 (0x1F) after the modelled M5Unified output-power step, 23 (0x17) after the
+GPS cut, then 15 (0x0F) with `pmic.pwr_cfg_lost 1` and `rail.state on` after the
+inactivity sleep writes the byte it read after boot. Modelling panel-off as its
+own flag leaves the counter at 0 and the rail off, so the asserts fail.
 
 ## 5. The M5PM1 shim now models the registers the production path uses
 
@@ -288,3 +293,24 @@ Still needs hardware. None of this is a device measurement:
   survives it, need a board capture.
 - The RTC absence is a documented board fact. It is not a measurement of the
   ESP32-S3 internal RC clock drift that replaces it.
+
+## Follow-up: the PWR_CFG reset default and the M5Unified rail enable
+
+The retrospective review of PR 502 found that section 4 and
+`hw-pmic-pwr-cfg-lost-update.txt` called 0x1F the boot value. That contradicts
+`docs/components/m5pm1.md` row 1, which records the M5PM1-UM section 2 register
+(7) default as 0x17 with the 5 V boost off. 0x1F is reachable only after
+M5Unified's `output_power` config, which defaults to true, makes
+`M5Unified::_begin()` call `Power.setExtOutput(cfg.output_power)`.
+
+The model now carries both values: `PWR_CFG_RESET` (0x17, the documented reset
+byte) and `PWR_CFG_BOOT` (0x1F, the post-init byte). `hwStart()` and
+`hwNoteWatchdogCycle()` apply the reset byte and then
+`applyBootOutputPowerLocked()`, which models the M5Unified step. The observed
+post-init byte is unchanged, so the scenario asserts and the stale snapshot
+stay valid. The point of the split is that the model no longer silently
+pre-applies a firmware step: a future change that stops M5Unified enabling the
+boost has a place to show up, and a reader can match the reset byte to the
+vendor manual.
+
+The review record is `plans/348-review-feedback.md`.
