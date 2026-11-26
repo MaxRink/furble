@@ -123,6 +123,29 @@ private enum StatusSnapshot {
     return try pngData(of: try unwrap(image, "ImageRenderer produced no image"))
   }
 
+  /// The line a passing run prints. It is deliberately a single `print` rather
+  /// than test metadata, so the CI job log carries it on a green run and the
+  /// baseline provenance can be read from the workflow output.
+  static func comparisonLine(
+    _ actual: Bitmap, _ differingPixels: Int, _ largestDelta: Int
+  ) -> String {
+    let totalPixels = actual.width * actual.height
+    let ratio = Double(differingPixels) / Double(totalPixels)
+    return "snapshot comparison: \(expectedURL.path) matched a fresh render on "
+      + "\(hostDescription): \(actual.width)x\(actual.height), \(totalPixels) pixels, "
+      + "\(differingPixels) beyond \(maxChannelDelta)/255 "
+      + "(\(String(format: "%.2f", ratio * 100))%, budget "
+      + "\(String(format: "%.2f", maxDifferingPixelRatio * 100))%), "
+      + "largest channel delta \(largestDelta)"
+  }
+
+  /// The host that ran the comparison. `operatingSystemVersionString` carries
+  /// the image version and build ("Version 15.8.2 (Build 24H232)"), which is the
+  /// provenance a CI log needs when the baseline was authored elsewhere.
+  static var hostDescription: String {
+    ProcessInfo.processInfo.operatingSystemVersionString
+  }
+
   /// Returns nil on success, or the message to fail with. Writes the actual
   /// image beside the baseline whenever the pixels differ.
   static func verify(_ rendered: Data) throws -> String? {
@@ -180,6 +203,11 @@ private enum StatusSnapshot {
     let totalPixels = actual.width * actual.height
     let ratio = Double(differingPixels) / Double(totalPixels)
     if ratio <= maxDifferingPixelRatio {
+      // A silent pass cannot show that CI compared anything, and the job that
+      // runs on a different macOS image from the one that authored the baseline
+      // has to say so in its log. Name the baseline, the host and the measured
+      // deltas, so a green job is itself the baseline comparison evidence.
+      print(comparisonLine(actual, differingPixels, largestDelta))
       return nil
     }
 

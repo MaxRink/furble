@@ -84,7 +84,9 @@ uploaded only after the macOS tests pass and includes checksum/provenance files.
 The Apple package keeps one committed UI snapshot of the shipped Status section
 body, compared in the existing `swift test` target on macOS only. Regenerate it
 with `FURBLE_APPLE_SNAPSHOT_UPDATE=1` and review the PNG; the flag refuses to
-run on CI.
+run on CI, and a passing run prints the baseline path with the pixel deltas it
+measured. `CompanionStatusListRowTests` counts the rows the app's `List` builds
+for that section, because the snapshot renders the view outside a List.
 Release tags beginning with `companion-test-` skip firmware publication and
 are reserved for companion testing; other release tags retain normal behavior.
 All simulator scenarios are owned in `sim/scenarios/manifest.json`; run

@@ -102,7 +102,11 @@ CLAUDE.md whose directory it touches.
   only, because the iOS bundle compiles it out. Regenerate after an intended
   visual change with `FURBLE_APPLE_SNAPSHOT_UPDATE=1 swift test --filter
   CompanionStatusViewSnapshotTests`, review the PNG, and commit it. The flag
-  refuses to run when `CI` is set. See `plans/343-apple-ui-snapshot.md`.
+  refuses to run when `CI` is set. A passing run prints the baseline path and
+  the measured pixel deltas, so the CI log states the comparison it made.
+  `CompanionStatusListRowTests` covers the `List` flattening the pixels cannot:
+  it counts the rows SwiftUI builds for the same section. See
+  `plans/343-apple-ui-snapshot.md`.
 - Release tags beginning with `companion-test-` are reserved for companion
   testing and skip the firmware release workflow; other release tags are
   unchanged. Release and Pages matrices omit the Core single-factory debug

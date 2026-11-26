@@ -226,6 +226,7 @@ implemented.
 | [119-companion-gatt-sim.md](implemented/119-companion-gatt-sim.md) | Companion GATT host coverage, implemented by the companion harness |
 | [121-sim-usage-fault-docs.md](implemented/121-sim-usage-fault-docs.md) | Simulator usage and fault-injection reference, implemented |
 | [343-apple-ui-snapshot.md](343-apple-ui-snapshot.md) | First Apple UI snapshot: the shipped Status section body compared to a committed 1x baseline in the existing `swift test` target |
+| [343-review-feedback.md](343-review-feedback.md) | Review-feedback record for PR 480: baseline provenance on the `macos-15` image, the comparison the CI job reports, and the List row-flattening test |
 
 ## Optimization program
 
