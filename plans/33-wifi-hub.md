@@ -1264,7 +1264,7 @@ for dashboards that want one blob. The per-camera topics are additive.
 
 Per-camera shutter buttons are deliberately absent from version 1.
 `Control::sendCommand` fans out to all active targets
-(`src/FurbleControl.cpp:581`); there is no per-target trigger in the
+(`src/FurbleControl.cpp:586`); there is no per-target trigger in the
 control layer yet. Plan 51 reserves per-camera addressing on its wire, and
 when `Control` grows it, the camera device gains a shutter button in the same
 release. Declaring the button before the firmware can honor it would fire
@@ -1389,7 +1389,7 @@ roughly 100 consecutive connection events can be missed before the link drops.
 WiFi does not hold the radio for five seconds. The link survives.
 
 What does not survive unharmed is latency. A shutter command travels through
-`Control::sendCommand` (`src/FurbleControl.cpp:581-606`) to a per camera task,
+`Control::sendCommand` (`src/FurbleControl.cpp:586-611`) to a per camera task,
 then waits for the next connection event. With a 30 to 50 ms interval and a
 contended radio, that wait can stretch by several intervals. A photographer
 pressing a button on a phone dashboard will not notice 100 ms. A photographer

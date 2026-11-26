@@ -133,6 +133,22 @@ class FujifilmSecure: public Fujifilm, public NimBLEScanCallbacks {
    */
   static constexpr uint8_t SECURE_FAILURE_LIMIT = 2;
 
+  /**
+   * Scan match handed from the advertisement to the connect task.
+   *
+   * A Secure body advertises a resolvable private address and re-pairs under a
+   * new one, so the saved record's address can be stale by the time the body is
+   * rediscovered. The advertisement is the only live source for the address,
+   * and it arrives on the NimBLE host task while _connect() waits on the connect
+   * task, so the match carries it across the queue instead of publishing a
+   * member the other task would have to poll.
+   */
+  typedef struct _scan_match_t {
+    bool success;     /** The serial matched this body. */
+    uint64_t address; /** Advertised address, as stored in the saved record. */
+    uint8_t type;     /** Advertised address type. */
+  } scan_match_t;
+
   QueueHandle_t m_Queue = NULL;
   serial_t m_Serial = {0x00};
   bool m_RejectLogged = false;

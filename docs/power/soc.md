@@ -541,8 +541,8 @@ This is a documentation and build consistency item, not a separate power lever.
   liveness checks. Commands themselves wake the queue immediately.
 - **Evidence:** inferred (code-read). `sampleAdaptivePower()` is rate limited to 5 s
   by `RSSI_SAMPLE_INTERVAL_MS` (`src/FurbleControl.cpp:27`) against
-  `m_LastRssiSample` (`src/FurbleControl.cpp:1515`), and the zombie reclaim
-  deadline is the timestamp `m_ZombieDeadline` (`src/FurbleControl.cpp:1227`), so
+  `m_LastRssiSample` (`src/FurbleControl.cpp:1520`), and the zombie reclaim
+  deadline is the timestamp `m_ZombieDeadline` (`src/FurbleControl.cpp:1110`), so
   the tick is a service cadence, not a correctness deadline.
 - **Estimated saving:** Low. A task wake and context switch is on the order of
   tens of microseconds, so 4 wakes per second instead of 20 is well below
