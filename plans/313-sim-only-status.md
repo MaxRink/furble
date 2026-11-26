@@ -5,7 +5,7 @@ day it was written. Master has moved since; the sentence used to read "master is
 at `e66e8807`", which stopped being true the next time a pull request merged.
 The gate results below were measured at `2d2be868` (#409) on 2026-11-06 and have
 not been re-run since plan 314 merged. They are that date's numbers, not current
-ones: `plans/326-docs-accuracy.md` carries the counts from the 2026-11-25 tree
+ones: `plans/implemented/326-docs-accuracy.md` carries the counts from the 2026-11-25 tree
 (198 modeled hardware entries, 20 crash entries, 11 fuzz targets, 6,912
 permutations and 13 memory profile scenarios, against 188, 20, 10, 6,912 and 13
 here), `python3 tools/check_sim_coverage.py` reports 206 modeled hardware

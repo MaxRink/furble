@@ -1,5 +1,7 @@
 # 321 u-blox M10 (UBX) GPS driver
 
+Status: implemented on master (archived 2026-11-25).
+
 ## Motivation
 
 furble's GPS driver speaks NMEA plus the CASIC binary protocol of the

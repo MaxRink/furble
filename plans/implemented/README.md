@@ -131,6 +131,17 @@ stay in the parent [`plans/`](../README.md) directory.
 | [315-stickc-layout-regressions.md](315-stickc-layout-regressions.md) | 315: M5StickC layout regressions |
 | [316-docs-capture-companion-reject.md](316-docs-capture-companion-reject.md) | 316: docs capture stops on a shadowed companion-reject action |
 | [32-gps-advanced.md](32-gps-advanced.md) | PR32 - Advanced GPS support for the GPS/BDS Unit v1.1 |
+| [321-review-feedback.md](321-review-feedback.md) | Review-feedback record for the u-blox M10 stack: tick-wrap gate, non-switchable rails, time resolution, ANA default, demux fuzzing, encoder payload bound and source URLs |
+| [321-ublox-m10-driver.md](321-ublox-m10-driver.md) | u-blox M10 UBX driver: codec, receiver backend seam, virtual M10 in the simulator, constellations, rate, power save, AssistNow Autonomous and warm start |
+| [322-hardware-abstraction.md](322-hardware-abstraction.md) | Hardware abstraction for the next boards: dependency audit, pure chip drivers, board profile and power backend |
+| [322-review-feedback.md](322-review-feedback.md) | Review-feedback record for the plan 322 hardware abstraction branches |
+| [323-plans-refresh-review-feedback.md](323-plans-refresh-review-feedback.md) | Review-feedback record for the plans refresh, PR #441 |
+| [324-hw-research-review-feedback.md](324-hw-research-review-feedback.md) | Review-feedback record for the hardware research branch |
+| [325-peer-subscription-race.md](325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
+| [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
+| [326-docs-accuracy.md](326-docs-accuracy.md) | Documentation accuracy refresh: stale plan status, wiki screenshot claims and gate numbers |
+| [326-review-feedback.md](326-review-feedback.md) | Review-feedback record for the documentation accuracy refresh |
+| [331-merge-gate-base.md](331-merge-gate-base.md) | Merge gate reads the workflow path filters at the PR base commit and fails closed when they cannot be read (#464) |
 | [35-exposure-presets.md](35-exposure-presets.md) | 35: Exposure time presets in 1/3 stops |
 | [36-camera-test-harness.md](36-camera-test-harness.md) | 36 - camera test harness: protocol tests without cameras |
 | [42-waveshare-eth-node.md](42-waveshare-eth-node.md) | 42 - Waveshare ESP32-S3-ETH wired MQTT node and display-less onboarding |

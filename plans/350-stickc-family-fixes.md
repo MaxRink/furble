@@ -5,8 +5,8 @@ Status: implemented on `fix/stickc-family`, not merged. Host tests and
 claims that need a scope or a schematic stay UNVERIFIED as marked below.
 
 Related: [320](320-rtc-use.md) (timed wake through the BM8563 and the M5PM1),
-[322](322-hardware-abstraction.md) (the `Board::Profile` row this work extends),
-[313](313-sim-only-status.md) (hardware-deferred gates), [326](326-docs-accuracy.md)
+[322](implemented/322-hardware-abstraction.md) (the `Board::Profile` row this work extends),
+[313](313-sim-only-status.md) (hardware-deferred gates), [326](implemented/326-docs-accuracy.md)
 (the doc audit that left the `setExtOutput` behaviour documented, not fixed).
 
 ## Why

@@ -4,7 +4,7 @@ Status: merged in #478 as `b57f0118`, closing issue #464. The status line used
 to say the work was implemented on `fix/464-base-workflows`; that read as an
 unmerged branch after the merge. Every result below is a local run on that
 branch, plus the review round recorded under "Follow-up" at the end of this
-file. No CI run is claimed.
+file. No CI run is claimed. Archived to `plans/implemented/` on 2026-11-26.
 
 ## Defect
 

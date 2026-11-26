@@ -14,7 +14,7 @@
  * host tests, the fuzz target and the simulator's virtual M10 link it
  * unchanged. "IFD" below is the u-blox M10 SPG 5.10 Interface description,
  * UBX-21035062 R03 (protocol 34.10), the firmware both modules run from ROM.
- * Every message and key cites its IFD section. plans/321-ublox-m10-driver.md
+ * Every message and key cites its IFD section. plans/implemented/321-ublox-m10-driver.md
  * holds the full source list, including the module data sheets and
  * integration manuals.
  */

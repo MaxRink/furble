@@ -1,5 +1,7 @@
 # 322 - Review feedback for hardware abstraction
 
+Status: implemented on master (archived 2026-11-25).
+
 ## Scope
 
 This is the review-feedback record for plan 322
@@ -30,6 +32,11 @@ simulator rebuilt with the assertion and passes the 22 hardware-profile
 scenarios. `python3 tools/pre_review.py --base origin/master`: 9 of 9 gates.
 `sh sim/scripts/check-doc-tokens.sh`: tokens present. The rebase onto
 `refactor/port-4-camera-types` is pending that branch's final review fixes.
+
+Archive note (2026-11-25): the paragraph above is the state at the time of the
+review. [322-hardware-abstraction.md](322-hardware-abstraction.md) records the
+rebase onto port-4 as done at `7f408c75`, with the post-rebase gates and size
+results. The finding text is not rewritten.
 
 ## PR #462 (e9ee2747)
 

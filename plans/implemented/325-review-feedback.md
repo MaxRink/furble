@@ -1,5 +1,7 @@
 # 325 - Review feedback for the virtual camera subscription race
 
+Status: implemented on master (archived 2026-11-25).
+
 ## Scope
 
 This is the review-feedback record for #453

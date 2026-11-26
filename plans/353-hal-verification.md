@@ -5,8 +5,8 @@ rebased onto `afb8513b` before merge, then pushed as PR 479. No firmware file
 changes and no image changes: nothing in firmware includes `lib/hal` yet, so
 this branch only touches the drivers, their host test and the documents.
 
-Related: [322](322-hardware-abstraction.md) (the HAL design and board gap
-tables), [322-review-feedback.md](322-review-feedback.md) (the first review of
+Related: [322](implemented/322-hardware-abstraction.md) (the HAL design and board
+gap tables), [322-review-feedback.md](implemented/322-review-feedback.md) (the first review of
 the same drivers), [353-review-feedback.md](353-review-feedback.md) (every
 finding of this pass and of the review of the fix, with its disposition). The
 rule changes that follow from this pass live in `lib/hal/CLAUDE.md`.

@@ -2,7 +2,7 @@
 
 Register-level drivers for power, gauge, IO expander and radio chips on boards
 the board support library does not know. Design and board gap tables are in
-`plans/322-hardware-abstraction.md`; the verification record is
+`plans/implemented/322-hardware-abstraction.md`; the verification record is
 `plans/353-hal-verification.md`.
 
 - Pure C++17. No vendor SDK, RTOS, board support or UI header, and no token

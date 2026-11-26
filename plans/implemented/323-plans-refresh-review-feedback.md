@@ -1,5 +1,7 @@
 # 323 - Review feedback for the plans refresh
 
+Status: implemented on master (archived 2026-11-25).
+
 Implementation state (2026-11-13): this is the review-feedback record for
 PR #441, which archives implemented plans and corrects stale status. Every
 Copilot, human and pre-push subagent finding is recorded as fixed, already

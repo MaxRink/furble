@@ -110,7 +110,7 @@ supplied defines `FURBLE_GPS_BACKUP_SUPPLY`; no supported board does.
 
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
 checked against the firmware GPS support in `src/FurbleGPS.cpp`. The u-blox
-documents are listed in `plans/321-ublox-m10-driver.md`.
+documents are listed in `plans/implemented/321-ublox-m10-driver.md`.
 
 ## Related references
 

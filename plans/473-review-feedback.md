@@ -33,7 +33,7 @@ The passages that state the rule at 8ff406ea, all per panel:
 - `docs/power/datasheet-register.md:36-38`, the new ST7796S row and the revised
   ILI9342C and ILI9341 rows.
 - `plans/287-mcu-portability-and-bundle-hardware.md:338`.
-- `plans/322-hardware-abstraction.md:82`, `:178-186`.
+- `plans/implemented/322-hardware-abstraction.md:82`, `:178-186`.
 - `plans/95-engineering-lessons.md:59-79` and follow-up item 4 at `:404-424`.
 - `plans/implemented/12-display-off.md:30-32`.
 

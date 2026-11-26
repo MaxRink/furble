@@ -7,7 +7,7 @@ the local date of the reading pass.
 
 The display and touch rows in `docs/power/datasheet-register.md`,
 `docs/power/display.md`, `docs/power/board-power.md` and
-`plans/322-hardware-abstraction.md` were written from a mixture of the repo
+`plans/implemented/322-hardware-abstraction.md` were written from a mixture of the repo
 model, second-hand part names and one mislabelled mirror. Four problems were
 carried in the corpus:
 
@@ -144,5 +144,5 @@ Supporting sources that are not datasheets, all read on 2026-11-26:
 - If Sitronix ever publishes ST7796S on its own AIoT table, recheck the vendor
   list before changing the attribution sentence.
 - Keep the per-panel dwell rule in one place. A new panel class must add its own
-  row to the dwell paragraph in `plans/322-hardware-abstraction.md` and to the
+  row to the dwell paragraph in `plans/implemented/322-hardware-abstraction.md` and to the
   bullet in `docs/power/display.md`.

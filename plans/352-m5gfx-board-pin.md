@@ -6,7 +6,7 @@ lists what is still unverified.
 
 Related: [42](../implemented/42-waveshare-eth-node.md) (the Waveshare node
 whose pin this fixes), [314](../314-memory-resilience.md) (the pin that saved
-about 22 KB on the ESP32 images), [322](322-hardware-abstraction.md) (what a
+about 22 KB on the ESP32 images), [322](implemented/322-hardware-abstraction.md) (what a
 new board has to do with this). Patches: `patches/m5gfx_board.patch` and
 `patches/m5gfx_board_noprobe.patch`, both applied by
 `post:patches/m5gfx_board.py`. Check: `tools/check_m5gfx_pinning.py`.

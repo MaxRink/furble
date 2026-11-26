@@ -1,7 +1,7 @@
 /*
  * The UBX backend of the GPS driver: u-blox M10 detection, configuration,
  * NAV-PVT and the receiver status. The protocol itself is the pure codec in
- * lib/furble/protocol/GpsUbx; plans/321-ublox-m10-driver.md cites the u-blox
+ * lib/furble/protocol/GpsUbx; plans/implemented/321-ublox-m10-driver.md cites the u-blox
  * documents for every message and key. "IFD" is the u-blox M10 SPG 5.10
  * Interface description, UBX-21035062 R03.
  */

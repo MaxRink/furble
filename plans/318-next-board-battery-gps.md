@@ -279,7 +279,7 @@ Supreme wiki page and the vendor factory example, then checked each claim in
 this plan against them. Items that change this plan's text are below. Items 1,
 2, 4, 6, 7 and 8 of the same pass change only plan 322's steps and tables and
 are recorded in
-[322-hardware-abstraction.md](322-hardware-abstraction.md)'s verification pass
+[322-hardware-abstraction.md](implemented/322-hardware-abstraction.md)'s verification pass
 with their sources.
 
 | # | Correction | Source |

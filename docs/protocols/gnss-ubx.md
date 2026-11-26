@@ -9,7 +9,7 @@ the simulator receiver is `sim/ubx_m10.cpp`.
 | Primary source cited in code | u-blox M10 SPG 5.10 Interface Description, UBX-21035062 R03, protocol 34.10 (`lib/furble/protocol/GpsUbx.h:10-20`) |
 | Second source | MAX-M10S integration manual UBX-20053088 section 3.6.3.2 (`lib/furble/protocol/GpsUbx.h:307-311`) |
 | Component pages | [MAX-M10S](../components/ublox-max-m10s.md) and [MIA-M10Q](../components/ublox-mia-m10q.md) |
-| Plan | [321](../../plans/321-ublox-m10-driver.md) |
+| Plan | [321](../../plans/implemented/321-ublox-m10-driver.md) |
 
 ## Frame layout
 

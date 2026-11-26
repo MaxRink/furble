@@ -9,7 +9,7 @@ unverified.
 
 The power research corpus (`docs/power/`) names three ESP32 and ESP32-S3 items
 as unverified, has no revision or page for the SX1262 timing that
-`plans/322-hardware-abstraction.md` turns into a `sleep()` sequence, records the
+`plans/implemented/322-hardware-abstraction.md` turns into a `sleep()` sequence, records the
 W5500 datasheet as "not opened" (`datasheet-register.md` section 11), and lists
 every FCC ID as unknown (`datasheet-register.md` section 13.3). A doc claim
 without a document, revision and page is not evidence, and two of the claims
@@ -265,7 +265,7 @@ here rather than left describing behaviour that no longer exists. The 40 to
   model, with citations.
 - `CLAUDE.md`: the DFS clock bullet, the M5PM1 bullet, the S3 USB bullet and
   the `lib/hal` SX1262 pointer.
-- `plans/322-hardware-abstraction.md`: the `SX1262::sleep()` sequence.
+- `plans/implemented/322-hardware-abstraction.md`: the `SX1262::sleep()` sequence.
 - `plans/implemented/22-ir-remote-trigger.md`: the RMT memory constant and the
   channel-count note.
 

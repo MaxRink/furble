@@ -4,6 +4,7 @@ Status: hal-1 and hal-2 merged in #462 (`fd51e96c`), on the capability macros an
 coupling ratchet from #460 (`f4cf0d32`). No new board env, no support claim and
 no hardware run in this work. Firmware includes none of the drivers yet: the
 first non-M5 board is what wires them in, as the sequence below records.
+Archived to `plans/implemented/` on 2026-11-25.
 
 The T-Beam Supreme facts in this plan were re-read against the LilyGO
 documents on 2026-11-25 and nine findings changed it: the ALDO1 rail feeds the
@@ -14,9 +15,9 @@ board, the GPS UART pins belong in the pin seam, and the PSRAM is quad. The
 corrections are applied below and listed with their sources in the
 `Verification pass (2026-11-25)` section at the end.
 
-Related: [287](287-mcu-portability-and-bundle-hardware.md) (board survey),
-[127](127-nordic-port-baseline.md) (port contract and the coupling ratchet
-from `refactor/port-1-ratchet`), [30](30-m5stack-framework.md) (board support
+Related: [287](../287-mcu-portability-and-bundle-hardware.md) (board survey),
+[127](../127-nordic-port-baseline.md) (port contract and the coupling ratchet
+from `refactor/port-1-ratchet`), [30](../30-m5stack-framework.md) (board support
 library gaps). The porting stack (`refactor/port-1-ratchet`,
 `refactor/port-2-caps`, `refactor/port-3-routing`) is the base for hal-2.
 
@@ -421,7 +422,7 @@ Exact steps:
   `RegisterBus::delayUs()` seam, `SX1262::sleep()` waits for BUSY inside a
   stated bound, and the test states datasheet values with a fake bus that
   honours each chip's addressing rule. Record:
-  [353-hal-verification.md](353-hal-verification.md).
+  [353-hal-verification.md](../353-hal-verification.md).
 
 Deviations from the brief, with reasons:
 
@@ -460,7 +461,7 @@ both matter to a port:
   the display-less `board_M5StampS3` on the Waveshare ESP32-S3-ETH, used to
   fall through to `board_unknown`, and the retry loop in `M5GFX::init_impl`
   ran every ESP32-S3 probe five times. The patch now returns that family
-  before the first probe. Plan [352](352-m5gfx-board-pin.md) holds the defect,
+  before the first probe. Plan [352](../352-m5gfx-board-pin.md) holds the defect,
   the mechanism and the artifact evidence.
 - M5Unified keys its own identification probe and its In_I2C master off
   `Display.getBoard()`. A known board skips the probe, and a pin table row
@@ -572,7 +573,7 @@ extra bytes come from port-4's own code. `pre_review --base origin/master`:
 An independent pass re-read the four drivers against the datasheets and the
 test against both. Four defects, all confirmed and fixed on
 `fix/hal-verification`; the table with sources and test evidence is in
-[353-hal-verification.md](353-hal-verification.md).
+[353-hal-verification.md](../353-hal-verification.md).
 
 | Defect | Source | Fix |
 | :--- | :--- | :--- |

@@ -1,5 +1,7 @@
 # 325 - Thread-safe virtual camera subscriptions (#451)
 
+Status: implemented on master (archived 2026-11-25).
+
 ## Motivation
 
 `control-e2e-multi-connect-fujifilm` aborted once under ASan with a
@@ -49,7 +51,8 @@ and 20 of 20 when rerun alone.
 
 ## Implementation state
 
-Done on `fix/451-fuji-double-subscriptions`.
+Merged as #453 (`139d884a`). The merge commit carries `Fixes #451`, so the
+issue closes with it.
 
 | Gate | Result |
 | --- | --- |
