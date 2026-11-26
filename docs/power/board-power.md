@@ -159,8 +159,9 @@ uses (ESP32-S3-PICO-1 Series Datasheet v1.2, Table 1-1 p. 9 and pin table
 note 4 p. 13; ESP32-S3 Series Datasheet v2.2, 2.3.5 p. 26 and Table 2-14
 with its notice, p. 31). Furble uses none of them: the IR transmitter is
 GPIO46 and the motion wake lands on GPIO13 (`src/FurbleBoard.cpp` StickS3
-row), and the GPS UART takes the Port A pins
-(`M5.getPin(m5::port_a_pin1)` and `port_a_pin2`, `src/FurbleGPS.cpp:168-169`).
+row), and the GPS UART takes the Port A pins through
+`Board::gpsPins()` (`M5.getPin(m5::port_a_pin1)` and `port_a_pin2`,
+`src/FurbleBoard.cpp:180-181`).
 Opportunities: PM-01, PM-02, PM-03, PM-05, PM-07, RL-01, RL-02, RL-03,
 RL-11, LK-01, PL-01, PL-02, PL-04, PL-05, PL-06, PL-07, PL-08, NB-03. This is
 the only board on the bench.
@@ -814,7 +815,7 @@ Estimates are not measurements unless the label says `measured-local`.
   high into the unpowered unit's RX input. That can leak through the unit's
   input protection and the onboard regulator. The same applies in the
   absent-receiver state, where the rail is held off.
-- Evidence: `code` (`src/FurbleGPS.cpp:118-122`, UART setup at `:160-180`),
+- Evidence: `code` (`src/FurbleGPS.cpp:118-122`, UART setup at `:188-215`),
   `unverified` unit input topology.
 - Estimated saving: 0 to 1 mA while the rail is off (`inferred`). It only
   applies in rail-cycle mode or when no receiver is present, so it is not a
@@ -852,7 +853,7 @@ Estimates are not measurements unless the label says `measured-local`.
   transmits, and a current measurement of the boost with and without an IR
   receiver attached.
 - Citation: M5Stack StickS3 product page EXT_5V note and pinmap; M5PM1 manual
-  V1.9 `PWR_CFG`; `src/FurbleGPS.cpp:118-122`.
+  V1.9 `PWR_CFG`; `src/FurbleGPS.cpp:118-122` and `:188-215`.
 
 #### RL-04 Core2: LDO2 and LDO3 rail scope
 

@@ -411,6 +411,15 @@ with GPS enabled and confirm the IMU and the battery level still read after
 `GPS::init()`; on the Waveshare, confirm the W5500 link and MQTT stay up with
 the GPS setting on. Both are device gates, not simulator results.
 
+### Review
+
+The independent review of this branch is recorded in
+[336-review-feedback.md](336-review-feedback.md): the Waveshare doc row that
+still advertised a GPS port the profile now closes, the two citations that
+still pointed at the pin lookup this change deleted, eight doc citations the
+rebase rotated, and the regression, stickiness, `isEnabled()` and GPIO13
+questions with their evidence.
+
 ### Runs behind the two failing checks
 
 Worktree `/tmp/furble-gps-pins` on `feat/gps-profile-pins`, base
