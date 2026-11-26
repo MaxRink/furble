@@ -239,6 +239,12 @@ Not modelled, for the simulation alignment work:
   command) and no restart.
 - The `$PCAS10` restart latency. A real restart stops output for about a second
   and reloads the configuration; the shim leaves the stream running.
+- The `$PCAS03` fallback path. The driver writes the prune only when a binary
+  `CFG-MSG` write is not acknowledged (`src/FurbleGPS.cpp:1606`, the fallback at
+  `:1552`), and the fake CASIC receiver acknowledges every `CFG-MSG` frame, so a
+  default scenario never sees that body. It appears only with
+  `gps_uart_mode nack`, which is how the wire strings below were captured. A
+  scenario that asserts the prune therefore has to seed the refusal.
 - The explanatory ERROR of RN 7.2. The virtual M10 answers NAK and nothing else;
   the release notes describe an `ERROR` message as well.
 - AssistNow with B1C, which the model does not refuse even though RN 5.1.5 says
@@ -271,6 +277,18 @@ CASIC binary path, no change to the simulator.
 | `gps-casic`, `testSentenceCommand()` | the three exact bodies, fifteen fields each, no checksum |
 | `gps-ubx`, `testB1cRejections()` | B1C selected by BeiDou plus GLONASS; ANA off with B1C; the power write ordered before the signals; B1I keeps ANA and the power-last order; B1I off before B1C on before GLONASS on |
 | `gps-ubx-m10`, `testB1cConfigOrder()` | the virtual receiver NAKs signals before `OPERATEMODE=FULL` and accepts the plan's order, ending on B1C and GLONASS with B1I off |
+
+Observed on the wire, from `uart-dump` runs against the simulator with the CASIC
+model (the whole sentence, checksum included):
+
+```
+$PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0*02   prune, with gps_nmea true and gps_uart_mode nack
+$PCAS03,1,0,1,1,1,0,0,0,0,0,,,0,0*02   satellite page open
+$PCAS03,1,1,1,1,1,1,1,1,,,,,,*02       satellite page closed, gps_nmea false
+```
+
+The prune body needs the seeded NAK because it is the `CFG-MSG` fallback, as
+noted in section 7.
 
 Red evidence, on the tree before the fixes:
 
