@@ -796,9 +796,9 @@ Estimates are not measurements unless the label says `measured-local`.
 - Change: none. The event outputs are already bracketed.
 - Current behavior: the speaker is opened only for a tone and ended after the
   pattern; the Core2 amp enable is low at boot; the vibration motor is at 0 V
-  except for an event; the IR driver holds its own APB lock only for the
-  transmit window and disables the RMT channel after; the status LED is only
-  driven for a feedback event.
+  except for an event; the IR channel holds `ESP_PM_CPU_FREQ_MAX`, not an APB
+  lock, only for the transmit window, and it is disabled after; the status LED
+  is only driven for a feedback event.
 - Evidence: `code` (`src/FurbleFeedback.cpp`, `src/FurbleIR.cpp`),
   `datasheet` (NS4168 13 mA quiescent, 1 uA shutdown).
 - Estimated saving: 0. The remaining cost is the event itself, which is user
@@ -1076,8 +1076,9 @@ Estimates are not measurements unless the label says `measured-local`.
 - Estimated saving: 0.5 to 4 mA with the screen off (`inferred`). If a wake
   costs 0.2 to 0.5 ms at 40 mA, 200 wakes per second cost 1.6 to 4 mA before
   any useful work. This is exactly the term the 3.61 mA what-if does not model.
-- Risk: medium. Input latency, the 120 ms display dwell, the connect timer
-  cadence, and the watchdog feed margin must all be rechecked.
+- Risk: medium. Input latency, the 120 ms display dwell (both directions on
+  the ILI9342C boards), the connect timer cadence, and the watchdog feed margin
+  must all be rechecked.
 - Effort: small to medium.
 - Required test: screen-off idle 30 minutes at 5, 20, and 50 ms; measure
   current, wake count from the profiler, button latency, and watchdog margin.
@@ -1477,8 +1478,8 @@ This is the part the existing plan 111 protocol does not resolve.
    M5PM1: clear `PWR_CFG` bit 0. Re-enable it after the run. Record the
    register value before and after.
 3. Reach the state and let it settle for at least 60 s. For a display state,
-   wait through the 120 ms SLPIN and SLPOUT dwell and confirm the panel is in
-   the intended state.
+   wait through the 120 ms panel dwell in each direction the panel requires,
+   then confirm the panel is in the intended state.
 4. Capture at least 10 minutes per state, three repeats, with the analyzer and
    the state marker aligned. Reject a run that changes state, reconnects,
    charges, or receives a touch it did not intend.

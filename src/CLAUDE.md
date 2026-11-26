@@ -81,11 +81,19 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `m_CycleMutex`. The service passes lock it blocking and never skip: a pass
   that skipped a consumed UART event lost the whole burst, and the cycle went
   degraded for at least the 10 s backoff.
-- `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is SAFE under DFS because the
-  IDF rmt driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and
-  `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on
-  plain ESP32. Transmission runs on the dedicated ir task, never under the
-  Control mutex.
+- `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is safe under DFS here, but not
+  because the driver locks APB. The driver takes `ESP_PM_CPU_FREQ_MAX` for a
+  channel without DMA and `ESP_PM_NO_LIGHT_SLEEP` for one with DMA
+  (`components/esp_driver_rmt/src/rmt_common.c:230`), and `ESP_PM_APB_FREQ_MAX`
+  appears nowhere in `esp_driver_rmt`. `createChannel()` never sets `with_dma`.
+  furble raises the PM CPU maximum itself, 160 MHz by default
+  (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:84`), and APB is
+  80 MHz at that maximum, so the 38 kHz carrier holds. The divisor is
+  fixed at channel creation, before the lock is taken, so this only holds while
+  APB is already 80. Setting `with_dma` on the S3 would swap the lock for
+  `ESP_PM_NO_LIGHT_SLEEP` and let the carrier drift. Do NOT switch to
+  `RMT_CLK_SRC_XTAL`, it does not exist on plain ESP32. Transmission runs on the
+  dedicated ir task, never under the Control mutex.
 - `FurbleFeedback`: optional sound, LED and vibration event outputs. DFS-safe
   by construction: all sound paths go through I2S and the IDF i2s driver holds
   `ESP_PM_APB_FREQ_MAX` while the channel is enabled, so no extra pm lock is
@@ -392,8 +400,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   reached via `ui audit` on the console. Reports clipped labels and label
   overlaps as JSON Lines, see tools/ui-audit.md.
   The display off state machine lives here: `processInactivity` dims or sleeps
-  the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,
-  and a wake press is swallowed until every input source reports released.
+  the panel, sleep/wake pairs the APB lock with both 120 ms panel dwells, and a
+  wake press is swallowed until every input source reports released. The dwell
+  rule is per panel: ILI9342C needs 120 ms from SLPIN to the next SLPOUT as
+  well as from SLPOUT to the next SLPIN, so `wakeDisplay()` keeps its wait
+  (`src/FurbleUI.cpp:1887-1897`); ST7789V and ST7796S need only the SLPOUT to
+  next SLPIN interval, which `sleepDisplay()` gates at `:1843-1845`.
   Only a pending low battery power-off countdown holds the panel awake
   through that state machine, the plain warning rides the normal dim/sleep
   path, and the LVGL idle clock is never touched. `wakeDisplay` does not count

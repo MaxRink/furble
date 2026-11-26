@@ -346,14 +346,45 @@ check.
 ## Hardware traps (hard-won, do not relearn)
 
 - DFS clock family: with BT modem sleep enabled, esp_pm DFS actually engages,
-  and any peripheral clocked from APB breaks subtly. GPS UART needs
-  `UART_SCLK_XTAL`. The LEDC backlight PWM flickers unless the display holds
-  `ESP_PM_APB_FREQ_MAX` while the backlight is on. RMT is safe: it holds its own
-  APB power lock. When touching power management, audit every peripheral clock
+  and any peripheral clocked from APB breaks subtly. The GPS UART takes
+  `UART_SCLK_XTAL` on the S3, which has no REF_TICK source, and
+  `UART_SCLK_REF_TICK` on the classic ESP32, which has REF_TICK at a fixed
+  1 MHz and no XTAL UART source
+  (`components/soc/esp32s3/include/soc/clk_tree_defs.h:264`,
+  `components/soc/esp32/include/soc/clk_tree_defs.h:231`). The display holds
+  `ESP_PM_APB_FREQ_MAX` while the backlight is on because the LEDC divisor is
+  fixed at config time; visible flicker without the lock is unmeasured. RMT is
+  safe on two furble facts, not on a driver APB lock: the driver takes
+  `ESP_PM_CPU_FREQ_MAX` without DMA and `ESP_PM_NO_LIGHT_SLEEP` with it, never
+  `ESP_PM_APB_FREQ_MAX` (`components/esp_driver_rmt/src/rmt_common.c:230`).
+  `src/FurbleIR.cpp` never sets `with_dma`, and furble raises the PM CPU
+  maximum itself, 160 MHz by default
+  (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:84`), where APB is
+  80 MHz. The sdkconfig boot default is not what pins it. Setting `with_dma` on
+  the S3 would swap that lock for `ESP_PM_NO_LIGHT_SLEEP` and let the 38 kHz
+  carrier drift. When touching power management, audit every peripheral clock
   source.
 - Display sleep: the display releases `ESP_PM_APB_FREQ_MAX` while the panel
-  sleeps and must reacquire it before `M5.Display.wakeup()`. ST7789/ILI934x
-  need a 120 ms dwell between SLPIN and SLPOUT; M5GFX does not enforce it.
+  sleeps and must reacquire it before `M5.Display.wakeup()`
+  (`src/FurbleUI.cpp:1879`, `src/FurbleUI.cpp:1900`). The dwell rule is per
+  panel. ILI9342C needs 120 ms in both directions, Sleep Out to the next Sleep
+  In and Sleep In to the next Sleep Out (V101 sections 8.2.11 and 8.2.12,
+  pages 100 and 101), and the ILI9341 copy carries the same pair. ST7789V
+  sections 9.1.11 and 9.1.12 and ST7796S V1.0 sections 9.2.12 and 9.2.13 need
+  120 ms from Sleep Out to the next Sleep In only, plus 5 ms after SLPIN and
+  after SLPOUT before any other command. ILI9342C is the panel on
+  `m5stack-core`, `m5stack-core2` and `m5stack-core-usb-debug`, so the reverse
+  wait is required on three of the six display boards and the code keeps it.
+  M5GFX 0.2.27 sends the bare command and no delay
+  (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`,
+  `src/lgfx/v1/LGFXBase.hpp:1436-1437`), so both 120 ms waits are furble's:
+  `UI::sleepDisplay()` refuses a sleep within 120 ms of the last wake
+  (`src/FurbleUI.cpp:1843-1845`) and `UI::wakeDisplay()` waits the same interval
+  before SLPOUT (`src/FurbleUI.cpp:1894-1897`). Together they satisfy all four
+  panels. The 5 ms needs no separate delay: after SLPIN the next panel command
+  is the SLPOUT that the wake gate holds back 120 ms, and after SLPOUT the wake
+  path writes only the brightness, which is the backlight, not a panel command
+  (`src/FurbleUI.cpp:1901`, `:1905`).
 - Never hold the Control mutex across a delay. The reconnect cancel deadlock
   bricked the device (buttons and USB dead) because furble disables all M5PM1
   power button gestures at boot. A retained `DL_LOCK` is cleared only by true
@@ -364,7 +395,15 @@ check.
   unless you clear it: `setLedEnLevel(false)` saves PWR_CFG bit 4.
 - S3 native USB Serial/JTAG resets the chip on each host port open. Use that
   port-open as the safe state transition, never a disconnect then reconnect.
-  esptool prints a post-write reset that reads `FAILED` on the S3: it is benign.
+  That reset is a bench observation, not a sourced claim. esptool 4.11.0 prints
+  `FAILED` only from the flash verify check (`esptool/cmds.py:1382`, `:1389`),
+  so a `FAILED` line means the image did not verify. The reset phase prints
+  `Hard resetting via RTS pin...` (`esptool/loader.py:1711`). On the USB
+  Serial/JTAG part the port is gone by then, so the RTS change raises a port
+  error. A macOS bench run saw errno 6, ENXIO; other hosts report their own
+  code. `esptool/reset.py:51` ignores only ENOTTY and EINVAL, so the error is
+  retried and then re-raised (`:43-62`). The hash has verified by then, so the
+  traceback is benign even though the upload command exits non-zero.
 - GPS unit v1.1 (AT6668): no backup supply, so a rail cut costs a ~108 s cold
   start. `$PCAS12` timed standby works. `$PCAS02` only accepts 100-1000 ms.
   Sub-second rates need `$PCAS03` sentence pruning first.
@@ -374,7 +413,12 @@ check.
   cache covers them. `CONFIG_LV_USE_REFR_DEBUG` plus the console-gated
   invalidation logger are the diagnosis tools.
 - PSRAM (S3 and Core2): `SPIRAM_MALLOC_ALWAYSINTERNAL=4096` routes large allocations to
-  PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`.
+  PSRAM. DMA display buffers must stay `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`
+  (`src/FurbleUI.cpp:581-583`). That is a source requirement. The panel
+  corruption a wrong caps set would cause is unmeasured, and on the S3
+  `SOC_PSRAM_DMA_CAPABLE=1`
+  (`components/soc/esp32s3/include/soc/soc_caps.h:57`), so PSRAM is not
+  categorically unusable for DMA there.
 - LVGL: wide panels need two draw buffers because `displayFlush()` reports the
   flush complete as soon as M5GFX queues the SPI DMA. Narrow panels use one
   buffer and must call `M5.Display.waitDMA()` before `lv_disp_flush_ready()`.

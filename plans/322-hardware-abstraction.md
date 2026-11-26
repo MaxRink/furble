@@ -79,7 +79,7 @@ at `sim/FurblePlatformSim.cpp:289`. The audit below is the state at `e66e8807`.
 | Feedback outputs | `Feedback::init()` | LED pin, buzzer, vibration per board. |
 | Brightness floor | `UI::UI()` | 48 on StickC/Plus, 32 elsewhere. |
 | Modem sleep switch | UI power menu | StickS3 only. |
-| Display sleep | `UI` display state machine | Holds `ESP_PM_APB_FREQ_MAX` while lit, waits the 120 ms SLPIN/SLPOUT dwell, sleeps through `M5.Display`. |
+| Display sleep | `UI` display state machine | Holds `ESP_PM_APB_FREQ_MAX` while lit, waits the 120 ms panel dwell, which the ILI934x needs in both directions, sleeps through `M5.Display`. |
 | Buttons and touch | `FurbleUI.cpp` | `M5.BtnA/B/C/PWR`, `M5.Touch`. |
 | IMU | `FurbleIMU*.cpp`, console, UI | `M5.Imu` plus BMI270 and MPU6886 engines on `M5.In_I2C`. |
 
@@ -177,11 +177,13 @@ added with their first caller.
 Display backend, as a description rather than code until a second panel class
 exists. Every board keeps the rules the UI enforces today: hold
 `ESP_PM_APB_FREQ_MAX` while the backlight is lit, release it while the panel
-sleeps and reacquire it before wake, and wait 120 ms between SLPIN and SLPOUT
-(ST7789, ILI934x). Per
-board the description is: panel class, bus, pins, size, rotation, brightness
-method (LEDC backlight, PMIC backlight rail, or panel contrast/brightness
-command), and the minimum brightness, which is already a profile field.
+sleeps and reacquire it before wake, and keep the panel dwell per panel: 120 ms
+from SLPOUT to the next SLPIN on every panel, the same interval the other way
+on the ILI934x pair, and 5 ms after SLPIN and after SLPOUT before any other
+command (ST7789, ILI934x, ST7796S). Per board the description is: panel class,
+bus, pins, size, rotation, brightness method (LEDC backlight, PMIC backlight
+rail, or panel contrast/brightness command), and the minimum brightness, which
+is already a profile field.
 
 | Board | Panel and bus | Brightness |
 | :--- | :--- | :--- |
