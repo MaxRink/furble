@@ -238,6 +238,38 @@ class SymbolGateTest(CorpusTest):
              "src/FurbleUI.cpp": SOURCE})
         self.assertEqual(errors, [])
 
+    def test_a_symbol_only_in_a_comment_on_the_line_satisfies_the_check(self):
+        """The symbol check reads the raw line, so a comment mention passes.
+
+        This is a documented limit, not a desired result: the prose may be
+        citing a log line that names the symbol in a different function.
+        """
+        errors, totals = self.check(
+            {"docs/x.md": "The retry calls `Control::setPower` (`src/a.cpp:2`).\n",
+             "src/a.cpp": "// line 1\n// TODO: Control::setPower is called here.\n"
+                          "void other(void) {\n}\n"})
+        self.assertEqual(errors, [])
+        self.assertEqual(totals["symbols"], 1)
+
+    def test_a_comment_inserted_above_a_cited_definition_is_absorbed(self):
+        """The span covers the attached comment block, so the shift is hidden.
+
+        The old definition line now holds a comment line, and the citation still
+        passes because that comment is part of the definition's span. Pinned as a
+        documented blind spot so a future change to it is a contract change.
+        """
+        cited = line_of(COMMENTED, "DISPLAY_SLEEP_DWELL_MS")
+        lines = COMMENTED.splitlines(keepends=True)
+        lines.insert(2, "// new doc line\n// new doc line\n"
+                        "// new doc line\n// new doc line\n")
+        moved_source = "".join(lines)
+        self.assertNotEqual(cited, line_of(moved_source, "DISPLAY_SLEEP_DWELL_MS"))
+        errors, _ = self.check(
+            {"docs/x.md": "`DISPLAY_SLEEP_DWELL_MS` is 120\n"
+                          f"(`src/ui.h:{cited}`).\n",
+             "src/ui.h": moved_source})
+        self.assertEqual(errors, [])
+
 
 class AllowlistTest(CorpusTest):
     def files(self) -> dict[str, str]:

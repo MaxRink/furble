@@ -6,9 +6,11 @@ numbers when the cited file changes, so an edit above a cited line rotates every
 citation below it. PR #473 rewrote a three line comment in `src/FurbleUI.cpp`
 into seven lines, which moved every citation below it by four. Stale numbers
 survived in `plans/338-e2e-page-coverage.md` and
-`plans/implemented/303-upstream-sync.md` with no gate to notice. The first sweep
-found 51 citations whose named symbol was not where the text said, and 84 paths
-that resolved to nothing in this checkout.
+`plans/implemented/303-upstream-sync.md` with no gate to notice. The first sweep,
+against `bebf7caf`, found 80: 74 citations whose named symbol was not where the
+text said, 5 paths that resolved to nothing in this checkout and one range past
+the end of its file. Against the merge base `c644f39e` the same command reports
+86: 78 symbol, 5 unresolved path and 3 out of range.
 
 Only mechanical facts are checked, and nothing else is claimed:
 
@@ -27,7 +29,10 @@ Only mechanical facts are checked, and nothing else is claimed:
    inside a function or the comment above a constant is legitimate and common. A
    range may also cover a one line declaration, and a range in a file that never
    defines the symbol may hold any use of it. A range that starts above a
-   multi line definition is the drift shape and fails.
+   multi line definition is the drift shape and fails, except when the lines
+   between the citation and the definition are a comment block attached to it:
+   the span covers that block, so comment lines inserted directly above a cited
+   definition move it without a finding.
 
 What this gate cannot do, and does not claim:
 
@@ -37,9 +42,13 @@ What this gate cannot do, and does not claim:
   four lines, and this gate cannot see it. Those two were found by hand.
 * It cannot tell whether the cited code supports the prose. A line that holds the
   named symbol and says the opposite is a pass.
+* It cannot tell a mention from a use on the cited line. The symbol check reads
+  the raw line, so a comment or a log string that names the symbol satisfies it.
 * It cannot see drift that stays inside one definition. A four line edit inside a
   forty line function moves every citation in that function and none of them
   fail.
+* It cannot see comment lines inserted directly above a cited definition, because
+  the definition's span covers the comment block attached above it.
 * It cannot see a symbol that the sentence names before another citation, after
   the citation, in bold rather than backticks, or in a table cell that holds
   several citations.
