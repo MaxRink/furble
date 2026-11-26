@@ -478,7 +478,7 @@ boards:
         max: null
         source: https://www.laskakit.cz/user/related_files/ip5306.pdf
         confidence: datasheet
-        note: "boost shuts off after 32 s of continuous load below 45 mA; sub-45 mA sleep states on the Core get hard powered off by the PMIC"
+        note: "boost shuts off after 64 s of continuous load below 45 mA (SYS_CTL2 bits 3:2 = 11, written by M5Unified 0.2.20; the power-on default of 01 is 32 s); sub-45 mA sleep states on the Core get hard powered off by the PMIC"
     peripherals:
       speaker_moderate:
         value_ma: 60

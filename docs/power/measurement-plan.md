@@ -414,7 +414,7 @@ plausible.
 | S22 | GPS fix hold, 10 min | `gps_hold 3` (index 3 is ten minutes), fix acquired, then lose the receiver | 600 s |
 | S23 | Disconnected light sleep | S05, no camera, no GPS, 300 s settle | 1800 s |
 | S24 | Power off | Power menu off or the documented long press | 600 s |
-| S25 | Core IP5306 cutoff | Core, any state below 45 mA, 32 s | 120 s |
+| S25 | Core IP5306 cutoff | Core, any state below 45 mA, 64 s | 120 s |
 | S26 | Deep sleep | Not implemented; no `esp_deep_sleep` call | Not measurable |
 | S27 | Wi-Fi disabled | `wifi off`, no driver | 300 s |
 | S28 | Wi-Fi connected idle | SSID and PSK set, IP present, NTP off | 600 s |
@@ -522,7 +522,7 @@ failed calibration row blocks the states that depend on it.
 | ID | State | Board | Key settings | Instrument | Window | Decides |
 | --- | --- | --- | --- | --- | --- | --- |
 | P04, P05, P08 to P10 | See phase 1 | See phase 1 | See phase 1 | I1 | See phase 1 | Sleep and off classification |
-| L01 | Core IP5306 cutoff, load below 45 mA | CO | Screen off or any sub-45 mA state | I1 | 120 s | Boost off 32 to 40 s after the load drops; post-cutoff 0.05 mA |
+| L01 | Core IP5306 cutoff, load below 45 mA | CO | Screen off or any sub-45 mA state | I1 | 120 s | Boost off 64 to 72 s after the load drops; post-cutoff 0.05 mA |
 | L02 | Deep sleep | All | Not implemented; no `esp_deep_sleep` call | None | Not measurable | Do not invent a number |
 | E18 | Touch monitor versus idle | C2, Tough | Panel off, touch idle versus monitor or hibernate mode | I1, I9 | 10 min each | P-069; current, tap wake, calibration retained |
 | E22 | PMIC off, L1, L2, and light sleep | S3 | `shutdown()`, PM1 L1, PM1 L2, light sleep | I1 | 10 min each | P-097; current, wake latency, retained state, recovery after a failed wake |

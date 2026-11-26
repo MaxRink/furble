@@ -112,6 +112,11 @@ Public headers for the app layer in src/, one header per module
   enabled; callers must sample charging telemetry and keep policy ticks free of
   NVS writes.
 - `FurbleSettings.h` assigns the IMU enable switch wire id 46.
+- `FurbleSettingsDefaults.h` holds the fresh-device defaults and the
+  board-conditional `displayOff()` policy. Its Core Basic comment carries the
+  IP5306 light-load hold: 64 s below 45 mA, because M5Unified writes
+  `SYS_CTL2` bits 3:2 = `11`, not the 32 s power-on default. Do not restate the
+  32 s datasheet default as the shipped behavior.
 
 - `FurbleCompanionService.h` gates the settings and trigger writes on the
   companion password challenge in `FurbleCompanionAuth.h`. A new privileged

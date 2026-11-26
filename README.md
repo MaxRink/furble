@@ -751,7 +751,7 @@ on the narrow stick displays.
 
 Fresh devices start with an Inactivity timeout of 60 seconds and Screen off set
 to Off. The M5Stack Core Basic keeps Dim because its IP5306 boost cuts the board
-below 45 mA after 32 seconds. Existing devices keep their stored choices, so an
+below 45 mA after 64 seconds. Existing devices keep their stored choices, so an
 upgrade does not rewrite a chosen timeout or mode.
 
 ### Themes

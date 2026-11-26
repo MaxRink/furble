@@ -179,7 +179,7 @@ the 0.3 to 1 mA sleep floor and adds its own offset drift.
   current is 27 uA; the operating quiescent is not a single datasheet number.
 - **M5StickC Plus2 (no PMIC).** Battery voltage only. The firmware reports no
   current and no charging state. Use I1 at B1 and confirm USB absence visually.
-- **M5Stack Core (IP5306).** The boost converter shuts off after 32 s of
+- **M5Stack Core (IP5306).** The boost converter shuts off after 64 s of
   continuous load below 45 mA. Any state that settles below 45 mA is not a
   steady state. Record the time to cutoff and the post-cutoff current instead
   of a mean.
@@ -303,7 +303,7 @@ rejection in the session notes instead of silently skipping it.
 | --- | --- | --- | --- | --- |
 | S23 | Disconnected light sleep | S05, no camera, no GPS, 300 s settle | Current in the sleep band; no lock held on the debug build | 1800 s |
 | S24 | Power off | Power menu off, or the documented long press | Display dark; current at the PMIC off value | 600 s |
-| S25 | Core IP5306 cutoff | Core, any state below 45 mA, 32 s | Current drops to the standby value; device is off | 120 s |
+| S25 | Core IP5306 cutoff | Core, any state below 45 mA, 64 s | Current drops to the standby value; device is off | 120 s |
 | S26 | Deep sleep | Not implemented. No `esp_deep_sleep` call exists in the tree. | None | Not measurable |
 
 ### 7.5 Network states
@@ -353,7 +353,7 @@ result.
 | m5stick-c | `m5stick-c` | ESP32 | AXP192 | ST7735 80x160 | 95 mAh | Yes, AXP192 | Light sleep, modem sleep | End of life; 48 minimum brightness |
 | m5stick-c-plus | `m5stick-c-plus` | ESP32 | AXP192 | ST7789 135x240 | 120 mAh | Yes, AXP192 | Light sleep, modem sleep | Plus and Plus2 share the image; 48 minimum brightness |
 | m5stick-c-plus2 | `m5stick-c-plus` | ESP32 | None | ST7789 135x240 | 200 mAh | No | Light sleep | Voltage only; no charging telemetry; 32 minimum brightness |
-| m5stack-core | `m5stack-core` | ESP32 | IP5306 | ILI9342C 320x240 | 0, unknown | No | No steady state below 45 mA | Boost cuts off after 32 s below 45 mA |
+| m5stack-core | `m5stack-core` | ESP32 | IP5306 | ILI9342C 320x240 | 0, unknown | No | No steady state below 45 mA | Boost cuts off after 64 s below 45 mA |
 | m5stack-core2 | `m5stack-core2` | ESP32 | AXP192 | ILI9342C 320x240 | 390 mAh | Yes, AXP192 | Light sleep, modem sleep | Touch controller stays on; 32 minimum brightness |
 | m5stick-s3 | `m5stick-s3` | ESP32-S3 | M5PM1 | ST7789 135x240 | 250 mAh | No | Light sleep with `sleep_conn`; no deep sleep | Watchdog, GPS power lock, 32 minimum brightness |
 | waveshare-s3-eth | `waveshare-s3-eth` | ESP32-S3 | None | None | Mains | No | Not applicable | W5500 Ethernet; DFS init and tickless idle are not enabled in its sdkconfig |
@@ -526,7 +526,7 @@ board even though the UI hides it.
 | m5stick-c | 51.7 | 54.8 | 42.3 | 1.0 | 56.7 | 52.7 | 25 to 45 | NA | 0.027 | 41.7 | 51.7 | 65.2 |
 | m5stick-c-plus | 59.3 | 64.6 | 48.3 | 1.0 | 64.3 | 60.3 | 25 to 45 | NA | 0.027 | 49.3 | 59.3 | 72.8 |
 | m5stick-c-plus2 | 59.1 | 64.4 | 45.9 | 0.8 | 64.1 | 60.1 | 25 to 45 | NA | NA | 49.1 | 59.1 | 72.6 |
-| m5stack-core | 67.7 | 79.7 | 48.9 | 0 after 32 s | 72.7 | 68.7 | 25 to 45 or cutoff | NA | 0.050 | 57.7 | 67.7 | 81.2 |
+| m5stack-core | 67.7 | 79.7 | 48.9 | 0 after 64 s | 72.7 | 68.7 | 25 to 45 or cutoff | NA | 0.050 | 57.7 | 67.7 | 81.2 |
 | m5stack-core2 | 67.8 | 79.8 | 49.0 | 1.05 | 72.8 | 68.8 | 25 to 45 | NA | 0.027 | 57.8 | 67.8 | 81.3 |
 | m5stick-s3 | 80.5 | 79.2 | 67.3 | 0.3 to 0.8 | 83.8 | 81.1 | 30 to 45 | 3.3 to 4.0 | 0.014 | 63.8 | 80.5 | 97.4 |
 
@@ -544,7 +544,7 @@ Notes on the table:
 - The S3 `ON240` value is 79.2 mA, not 81.2 mA, because 240/255 of the 35 mA
   backlight is 32.9 mA while the model charges the full 35 mA.
 - The Core `OFF` value is not a steady state. The IP5306 removes the boost
-  after 32 s below 45 mA.
+  after 64 s below 45 mA.
 - The Plus2 has no PMIC and no firmware power-off path. `PWR_OFF` is not a
   firmware measurement; record the hardware method used, such as battery
   removal or the board's power control.
@@ -652,7 +652,7 @@ start is not integrated is a failed measurement.
 
 | ID | State | Board | Expected | Acceptance | Instrument | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| L01 | Core IP5306 cutoff, load below 45 mA | m5stack-core | Boost off 32 to 40 s after the load drops; post-cutoff 0.05 mA | T-state plus T-floor for the post-cutoff value | I1 | unknown |
+| L01 | Core IP5306 cutoff, load below 45 mA | m5stack-core | Boost off 64 to 72 s after the load drops; post-cutoff 0.05 mA | T-state plus T-floor for the post-cutoff value | I1 | unknown |
 | L02 | Deep sleep | all | Not implemented; no `esp_deep_sleep` call in the tree | Not measurable | None | unknown |
 
 L02 is deliberately an `unknown` row. Do not invent a deep-sleep number for
@@ -972,7 +972,7 @@ runtime_h = usable_capacity_mAh / mean_current_mA
 
 ### 12.4 Core and Plus2 special cases
 
-- **Core.** The IP5306 cuts the boost below 45 mA after 32 s. A mixed profile
+- **Core.** The IP5306 cuts the boost below 45 mA after 64 s. A mixed profile
   that drops below 45 mA ends in cutoff, not in a low-current state. Record
   the cutoff time and the post-cutoff current. A "Core sleep runtime" claim is
   not available.

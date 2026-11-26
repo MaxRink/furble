@@ -194,6 +194,8 @@ implemented.
 | [123-host-task-lifecycle.md](implemented/123-host-task-lifecycle.md) | Join real-Control harness tasks before host static destruction |
 | [126-settings-handle-concurrency.md](implemented/126-settings-handle-concurrency.md) | Use operation-local Preferences handles so concurrent settings calls cannot replace or close each other's NVS handle |
 | [301-sim-ui-buttons.md](implemented/301-sim-ui-buttons.md) | Interactive on-screen A/B/C or A/B/PWR buttons in a top-view control window that drives the same emulated GPIOs as the keyboard, without covering the panel or its overlays |
+| [334-sim-hardware-alignment.md](334-sim-hardware-alignment.md) | Simulator and production alignment with verified vendor rules: W5500 RESETn 500 us, the IP5306 64 s cutoff, and the panel dwell the simulator cannot model |
+| [334-review-feedback.md](334-review-feedback.md) | Review-feedback record for PR 482: the README and L01 cutoff values, the opened W5500 datasheet revision, and the boundary test hardening |
 
 ## Tooling and web installer
 

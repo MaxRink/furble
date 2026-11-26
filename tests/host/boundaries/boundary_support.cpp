@@ -5,6 +5,7 @@
 
 #include "FurblePlatform.h"
 #include "FurbleTypes.h"
+#include "boundary_host.h"
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -22,9 +23,14 @@ namespace {
 struct GpioState {
   int direction = -1;
   int level = -1;
+  std::vector<BoundaryHost::GpioEdge> edges;
 };
 
 std::vector<GpioState> g_Gpios;
+
+// Virtual microsecond clock. Only esp_rom_delay_us() advances it, so a test can
+// measure a production busy-wait pulse width on a host that has no such clock.
+uint64_t g_Micros = 0;
 
 GpioState &gpioState(int pin) {
   if (pin < 0) {
@@ -59,14 +65,32 @@ int gpio_install_isr_service(int flags) {
   return 0;
 }
 
+int gpio_config(const gpio_config_t *config) {
+  if (config == nullptr) {
+    return -1;
+  }
+  for (int pin = 0; pin < 64; ++pin) {
+    if (((config->pin_bit_mask >> pin) & 1ULL) != 0) {
+      gpioState(pin).direction = static_cast<int>(config->mode);
+    }
+  }
+  return 0;
+}
+
 int gpio_set_direction(gpio_num_t pin, gpio_mode_t mode) {
   gpioState(pin).direction = static_cast<int>(mode);
   return 0;
 }
 
 int gpio_set_level(gpio_num_t pin, int level) {
-  gpioState(pin).level = level;
+  auto &state = gpioState(pin);
+  state.level = level;
+  state.edges.push_back({level, g_Micros});
   return 0;
+}
+
+void esp_rom_delay_us(uint32_t microseconds) {
+  g_Micros += microseconds;
 }
 
 lv_timer_t *lv_timer_create(lv_timer_cb_t callback, uint32_t period_ms, void *user_data) {
@@ -130,6 +154,10 @@ int gpioDirection(int pin) {
 
 int gpioLevel(int pin) {
   return gpioState(pin).level;
+}
+
+std::vector<BoundaryHost::GpioEdge> gpioEdges(int pin) {
+  return gpioState(pin).edges;
 }
 
 bool logContains(const char *needle) {

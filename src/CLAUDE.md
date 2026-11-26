@@ -141,6 +141,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   gates the TimeKeeper sync. The ephemeris cache and AID-INI are CASIC only and
   never reach a UBX receiver. The stream split is the pure
   `GpsDemux::split()`; keep demultiplexing there, not in the driver.
+- `FurbleEthernet.cpp` owns the W5500 RESETn pulse. The pinned ESP-IDF W5500
+  PHY hardcodes 100 us in `w5500_reset_hw()`, so the transport drives a 500 us
+  pulse before `esp_eth_driver_install()` (which runs the PHY hardware reset and
+  then the MAC init over SPI) and passes `reset_gpio_num = -1`. Do not hand the
+  pin back: a second 100 us assertion would be the last one and under the
+  datasheet minimum.
 - The duty cycle waits until the receiver is identified and the configuration
   queue is idle. Standby sends `$PCAS12` only on the NMEA backend and
   RXM-PMREQ (force flag) on UBX. A duty request seen in STANDBY or RAIL_OFF

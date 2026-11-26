@@ -46,6 +46,29 @@ PHY behavior, DHCP on a physical LAN, analog audio, the SD card controller and
 TLS on hardware remain hardware validation items even though the production
 decisions are linked.
 
+The W5500 row also times the RESETn pulse. `boundary_ethernet_test` records
+every level change on the reset line against a virtual microsecond clock that
+only the production `esp_rom_delay_us()` call advances, so it fails on a pulse
+shorter than the 500 us W5500 datasheet minimum. Every `init()` has to drive its
+own low-then-high pair after a snapshot taken before the call, so a pulse moved
+after the driver install cannot pass on the previous init's edges. It does not
+prove the device waited, only that production asked the ROM for the delay.
+
+## Not modelled
+
+- **Panel command timing.** The simulator has no SPI or command layer for the
+  panel, so `SLPIN` (0x10) and `SLPOUT` (0x11) are never issued and nothing
+  timestamps the gap between them. M5GFX 0.2.27 renders through `Panel_sdl`,
+  which derives from `Panel_FrameBufferBase`, and that class overrides
+  `setSleep(bool)` with an empty body
+  (`src/lgfx/v1/panel/Panel_FrameBufferBase.hpp:46`). `M5.Display.sleep()` and
+  `M5.Display.wakeup()` therefore change no simulated hardware state beyond
+  the backlight value. The production dwell in `src/FurbleUI.cpp` does run in
+  the simulator on the virtual clock, but asserting it there would check the
+  guard against itself, not against a panel. The one-way ST7796S 9.2.12 and
+  9.2.13 rule (120 ms from SLPOUT to the next SLPIN, and 5 ms after either
+  command before any other) stays a hardware item. See
+  `plans/334-sim-hardware-alignment.md`.
 
 ## Checkers
 

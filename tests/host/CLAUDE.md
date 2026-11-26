@@ -36,6 +36,16 @@ ordinary and MQTT-enabled provisioning targets when changing this coverage.
 the production tokens named in `sim/coverage/hardware_quirks.json`. The test
 targets are normal CTest entries, so the host CI job runs them.
 
+`boundary_host.h` timestamps GPIO level changes on a virtual microsecond clock
+that only the `esp_rom_delay_us()` double advances, so a test can measure a
+production busy-wait pulse instead of asserting a pin number. It measures the
+requested delay, not elapsed time. `boundary_ethernet_test` uses it for the
+500 us W5500 RESETn minimum; keep new timing doubles on the same clock. That
+test snapshots the edge count before every `init()`, and its ordering check
+requires the init to add its own low and high edges, so a pulse moved after the
+driver install cannot pass on an earlier init's edges. Keep any new ordering
+check on the same baseline rather than on the whole edge list.
+
 The SD boundary compiles `src/FurbleSD.cpp` with `FURBLE_SD_MOUNT_POINT` set to
 `/tmp/furble-boundary-sd`. That define is a host-only override; the firmware
 default remains `/sd` and no device behavior changes. The same target sets
