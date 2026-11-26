@@ -70,7 +70,7 @@ which page covers the part and which documents that page names.
 | TI BQ25896 | [bq25896.md](bq25896.md) | Charger on the T-LoRa Pager, no driver yet | none | SLUSC76C |
 | XINLUDA XL9555 | [xl9555.md](xl9555.md) | 16-bit IO expander for GPS enable and rails | `lib/hal/XL9555.cpp` | Rev 2.3 |
 | Semtech SX1262 | [sx1262.md](sx1262.md) | LoRa radio, held in sleep | `lib/hal/SX1262.cpp` | Rev 2.2 |
-| CASIC AT6668 | [at6668.md](at6668.md) | GNSS receiver in the M5 GPS unit | `src/FurbleGPS.cpp`, `lib/furble/protocol/GpsCasic.cpp` | none found |
+| CASIC AT6668 | [at6668.md](at6668.md) | GNSS receiver in the M5 GPS unit | `src/FurbleGPS.cpp`, `lib/furble/protocol/GpsCasic.cpp` | DS-AT6668 V1.4, current only |
 | u-blox MAX-M10S | [ublox-max-m10s.md](ublox-max-m10s.md) | GNSS receiver, ROM SPG 5.10 | `lib/furble/protocol/GpsUbx.h` | UBX-21035062 R03 |
 | u-blox MIA-M10Q | [ublox-mia-m10q.md](ublox-mia-m10q.md) | GNSS module variant, same ROM | `lib/furble/protocol/GpsUbx.h` | UBX-21035062 R03 |
 | Sitronix ST7789 and ST7789V2 | [st7789.md](st7789.md) | Panel on the StickS3 and most M5 boards | M5GFX panel, `src/FurbleUI.cpp` | V1.3 and V1.0 |
@@ -141,10 +141,12 @@ line passes only when its name appears in backticks in the first column.
 
 ## Known corpus gaps
 
-- No AT6668, SH1106, CST9217 or QMI8658 vendor document could be confirmed on
-  2026-11-25. Those four pages carry no document-backed register fact. The SH1106
-  page records only what `plans/322-hardware-abstraction.md` claims, marked
-  UNVERIFIED.
+- No SH1106, CST9217 or QMI8658 vendor document could be confirmed on 2026-11-25.
+  Those three pages carry no document-backed register fact. The SH1106 page
+  records only what `plans/322-hardware-abstraction.md` claims, marked
+  UNVERIFIED. For the AT6668, DS-AT6668 V1.4 is located and its section 4.3
+  page 9 supplies the supply current, reported here rather than reopened; the
+  rest of that page stays UNVERIFIED.
 - The AXP2101 per-register subsection numbers cannot be reached through the
   retrieved copy, so they stay at the state the driver already had.
 - The XINLUDA XL9555 copy confirmed Rev 2.3 but not the section headings.

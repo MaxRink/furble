@@ -189,7 +189,7 @@ stored. A future PDF needs all four conditions met and a row added to that table
 
 | Group | Pages | Open items |
 | :--- | :--- | :--- |
-| No document found at all | AT6668, SH1106, CST9217, QMI8658 | 6, 4, 6 and 5 items. For AT6668: the `$PCAS` argument ranges, the 108 s cold start, the missing backup rail, the baud rate and the current. Nothing on those pages is a register fact. |
+| No document found at all, or found but not opened | AT6668, SH1106, CST9217, QMI8658 | 6, 4, 6 and 5 items. For AT6668: the `$PCAS` argument ranges, the 108 s cold start, the missing backup rail and the baud rate. DS-AT6668 V1.4 was located and its section 4.3 page 9 gives the supply current, reported through an independent pass; no copy was opened for this corpus. Nothing on those pages is a register fact. |
 | Second source only | BM8563 | 6 items. The Belling document is not retrievable, so the facts rest on a GATEMODE copy and on PCF8563 family behaviour. |
 | Document reached, body not | AXP2101, XL9555, PCF8563, ST7789, ILI934x, IP5306 | AXP2101 subsections 6.13.2.1 to 6.13.2.88 and the REG 90 bit 4 defect body; XL9555 sections 9.1 and 9.2; the PCF8563 timer section number; the panel sleep timing sections; the IP5306 register document V1.21, which was not retrieved and has no URL. |
 | Datasheet not opened | BMI270, W5500 timing, ST7735S, MPU-6886 sections 8.20 to 8.22, the M10 module data sheets and integration manuals | 6, 6, 4, 7 and 5 items. The section numbers there are CITED from the source comments, not reopened. |
@@ -245,8 +245,9 @@ changed.
 
 ## Remaining work
 
-1. Find an AT6668, SH1106, CST9217 or QMI8658 document. Any one of them turns a
-   page from plan-only into a citation.
+1. Find an SH1106, CST9217 or QMI8658 document. Any one of them turns a page
+   from plan-only into a citation. Open DS-AT6668 V1.4 itself rather than
+   resting on the reported current.
 2. Open the two TRMs for the ESP32 and ESP32-S3 clock, RMT and USB facts.
 3. Read the XL9555 section 9.1 and 9.2 tables, the AXP2101 register bodies and
    the PCF8563 timer section.
