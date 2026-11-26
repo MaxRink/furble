@@ -84,6 +84,10 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   claiming a coherent delivered-geotag snapshot or timing-sensitive cycle state.
   Duty-cycle freshness is established at the per-byte TinyGPS++ location update
   boundary under `m_GPSMutex`, not by comparing `location.age()` values.
+  `uart_driver_install()` is checked once. A failed install has no queue and no
+  task, so `enable()` and `reset()` return before the power lock and before any
+  `xQueue*` call, the receiver reads `absent` for the session, and the install is
+  never retried.
   The service mutex covers each task pass and settings reset. Before waiting
   for it, settings transitions must set the enable gate false and send the
   private front-of-queue wake event so an idle UART receive releases the mutex.

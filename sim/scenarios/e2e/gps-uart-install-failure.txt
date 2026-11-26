@@ -1,0 +1,36 @@
+# uart_driver_install() fails on the GPS port. There is no receive queue and no
+# GPS task, so the receiver has to read absent from the state the console and
+# the GPS Data page both read. Creating the task anyway leaves it blocked on a
+# null queue, which is an assert in xQueueReceive on every boot.
+seed gps true
+seed gps_uart_install fail
+wait 300
+
+# The UI still boots to the main menu, with GPS on in settings and the receiver
+# reported absent rather than detecting or present.
+assert ui.page main
+assert gps.enabled 1
+assert gps.receiver absent
+
+# No GPS task exists to service a cycle or wake, and the failed install arms no
+# cycle, so it holds no sleep lock and starts no acquisition.
+assert gps.idle_wakes 0
+assert gps.timeouts 0
+assert power.no_light_sleep 0
+assert gps.baud 0
+
+# The GPS Data page reports the same absent state the console does, instead of
+# the cycle state a switched off GPS renders.
+action nav gps_data
+wait 300
+assert ui.page gps_data
+wait 1500
+assert-eventually 5000 ui.gps_cycle absent
+assert ui.gps_source none
+assert ui.overflow no
+
+# Nothing panicked, so no crash record was written for the next boot to print.
+assert crash.pending no
+assert crash.recovered no
+assert crash.reset none
+exit

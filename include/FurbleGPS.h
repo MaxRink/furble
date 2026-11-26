@@ -769,6 +769,11 @@ class GPS {
 
   TaskHandle_t m_Task = NULL;
   QueueHandle_t m_Queue = NULL;
+  // Set once when uart_driver_install() fails. There is no queue and no task
+  // after it, so every later getInstance() would only repeat the failed
+  // install, enable() would hold a power lock for a receiver that cannot
+  // answer, and any xQueueReceive() or xQueueReset() would reach a null queue.
+  std::atomic<bool> m_UartInstallFailed = false;
 
   // Parks the GPS task while enable() or disable() resets task-owned UART,
   // parser, configuration, and cycle state. The task rechecks m_Enabled only

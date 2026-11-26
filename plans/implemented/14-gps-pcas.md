@@ -82,7 +82,7 @@ Raw NMEA and satellite page goes under Settings -> Diagnostics, created by PR05.
   `uart_set_pin` with `M5.getPin(m5::port_a_pin2)`. Nothing in furble has used
   it so far. Use `uart_write_bytes` on `m_UART` (`include/FurbleGPS.h:45`,
   `UART_NUM_2`), then `uart_wait_tx_done` with a short timeout.
-- Ordering in `enable()` (`src/FurbleGPS.cpp:354-445`): set the baud rate, flush,
+- Ordering in `enable()` (`src/FurbleGPS.cpp:384-492`): set the baud rate, flush,
   wait for the receiver to settle, then send the configuration. Sending before
   the flush risks the command landing at the wrong baud.
 - Commands used:
@@ -108,7 +108,7 @@ Raw NMEA and satellite page goes under Settings -> Diagnostics, created by PR05.
 - No acknowledgement. The receiver does not reliably answer `$PCAS` commands.
   Verification is observational: watch the sentence mix and the arrival period
   on the raw NMEA page.
-- Re-apply on change. `reloadSetting` (`src/FurbleGPS.cpp:2338-2354`) already runs
+- Re-apply on change. `reloadSetting` (`src/FurbleGPS.cpp:2377-2393`) already runs
   on every settings change through the UI callbacks. Route the new settings
   through the same call so the receiver is reconfigured immediately.
 - Power on ordering. `enable()` calls `M5.Power.setExtOutput(true, m5::ext_PA)`
@@ -117,7 +117,7 @@ Raw NMEA and satellite page goes under Settings -> Diagnostics, created by PR05.
   Do not block the UI task; this runs in the GPS task
   (`src/FurbleGPS.cpp:73-109`).
 - Raw NMEA debug page. Add a small fixed ring buffer of the last 8 sentences,
-  filled from `serviceSerial` (`src/FurbleGPS.cpp:3018-3057`) only while the page
+  filled from `serviceSerial` (`src/FurbleGPS.cpp:3057-3096`) only while the page
   is open. Show it with satellite count, HDOP, fix age and the TinyGPS++
   counters `charsProcessed()`, `passedChecksum()` and `failedChecksum()`. Those
   counters are what PR15 needs to tune its sleep window.
