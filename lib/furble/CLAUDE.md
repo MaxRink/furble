@@ -149,6 +149,24 @@ protocol core.
   Operation Request starts capture. Do not map focus to a timer or capture
   operation without a verified autofocus command. Source:
   https://github.com/dm-zharov/ricoh-gr-bluetooth-api
+- Ricoh's standby wake runs only from the shutter path and only on a fresh
+  `OperationMode` read of BLE_STARTUP. It is a link sequence, not a
+  characteristic write: `Camera::reconnectInPlace()` drops the link, keeps it
+  down for the settle interval, reconnects and re-runs the vendor `_connect()`,
+  so every characteristic pointer is re-derived after the rediscovery. Never
+  wake the body by writing CameraPower; no source verifies that, and the
+  Ricoh Imaging handler treats the write as a power-state request. A
+  notification, including an OperationMode or CameraPower transition, is a
+  diagnostic and never authorizes a capture: a held or re-established link can
+  repeat a stale value. The budgets in `Ricoh.h` are design bounds pending
+  bench measurement. See `plans/149-ricoh-sleep-shutter-gate.md`.
+- A vendor command path may call `Camera::reconnectInPlace()` when a body needs
+  a fresh link before a command is safe. It owns `Camera::m_Mutex` for the whole
+  sequence, publishes `m_CancelClient` so a teardown can abort it, restores
+  client self-delete on success and returns the client to the pool on failure.
+  It deliberately leaves `m_Active`, `m_Paired` and the target ownership alone:
+  a wake is not a connect cycle. Do not reimplement it in a vendor class, and do
+  not call it while holding another Camera lock.
 - Vendor GATT traffic goes through the protected `Camera::gattWrite`,
   `gattRead`, and `gattSubscribe` wrappers. The console-only journal hooks
   live at that seam, so companion traffic and raw explorer traffic stay out

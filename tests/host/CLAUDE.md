@@ -36,6 +36,18 @@ so the double cannot model a sensitivity the hardware does not have. It includes
 `${FURBLE_ROOT}/sim` for that header and needs no stubs. `imu-motion-encoding`
 owns the register bytes and decodes them back to mg through the same header.
 
+`ricoh-wake` owns the Ricoh GR IV standby wake. Its peer models a sleeping body
+(`setSleepingBody()`): the link stays up, CameraPower reads ON and OperationMode
+reads BLE_STARTUP until the central drops and re-establishes the link, after
+which it reports CAPTURE once the modelled wake delay has passed. The test
+asserts both directions of the machine, one relink per attempt, at least one
+post-relink poll, capture writes in order, no capture request while the body is
+asleep (`captureRequestsWhileAsleep()`), and that a wake timeout refuses while
+the relinked connection stays usable. `ricoh-sleep-gate` owns the phase 1
+invariant on the same peer and asserts it as "no capture write", not "no write":
+the wake repeats the connect-path identity write. Keep both: a peer that only
+models a refusal cannot show that the gate survives a wake.
+
 Provisioning tests cover Legend Off through the production apply path and NVS
 store. Keep `Furble::Settings` qualified outside its namespace; run both the
 ordinary and MQTT-enabled provisioning targets when changing this coverage.
