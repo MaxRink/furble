@@ -26,6 +26,8 @@ assert hw.rtc_volt_low yes
 assert time.rtc_available yes
 assert time.valid no
 assert time.source none
+# No sample was accepted, so production holds no epoch.
+assert time.epoch_s 0
 wait 5000
 assert platform.wake_marker no
 assert-eventually-virtual 20000 ui.interval_state finished

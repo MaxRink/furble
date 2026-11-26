@@ -25,6 +25,8 @@ assert time.rtc_available yes
 assert time.rtc_battery yes
 assert time.source rtc
 assert time.valid yes
+# The epoch production holds is the chip's seeded calendar.
+assert time.epoch_s 1767225600
 wait 5000
 assert platform.wake_marker no
 assert camera.shutter_presses 0

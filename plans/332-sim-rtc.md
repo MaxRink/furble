@@ -85,10 +85,15 @@ neighbours: the dedicated deep-sleep runner supplies the power-cycle state.
 | `intervalometer-deep-sleep-rtc-valid.txt` | A record 30 s ahead is accepted and waits its own deadline: `ui.interval_state wait` after 20 s, then `finished` with one press |
 | `intervalometer-deep-sleep-rtc-late.txt` | A record 5 s past fires at once: `ui.interval_state shutter`, then `finished` with one press |
 | `intervalometer-deep-sleep-rtc-lost.txt` | The same stale record with the cell dropped is accepted: `time.valid no`, `time.source none`, `hw.rtc_clock lost`, then one press |
+| `intervalometer-deep-sleep-rtc-persist.txt` | A soft reset keeps the chip counting: `hw.rtc_epoch` 1767225600 then 1767225603 across the `restart`, with `time.source rtc` on both boots and the production epoch asserted |
+| `intervalometer-deep-sleep-rtc-cold-boot.txt` | A cold boot discards the calendar: `hw.rtc_clock unset`, `hw.rtc_epoch 0`, `time.rtc_available yes`, `time.valid no`, `time.source none`, and the install seed does not resurrect the old reading |
+| `intervalometer-deep-sleep-rtc-start.txt` + `-rtc-resume.txt` | The second runner leg: the timed power-off advances the calendar in `Platform::powerOffUntil()` and the resumed process reads a clock it can trust |
 
 The stale and lost scenarios are the same fixture on either side of the clock
 gate, so the pair proves the gate is the modelled chip and not a timing
-accident.
+accident. Every RTC scenario asserts the production clock's epoch
+(`time.epoch_s`), not only its source, so a firmware that accepts a sample at
+the wrong instant fails the scenario instead of passing it.
 
 ## Evidence
 

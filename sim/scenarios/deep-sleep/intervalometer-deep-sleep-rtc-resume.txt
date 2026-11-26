@@ -23,6 +23,7 @@ assert hw.rtc_clock valid
 assert time.rtc_available yes
 assert time.valid yes
 assert time.source rtc
+assert time.epoch_s 1767225606
 assert-eventually-virtual 5000 control.state active
 assert platform.timed_wake yes
 assert platform.wake_marker no

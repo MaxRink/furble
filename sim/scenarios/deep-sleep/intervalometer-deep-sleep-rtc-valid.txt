@@ -19,6 +19,7 @@ seed interval_delay 1
 seed interval_shutter 30
 assert time.rtc_available yes
 assert time.source rtc
+assert time.epoch_s 1767225600
 assert-eventually-virtual 5000 control.state active
 # The run is inside its WAIT countdown, which the state token reports as the
 # shutter step it is about to take. No shot may have happened yet: the
