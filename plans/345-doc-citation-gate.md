@@ -113,11 +113,11 @@ finding, 2 for an invalid invocation.
 The summary separates what was verified from what was not:
 
 ```
-doc citations in the tree: 2562 line-checked (92 symbol-checked), 100 external,
-129 unresolved basename, 0 errors of 2791 citations in 148 files
+doc citations in the tree: 2563 line-checked (92 symbol-checked), 100 external,
+129 unresolved basename, 0 errors of 2792 citations in 148 files
 ```
 
-2,791 citations in 375 Markdown files, 148 of which hold citations. 92 get the
+2,792 citations in 375 Markdown files, 148 of which hold citations. 92 get the
 symbol check. That is a narrow share and the number is printed rather than
 buried: the gate's coverage of the symbol rule is what the syntax allows, and
 `--verbose` prints the scan size so a shrinking symbol share is visible.
@@ -128,7 +128,7 @@ Three decisions worth recording:
   `CLAUDE.md` files carry 23 citations of their own, and a directory list would
   rot as directories move.
 - `--all` is the default and what pre_review runs. The expected large one-off
-  backlog did not exist: 2,562 of the citations resolve and 92 get the symbol
+  backlog did not exist: 2,563 of the citations resolve and 92 get the symbol
   rule, the whole sweep is one pass, and a clean tree means a full sweep costs
   nothing per pull request. `--base REV` still exists for a large or
   mid-migration doc set, and it is deliberately stronger than "changed docs":
@@ -290,8 +290,8 @@ row; the rest were found by reading the header while fixing those two.
 
 ```
 python3 tools/check_doc_citations.py
-doc citations in the tree: 2562 line-checked (92 symbol-checked), 100 external,
-129 unresolved basename, 0 errors of 2791 citations in 148 files
+doc citations in the tree: 2563 line-checked (92 symbol-checked), 100 external,
+129 unresolved basename, 0 errors of 2792 citations in 148 files
 
 python3 -m unittest tests.test_check_doc_citations
 Ran 33 tests

@@ -111,8 +111,9 @@ the line:
 
 - 72 pass because the symbol is on the cited start line.
 - 8 pass because the start line is the attached comment head of the definition.
-  Sample: `plans/implemented/15-gps-power.md:125` for `GPS::update`, whose
-  comment starts at 2500 and whose body starts at 2504.
+  Sample: `plans/implemented/15-gps-power.md:125` cites `GPS::update` at
+  `src/FurbleGPS.cpp:2500-2771`, which starts on the attached comment at 2500
+  above the definition at 2501.
 - 5 pass because the start line is inside the definition body.
 - 5 pass through the "file only uses this symbol" range rule.
 - 1 passes through the one-line declaration rule.
