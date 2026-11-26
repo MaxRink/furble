@@ -532,19 +532,22 @@ This is a documentation and build consistency item, not a separate power lever.
 
 ### OS-02 Lengthen the control task queue timeout
 
-- **Change:** Raise the 50 ms `xQueueReceive` timeout when the state machine is
-  idle, for example to 250 ms.
-- **Current behavior:** 50 ms (`src/FurbleControl.cpp:379-386`), which is 20
-  wakes per second used for `reapZombieTargets()`, `sampleAdaptivePower()`, and
+- **Change:** Implemented at 250 ms. `Control::task()` blocks in `xQueueReceive`
+  for 250 ms (`src/FurbleControl.cpp:484`) instead of 50 ms, unconditionally
+  rather than only when the state machine is idle; commands still wake the queue
+  immediately.
+- **Current behavior:** 250 ms (`src/FurbleControl.cpp:484`), which is 4 wakes
+  per second used for `reapZombieTargets()`, `sampleAdaptivePower()`, and
   liveness checks. Commands themselves wake the queue immediately.
 - **Evidence:** inferred (code-read). `sampleAdaptivePower()` is rate limited to 5 s
   by `RSSI_SAMPLE_INTERVAL_MS` (`src/FurbleControl.cpp:27`) against
-  `m_LastRssiSample` (`src/FurbleControl.cpp:1515`), and the zombie reclaim deadline is a
-  timestamp, so the tick is a service cadence, not a correctness deadline.
+  `m_LastRssiSample` (`src/FurbleControl.cpp:1515`), and the zombie reclaim
+  deadline is the timestamp `m_ZombieDeadline` (`src/FurbleControl.cpp:1227`), so
+  the tick is a service cadence, not a correctness deadline.
 - **Estimated saving:** Low. A task wake and context switch is on the order of
-  tens of microseconds, so 20 to 4 wakes per second is well below 0.1 mA. The
-  value is fewer scheduler events inside the 5 ms UI cadence, not a changed
-  sleep count.
+  tens of microseconds, so 4 wakes per second instead of 20 is well below
+  0.1 mA. The value is fewer scheduler events inside the 5 ms UI cadence, not a
+  changed sleep count.
 - **Risk:** Low. Zombie reclaim and liveness observation become up to 250 ms
   coarser. A connect command still wakes the queue immediately.
 - **Effort:** Small.
@@ -552,7 +555,7 @@ This is a documentation and build consistency item, not a separate power lever.
   `control-zombie-cancel`, `control-interleave`, and the simulator connect and
   reconnect scenarios. Confirm the reclaim deadline still fires within its
   documented bound.
-- **Citation:** `src/FurbleControl.cpp:27`, `379-386`, `1149`,
+- **Citation:** `src/FurbleControl.cpp:27`, `484`, `1515`, `1227`,
   `include/FurbleControl.h:88`, `98`.
 
 ### OS-03 Lengthen the per-target queue timeout
@@ -1038,7 +1041,8 @@ measurement to decide. Each still needs its test.
 3. **SOC-04** Enable `CONFIG_PM_RTOS_IDLE_OPT`. About 180 bytes of IRAM for a
    documented 20 us per sleep.
 4. **OS-04** Block the GPS task when disabled. The wake event already exists.
-5. **OS-02** Raise the idle control queue timeout. Commands still wake the queue.
+5. **OS-02** Raise the idle control queue timeout. Implemented at 250 ms;
+   commands still wake the queue.
 6. **OS-03** Raise the per-target queue timeout. The 10 s idle threshold and 1 s
    stats interval both tolerate 250 ms.
 7. **CON-04** Raise the console read timeout. Developer builds only.

@@ -178,7 +178,10 @@ fails, so the list cannot rot into a blanket.
 
 Be aware of what it cannot catch. A citation that names no symbol is checked for
 its path and range only, so a wrong line inside the file passes. Drift that stays
-inside one definition passes. A line that holds the named symbol and contradicts
+inside one definition passes, and a definition's attached comment block counts as
+part of it, so comment lines inserted directly above a cited definition pass too.
+A symbol that appears on the cited line only in a comment or a log string
+satisfies the on-line rule. A line that holds the named symbol and contradicts
 the prose passes. `--base REV` checks only the citations that range could break
 (every citation in a changed document, plus every citation anywhere that targets
 a changed file, which is how a source edit that moves lines fails an untouched

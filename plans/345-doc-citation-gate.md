@@ -11,6 +11,16 @@ those bases and rerun there. No CI run is claimed, and no hardware statement is
 made or changed. The tree keeps growing under this gate, so a later base moves
 these counts again; that is what the gate is for, not a defect in it.
 
+The review after the merge (`plans/511-review-feedback.md`) re-derived the base
+figures: the merge base `c644f39e` reports 86 findings, not the 80 this plan
+first carried, because three later merges added six. It also found that rule 3
+overstated itself where a definition carries a comment block, that the on-line
+rule accepts a comment or log-string mention, and that five wrong citations and
+one imprecise line pointer in the touched files survived the gate because it
+cannot see them. Those are corrected
+here, and the figures below are restated for the tree this plan now ships in:
+`81139818` plus this remediation, after #518 and #519 moved four more citations.
+
 ## Defect
 
 Plans and docs cite code as `path:line` or `path:start-end`. Nothing moves those
@@ -71,7 +81,12 @@ well:
   while they pointed at the wrong code. They were found by reading.
 - Drift that stays inside one definition. A four line edit inside a forty line
   function moves every citation in that function and none of them fail.
+- Comment lines inserted directly above a cited definition. The span covers the
+  comment block attached above it, so those lines are part of the definition and
+  the shift is absorbed. The unit tests pin it.
 - A cited line that holds the named symbol and contradicts the prose.
+- A symbol that appears on the cited line only in a comment or a log string. The
+  on-line rule reads the raw line, so a mention counts. The unit tests pin it.
 - A symbol the sentence names before another citation, after the citation, in
   bold rather than backticks, or in a table cell holding several citations.
 - A bare filename. `Camera.h:203` may name `lib/furble/Camera.h`, a test stub or
@@ -98,11 +113,11 @@ finding, 2 for an invalid invocation.
 The summary separates what was verified from what was not:
 
 ```
-doc citations in the tree: 2525 line-checked (91 symbol-checked), 100 external,
-128 unresolved basename, 0 errors of 2753 citations in 146 files
+doc citations in the tree: 2562 line-checked (92 symbol-checked), 100 external,
+129 unresolved basename, 0 errors of 2791 citations in 148 files
 ```
 
-2,753 citations in 372 Markdown files, 146 of which hold citations. 91 get the
+2,791 citations in 375 Markdown files, 148 of which hold citations. 92 get the
 symbol check. That is a narrow share and the number is printed rather than
 buried: the gate's coverage of the symbol rule is what the syntax allows, and
 `--verbose` prints the scan size so a shrinking symbol share is visible.
@@ -113,7 +128,7 @@ Three decisions worth recording:
   `CLAUDE.md` files carry 23 citations of their own, and a directory list would
   rot as directories move.
 - `--all` is the default and what pre_review runs. The expected large one-off
-  backlog did not exist: 1,510 of the citations resolve and 81 get the symbol
+  backlog did not exist: 2,562 of the citations resolve and 92 get the symbol
   rule, the whole sweep is one pass, and a clean tree means a full sweep costs
   nothing per pull request. `--base REV` still exists for a large or
   mid-migration doc set, and it is deliberately stronger than "changed docs":
@@ -142,13 +157,16 @@ into a blanket, and `--base` skips that check because it only sees a subset.
 
 ## Cleanup
 
-The first full sweep of the merge base found 5 citations whose path exists
+The first full sweep, on `bebf7caf`, found 5 citations whose path exists
 nowhere here, one range past the end of its file, and, with the symbol rule as
 it now stands, 74 symbol findings. That is 80 findings in all, and every one
-was fixed. Two groups are counted and not verified, and neither is a finding:
-84 citations written as a bare filename on that tree (100 on this one), and 79
-citations into an external tree there (94 here), covered by the ten declared
-prefixes above.
+was fixed. The merge base `c644f39e` reports 86, not 80: three later merges
+added six, five in the datasheet pages #490 to #517 added and one in #504's IMU
+plan. That split is 78 symbol, 5 unresolved path and 3 out of range, and every
+one of those was fixed too. Two groups are counted and not verified, and neither
+is a finding: 84 citations written as a bare filename on the first base (128 on
+this one), and 79 citations into an external tree there (100 here), covered by
+the eleven declared prefixes above.
 Nothing was added to the `allow` list.
 
 The five wrong paths, all errors this gate exists to catch:
@@ -169,8 +187,9 @@ The one line past the end of its file was a range ending at 279 of
 `plans/implemented/60-issue-257.md`. The function is `degreesToDMSubMin` at
 238-264.
 
-Of the 74 symbol findings, 45 named a symbol the file defines, so the citation
-was repointed at the definition span. The worst were thousands of lines out:
+Of the 74 symbol findings on the first base, 45 named a symbol the file defines,
+so the citation was repointed at the definition span. On the merge base the
+split is 46 defined and 32 not, out of 78. The worst were thousands of lines out:
 `UI::batteryUpdate` was cited at `src/FurbleUI.cpp:2932-2992` and is at
 11537-11626, and `Control::sendCommand` was cited at
 `src/FurbleControl.cpp:183-185` in two plans and is at 581-606. Both are
@@ -182,6 +201,36 @@ means, which is the durable fix: `classifyDisconnect()` now carries the citation
 instead of the `TRANSIENT` value it returns, `Intervalometer::save()` carries it
 instead of the `interval_t` it writes, and `Platform::powerOff()` carries it
 instead of `M5PM1::shutdown()`.
+
+Five more citations the gate could not see were wrong, and one pointed inside the
+right function at the wrong line. All six are fixed here. Each sits in a file
+this PR already touched, next to a citation it did correct:
+
+- `docs/power/soc.md` OS-02 cited `src/FurbleControl.cpp:379-386` for the 50 ms
+  control queue receive and the bare continuation `1149` for
+  `m_LastRssiSample`. At the note's snapshot commit both were right; the code
+  moved to 484 and 1515 and the tick became 250 ms in 797f01fa, so the prose
+  said 50 ms and 20 wakes. The section now says implemented at 250 ms. The
+  clause named no symbol and the continuation is not parsed, so neither was a
+  finding.
+- `plans/implemented/76-reconnect-stuck.md` cited `Camera::m_Mutex` at
+  `lib/furble/Camera.cpp:28`, which is `#if defined(FURBLE_CONSOLE)`; the lock in
+  `Camera::connect()` is at 532. The other copy of that claim, in the next
+  paragraph, was corrected to 532 while this one was missed because its clause
+  names two symbols (`Camera::connect()` and `Camera::m_Mutex`), so the gate
+  checked the path and line only.
+- `plans/34-ota-partitions.md` kept "the task created at `src/main.cpp:32`",
+  where the file has an `#if`, while `xTaskCreate` is at 517, in the same
+  numbered item whose `Control::sendCommand` citation was corrected. Its
+  `Control::sendCommand` citation also pointed at a comment inside the function
+  rather than the zero-timeout `xQueueSend` at 605.
+- `plans/25-multiconnect-ui.md` placed the `updateItems` guard from the scan
+  callback at `src/FurbleUI.cpp:943-945`, which is a `BootTimeline` mark; the
+  unlock, callback and relock are at 9638-9645.
+
+That is the honest limit in practice: the gate removed 86 mechanical findings,
+and reading still found five wrong citations and one imprecise one. None was
+silenced through `allow`.
 
 Two citations are worth recording as the honest limit of this gate,
 `plans/implemented/303-upstream-sync.md:39` and `:41`. Each names no symbol in
@@ -241,16 +290,16 @@ row; the rest were found by reading the header while fixing those two.
 
 ```
 python3 tools/check_doc_citations.py
-doc citations in the tree: 2525 line-checked (91 symbol-checked), 100 external,
-128 unresolved basename, 0 errors of 2753 citations in 146 files
+doc citations in the tree: 2562 line-checked (92 symbol-checked), 100 external,
+129 unresolved basename, 0 errors of 2791 citations in 148 files
 
 python3 -m unittest tests.test_check_doc_citations
-Ran 31 tests in 1.948s
+Ran 33 tests
 
 OK
 ```
 
-The 80 findings come from the same command run against the merge base, with
+The 86 findings come from the same command run against the merge base, with
 this branch's `tools/check_doc_citations.py` and `tools/doc_citations.json`
 copied in so the script exists there and the declared external prefixes apply:
 
@@ -280,8 +329,10 @@ one is fixed here.
 
 The unit tests pin both halves: the four line drift above fails, and a citation
 of a line inside a definition, of a comment above a declaration, and of a
-symbol the file only uses all pass. Three tests pin the documented blind spots
-(no named symbol, two named symbols, a plain word in a code span) so that a
-future change that starts failing them is a change to the gate's contract, not a
-silent regression. Two tests pin `--base`: a source edit that moves a symbol
-fails an untouched document, and a stale `allow` entry is not judged there.
+symbol the file only uses all pass. Five tests pin the documented blind spots
+(no named symbol, two named symbols, a plain word in a code span, a comment
+mention that satisfies the on-line rule, and a comment inserted above a cited
+definition) so that a future change that starts failing them is a change to the
+gate's contract, not a silent regression. Two tests pin `--base`: a source edit
+that moves a symbol fails an untouched document, and a stale `allow` entry is not
+judged there.
