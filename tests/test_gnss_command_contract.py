@@ -1,7 +1,7 @@
 """Guard the CASIC `$PCAS` commands furble writes against the vendor documents.
 
 The three commands below are the ones the audit in
-`plans/332-gnss-vendor-audit.md` found a rule for. The protocol revisions are
+`plans/377-gnss-vendor-audit.md` found a rule for. The protocol revisions are
 the CASIC multi-mode receiver specification V6.3.2 (2025-06-24) and V4.2.0.3
 (2021-03-01), plus the u-blox M10 ROM 5.10 release notes.
 

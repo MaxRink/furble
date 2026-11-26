@@ -8,10 +8,12 @@ firmware register value changed. All four held. The findings are documentation
 damage the change left behind, and they are fixed in
 `fix/504-review-followup`.
 
-There are five `plans/332-*.md` files on master (this plan, the docs gap
-closure, the GNSS vendor audit, the simulator RTC and the vendor document
-verification), so this record is named for the plan rather than the number.
-`plans/332-review-feedback.md` would be ambiguous.
+Five `plans/332-*.md` files shared this number when the record was written (this
+plan, the docs gap closure, the GNSS vendor audit, the simulator RTC and the
+vendor document verification), so it is named for the plan rather than the
+number: `plans/332-review-feedback.md` would have been ambiguous. The four
+later plans and the RTC record now sit at 377 to 380, per the renumbering table
+in [README.md](README.md#plan-renumbering), and 332 is this plan's alone.
 
 ## Findings
 

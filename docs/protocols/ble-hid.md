@@ -37,7 +37,7 @@ once. The page states both rather than choosing:
 
 The fix is a code change and does not belong in this documentation pull request.
 It is recorded as follow-up FU-01 in
-[plan 332](../../plans/332-docs-gap-closure.md#follow-ups): either remove the
+[plan 379](../../plans/379-docs-gap-closure.md#follow-ups): either remove the
 constant or correct it to 0x1812 and wire it into a filter, at
 `lib/furble/Scan.h:181`, in the pull request that first wants a HID scan.
 

@@ -135,7 +135,7 @@ Backlights:
   (https://dratek.cz/docs/produkty/1/1045/at6558.pdf) tagged `estimated`: the
   replacement moves the GPS term in every board row, so it belongs to a
   baseline refresh under `plans/98-power-optimization-audit.md` rather than to
-  a citation change (`plans/354-gnss-datasheet-verification.md`).
+  a citation change (`plans/382-gnss-datasheet-verification.md`).
 - $PCAS12 standby in circuit: `estimated` at 0.5 mA (10 uA to 2 mA). The
   chip drops below 10 uA but the module keeps its TCXO, flash, and the
   unit's regulator powered. Locally proven to work ($PCAS12,10 stops NMEA

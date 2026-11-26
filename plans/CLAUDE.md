@@ -50,7 +50,18 @@ PRs. The current sim-only closeout state is in
   focus-only or half-press command. Keep focus gestures as no-ops until a
   distinct operation is verified from protocol evidence and hardware.
 - Numbering: 0x small improvements, 1x-2x phased features, 30+ framework work,
-  50+ design documents, 90+ deferred ideas. Do not renumber existing docs.
+  50+ design documents, 90+ deferred ideas. Do not renumber existing docs just
+  to tidy the sequence. Two distinct plans on one number is not tidying: it is
+  a defect, because every bare `plan NN` and every relative link resolves to
+  whichever document the reader opens. Take the next number above the highest
+  that any local ref, remote ref or open pull request branch uses, because 347,
+  363, 364, 365 and 366 were each claimed by different branches at different
+  times. The plan the repository cites outside `plans/` keeps the number; the
+  rest move, with their review records, their index rows, their title lines and
+  every citation that names them. Record the mapping in `README.md`. The
+  2026-11-26 cleanup moved seven plans to 377 to 383. Read the three sources
+  above, not master alone: every failed attempt at that cleanup picked a number
+  an open pull request already held.
 - `00-hardware-experiments.md` records measured hardware facts (crystal, GPS
   backup rail, $PCAS support). Cite it instead of re-measuring.
 - Charging auto-off policy work updates `implemented/13-auto-off-low-batt.md`. Current

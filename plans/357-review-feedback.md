@@ -202,7 +202,7 @@ Second finding, wording: the status line said "implemented on
 Attacked: the page citations, then the FCC claim's scope.
 
 Held, and this is the strongest part of the change. The vendor documents were
-re-fetched and hashed against the SHA-256 in `plans/332` before any page was
+re-fetched and hashed against the SHA-256 in `plans/378` before any page was
 read, so these are the same copies the original pass read:
 
 - `DS_SX1261_2_V2-2.pdf` `6d783125...4306c2`, 118 pages. PDF page 56 is Table
@@ -348,7 +348,7 @@ Finding: none.
 | `tests/host/sim_heap_caps_shim_test.cpp` | pins the info watermark against the per-caps getter for both pools |
 | `sim/CLAUDE.md` | the same two heap corrections |
 | `docs/power/datasheet-register.md` | the two StickC FCC IDs; the Waveshare row scoped to a not-found |
-| `plans/331`, `plans/337`, `plans/356`, `plans/314`, `plans/332`, `plans/313`, `plans/314-review-feedback.md` | the findings above, each with its evidence, and the three stale status lines |
+| `plans/331`, `plans/337`, `plans/356`, `plans/314`, `plans/378`, `plans/313`, `plans/314-review-feedback.md` | the findings above, each with its evidence, and the three stale status lines |
 | `plans/355`, `docs/sim.md` | no change: #517 already corrected both, and this review confirms it |
 
 No merged history was rewritten. No hardware was involved.

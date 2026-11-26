@@ -1,4 +1,4 @@
-# 332 - Battery-backed RTC in the simulator
+# 380 - Battery-backed RTC in the simulator
 
 Status: implemented on `feat/455-sim-rtc` for issue #455, delivered in #507.
 Simulator only; no firmware behaviour changes. Issue #455 is closed against that
@@ -178,7 +178,7 @@ Delivered on `feat/455-sim-rtc`, rebased onto `origin/master` at `dc5be70f`.
 - Branch base: `origin/master` at `dc5be70f`. The work started from `4af87727`;
   master then took #471, #472, #478 and #477. Only `plans/README.md` conflicted,
   because both sides add rows: every master row is kept and the #455 ownership
-  row and the 332 plan-list entry are added beside them. `sim/scenarios/manifest.json`
+  row and the 380 plan-list entry are added beside them. `sim/scenarios/manifest.json`
   merged without a conflict and holds all 408 base entries plus the 11 new ones,
   which `python3 tools/check_sim_scenarios.py` re-checks. `sim/CLAUDE.md` and
   `docs/sim.md` also merged cleanly, and #472 (the heap model) shares no source

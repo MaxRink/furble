@@ -1,4 +1,4 @@
-# 332 - GNSS configuration audit against the vendor documents
+# 377 - GNSS configuration audit against the vendor documents
 
 ## Motivation
 
@@ -369,7 +369,7 @@ These need a unit, and the code is unchanged for them:
 
 ## Implementation state
 
-Implemented on `fix/gnss-doc-audit` (plan 332):
+Implemented on `fix/gnss-doc-audit` (plan 377):
 
 - `$PCAS03` built from fourteen rate fields in
   `lib/furble/protocol/GpsCasic.{h,cpp}`, used by all three call sites in

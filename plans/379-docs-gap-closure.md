@@ -1,4 +1,4 @@
-# 332: component and protocol documentation gap closure
+# 379: component and protocol documentation gap closure
 
 Status: implemented on `docs/component-protocol-gaps`, rebased onto
 `docs/datasheet-corpus` (#475) and reconciled with the corpus page set.

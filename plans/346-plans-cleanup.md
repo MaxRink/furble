@@ -121,14 +121,14 @@ at `plans/implemented/`:
 | `plans/314-review-feedback.md` | `plans/implemented/331-merge-gate-base.md` |
 | `plans/318-next-board-battery-gps.md` | `plans/implemented/322-hardware-abstraction.md` |
 | `plans/332-imu-motion-scale-audit.md` | `plans/implemented/322-hardware-abstraction.md` |
-| `plans/332-vendor-document-verification.md` | `plans/implemented/322-hardware-abstraction.md` |
+| `plans/378-vendor-document-verification.md` | `plans/implemented/322-hardware-abstraction.md` |
 | `plans/333-datasheet-corpus.md` | `plans/implemented/321-ublox-m10-driver.md`, `plans/implemented/322-hardware-abstraction.md` |
-| `plans/335-display-touch-datasheet-promotions.md` | `plans/implemented/322-hardware-abstraction.md` |
+| `plans/381-display-touch-datasheet-promotions.md` | `plans/implemented/322-hardware-abstraction.md` |
 | `plans/350-stickc-family-fixes.md` | `plans/implemented/322-hardware-abstraction.md`, `plans/implemented/326-docs-accuracy.md` |
 | `plans/352-m5gfx-board-pin.md` | `plans/implemented/322-hardware-abstraction.md` |
 | `plans/353-hal-verification.md` | `plans/implemented/322-hardware-abstraction.md`, `plans/implemented/322-review-feedback.md` |
 | `plans/353-review-feedback.md` | `plans/implemented/322-hardware-abstraction.md` |
-| `plans/354-gnss-datasheet-verification.md` | `plans/implemented/321-ublox-m10-driver.md` |
+| `plans/382-gnss-datasheet-verification.md` | `plans/implemented/321-ublox-m10-driver.md` |
 | `plans/473-review-feedback.md` | `plans/implemented/322-hardware-abstraction.md` |
 | `plans/95-engineering-lessons.md` | `plans/implemented/322-hardware-abstraction.md` |
 | `plans/README.md` | ten rows repointed, and the #451 and #464 ownership rows retired rather than repointed |
@@ -142,9 +142,9 @@ late on that base: `plans/95-engineering-lessons.md` and
 `docs/components/` pages with #475. Ten more arrived with #500, #504, #505 and
 #507 after it: `docs/components/bq27220.md`, `docs/components/sx1262.md`,
 `docs/protocols/gnss-ubx.md`, `plans/313-sim-only-status.md`,
-`plans/332-imu-motion-scale-audit.md`, `plans/332-vendor-document-verification.md`,
-`plans/335-display-touch-datasheet-promotions.md`, `plans/350-stickc-family-fixes.md`,
-`plans/352-m5gfx-board-pin.md` and `plans/354-gnss-datasheet-verification.md`.
+`plans/332-imu-motion-scale-audit.md`, `plans/378-vendor-document-verification.md`,
+`plans/381-display-touch-datasheet-promotions.md`, `plans/350-stickc-family-fixes.md`,
+`plans/352-m5gfx-board-pin.md` and `plans/382-gnss-datasheet-verification.md`.
 `docs/components/ublox-max-m10s.md` and `docs/components/ublox-mia-m10q.md` named
 plan 321 on `9a617355` and stopped doing so when #504 rewrote those pages, so
 they are no longer in the list.
@@ -213,17 +213,11 @@ their state. Neither this plan nor its review record is listed against itself.
 | [327-control-gps-race.md](327-control-gps-race.md) | Added by #487 (`bbe4d22c`) after this plan was written. It is left here so this cleanup stays the set of moves it reviewed. |
 | [328-reference-docs-audit.md](328-reference-docs-audit.md) | Added by #477 (`dc5be70f`) after this plan was written. It names no open gate and its implementation is complete on master; it is left here so this cleanup stays the set of moves it reviewed. |
 | [33-wifi-hub.md](33-wifi-hub.md) | The intervalometer is still on the UI task. Status line corrected above. |
-| [332-docs-gap-closure.md](332-docs-gap-closure.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
-| [332-gnss-vendor-audit.md](332-gnss-vendor-audit.md) | Added by #501 (`f1fa36a0`) after this plan was written. It is left here so this cleanup stays the set of moves it reviewed. |
 | [332-imu-motion-scale-audit.md](332-imu-motion-scale-audit.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [332-imu-motion-scale-review-feedback.md](332-imu-motion-scale-review-feedback.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
-| [332-review-feedback.md](332-review-feedback.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
-| [332-sim-rtc.md](332-sim-rtc.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
-| [332-vendor-document-verification.md](332-vendor-document-verification.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [333-datasheet-corpus.md](333-datasheet-corpus.md) | Added by #475 (`e26fad1a`) after this plan was written. It is left here so this cleanup stays the set of moves it reviewed. |
 | [334-review-feedback.md](334-review-feedback.md) | Review record for PR 482, added with it. Stays with the plan it reviews, which stays at top level. |
 | [334-sim-hardware-alignment.md](334-sim-hardware-alignment.md) | Added by #482 (`30cc9c79`) after this plan was written. It is left here so this cleanup stays the set of moves it reviewed. |
-| [335-display-touch-datasheet-promotions.md](335-display-touch-datasheet-promotions.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [335-review-feedback.md](335-review-feedback.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [335-stack-cuts.md](335-stack-cuts.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [337-sim-mem-shims.md](337-sim-mem-shims.md) | Added by #506 after this plan was written. It is left here so this cleanup stays the set of moves it reviewed. |
@@ -247,13 +241,19 @@ their state. Neither this plan nor its review record is listed against itself.
 | [352-review-feedback.md](352-review-feedback.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [353-hal-verification.md](353-hal-verification.md) | Added by #479 (`bebf7caf`) after this plan was written; its own state records the paced gauge bus, the bounded radio BUSY wait and the PMIC key mask. Left here so this cleanup stays the set of moves it reviewed. |
 | [353-review-feedback.md](353-review-feedback.md) | Review record for PR 479, added with it. Stays with the plan it reviews, which stays at top level. |
-| [354-gnss-datasheet-verification.md](354-gnss-datasheet-verification.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [355-review-feedback.md](355-review-feedback.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [355-sim-cmake-entry-point.md](355-sim-cmake-entry-point.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [356-sim-memory-certify.md](356-sim-memory-certify.md) | Added by #492 (`9b404837`) after this plan was written. It is left here so this cleanup stays the set of moves it reviewed. |
 | [357-review-feedback.md](357-review-feedback.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [359-review-feedback.md](359-review-feedback.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [359-sony-legacy-generation.md](359-sony-legacy-generation.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
+| [377-gnss-vendor-audit.md](377-gnss-vendor-audit.md) | Added by #501 (`f1fa36a0`) after this plan was written. It is left here so this cleanup stays the set of moves it reviewed. |
+| [378-vendor-document-verification.md](378-vendor-document-verification.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
+| [379-docs-gap-closure.md](379-docs-gap-closure.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
+| [380-review-feedback.md](380-review-feedback.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
+| [380-sim-rtc.md](380-sim-rtc.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
+| [381-display-touch-datasheet-promotions.md](381-display-touch-datasheet-promotions.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
+| [382-gnss-datasheet-verification.md](382-gnss-datasheet-verification.md) | Landed on master after this plan's rebase base (`9a617355`); not reviewed by this change. |
 | [40-thinknode-port.md](40-thinknode-port.md) | Feasibility study. No code. |
 | [41-alternative-hardware.md](41-alternative-hardware.md) | Hardware survey. No code. |
 | [473-review-feedback.md](473-review-feedback.md) | Review record for the #473 hardware-trap corrections, added by #473 after this plan was written. Stays with the plans it reviews, which stay at top level. |

@@ -7,12 +7,12 @@ and it carries three documentation corrections that this research proves are
 wrong today (section 9). Sources were read on 2026-11-26. Facts about this
 checkout were read at master `79df13a7`.
 
-The document is numbered 366, not 365. `plans/365-core-sim-align.md` and
-`plans/365-review-feedback.md` are claimed on `fix/core-sim-align` (PR 513), so
-365 is taken. Number 364 is already claimed twice on master
-(`364-ext5v-rail.md` and `364-hardware-candidates.md`); this document does not
-add a third at that number. 366 was free across every local and remote branch
-on 2026-11-26.
+The document is numbered 366. It was chosen on 2026-11-26 because 365 belonged
+to `fix/core-sim-align` (PR 513) and 364 was claimed twice on master, so neither
+number was free. Both are settled now: 365 merged as written, and the second
+plan at 364 is [383](383-hardware-candidates.md). This document keeps 366, which
+no local or remote ref claims. The renumbering table in
+[README.md](README.md#plan-renumbering) records the moves.
 
 Tags on every claim:
 
@@ -23,10 +23,10 @@ Tags on every claim:
 - **UNVERIFIED** no readable document settles it. Collected in section 12.
 
 Related: [318](318-next-board-battery-gps.md) (the board decision this document
-must not overturn), [354](354-gnss-datasheet-verification.md) (the AT6668 and
-M10 document pass these numbers come from), [332](332-gnss-vendor-audit.md)
+must not overturn), [382](382-gnss-datasheet-verification.md) (the AT6668 and
+M10 document pass these numbers come from), [377](377-gnss-vendor-audit.md)
 (the 108 s cold-start label, already recorded as a mislabel), and
-[364](364-hardware-candidates.md) (port cost, which ranks the same boards by a
+[383](383-hardware-candidates.md) (port cost, which ranks the same boards by a
 different question).
 
 ## 1. Why this exists
