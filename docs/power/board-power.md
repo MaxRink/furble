@@ -443,6 +443,17 @@ A board with no SD slot, and a writer queue that never took the request, have
 nothing to acknowledge, so those cases keep the plain off path and the rail
 drops as before.
 
+Those four paths are the whole scope of the handshake. A timed shutdown
+(`Platform::powerOffUntil()` with a non-zero delay) and a restart
+(`Platform::restart()`) skip it, so both leave the track for the next mount to
+repair, which is the same data-loss class this refusal avoids. The 5 s
+extension is a chosen bound, not a measurement: no card has been timed for a
+worst-case mount or `fsync()`. No host target compiles the firmware
+`Platform::powerOff()`, and the simulator supplies its own, so the firmware
+build covers that early return while the boundary test covers `SD::powerOff()`.
+Hardware validation is pending: pulling a card mid-write and asking for power
+off has not been tried on a Core.
+
 Evidence: `code`. The two bounds are `POWER_OFF_WAIT_MS` and
 `POWER_OFF_EXTENDED_WAIT_MS` in `src/FurbleSD.cpp`, and the refusal is asserted
 by the `boundary-sd-shutdown-refused` host test. The 8 s total bound is well
