@@ -4,8 +4,9 @@ Status: review record and remediation. PR 511 (`cite/citation-gate`, head
 `14cb52e6`) was squash-merged as `81139818` while this review was still running.
 The review was therefore not recorded before that merge, which is the order the
 repository requires. This file records what was checked and what was found, and
-the branch that carries this file fixes the findings against `81139818`. No
-firmware, configuration, hardware or behavioral change is made or claimed.
+the branch that carries this file fixes the findings against `81139818` as PR
+#522. No firmware, configuration, hardware or behavioral change is made or
+claimed.
 
 ## What was reviewed
 
@@ -228,8 +229,8 @@ review threads: 0 total, all resolved
 checks: 24 total, all passed or skipped on head 14cb52e6
 ```
 
-The remediation branch reruns the first four and reports its own CI and review
-gate on its pull request. It touches documentation, the gate docstring and its
+PR #522 reruns the first four and reports its own CI and review gate on that
+pull request. It touches documentation, the gate docstring and its
 tests only; no firmware path is in the diff.
 
 ## Merge disposition
@@ -238,6 +239,5 @@ PR 511 itself is merged: `8113981851554b76c525084e6f493c4c8d67cf96`, squash, by
 the author, at 2026-11-26T11:34:55Z, with 24 of 24 checks green and zero
 unresolved threads. The review could not gate that merge because the merge
 happened first. The fixes above cannot amend a merged squash commit, so they are
-prepared as a separate remediation PR against `81139818`, with this file in it,
-and that PR is held for its own review rather than merged on the strength of
-this one.
+prepared as PR #522 against `81139818`, with this file in it, and that PR is held
+for its own review rather than merged on the strength of this one.
