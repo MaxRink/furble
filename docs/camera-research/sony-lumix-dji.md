@@ -76,8 +76,22 @@ version recorded. All other Sony models remain unverified.
 Advertisement matching parses at least 13 manufacturer bytes: company ID
 `0x012d` (Sony), device type `0x0003` (camera), protocol version, two-byte
 model code, and status tags `0x22` and `0x21`. Furble accepts a device when
-`0x22` mode has bits 7, 6, and 1 set. It does not retain or gate on the model
-code. The matcher is therefore broad and cannot establish model support.
+`0x22` mode has bits 7 and 6 set. Bit 1 selects the generation and is no longer
+required: a 2019 body clears it, which is why upstream issue 316's ILCE-7RM4
+never appeared in the scan. It does not retain or gate the model code. The
+matcher is therefore broad and cannot establish model support.
+
+Known `0x22` values, and what the evidence covers:
+
+| Value | Bits 7, 6 | Bit 1 | Body | Evidence |
+| --- | --- | --- | --- | --- |
+| `0xE8` | set | clear | 2019 generation, the ILCE-7RM4 report in upstream issue 316 | Triage report; spec note U-31 records that bit 1 may be clear. Not captured on hardware by this project. |
+| `0xEC` | set | clear | 2019 generation, alternate value with bit 2 set | Same report. |
+| `0xE2`, `0xEE`, `0xF2` | set | set | 2020 and later bodies, e.g. the ILCE-7RM5 image and the ZV-1F | Modelled by `SonyVirtualCamera` from the tag flags; no raw advertisement of a current body is in the corpus. |
+
+`SonyVirtualCamera::Config::legacy_bit1` models the bit, and
+`SonyVirtualCamera::legacyBody()` is the 7RM4 shape: bit 1 clear, DD00 with
+DD11 and DD21, no DD30 or DD31.
 
 GATT constants in the implementation:
 
@@ -140,7 +154,24 @@ shutter status. Those are useful peer behaviors, not Furble-certified timing.
 
 Location behavior in current Furble: read DD30 and DD31; write `01` to either
 when not already enabled; read DD21 and select 91 or 95 bytes from byte 4 bit
-1; subscribe DD01; then write the fixed-format packet to DD11. The 95-byte form
+1; subscribe DD01; then write the fixed-format packet to DD11. The DD30/DD31
+gate is selected from the discovered DD00 profile: when the pair is absent and
+the body is not the advertised current generation, Furble writes DD11 directly,
+because those bodies have no allow/enable state to set. A refused direct write,
+or a link too narrow for the packet, is a logged no-op and the session stops
+retrying; the shutter path is unaffected.
+
+The packet is one ATT write, so it needs an MTU of at least 98 bytes for the
+95-byte form. Nothing in Furble verified that before this change. The local
+preferred MTU is 256 on every board (`CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU`), and
+the pinned esp-nimble-cpp 2.5.0 exchanges the MTU from its connect-established
+path (`NimBLEClient::connect`'s `exchangeMTU` argument, default true), so a body
+that answers the exchange normally gets a link wide enough. `Camera::requestAttMtu`
+raises the preferred value to the 158-byte floor before connecting and
+`Camera::verifyAttMtu` polls the negotiated value afterwards, because a body may
+answer with the 23-byte ATT minimum and the exchange completion is asynchronous.
+DJI Osmo had already raised the preferred MTU to 517 in its own `_connect`; the
+shared helper only raises, so that request is untouched. The 95-byte form
 starts `00 5d 08 02 fc 03 00 00 10 10 10`; the 91-byte form uses `00 59 08 02
 fc 00 00 00 10 10 10`. Latitude and longitude are big-endian signed degrees
 times 10^7, year is big-endian, then UTC date/time. Furble releases DD30 and

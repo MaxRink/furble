@@ -132,6 +132,9 @@ The following devices have been tested and confirmed to work:
    - Nikon Z6 III ([@herrfrei](https://github.com/herrfrei))
 - Sony
    - Sony ZV-1F
+   - Sony ILCE (2019 generation, e.g. ILCE-7RM4): discovery, pairing and
+     location delivery are implemented and covered by the virtual peer, but no
+     body of this generation has been tested on hardware
 
 Panasonic LUMIX support is implemented from public protocol traces of the S5II
 and BGH1. It is host and simulator tested only. No LUMIX body has been tested
@@ -156,6 +159,7 @@ has been tested on hardware.
 | Nikon (Remote)     | ✔️        | ✔️       | ✔️[^3]           | :x:[^2] | :x:[^2] |
 | Nikon (Smart)      | ✔️        | :x:     | :x:             | :x:     | :x:     |
 | Sony ZV            | ✔️        | ✔️       | ✔️               | ✔️       | ✔️       |
+| Sony ILCE (2019)[^11] | ✔️     | ✔️       | ✔️               | ✔️       | ✔️       |
 | Panasonic LUMIX[^6] | ✔️       | ✔️       | ✔️               | :x:[^2] | ✔️       |
 | PENTAX K-3 III[^7] | ✔️        | ✔️       | ✔️[^3]           | :x:[^4]  | ✔️       |
 | DJI Osmo Action[^8] | ✔️       | ✔️       | ✔️[^9]           | :x:[^2] | :x:[^10] |
@@ -178,6 +182,11 @@ first-pair verification and camera approval, not a Bluetooth passkey.
 still capture command.
 [^10]: Not implemented. DJI's GPS direction is camera to remote, the opposite
 of furble's geotag push, so location updates are a no-op.
+[^11]: Untested on hardware. The 2019 generation clears tag 0x22 bit 1 in its
+advertisement, which earlier firmware treated as a non-camera, and it exposes
+neither DD30 nor DD31, so furble writes the DD11 location packet directly. A
+refused or impossible location write is a logged no-op, never an error. See
+[plan 359](plans/359-sony-legacy-generation.md).
 
 For contributor research across all implemented camera families, see the
 [camera protocol research library](docs/camera-research/README.md). It records
@@ -823,6 +832,18 @@ Note that other Nikon cameras will appear in the scan, but will not pair
 Sony cameras appear to use a reasonably uniform and robust bluetooth control
 protocol. Most modern Sony cameras should be supported. Testing was performed
 on Sony ZV-1F.
+
+Two advertisement generations are recognised. A 2019 body such as the
+ILCE-7RM4 advertises tag 0x22 with bit 1 clear (`0xE8` or `0xEC`); the 2020 and
+later bodies set it. Both reach the camera list, and the generation only decides
+which location handshake is used.
+
+The location packet is 91 or 95 bytes in a single ATT write, so the link needs a
+98-byte MTU. furble asks for 158 before connecting and checks what the body
+answered. A 2019 body exposes neither `DD30` (allow) nor `DD31` (enable), so the
+DD11 packet is written directly; if the body refuses it or the link cannot carry
+it, the location is silently skipped for that session and the shutter keeps
+working.
 
 To pair with a Sony camera (some models may have different menu options, the
 following matches the ZV-1F):
