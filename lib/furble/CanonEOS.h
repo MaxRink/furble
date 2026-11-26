@@ -31,6 +31,12 @@ class CanonEOS: public Camera {
  protected:
   void _disconnect(void) override final;
 
+  /**
+   * Write one prefixed identity frame and wait for the ATT response.
+   *
+   * The response is what makes a refused identity step fail the connect instead
+   * of being promoted as paired (plans/96 A4).
+   */
   bool writePrefix(const NimBLEUUID &serviceUUID,
                    const NimBLEUUID &characteristicUUID,
                    const uint8_t prefix,

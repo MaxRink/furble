@@ -2962,6 +2962,32 @@ target_include_directories(peer_contract_test PRIVATE
 target_link_libraries(peer_contract_test PRIVATE Threads::Threads)
 add_test(NAME peer-contract COMMAND peer_contract_test)
 
+# Pins that every Canon identity write in the connect sequence waits for the ATT
+# response. Both roles identify with the shared CanonEOS::writePrefix() helper, so
+# the peer's per-write `response` flag is the observation: with a write without
+# response the connect sequence cannot tell a refused identity step from an
+# accepted one (plans/96 A4, plans/97-followups.md batch 4).
+add_executable(canon_identity_ack_test
+               canon_identity_ack_test.cpp
+               ${CANON_NIKON_PEER_DIR}/CanonSmartVirtualCamera.cpp
+               ${CANON_NIKON_PEER_DIR}/CanonRemoteVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOSSmart.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOSRemote.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(canon_identity_ack_test PRIVATE furble_host_camera)
+target_include_directories(canon_identity_ack_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${CANON_NIKON_PEER_INCLUDE_DIRS}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(canon_identity_ack_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture)
+add_test(NAME canon-identity-ack COMMAND canon_identity_ack_test)
+
 # Sim-first boundary conformance. Each target compiles the production driver or
 # service path unchanged and replaces only the lowest hardware boundary. These
 # are the linked-code evidence the flash-readiness manifest names for the

@@ -172,7 +172,10 @@ bool CanonEOSSmart::_connect(void) {
 
   /* write to 0xf104 */
   x = {0x01};
-  if (!gattWrite(PRI_SVC_UUID, CHR_IDEN_UUID, x.data(), x.size(), false))
+  // The accept byte that ends the identity exchange. Waiting for the ATT
+  // response is what makes a refusal fail the connect instead of promoting a
+  // camera that never took the identity step (plans/96 A4).
+  if (!gattWrite(PRI_SVC_UUID, CHR_IDEN_UUID, x.data(), x.size(), true))
     return false;
 
   ESP_LOGI(LOG_TAG, "Paired!");
