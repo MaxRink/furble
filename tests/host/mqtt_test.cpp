@@ -381,9 +381,16 @@ int main(void) {
   require(!mqtt.isConnected(), "broker link loss did not clear connected state");
   require(host_mqtt::subscriptions().empty(),
           "clean-session broker retained subscriptions after link loss");
-  host_mqtt::restoreConnection();
+  // A retryable loss retires the client instead of leaving esp-mqtt to its own
+  // fixed period, so the replacement arrives off the backoff deadline.
+  require(mqtt.hostRetryDelayMs() == 10000, "broker link loss did not schedule the first retry");
+  require(!mqtt.hostBlocked(), "a broker link loss blocked the retry policy");
+  host_mqtt_timer::advance(10000);
   ownerStep(mqtt);
-  require(mqtt.isConnected(), "broker reconnect event did not restore connected state");
+  ownerStep(mqtt);
+  require(mqtt.isConnected(), "the backoff retry did not restore the broker link");
+  require(mqtt.hostRetryDelayMs() == 0 && mqtt.hostConnectFailures() == 0,
+          "a live session did not reset the retry policy");
   require(host_mqtt::subscriptions().size() == 2,
           "connected event did not recreate clean-session subscriptions");
   const size_t after_reconnect_status = discoveryCount();
@@ -595,7 +602,7 @@ int main(void) {
           "clean stop did not wait for the offline publication acknowledgement");
   host_mqtt::emitPublished(offlineBeforeReplacement.message_id);
   ownerStep(mqtt);
-  require(host_mqtt::startCount() == 3,
+  require(host_mqtt::startCount() == 4,
           "reload did not create a replacement MQTT client after offline acknowledgement");
 
   // Reconnect after draining the old client's queue. Fill the payload queue
@@ -608,7 +615,7 @@ int main(void) {
   host_mqtt::emitConnected();
   ownerStep(mqtt);
   require(mqtt.isConnected(), "connected lifecycle event was lost when payload queue was full");
-  require(host_mqtt::startCount() == 3, "reload did not create a replacement MQTT client");
+  require(host_mqtt::startCount() == 4, "reload did not create a replacement MQTT client");
   require(publishedTopic(replacement_root_topic + "/status").payload == "online",
           "replacement client did not publish on the reloaded topic");
 
@@ -621,7 +628,7 @@ int main(void) {
           "reload timeout did not wait for the old client's offline acknowledgement");
   host_mqtt_timer::advance(1000);
   ownerStep(mqtt);
-  require(host_mqtt::startCount() == 4,
+  require(host_mqtt::startCount() == 5,
           "reload timeout did not destroy the old client and create a replacement");
   ownerStep(mqtt);
   require(publishedTopic(timeout_root_topic + "/status").payload == "online",
@@ -636,7 +643,7 @@ int main(void) {
   ownerStep(mqtt);
   host_mqtt::emitPublished(latestPublishedTopic(timeout_root_topic + "/status").message_id);
   ownerStep(mqtt);
-  require(host_mqtt::startCount() == 5, "reload did not create the recycled-address client");
+  require(host_mqtt::startCount() == 6, "reload did not create the recycled-address client");
   const size_t beforeRecycled = Control::commands().size();
   ownerStep(mqtt);
   require(mqtt.isConnected(), "the recycled-address client did not connect");
@@ -675,7 +682,9 @@ int main(void) {
   ownerStep(mqtt);
   require(static_cast<size_t>(host_mqtt::startCount()) == beforeSecure,
           "secure MQTT started below the TLS worker floor");
+  require(mqtt.hostRetryDelayMs() == 10000, "a refused TLS start did not schedule the retry");
   host_mqtt_heap::reset();
+  host_mqtt_timer::advance(10000);
   ownerStep(mqtt);
   ownerStep(mqtt);
   require(static_cast<size_t>(host_mqtt::startCount()) == beforeSecure + 1,
@@ -735,6 +744,103 @@ int main(void) {
   require(esp_mqtt_client_destroy(raw_client) == ESP_OK, "raw MQTT fixture did not destroy");
   require(host_mqtt::subscriptions().empty(),
           "clean-session subscriptions survived client destruction");
+
+  // The retry policy: a broker outage never blocks, the gap doubles to the cap
+  // and stays there, and only a classified credentials or configuration
+  // rejection stops the client.
+  mqtt.disconnect();
+  ownerStep(mqtt);
+  ownerStep(mqtt);
+  require(mqtt.hostRetryDelayMs() == 0, "a manual disconnect scheduled a retry");
+  Settings::mqttURI = "mqtt://loopback";
+  mqtt.reloadSetting();
+  ownerStep(mqtt);
+  ownerStep(mqtt);
+  require(mqtt.isConnected(), "the retry policy fixture did not connect");
+
+  host_mqtt::dropConnection();
+  ownerStep(mqtt);
+  require(!mqtt.isConnected(), "the retry policy fixture stayed connected");
+  require(mqtt.hostConnectFailures() == 1, "a retryable loss was not counted");
+  require(mqtt.hostRetryDelayMs() == 10000, "the first retry gap is not 10 s");
+  require(!mqtt.hostBlocked(), "a retryable loss blocked the retry policy");
+
+  // One failed attempt per deadline, doubling to the 60 s cap.
+  const uint32_t expected_gaps[] = {20000, 40000, 60000, 60000};
+  uint32_t previous_gap = mqtt.hostRetryDelayMs();
+  for (const uint32_t expected : expected_gaps) {
+    const int attempts_before = host_mqtt::startAttempts();
+    host_mqtt_timer::advance(previous_gap - 1);
+    ownerStep(mqtt);
+    require(host_mqtt::startAttempts() == attempts_before,
+            "a retry attempt ran before its backoff deadline");
+    host_mqtt::failNextStart();
+    host_mqtt_timer::advance(1);
+    ownerStep(mqtt);
+    require(host_mqtt::startAttempts() == attempts_before + 1,
+            "the backoff deadline did not admit the next attempt");
+    require(mqtt.hostRetryDelayMs() == expected, "the retry gap did not reach its next step");
+    require(!mqtt.hostBlocked(), "an outage blocked the retry policy");
+    previous_gap = expected;
+  }
+  require(mqtt.hostConnectFailures() == 5, "the outage did not count every failed attempt");
+
+  // A classified credentials rejection stops the client until `mqtt connect`,
+  // which reloads the settings and clears the block.
+  Settings::mqttURI.clear();
+  mqtt.reloadSetting();
+  Settings::mqttURI = "mqtt://loopback";
+  host_mqtt::refuseNextConnect(MQTT_CONNECTION_REFUSE_NOT_AUTHORIZED);
+  mqtt.reloadSetting();
+  ownerStep(mqtt);
+  ownerStep(mqtt);
+  require(mqtt.hostBlocked(), "a refused CONNACK did not stop the retry policy");
+  require(mqtt.hostRetryDelayMs() == 0, "a blocked retry kept a pending gap");
+  require(!mqtt.isConnected(), "a refused CONNACK reported a connection");
+  const int blocked_attempts = host_mqtt::startAttempts();
+  ownerStep(mqtt);
+  host_mqtt_timer::advance(600000);
+  ownerStep(mqtt);
+  require(host_mqtt::startAttempts() == blocked_attempts, "a blocked retry kept starting clients");
+  mqtt.reloadSetting();
+  ownerStep(mqtt);
+  ownerStep(mqtt);
+  require(!mqtt.hostBlocked() && mqtt.isConnected(),
+          "mqtt connect did not clear the classified block");
+
+  // A protocol or client-id rejection is the other permanent class. A broker
+  // that reports itself unavailable stays retryable.
+  for (const int refused : {MQTT_CONNECTION_REFUSE_PROTOCOL, MQTT_CONNECTION_REFUSE_ID_REJECTED}) {
+    host_mqtt::refuseNextConnect(refused);
+    host_mqtt::emitDisconnected();
+    ownerStep(mqtt);
+    host_mqtt_timer::advance(10000);
+    ownerStep(mqtt);
+    ownerStep(mqtt);
+    require(mqtt.hostBlocked(), "a refused protocol or client id did not block");
+    mqtt.reloadSetting();
+    ownerStep(mqtt);
+    ownerStep(mqtt);
+  }
+  require(mqtt.isConnected(), "the retry policy fixture did not reconnect");
+
+  host_mqtt::refuseNextConnect(MQTT_CONNECTION_REFUSE_SERVER_UNAVAILABLE);
+  host_mqtt::emitDisconnected();
+  ownerStep(mqtt);
+  host_mqtt_timer::advance(10000);
+  ownerStep(mqtt);
+  ownerStep(mqtt);
+  require(!mqtt.hostBlocked(), "an unavailable broker blocked instead of retrying");
+  require(mqtt.hostRetryDelayMs() == 20000,
+          "an unavailable broker did not schedule the next retry");
+  host_mqtt_timer::advance(20000);
+  ownerStep(mqtt);
+  ownerStep(mqtt);
+  require(mqtt.isConnected(), "the retry after an unavailable broker did not connect");
+  mqtt.disconnect();
+  ownerStep(mqtt);
+  host_mqtt_timer::advance(1000);
+  ownerStep(mqtt);
 
   std::cout << "mqtt host loopback: PASS\n";
   return EXIT_SUCCESS;

@@ -174,26 +174,31 @@ void onConnect(mosquitto *, void *userdata, int result) {
   // A refused or unreachable broker is a connection failure, not only an
   // error-reporting event. ESP-IDF follows it with MQTT_EVENT_DISCONNECTED so
   // the application's reconnect accounting runs. The host transport used to
-  // emit ERROR alone, which made the production retry limit unreachable here.
+  // emit ERROR alone, which made the production retry accounting unreachable
+  // here. A mosquitto connect result is a CONNACK return code, and the error
+  // handle stays readable on the disconnect that follows, as the component's
+  // does.
+  esp_mqtt_error_codes_t error_codes = {MQTT_ERROR_TYPE_CONNECTION_REFUSED, result};
   esp_mqtt_event_t error = {};
   error.event_id = MQTT_EVENT_ERROR;
   error.client = client;
-  esp_mqtt_error_codes_t error_codes = {result};
   client->dispatch(error, &error_codes);
 
   esp_mqtt_event_t disconnected = {};
   disconnected.event_id = MQTT_EVENT_DISCONNECTED;
   disconnected.client = client;
-  client->dispatch(disconnected);
+  client->dispatch(disconnected, &error_codes);
 }
 
-void onDisconnect(mosquitto *, void *userdata, int result) {
+void onDisconnect(mosquitto *, void *userdata, int) {
   auto *client = static_cast<esp_mqtt_client *>(userdata);
   client->reconnect_connected.store(false);
   esp_mqtt_event_t event = {};
   event.event_id = MQTT_EVENT_DISCONNECTED;
   event.client = client;
-  esp_mqtt_error_codes_t error = {result};
+  // A dropped session has no CONNACK cause, so the failure classifier must
+  // read it as a retryable link loss.
+  esp_mqtt_error_codes_t error = {MQTT_ERROR_TYPE_NONE, MQTT_CONNECTION_ACCEPTED};
   client->dispatch(event, &error);
 }
 

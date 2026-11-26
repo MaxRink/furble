@@ -354,12 +354,22 @@ esp-mqtt client requires 8,192 free and a 4,096-byte largest block for plain
 MQTT, or 11,264 / 7,168 for TLS. Home Assistant discovery is optional and
 requires 10,240 free and a 4,096-byte largest block after the saved camera list
 loads. Below a floor the firmware logs the measured pair and either defers the
-start (the owner retry limit still applies) or skips only the retained
-discovery records. The broker link and the command path stay up when discovery
-is skipped. The 9,392-byte command event queue lives in PSRAM with an internal
-fallback, and the saved camera list loads on connect rather than at
-initialization. The plain MQTT worker uses a 3 KiB stack and 1,536-byte network
-and outbox buffers; TLS keeps a 6 KiB worker.
+start to the retry backoff or skips only the retained discovery records. The
+broker link and the command path stay up when discovery is skipped. The
+9,392-byte command event queue lives in PSRAM with an internal fallback, and the
+saved camera list loads on connect rather than at initialization. The plain
+MQTT worker uses a 3 KiB stack and 1,536-byte network and outbox buffers; TLS
+keeps a 6 KiB worker.
+
+A broker or network outage never stops the retries. The first failed attempt
+schedules the next one 10 s later, each further failure doubles that gap to a
+60 s cap, and the hub keeps retrying at one attempt a minute until the broker
+returns. The owner task, the event queue and the inbound event copies stay up
+across attempts; only the esp-mqtt client is rebuilt, so every attempt passes
+the heap gates again. A broker that refuses the credentials, the protocol
+version or the client id stops the retries instead, because no amount of
+retrying fixes that: the firmware logs the rejection and `mqtt connect` retries
+after the setting is corrected.
 
 `mqtt://` is intentionally supported for local-broker compatibility, but it is
 unencrypted and sends credentials and commands in plaintext. Use it only on a

@@ -447,6 +447,16 @@ check.
   never put a 2,348-byte `queued_event_t` on its stack. It fills the owner's
   preallocated `m_Incoming` copy, and the owner receives into `m_Received`;
   both live with the queue and are never freed.
+- MQTT retries forever. A retryable failure (transport error, broker
+  unavailable, a refused admission gate) doubles the gap from 10 s to a 60 s
+  cap (`RETRY_INITIAL_MS`, `RETRY_MAX_MS`) and schedules the next start; it
+  never blocks. Only a classified credentials, protocol or client-id rejection
+  sets `m_Blocked`, and `mqtt connect` clears it. A retry destroys and
+  recreates the esp-mqtt client only, so every attempt passes the heap gates
+  again; the owner task, the event queue and the two event copies survive, and
+  a live connection resets the policy. Do not reintroduce a failure count that
+  stops the service: a broker outage longer than about a minute must not
+  silence the hub until a reboot.
 - Main task stack: keep the StickS3 at 12 KiB. The 8 KiB experiment overflowed
   in task main after MQTT was enabled. With MQTT connected `perf tasks` left
   3,020 of 12,288 bytes free on main, so it used about 9,268 bytes.

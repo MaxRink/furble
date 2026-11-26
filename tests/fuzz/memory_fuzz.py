@@ -89,8 +89,8 @@ def build_script(seed: int, mqtt: bool) -> tuple[str, dict[str, object]]:
             "print heap.free",
             "print heap.largest",
             "print heap.alloc_failures",
-            # Cover the 10 s HTTPS budget retry and the MQTT retry limit. The
-            # simulator advances this deadline on its virtual clock.
+            # Cover the 10 s HTTPS budget retry and the first MQTT retry
+            # backoff step. The simulator advances these on its virtual clock.
             "wait 16000" if mqtt else "wait 12000",
             "assert ui.page main",
             "assert platform.watchdog armed",
