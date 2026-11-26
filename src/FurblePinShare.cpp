@@ -5,6 +5,8 @@
 #include "FurbleBoard.h"
 #include "FurblePinShare.h"
 
+#if defined(FURBLE_PIN_SHARE) || defined(FURBLE_SIM)
+
 /*
  * One pin, two drivers (see include/FurblePinShare.h).
  *
@@ -80,3 +82,5 @@ bool endIr(void) {
 
 }  // namespace PinShare
 }  // namespace Furble
+
+#endif  // builds with a shared LED and IR pin

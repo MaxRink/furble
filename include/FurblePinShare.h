@@ -103,6 +103,8 @@ class Arbiter {
   bool m_LedKnown = false;
 };
 
+#if defined(FURBLE_PIN_SHARE) || defined(FURBLE_SIM)
+
 /**
  * Record a Feedback LED level and drive it while the LED owns the pin.
  *
@@ -127,6 +129,29 @@ bool beginIr(int ir_pin);
  * channel signal after rmt_disable().
  */
 bool endIr(void);
+
+#else
+
+/*
+ * This build has no LED pin, so there is nothing to arbitrate. Only the StickC
+ * family puts the feedback LED on a pin; every other profile row has ledPin -1.
+ * The inert forms keep the call sites readable and cost no flash: the real glue
+ * is 405 bytes of .text, and m5stack-core-debug runs within a few hundred bytes
+ * of its OTA slot.
+ */
+inline bool requestLed(uint8_t) {
+  return false;
+}
+
+inline bool beginIr(int) {
+  return false;
+}
+
+inline bool endIr(void) {
+  return false;
+}
+
+#endif
 
 }  // namespace PinShare
 }  // namespace Furble

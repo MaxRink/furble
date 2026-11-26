@@ -2753,7 +2753,10 @@ add_executable(boundary_ir_test
 target_include_directories(boundary_ir_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
 target_compile_options(boundary_ir_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
                                                 -Wall -Wextra -Wno-unused-parameter)
-target_compile_definitions(boundary_ir_test PRIVATE FURBLE_M5STICKS3 CONFIG_SPIRAM
+# FURBLE_PIN_SHARE keeps the production pin arbiter compiled here: the glue is
+# only built where a board has an LED pin, and these cases drive the Plus2 and
+# StickC rows at runtime.
+target_compile_definitions(boundary_ir_test PRIVATE FURBLE_M5STICKS3 FURBLE_PIN_SHARE CONFIG_SPIRAM
                                                      CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=1)
 target_link_libraries(boundary_ir_test PRIVATE Threads::Threads)
 
@@ -2782,7 +2785,7 @@ add_executable(boundary_feedback_test
 target_include_directories(boundary_feedback_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
 target_compile_options(boundary_feedback_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
                                                       -Wall -Wextra -Wno-unused-parameter)
-target_compile_definitions(boundary_feedback_test PRIVATE FURBLE_M5STICKS3)
+target_compile_definitions(boundary_feedback_test PRIVATE FURBLE_M5STICKS3 FURBLE_PIN_SHARE)
 target_link_libraries(boundary_feedback_test PRIVATE Threads::Threads)
 
 # The Plus2 drives the red LED and the IR emitter from one pin. This target
@@ -2798,7 +2801,7 @@ add_executable(boundary_shared_pin_test
 target_include_directories(boundary_shared_pin_test PRIVATE ${BOUNDARY_COMMON_INCLUDES})
 target_compile_options(boundary_shared_pin_test PRIVATE ${BOUNDARY_FREERTOS_INCLUDE}
                                                         -Wall -Wextra -Wno-unused-parameter)
-target_compile_definitions(boundary_shared_pin_test PRIVATE FURBLE_M5STICKS3)
+target_compile_definitions(boundary_shared_pin_test PRIVATE FURBLE_M5STICKS3 FURBLE_PIN_SHARE)
 target_link_libraries(boundary_shared_pin_test PRIVATE Threads::Threads)
 
 add_executable(boundary_ethernet_test
