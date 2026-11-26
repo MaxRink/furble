@@ -25,11 +25,12 @@ two of them turn into data loss or a dead unit rather than a wrong label:
    the one wake source the hardware has.
 3. The Core's IP5306 clears its "BOOST output normally open" bit at boot. A
    panel-off Core falls below 45 mA, the PMIC removes the 5 V boost, and the
-   unit dies with the panel already dark. The firmware also offered a "Power
-   off" entry that cannot work on an IP5306 board: it clears the keep-on bit
-   and enters a deep sleep with no wake source.
-4. `Platform::powerOff()` returned true on the Core although the IP5306 has no
-   shutdown command, so the UI reported success and did not resume.
+   unit dies with the panel already dark. Nothing in furble set that bit, so the
+   Core-only Dim display-off default existed only to dodge that cut.
+4. `Platform::powerOff()` returned true on the Core without ever reaching a
+   result: on every non-M5PM1 board the call goes straight into
+   `M5.Power.powerOff()`, which does not return. The claim was unreachable, not
+   wrong, and the cut underneath it is real (see section 5).
 5. The GPS rail column claimed a private Port A switch. On the Core2 and Tough
    the AXP192 GPIO0 enable drives one BUS_5V boost that feeds Port A and the
    M-Bus, so a "GPS" power cycle browns out every external 5 V consumer.
@@ -139,9 +140,11 @@ and `holdBoostOn()`, a template over the M5Unified `IP5306_Class` surface:
 code the firmware runs, not a parallel implementation.
 `Platform::keepIp5306BoostOn()` calls it at boot on `pmic_ip5306`, logs the raw
 `SYS_CTL2` value, and logs an error if the readback lacks bit 1. The bit stays
-set for the session: there is no later shutdown path to clear it in, and the
-IP5306 has no shutdown command. The Core display-off default is now Off like
-every other board; the old Dim default existed only to dodge this cut.
+set for the running session. The one path that releases it is the manual Off:
+`Power_Class::powerOff()` sleeps the panel, calls `_powerOff(false)`, which
+clears the bit through `setPowerBoostKeepOn(false)`, and deep sleeps. The Core
+display-off default is now Off like every other board; the old Dim default
+existed only to dodge the accidental cut while the unit was awake.
 
 If the write cannot be made (a non-I2C IP5306 Core, or a bus fault), the boot
 logs the failure, `Platform::canTurnDisplayOff()` returns false, and
@@ -157,20 +160,25 @@ and the 8/32/16/64 s decode stays pinned by the host test.
 
 **Size.** The first CI run failed this change on the `m5stack-core-debug`
 profile, which shares the 1,740,800-byte OTA slot:
+
 `Error: The program size (1741009 bytes) is greater than maximum allowed
-(1740800 bytes)`, 209 bytes over. That profile had 400 bytes of headroom before
-this change, and the new refusal paths and boot log cost about 600. The log
+(1740800 bytes)`, 209 bytes over.
+
+Some of the strings that paid for the fix were the power-off refusal paths,
+which finding 2 of [354-review-feedback.md](354-review-feedback.md) then
+removed, so the committed image sits further under the slot than the
+measurement recorded here. That profile had 400 bytes of headroom before this
+change, and the boot log cost part of it. The log
 lines in `Platform::keepIp5306BoostOn()`, `Platform::powerOff()`,
-`Platform::powerOffUntil()`, `UI::processInactivity()` and `UI::doPowerOff()`
-were shortened, the IP5306 defence in `Platform::powerOff()` keeps its silent
-`return false` instead of a second string, and `UI::serviceRequests()` reports
-`unsupported` without printing its own sentence, because the console command
-already refuses before queueing. The refusal string is now one literal shared
-with `Platform::powerOff()`. The profile measures 1,740,629 bytes, 171 bytes
-under the slot, and `tools/size_budget.json` keeps its 1,740,800 entry. The
+`Platform::powerOffUntil()` and `UI::processInactivity()` were shortened. The
+profile measured 1,740,629 bytes on that head, 171 bytes under the slot, and
+`tools/size_budget.json` keeps its 1,740,800 entry. That number belongs to the
+head it was measured on: the refusal strings are gone with the review finding
+below, and #524 restores verbose logging on the debug lanes, so the size of the
+head being merged is whatever `build (m5stack-core-debug)` reports for it. The
 squeeze is why the boot log prints the raw `SYS_CTL2` value rather than the
-decoded window, and why a 30 minute soak run has to read the decoded window
-from the host test rather than the log.
+decoded window, and why a 30 minute soak run has to read the decoded window from
+the host test rather than the log.
 
 **Evidence.** New host `ip5306-policy` test: all 256 SYS_CTL0 values preserve
 every other bit, `0x31` maps to `0x33`, the 8/32/16/64 s decode is pinned, and
@@ -179,28 +187,49 @@ and an unreadable register. `settings-default-policy-core` now expects Off.
 Hardware soak below 45 mA is still required, because the boost quiescent current
 is not in the public datasheet.
 
-### 5. Honest power off
+### 5. Power off: a deferred cut, and the refusal that was withdrawn
 
-**Defect.** `Platform::powerOff()` called `M5.Power.powerOff()` and returned
-true on the Core. The IP5306 has no shutdown command; M5Unified clears the
-keep-on bit and enters a wake-less deep sleep, leaving the 5 V boost up. The UI
-believed it had powered off.
+What stays is the merged refusal, keyed on `powerOffPath`: it is true on the
+Core, which therefore does not refuse, and false only on the Waveshare, which
+has no PMIC to cut. The refusal described below is the one this branch added and
+then removed.
 
-**Fix.** `Platform::canPowerOff()` returns the profile column.
-`Platform::powerOff()` refuses before the TimeKeeper flush and SD unmount when it
-is false, logs the board name, and returns false. A second IP5306 check inside
-the non-M5PM1 branch catches a wrong profile row. The UI's menu entry and
-callback, the console `power off` command, the `Request::POWER_OFF` handler and
-`UI::doPowerOff()` all check the same gate. The console refuses before printing
-"queued"; `doPowerOff()` logs rather than silently doing nothing. The simulator
-Platform returns true because it records the request instead of cutting a rail;
-that keeps the existing power-off scenarios meaningful.
+**Defect.** `Platform::powerOff()` returned true on the Core without a result:
+`M5.Power.powerOff()` does not return on any of these boards. What the call does
+on an IP5306 board is the vendor's cut, in three steps: `Power_Class::powerOff()`
+sleeps the panel and waits for it (`.pio/libdeps/.../M5Unified/src/utility/
+Power_Class.cpp`, `powerOff()`), `_powerOff(false)` clears `REG_SYS_CTL0` bit 1
+through `IP5306_Class::setPowerBoostKeepOn(false)` (`IP5306_Class.cpp`,
+`BOOST_OUT_BIT = 0x02`), and `_powerOff` then reaches `esp_deep_sleep_start()`.
+M5Unified's own comment on that bit says to set it for deep sleep and the RTC
+timer "because the power supply is stopped when the load is light", and the
+register document's `SYS_CTL2` bits 3:2 (M5Unified writes `0x6C`, so `11`) give
+that light-load window as 64 s. With the panel asleep the load is far below the
+45 mA threshold, so the charger removes the boost and the unit is off. It is a
+deferred Off, not an absent one.
 
-**Evidence.** Host `console-commands` asserts a refused `power off` returns
-non-zero, says "not supported on this board" and queues nothing. The
-`board-profile` test asserts the Core's `canPowerOff` is false. UI paths are
-firmware-only and need a hardware or simulator UI check; the simulator cannot
-model this refusal because its Platform always records a successful request.
+**First attempt, withdrawn.** This branch first read the `canPowerOff` column as
+a platform fact: `Platform::canPowerOff()` returned it, `Platform::powerOff()`
+refused on the Core before the TimeKeeper flush and SD unmount, the main menu
+entry was hidden and its callback guarded, the console `power off` command
+refused, `Request::POWER_OFF` reported `unsupported`, and `UI::doPowerOff()`
+logged a refusal. On the Core that removes a manual Off that works, for a
+premise the vendor library contradicts, and it changes the meaning of a column
+the UI already uses for the automatic policies. The refusal, the hide, the
+console gate and the second `M5.Power.getType() == pmic_ip5306` check are all
+gone; `Board::profile().canPowerOff` keeps its policy meaning, which is what
+`processAutoOff()`, `processLowBattery()` and the Power page rollers read.
+Recorded as finding 2 in [354-review-feedback.md](354-review-feedback.md).
+
+**What the branch keeps.** `Platform::powerOff()` no longer returns true for a
+PMIC that refused: it documents that the call does not return and returns
+`false` when it does, which is what `UI::doPowerOff()` needs to resume. The
+comment states the deferred cut, so the next reader does not re-derive it.
+
+**Evidence.** `docs/power/board-power.md` already recorded the deferred cut for
+PM-07 and the `m5stack-core` row; this branch had made the documents and the
+code disagree in the other direction. The Core is 64 s away from off, and that
+window is a measurement item (below), not a reason to refuse.
 
 ### 6. GPS rail scope and advisory enable
 
@@ -253,11 +282,12 @@ consistent without a deliberate charge-profile change:
   comments for timed wake, GPS rail and power off.
 - `src/FurbleFeedback.cpp`: Tough speaker comment.
 - `include/FurbleIP5306.h` (new), `include/FurblePlatform.h`,
-  `src/FurblePlatform.cpp`: keep-on policy, `canPowerOff()`, honest `powerOff()`,
-  BM8563 timer path, SD quiesce, VBUS guard, GPS rail comment.
+  `src/FurblePlatform.cpp`: keep-on policy, `powerOff()` refusal withdrawn but
+  its return documented, BM8563 timer path with the alarm disarmed on a refused
+  PMIC cut, SD quiesce, VBUS guard, GPS rail comment.
 - `include/FurbleSettingsDefaults.h`: display-off default Off on every board.
 - `src/FurbleUI.cpp`, `src/FurbleConsole.cpp`: power-off gates and refusal.
-- `sim/FurblePlatformSim.cpp`: simulator `canPowerOff()` seam.
+- `sim/FurblePlatformSim.cpp`: simulator `canTurnDisplayOff()` seam.
 - `include/FurblePowerBackend.h`, `include/FurbleGPS.h`, `src/CLAUDE.md`:
   rail contract and advisory wording.
 - `tests/host/board_profile_test.cpp`,
@@ -349,8 +379,11 @@ sdkconfig change is part of this PR.
 7. Core2: `rtcBatteryBacked = true` is left unchanged. M5Stack removed the RTC
    button cell in 2023.2; older units still have it, and the firmware cannot
    detect the revision. This is a separate decision.
-8. The simulator's `Platform::canPowerOff()` always returns true, so a UI
-   refusal scenario is not possible there; the console refusal is host-tested.
+8. The Core's deferred Off window is not measured. The claim is that a sleeping
+   Core stays under 45 mA for the 64 s `SYS_CTL2` window, which comes from the
+   M5Unified register write and the register document, not from a bench run. A
+   90 s deep-sleep soak on battery, with the pack current logged across the cut,
+   closes it.
 9. The display-off default change is user-visible on a fresh Core or after a
    settings reset. It is deliberate: the keep-on bit removes the cut that the
    Dim default avoided.
@@ -364,5 +397,7 @@ sdkconfig change is part of this PR.
     workaround recorded under Verification, and CI builds the whole matrix
     through the component manager as normal. The workaround itself is not
     committed, so CI remains the authority for a clean component-manager build.
-    The local build is what proved the ESP32-only IP5306 branch, the UI gates
-    and the console gate compile; the host suite does not.
+    The local build is what proved the ESP32-only IP5306 branch compiles; the
+    host suite does not compile `src/FurblePlatform.cpp` or `src/FurbleUI.cpp`
+    at all, which is why CI is the authority for the code this review changed
+    there.

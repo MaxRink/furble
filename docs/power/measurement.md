@@ -353,7 +353,7 @@ result.
 | m5stick-c | `m5stick-c` | ESP32 | AXP192 | ST7735 80x160 | 95 mAh | Yes, AXP192 | Light sleep, modem sleep | End of life; 48 minimum brightness |
 | m5stick-c-plus | `m5stick-c-plus` | ESP32 | AXP192 | ST7789 135x240 | 120 mAh | Yes, AXP192 | Light sleep, modem sleep | Plus and Plus2 share the image; 48 minimum brightness |
 | m5stick-c-plus2 | `m5stick-c-plus` | ESP32 | None | ST7789 135x240 | 200 mAh | No | Light sleep | Voltage only; no charging telemetry; 32 minimum brightness |
-| m5stack-core | `m5stack-core` | ESP32 | IP5306 | ILI9342C 320x240 | 110 mAh | No | Any state: boost held on for the session | No PMIC shutdown command, so software power off is refused |
+| m5stack-core | `m5stack-core` | ESP32 | IP5306 | ILI9342C 320x240 | 110 mAh | No | Any state: boost held on for the session | No PMIC shutdown command; the manual Off clears the keep-on bit and the light-load cut removes the boost 64 s later |
 | m5stack-core2 | `m5stack-core2` | ESP32 | AXP192 | ILI9342C 320x240 | 500 mAh | Yes, AXP192 | Light sleep, modem sleep | Touch controller stays on; 32 minimum brightness |
 | m5stick-s3 | `m5stick-s3` | ESP32-S3 | M5PM1 | ST7789 135x240 | 250 mAh | No | Light sleep with `sleep_conn`; no deep sleep | Watchdog, GPS power lock, 32 minimum brightness |
 | waveshare-s3-eth | `waveshare-s3-eth` | ESP32-S3 | None | None | Mains | No | Not applicable | W5500 Ethernet; DFS init and tickless idle are not enabled in its sdkconfig |

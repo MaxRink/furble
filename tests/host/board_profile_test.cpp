@@ -203,8 +203,12 @@ int main() {
   check(tough.feedbackSound, "Tough has the NS4168 1 W speaker");
   check(tough.rtcBatteryBacked, "Tough BM8563 is backed by BT1 BATTERY_RTC");
   check(tough.timedWake == TimedWake::RTC_ALARM, "Tough can wake on the BM8563 timer");
-  check(!Furble::Board::profileFor(m5::board_t::board_M5Stack).canPowerOff,
-        "Core IP5306 has no software power-off path");
+  // The two power-off columns answer different questions and must not be
+  // collapsed: the Core offers no automatic policy but keeps its IP5306 Off
+  // (plans/349, plans/354 review finding 2).
+  const Profile &core = Furble::Board::profileFor(m5::board_t::board_M5Stack);
+  check(!core.canPowerOff, "the Core row offers no auto-off or low-battery policy");
+  check(core.powerOffPath, "the Core row keeps its deferred IP5306 power-off path");
 
   // profile() is the row for the detected board.
   M5.board = m5::board_t::board_M5StickCPlus2;

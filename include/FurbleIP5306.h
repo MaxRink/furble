@@ -22,10 +22,13 @@ namespace IP5306 {
  *
  * M5Unified 0.2.20 writes SYS_CTL0 = 0b00110001 at M5.begin() for
  * board_M5Stack, which clears bit 1, and SYS_CTL2 = 0b01101100, which already
- * selects the 64 s window. Furble sets bit 1 for the whole session because a
- * panel-off Core draws less than 45 mA and has no PMIC shutdown command, so a
- * cut is not a recoverable power-off: the 5 V boost would stay off while the
- * ESP32 keeps running or sits in a wake-less deep sleep. See plan 354.
+ * selects the 64 s window. Furble sets bit 1 at boot and holds it for the
+ * running session, because a panel-off Core draws less than 45 mA and the
+ * charger would read that as an idle load and remove the boost under a user who
+ * only wanted the screen off. The one path that releases it is the manual Off:
+ * M5Unified's Power_Class::powerOff() sleeps the panel, clears the bit and deep
+ * sleeps, and the same light-load cut then removes the boost for real. See plan
+ * 354.
  */
 constexpr uint8_t REG_SYS_CTL0 = 0x00;
 constexpr uint8_t REG_SYS_CTL2 = 0x02;

@@ -114,7 +114,7 @@ as separate boards when a rail is involved.
 | `m5stick-c` | M5StickC | ESP32 | AXP192, 100 mA charge, 4.2 V | Voltage, current, charge state | DCDC1 3.35 V MCU, LDO2 backlight, LDO3 3.0 V LCD, EXTEN Grove 5 V, ST7735S, IR on G9, LED on G10, no SD | Light sleep 0.8 mA plus AXP192, deep sleep 10 uA plus AXP192, off 27 uA, no PMIC timed wake |
 | `m5stick-c-plus` | M5StickC Plus and Plus2 | ESP32 | Plus: AXP192, 100 mA. Plus2: no PMIC, external charger | Plus: voltage, current, charge. Plus2: ADC voltage only | Plus: LDO2 backlight, LDO3 LCD, EXTEN. Plus2: PWM backlight G27, HOLD G4, battery divider G38, LED and IR G19, ST7789V, no SD | Plus as above. Plus2 light 0.8 mA plus divider, deep 10 uA plus divider, power off through HOLD |
 | `m5stick-s3` | M5StickS3 | ESP32-S3-PICO-1-N8R8, 8 MB quad flash and 8 MB octal PSRAM, so SPICS1 and GPIO33 to GPIO37 are PSRAM pins | M5PM1, charger on by default, profile not documented | Voltage and charge state on PM1 GPIO0, no current | 3.3 V DCDC and LDO, 5 V boost for Grove and EXT_5V and IR, L3B on PM1 GPIO2, ST7789P3 backlight G38, BMI270, ES8311 and AW8737, IR TX G46 and RX G42, no SD, USB Serial/JTAG | Light sleep 240 uA plus 140 uA PSRAM plus PM1, deep sleep 7 uA plus PM1, off 14.02 uA, L1 52.47 uA, L2 102.40 uA, PM1 timer wake |
-| `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD; IMU on the Gray variant, part not recorded in this tree | IP5306 boost held on for the session, so no light-load cut; no PMIC shutdown command, so software power off is refused; deep sleep has no wake source |
+| `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD; IMU on the Gray variant, part not recorded in this tree | IP5306 boost held on for the running session, so no light-load cut while awake; the manual Off clears that bit and deep sleeps, and the light-load cut then removes the boost after 64 s. No shutdown command, so the Off is deferred rather than immediate |
 | `m5stack-core2` | Core2 and M5Tough (untested) | ESP32 | AXP192, 360 mA charge on Core2 (M5Unified target; vendor page 0.219 A) | Voltage, current, charge state | DCDC3 backlight, LDO2 3.3 V LCD and SD, LDO3 vibration on Core2 and backlight on Tough, AXP192 GPIO0 enables one BUS_5V net for Port A and the M-Bus, ILI9342C, FT6336U touch, MPU6886, NS4168, SD, BM8563 (Tough has BT1 backup; Core2 2023.2 removed it) | Light sleep 0.8 mA plus AXP192 plus touch, deep sleep 10 uA plus AXP192, off 27 uA, touch wake on G39, Tough RTC alarm wake |
 | `waveshare-s3-eth` | Waveshare ESP32-S3-ETH | ESP32-S3R8, 8 MB octal PSRAM on GPIO33 to GPIO37 | None, no battery | None | USB-C 5 V or PoE HAT, W5500 on SPI, WS2812 on G21, microSD in 1-line mode and unused by furble, no display or IMU; GPS only through the Pico header | Tickless idle off, so no automatic light sleep; DFS is left on; mains powered |
 | `esp32-s3-headless` | ESP32-S3-DevKitC-1 | ESP32-S3, 8 MB PSRAM in sdkconfig | None, no battery | None | USB or 5 V, USB Serial/JTAG, no display, PMIC, or RTC | Tickless idle on, light sleep 240 uA plus PSRAM, mains or development |
@@ -169,10 +169,12 @@ the only board on the bench.
 writes `SYS_CTL2 = 0x6C` (the 64 s light-load window) and `SYS_CTL0 = 0x31`,
 which clears bit 1, the "BOOST output normally open" bit. Furble sets that bit
 at boot and reads it back, and keeps it set for the session, so a load below
-45 mA no longer removes the boost: display-off is a low-current state rather
-than a power cut (plan 354). The IP5306 has no shutdown command, so software
-"Off" is refused instead of entering an ESP deep sleep with no wake source and
-the boost still up. The nominal cell is 110 mAh. The four-level gauge cannot
+45 mA no longer removes the boost while the device is awake: display-off is a
+low-current state rather than a power cut (plan 354). The manual Off is the
+exception and its whole point: `M5.Power.powerOff()` sleeps the panel, clears
+that bit and deep sleeps, so the light-load cut removes the boost 64 s later.
+The IP5306 has no shutdown command, so the Off is deferred, not immediate. The
+nominal cell is 110 mAh. The four-level gauge cannot
 support a fine-grained percentage policy. The Gray variant may carry an IMU;
 the part is not recorded in this tree, so RL-11 covers the StickS3 BMI270 and
 the StickC, Plus, and Core2 MPU6886 only. Opportunities: PM-06 (implemented),
@@ -633,8 +635,9 @@ Estimates are not measurements unless the label says `measured-local`.
 - Change: implemented in plan 354. `Platform::keepIp5306BoostOn()` sets
   `REG_SYS_CTL0` bit 1 ("BOOST output normally open") at boot through
   M5Unified and reads it back, and the bit stays set for the whole session.
-  There is no later PMIC shutdown path to clear it in: the IP5306 has no
-  shutdown command, and the manual off path is refused.
+  The one path that clears it is `M5.Power.powerOff()`, which is the manual Off:
+  it sleeps the panel first, so the post-call load is under 45 mA and the
+  light-load cut removes the boost 64 s later.
 - Previous behavior: M5Unified wrote `0x00 = 0b00110001` and
   `0x02 = 0b01101100`, leaving bit 1 clear. A screen-off Core fell below
   45 mA and the IP5306 cut the boost, which powered the device off.
@@ -1526,7 +1529,7 @@ given so the next reader does not reopen them without new facts.
 
 | ID | Change | Current behavior and why rejected | Estimated saving | Risk, effort, test | Evidence |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| PM-12 | Add an immediate software power off to the Core | The IP5306 has no shutdown command. The old deep-sleep path relied on the light-load cutoff; plan 354 now holds the boost on, so there is no cut at all and the firmware refuses power off instead of stranding the unit. An immediate off would need a hardware change or a different PMIC | 0 | n/a (rejected) | `code`, IP5306 register document V1.21 |
+| PM-12 | Add an immediate software power off to the Core | The IP5306 has no shutdown command, so the only cut is the light-load one: the manual Off clears the keep-on bit and deep sleeps, and the boost goes 64 s later. An immediate off would need a hardware change or a different PMIC | 0 | n/a (rejected) | `code`, IP5306 register document V1.21 |
 | PM-13 | Feed the PM1 watchdog every 5 s instead of every 1 s | Saves only a few microamps; the 45 s timeout already has a 45x margin and the feed shares the button-poll bus | 0 | n/a (rejected) | `code`, M5PM1 `WDT_CNT` |
 | PM-14 | Change the AXP192 or IP5306 charge current for runtime | Charge current does not affect discharge runtime; it only changes charge time and heat | 0 | n/a (rejected) | `code`, datasheets |
 | PM-15 | Use the AXP192 coulomb counter for a better gauge | Accuracy only, no energy saving | 0 | n/a (rejected) | `code`, AXP192 datasheet |

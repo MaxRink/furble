@@ -1259,20 +1259,6 @@ Platform &Platform::getInstance(void) {
   return instance;
 }
 
-namespace {
-// The suite's board model is a StickS3, which can power off. A test can model
-// the IP5306 Core, whose profile has no software power-off path.
-bool g_CanPowerOff = true;
-}  // namespace
-
-bool Platform::canPowerOff(void) {
-  return g_CanPowerOff;
-}
-
-void Platform::setCanPowerOff(bool can) {
-  g_CanPowerOff = can;
-}
-
 void Platform::restart(void) {
   m_Restarts++;
 }

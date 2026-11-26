@@ -127,11 +127,23 @@ class Platform: public PowerBackend {
   /**
    * Power off the device.
    *
-   * Returns false without touching the PMIC when the board profile has no
-   * power-off path (the IP5306 Core cannot cut its own power and must not
-   * enter a wake-less deep sleep with the boost up). On a board with a real
-   * path, success never returns; a PMIC refusal returns false, with the
-   * hardware watchdog re-armed if it was armed before.
+   * Refuses with false before any teardown in two cases. A row whose
+   * `powerOffPath` is false has no way to remove power
+   * (`PlatformPolicy::powerOffAction`); only the Waveshare ESP32-S3-ETH is in
+   * that state, because with no PMIC the call it would otherwise reach arms no
+   * wake source. Then, on every other board, an SD writer that did not
+   * acknowledge the unmount refuses too, because cutting the rail with a track
+   * open loses its tail (#494).
+   *
+   * Otherwise success never returns, and a PMIC refusal returns false with the
+   * hardware watchdog left as the user set it.
+   *
+   * On the IP5306 Core there is no shutdown command, so the Off is the
+   * vendor's deferred cut rather than an immediate one: M5Unified sleeps the
+   * panel, clears the boost keep-on bit and deep sleeps, and the charger
+   * removes the boost once the sleeping load has stayed under 45 mA for the
+   * SYS_CTL2 window. On an AXP192, AXP2101 or M5PM1 board the rail drops
+   * mid-call.
    */
   bool powerOff(void);
 
@@ -228,8 +240,12 @@ class Platform: public PowerBackend {
    * return on success. The Plus2 arms the same BM8563 timer and releases its
    * hold pin, returning true once the request is accepted.
    *
+   * A refusal unwinds what it armed: an SD writer that never acknowledges
+   * refuses the cut with the card mounted, the countdown cleared and, on the
+   * M5PM1 path, the wake timer, the RTC RAM marker and the watchdog restored.
+   *
    * @return true after the wake timer and power-off request were accepted;
-   * false if setup failed and the device remains awake.
+   * false if setup failed or a handshake refused, and the device stays awake.
    */
   bool powerOffUntil(uint32_t seconds);
 
@@ -296,16 +312,6 @@ class Platform: public PowerBackend {
    * Platform::init().
    */
   static bool canCutGpsRail(void);
-
-  /**
-   * Can this board actually remove its own power in software?
-   *
-   * The board profile's `canPowerOff` column. False on the IP5306 Core, which
-   * has no PMIC shutdown command: its "off" path is an ESP deep sleep with no
-   * wake source, and the 5 V boost stays up. UI power-off entry points and
-   * Platform::powerOff() must both refuse rather than enter that state.
-   */
-  static bool canPowerOff(void);
 
   /**
    * Can the panel be turned off without the PMIC removing power?

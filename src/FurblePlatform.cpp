@@ -431,10 +431,6 @@ bool Platform::canCutGpsRail(void) {
   return Board::profile().gpsRail;
 }
 
-bool Platform::canPowerOff(void) {
-  return Board::profile().canPowerOff;
-}
-
 bool Platform::canTurnDisplayOff(void) {
 #if defined(CONFIG_IDF_TARGET_ESP32)
   if (M5.Power.getType() == m5::Power_Class::pmic_ip5306) {
@@ -526,16 +522,12 @@ bool Platform::powerOff(void) {
   }
   return false;
 #else
-#if defined(CONFIG_IDF_TARGET_ESP32)
-  // Defense in depth for a wrong profile row: an IP5306 board cannot cut its
-  // own power, and calling M5.Power.powerOff() would clear the boost keep-on
-  // bit first and then deep sleep without a wake source.
-  if (M5.Power.getType() == m5::Power_Class::pmic_ip5306) {
-    // Reached only if the profile row and the detected PMIC disagree. The
-    // callers log; a second string here does not fit the Core OTA slot.
-    return false;
-  }
-#endif
+  // M5.Power.powerOff() sleeps the panel, clears the IP5306 boost keep-on bit
+  // when the PMIC is one, and then deep sleeps. On the Core that clear is the
+  // cut: the sleeping load falls under the 45 mA light-load threshold and the
+  // charger removes the boost after its SYS_CTL2 window. On an AXP192 board the
+  // PMIC cuts the rail outright. Neither returns, so a return here means the
+  // PMIC refused.
   M5.Power.powerOff();
   return true;
 #endif
@@ -859,8 +851,18 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     }
 
     // The SD writer may still hold an open track. Unmount before the PMIC
-    // removes the rail, as the manual power-off path does.
-    SD::getInstance().powerOff();
+    // removes the rail, and refuse the cut when it does not acknowledge, as the
+    // manual path does (#494): a wedged writer means an open track.
+    if (!SD::getInstance().powerOff()) {
+      ESP_LOGW(LOG_TAG, "SD writer did not acknowledge, staying awake");
+      (void)m5pm1Access([this]() { return m_M5PM1.timerClear(); });
+      uint32_t clear = 0;
+      (void)m5pm1Access([this, &clear]() {
+        return m_M5PM1.writeRtcRAM(0, reinterpret_cast<const uint8_t *>(&clear), sizeof(clear));
+      });
+      restoreWatchdog();
+      return false;
+    }
 
     if (!m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
       ESP_LOGE(LOG_TAG, "Failed to shut down M5PM1 for timed wake");
@@ -928,8 +930,14 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     // unmounts before cutting power; a timed shutdown must do the same so a
     // board with a card in the slot does not lose its filesystem on the way
     // down. It is done after every refusal above, so a refused timed cut leaves
-    // the card mounted and the device usable.
-    SD::getInstance().powerOff();
+    // the card mounted and the device usable, and a writer that never
+    // acknowledges refuses the cut the same way (#494).
+    if (!SD::getInstance().powerOff()) {
+      ESP_LOGW(LOG_TAG, "SD writer did not acknowledge, RTC cut refused");
+      clearBm8563Timer();
+      M5.Rtc.disableIRQ();
+      return false;
+    }
 
     if (board.powerHoldPin >= 0) {
       // The Plus2 releases the pin that keeps its regulator enabled.

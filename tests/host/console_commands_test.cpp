@@ -2556,18 +2556,6 @@ void testWorkflowCommands(void) {
   check(!ConsoleHost::ui().requests.empty()
             && ConsoleHost::ui().requests.back().request == Furble::UI::Request::POWER_OFF,
         "power off queues the UI task shutdown sequence");
-
-  // The IP5306 Core has no PMIC shutdown command. The console must refuse
-  // before acknowledging, otherwise a scriptable power-off claims success on
-  // a board that cannot cut its own power.
-  ConsoleHost::ui().requests.clear();
-  Furble::Platform::setCanPowerOff(false);
-  const Result powerOffRefused = runDirect("power off");
-  check(powerOffRefused.rc != 0, "power off fails without a software cut path");
-  checkContains(powerOffRefused.out, "not supported on this board",
-                "power off says why it refused");
-  check(ConsoleHost::ui().requests.empty(), "a refused power off queues nothing");
-  Furble::Platform::setCanPowerOff(true);
 }
 
 int main(void) {
