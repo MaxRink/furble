@@ -977,6 +977,39 @@ target_compile_options(saved_scan_delivery_test PRIVATE
                        -Wno-unused-lambda-capture -Wno-sign-compare)
 target_link_libraries(saved_scan_delivery_test PRIVATE Threads::Threads)
 
+# Saved Fujifilm Secure reconnect address hand-off. A Secure body advertises a
+# resolvable private address and re-pairs under a new one, while the saved
+# record keeps the address it had at pairing time. The serial-keyed rescan is
+# the only place the live address is known, so the connect has to adopt it
+# instead of dialling the stored one. The virtual peer refuses a connect that
+# does not match its configured address, so a stale dial fails the reconnect.
+add_executable(fujifilm_secure_address_test
+               fujifilm_secure_address_test.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmSecure.cpp
+               ${FURBLE_ROOT}/lib/furble/Scan.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_ROOT}/lib/blowfish/Blowfish.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_include_directories(fujifilm_secure_address_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/preferences
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/blowfish
+                           ${FURBLE_ROOT}/include)
+target_compile_options(fujifilm_secure_address_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture -Wno-sign-compare)
+target_link_libraries(fujifilm_secure_address_test PRIVATE Threads::Threads)
+
 # Failed Secure registration must leave an asynchronous GAP disconnect event
 # addressable until NimBLE has dispatched it. This target combines the real
 # Secure registration and production Scan path with the host NimBLE double.
@@ -2068,6 +2101,27 @@ target_compile_options(control_disconnect_test PRIVATE
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_libraries(control_disconnect_test PRIVATE furble_host_camera)
 
+# The connection-saver fan-out must not run on the task that toggles the
+# setting: Camera::setConnSaverEnabled() enters NimBLE and can hold the caller
+# on the HCI transport for seconds, and that caller is the LVGL task. The mock
+# records which thread issues each connection-parameter update, so this target
+# asserts the caller's own thread never issues one.
+add_executable(control_conn_saver_test
+               control_conn_saver_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp)
+target_include_directories(control_conn_saver_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_options(control_conn_saver_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_libraries(control_conn_saver_test PRIVATE furble_host_camera)
+
 # Pin the transmit power mapping between the ESP-IDF setting and the camera
 # library TxPower through the public Control API.
 add_executable(tx_power_mapping_test
@@ -2540,6 +2594,7 @@ if(BUILD_TESTING)
   add_test(NAME camera-journal-events COMMAND camera_journal_event_test)
   add_test(NAME saved-scan-cancel COMMAND saved_scan_cancel_test)
   add_test(NAME saved-scan-delivery COMMAND saved_scan_delivery_test)
+  add_test(NAME fujifilm-secure-address COMMAND fujifilm_secure_address_test)
   add_test(NAME ble-registration-cleanup COMMAND ble_registration_cleanup_test)
   add_test(NAME fujifilm-registration-gate COMMAND fujifilm_registration_gate_test)
   add_test(NAME fujifilm-stale-bond COMMAND fujifilm_stale_bond_test)
@@ -2625,6 +2680,7 @@ if(BUILD_TESTING)
   set_tests_properties(console-commands PROPERTIES TIMEOUT 120)
 
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
+  add_test(NAME control-conn-saver COMMAND control_conn_saver_test)
   add_test(NAME tx-power-mapping COMMAND tx_power_mapping_test)
 
   # Teardown wedge regression (plan 148). Bounded by a hard timeout so a
