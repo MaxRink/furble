@@ -161,6 +161,10 @@ protocol core.
   a furble feature rather than an ESP one, so a Nordic port carries it, and the
   file already satisfies the portable contract unchanged. It is used by
   `src/FurbleGPS`, by no camera, and is covered by the `gps-casic` host test.
+  The CASIC facts behind it, with the section and page of both the 2020 and the
+  2025 protocol revision, are on `docs/components/at6668.md`. `antStatus` 0 is
+  "initialising" in V4.2.0.3 and "open" in R6, so do not read it as a fault
+  without knowing the revision.
   `Casic::sentenceCommand()` owns the `$PCAS03` bodies. A field that is left
   empty keeps the receiver's rate, so every body writes all fourteen rate
   fields the V6.3.2 section 2.7.4 and V4.2.0.3 section 1.6.4 formats share;

@@ -133,7 +133,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   the NMEA backend, which is the CASIC/$PCAS path unchanged. Vendor-specific
   actions (configure, restart, standby, satellite capture, MON-HW, ephemeris)
   switch on `GPS::backend_t`; add a vendor as one more value and one more
-  configure function. UBX configuration goes through the same one-in-flight
+  configure function. The `$PCAS` command set, its argument ranges and the
+  MON-HW layout are recorded per protocol revision on
+  `docs/components/at6668.md`: the 2020 specification and the 2025 one disagree
+  about `$PCAS04`, `$PCAS15`, the binary classes and the `antStatus` encoding,
+  and the receiver does not state which revision its ROM follows. UBX configuration goes through the same one-in-flight
   queue, via `enqueueUbxConfig()` with a codec-built frame, with a one second
   ACK timeout and writes RAM and BBR, because software
   standby clears RAM. The settle wait after a signal change is a

@@ -686,21 +686,22 @@ Estimates are not measurements unless the label says `measured-local`.
   challenges the 30 s `MAX_AGE_MS` freshness budget.
 - Evidence: `code` (`DUTY_SECONDS`, `MIN_WAKE_WAIT_MS`, `MAX_AGE_MS`), `model`
   (21.5 and 23.0 mA, 4 mA), `measured-local` (PCAS12 standby works, no backup
-  supply, 107.7 s cold start).
+  supply, a 107.7 s re-fix after a 60 s rail cut).
 - Estimated saving: about 1.5 mA now (`model`). Up to about 19 mA if the
   interval and wake dwell are redesigned and a cached fix is acceptable
   (`model`). The `$PCAS12` in-circuit standby current is still an estimate of
   0.5 mA, range 10 uA to 2 mA.
 - Risk: medium. A fix older than 30 s stops geotagging silently. The receiver
   may ignore `$PCAS12` on a different unit. Do not cut the rail: there is no
-  backup supply and a rail cut costs a 107.7 s cold start.
+  backup supply and a rail cut costs a measured 107.7 s re-fix.
 - Effort: small for the Battery Saver bundle, medium for the interval rework.
 - Required test: 1 hour with a live fix, log fix age and NMEA gaps at 5, 10,
   15, and 60 s duty; compare battery drain; verify a geotag write on each
   vendor path that supports GPS.
 - Citation: `plans/00-hardware-experiments.md` Experiment B; `plans/implemented/15-gps-power.md`;
-  M5Stack Unit GPS v1.1 (31.64 mA at 5 V); AT6558 datasheet (23 mA tracking,
-  below 10 uA standby); CASIC `$PCAS12` command.
+  M5Stack Unit GPS v1.1 (31.64 mA at 5 V); AT6668 datasheet DS-AT6668 V1.4
+  section 4.3 page 9 (37 mA tracking with BDS, GPS and GLONASS, 8 uA battery
+  backup, 30 uA sleep); CASIC R6 `$PCAS12` command, section 2.7.11 page 44.
 
 #### RL-02 GPS: stop back-powering the receiver when the 5 V rail is off
 
@@ -1611,7 +1612,7 @@ not-reopened row as a new verification.
 | ST7735S | Sitronix ST7735S datasheet v1.1, as recorded in the repo model | Table 3: normal 0.9 mA typical and 2.0 mA max, sleep-in 15 uA typical and 30 uA max. | Not reopened here. |
 | BMI270 | Bosch BST-BMI270-DS000-08 | `PWR_CTRL` `0x7D`, `PWR_CONF` `0x7C`, `ACC_CONF` `0x40`. Normal accel and gyro 685 uA; suspend 3.5 uA; accel low power 4 to 10 uA. | Not reopened here. Repo model, datasheet-tagged. |
 | MPU6886 | TDK MPU-6886 datasheet v1.1 | `PWR_MGMT_1` `0x6B`, `PWR_MGMT_2` `0x6C`. Six-axis 2.79 mA typical; sleep 6 uA; accel low power 40 uA. | Not reopened here. Repo model, datasheet-tagged. |
-| AT6558 | CASIC AT6558 datasheet, used as the AT6668 proxy | Tracking 23 mA typical BD plus GPS; standby below 10 uA; VBAT 10 uA typical. | Not reopened here. Repo model, datasheet-tagged. |
+| AT6668 | CASIC AT6668 datasheet DS-AT6668 V1.4 | 37 mA typical tracking with BDS, GPS and GLONASS at 3.3 V; 8 uA battery backup; 30 uA sleep with ON_OFF low; 2.5 mA antenna detect; 45 to 65 mA antenna short-circuit limit; 160 ms reset; 26 MHz TCXO. Sections 1.2 and 4.3, pages 1 and 9. | Opened on 2026-11-25; the per-fact record is on `docs/components/at6668.md`. |
 | ATGM336H | ATGM336H module manual | Module current below 25 mA typical, 100 mA peak excluding antenna; VBAT 10 uA. | Not reopened here. Repo model, datasheet-tagged. |
 | NS4168 | NS4168 datasheet | Quiescent 13 mA at 5 V; shutdown 1 uA. | Not reopened here. Repo model, datasheet-tagged. |
 | W5500 | WIZnet W5500 datasheet v1.1.0, dated 17DEC2022 | `RSTn` low at least 500 us, `TPL` up to 1 ms from release to internal PLOCK; `IDD1` 132 mA; `IDD2` 13 mA in PHY power-down; link currents 128, 75 and 65 mA. | Opened for this change. Not a local measurement, and no post-release `TPL` wait is implemented. |
@@ -1731,7 +1732,7 @@ Open questions that block a default change:
   https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf
 - MPU6886:
   https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/MPU-6886-000193%2Bv1.1_GHIC_en.pdf
-- AT6558: https://dratek.cz/docs/produkty/1/1045/at6558.pdf
+- AT6668: https://cdn.icstop.com/upload/pdfs/ca/27/ca27336d2c2d0967e811278e3e53824a.pdf
 - ATGM336H:
   https://github.com/Albresky/GPS-ATGM336H-Library/blob/master/manual/C90770_ATGM336H-5N31_2016-12-26.pdf
 - NS4168: https://www.chipsourcetek.com/Uploads/file/NS4168.pdf
