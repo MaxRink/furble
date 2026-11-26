@@ -7,6 +7,31 @@
 
 #include "Camera.h"
 
+// Wake sequence budget for a GR IV in BLE standby, in milliseconds.
+//
+// No source documents how long a GR IV needs after the link is re-established
+// before OperationMode reports CAPTURE, and the 2026-08-28 bench session did not
+// measure it. These are design bounds, kept as build flags so host tests use
+// short deterministic waits instead of seconds, and so the numbers can be
+// retuned from bench data without touching the class:
+//
+// - FURBLE_RICOH_WAKE_CONNECT_TIMEOUT_MS: the reconnect's own connect timeout.
+//   The peer is already bonded and was connected moments ago, so this is far
+//   below the 30 s Control uses for a cold connect.
+// - FURBLE_RICOH_WAKE_SETTLE_MS: how long the link stays down, so the camera
+//   sees a real disconnect before the new connection.
+// - FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS: the whole bounded wait for a fresh
+//   OperationMode read of CAPTURE after the link is back.
+#ifndef FURBLE_RICOH_WAKE_CONNECT_TIMEOUT_MS
+#define FURBLE_RICOH_WAKE_CONNECT_TIMEOUT_MS 5000
+#endif
+#ifndef FURBLE_RICOH_WAKE_SETTLE_MS
+#define FURBLE_RICOH_WAKE_SETTLE_MS 200
+#endif
+#ifndef FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS
+#define FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS 2000
+#endif
+
 namespace Furble {
 /**
  * Ricoh Imaging BLE remote for the RICOH GR IV series.
@@ -18,7 +43,11 @@ namespace Furble {
  * (single-write capture; no shutter hold). Every capture is gated on a fresh
  * OperationMode read: a GR IV in BLE standby keeps the link up and reports
  * CameraPower ON while OperationMode is BLE_STARTUP, and a capture write in
- * that state cold boots the camera and can wedge its firmware. Focus is
+ * that state cold boots the camera and can wedge its firmware. A capture
+ * request in BLE_STARTUP runs a bounded wake state machine instead of a bare
+ * refusal: drop the link, re-establish it, then poll a fresh OperationMode read
+ * for CAPTURE. Only that confirming read authorizes the capture writes; a wake
+ * that does not confirm inside the budget writes nothing. Focus is
  * unsupported: the documented Focus Mode characteristic configures a mode but
  * does not trigger autofocus, and no separate half-press command has been
  * verified. GPS geotagging enables the Camera Service GEO Tag characteristic
@@ -185,7 +214,42 @@ class Ricoh: public Camera {
               const char *label,
               const char *(*decode)(uint8_t) = nullptr,
               std::atomic<uint8_t> *lastByte = nullptr);
-  bool captureAllowed(void);
+  /**
+   * Outcome of the pre-capture OperationMode gate.
+   *
+   * AUTHORIZED means a fresh read just reported CAPTURE, or the body has no
+   * OperationMode characteristic at all. ASLEEP means BLE_STARTUP, which is the
+   * only state the wake path may act on. REFUSED covers every other reading, a
+   * failed read, and a dead link.
+   */
+  enum class GateResult : uint8_t {
+    AUTHORIZED = 0,
+    ASLEEP = 1,
+    REFUSED = 2,
+  };
+
+  /** Outcome of reading OperationMode. */
+  enum class ModeRead : uint8_t {
+    VALUE = 0,
+    UNAVAILABLE = 1,
+    FAILED = 2,
+  };
+
+  // Wake state machine. IDLE -> RELINK -> PROBE, and PROBE ends in either AWAKE
+  // or FAILED. Only AWAKE authorizes a capture, and FAILED writes nothing.
+  enum class WakeState : uint8_t {
+    IDLE = 0,
+    RELINK = 1,
+    PROBE = 2,
+    AWAKE = 3,
+    FAILED = 4,
+  };
+
+  static const char *wakeStateName(WakeState state);
+  ModeRead readOperationMode(uint8_t &mode);
+  GateResult captureGate(uint8_t &mode);
+  bool wakeFromStandby(uint8_t asleepMode);
+  void wakePause(uint32_t milliseconds);
   bool writeByte(NimBLERemoteCharacteristic *pChr, uint8_t value, const char *label);
   bool writeOperation(OperationCode code, OperationParameter parameter);
   bool subscribeCharacteristic(NimBLERemoteCharacteristic *pChr, const char *label);

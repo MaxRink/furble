@@ -549,6 +549,32 @@ class Camera: public NimBLEClientCallbacks {
   virtual void _disconnect(void) = 0;
 
   /**
+   * Re-establish the link in place, keeping this session's identity.
+   *
+   * Some bodies need a link drop and a fresh connection to leave a low-power
+   * state before a command is safe. This runs the same connect and discovery
+   * path as Camera::connect(), on the same client, so every vendor pointer is
+   * re-derived through the vendor _connect() after the reconnect instead of
+   * surviving it. The session flags are untouched: the user's selection and the
+   * Control target's ownership stay as they are, so a wake is not a connect
+   * cycle and does not publish progress 0.
+   *
+   * Call it from a vendor command path that holds no other Camera lock. It takes
+   * m_Mutex for the whole sequence, exactly as connect() does, which keeps the
+   * control task's teardown out of the client while it is in use, and it
+   * publishes m_CancelClient for the duration so abortBlockingConnect() can
+   * reach a reconnect blocked inside NimBLE.
+   *
+   * @param[in] timeout Connection timeout in milliseconds for the new link.
+   * @param[in] settleMs How long the link stays down before reconnecting. The
+   *            peer has to see a real disconnect before the new connection can
+   *            mean anything.
+   *
+   * @return true when the link and the vendor handshake are back up.
+   */
+  bool reconnectInPlace(uint32_t timeout, uint32_t settleMs);
+
+  /**
    * BLE security IO capability for this camera type.
    *
    * @return the IO capability to advertise during pairing.

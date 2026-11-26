@@ -1,12 +1,13 @@
 #include <algorithm>
 #include <cstring>
 
-// The ATT MTU wait must use the scheduler's tick wherever FreeRTOS is present:
-// the simulator runs on a virtual clock its scenarios advance, so a wall-clock
-// sleep would neither observe the exchange nor time out. Host targets that link
-// no FreeRTOS shim fall back to the wall clock. Same rule as Fujifilm.cpp.
+// Every bounded wait in this file must use the scheduler's tick wherever
+// FreeRTOS is present: the simulator runs on a virtual clock its scenarios
+// advance, so a wall-clock sleep would neither observe the exchange nor time
+// out, and a link settle would pass in no real time. Host targets that link no
+// FreeRTOS shim fall back to the wall clock. Same rule as Fujifilm.cpp.
 #if __has_include(<freertos/FreeRTOS.h>)
-#define FURBLE_MTU_WAIT_USES_TICKS 1
+#define FURBLE_BOUNDED_WAIT_USES_TICKS 1
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #else
@@ -144,6 +145,24 @@ uint8_t ioCap(Camera::SecurityMode mode) {
       break;
   }
   return BLE_HS_IO_DISPLAY_YESNO;
+}
+
+/**
+ * Block this task for a bounded settle interval on the scheduler's clock.
+ *
+ * A wall-clock sleep on the simulator would pass in no real time, so the link
+ * would look dropped and re-established without the camera having any time to
+ * see it.
+ */
+void linkSettleDelay(uint32_t milliseconds) {
+  if (milliseconds == 0) {
+    return;
+  }
+#if defined(FURBLE_BOUNDED_WAIT_USES_TICKS)
+  vTaskDelay(pdMS_TO_TICKS(milliseconds));
+#else
+  std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+#endif
 }
 
 /** The ESP-IDF power level value the connect log has always printed. */
@@ -1241,7 +1260,7 @@ uint16_t Camera::verifyAttMtu(uint16_t floor) {
       ESP_LOGD(LOG_TAG, "%s ATT MTU poll cancelled", m_Name.c_str());
       break;
     }
-#if defined(FURBLE_MTU_WAIT_USES_TICKS)
+#if defined(FURBLE_BOUNDED_WAIT_USES_TICKS)
     vTaskDelay(pdMS_TO_TICKS(POLL_MS));
 #else
     std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
@@ -1425,6 +1444,87 @@ void Camera::disconnect(void) {
   if (m_Connected) {
     this->_disconnect();
   }
+}
+
+bool Camera::reconnectInPlace(uint32_t timeout, uint32_t settleMs) {
+  const std::lock_guard<connect_mutex_t> lock(m_Mutex);
+  if (!m_Connected || (m_Client == nullptr)) {
+    ESP_LOGW(LOG_TAG, "%s in-place reconnect refused: no live link", m_Name.c_str());
+    return false;
+  }
+
+  ESP_LOGI(LOG_TAG, "%s in-place reconnect: dropping the link for %lu ms", m_Name.c_str(),
+           static_cast<unsigned long>(settleMs));
+  {
+    // Gate the idle profile out for the whole sequence, exactly as connect()
+    // does: discovery and subscription round trips at the idle interval would
+    // stretch the reconnect.
+    const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
+    m_ConnectInProgress = true;
+  }
+
+  // Own the client across the drop. NimBLE frees a self-deleting client after
+  // onDisconnect, and this path needs the same object back for the new link.
+  // This is the connect() ownership rule, applied to a reconnect.
+  m_Client->setSelfDelete(false, false);
+  m_Client->setConnectTimeout(timeout);
+  {
+    // Publish the client for the cancel path. Control::disconnect() can then
+    // terminate a reconnect blocked inside NimBLE instead of waiting it out.
+    const std::lock_guard<std::mutex> cancel(m_CancelMutex);
+    m_CancelClient = m_Client;
+  }
+
+  this->_disconnect();
+  linkSettleDelay(settleMs);
+
+  // Same per-connection security setup as connect(): the peer-specific IO
+  // capability has to be in place for the handshake, and the default goes back
+  // afterwards.
+  NimBLEDevice::setSecurityAuth(true, true, true);
+  NimBLEDevice::setSecurityIOCap(ioCap(securityMode()));
+  const bool connected = this->_connect();
+  NimBLEDevice::setSecurityIOCap(ioCap(m_SecurityModeDefault));
+
+  {
+    const std::lock_guard<std::mutex> cancel(m_CancelMutex);
+    m_CancelClient = nullptr;
+  }
+
+  if (connected && m_Connected) {
+    // Live session: restore the runtime self-delete so the normal teardown
+    // through onDisconnect still frees the client.
+    m_Client->setSelfDelete(true, true);
+  } else {
+    // Hand the client back to the pool the way a failed connect() does, so
+    // repeated failed wakes cannot exhaust the fixed NimBLE client pool.
+    // m_Connected is cleared first: it guards every live-link dereference, so
+    // no other task can touch the client while this reclaim runs.
+    m_Connected = false;
+    if (m_Client != nullptr) {
+      // Clear the vendor pointers and terminate any link the failed attempt
+      // left up before the client is freed. _disconnect() dereferences only
+      // through m_Client, which is still live here.
+      this->_disconnect();
+    }
+    if (m_Client != nullptr) {
+      m_Client->setClientCallbacks(nullptr, false);
+      NimBLEDevice::deleteClient(m_Client);
+      m_Client = nullptr;
+    }
+  }
+
+  {
+    const std::lock_guard<std::mutex> params(m_ConnParamsMutex);
+    m_ConnectInProgress = false;
+    // Restart the inactivity window at the reconnected link, so the idle
+    // profile countdown does not fire immediately after a wake.
+    m_LastConnActivityMs = connectionTimeMs();
+  }
+
+  ESP_LOGI(LOG_TAG, "%s in-place reconnect %s", m_Name.c_str(),
+           (connected && m_Connected) ? "complete" : "failed");
+  return connected && m_Connected;
 }
 
 void Camera::resetConnectionState(void) {

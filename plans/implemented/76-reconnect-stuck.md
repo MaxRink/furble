@@ -54,7 +54,7 @@ link being up.
 - `allConnected()` is `isConnected()` for every target
   (`src/FurbleControl.cpp:220-228`).
 - `Camera::isConnected()` is `m_Connected && m_Client && m_Client->isConnected()`
-  (`lib/furble/Camera.cpp:1533`). It is purely link state. Nothing about
+  (`lib/furble/Camera.cpp:1633`). It is purely link state. Nothing about
   registration or `m_Configured`.
 - `Fujifilm::m_Configured` (`lib/furble/Fujifilm.h:112`) is set only by the
   `CHR_NOT1_UUID` notification handler (`lib/furble/Fujifilm.cpp:24-27`) and is
@@ -87,8 +87,13 @@ Call chain during the stall:
 -> `Control::connectAll(void)` holding `Control::m_Mutex`
    (`src/FurbleControl.cpp:104`)
 -> `Camera::connect()` holding `Camera::m_Mutex`
+<<<<<<< HEAD
    (`lib/furble/Camera.h:753`)
 -> `FujifilmSecure::_connect()` (`lib/furble/FujifilmSecure.cpp:144`).
+=======
+   (`lib/furble/Camera.h:779`)
+-> `FujifilmSecure::_connect()` (`lib/furble/FujifilmSecure.cpp:137`).
+>>>>>>> 2f61d6b1 (fix(ricoh): wake a sleeping GR IV with a bounded reconnect)
 
 `_connect()` prints `Connected` at `lib/furble/FujifilmSecure.cpp:107` right
 after `m_Client->connect(m_Address)` succeeds. That is the `Connected` line seen
@@ -140,7 +145,7 @@ the stale-session sensitivity lives.
 ### Confirming side effect
 
 During the stall the control task holds both `Control::m_Mutex`
-(`src/FurbleControl.cpp:104`) and `Camera::m_Mutex` (`lib/furble/Camera.h:753`).
+(`src/FurbleControl.cpp:104`) and `Camera::m_Mutex` (`lib/furble/Camera.h:779`).
 `Control::getTargetStatus` takes `Control::m_Mutex`
 (`src/FurbleControl.cpp:235`) and per-camera `isConnected` takes `Camera::m_Mutex`
 (`lib/furble/Camera.cpp:93`), so the console `status` command should block while
