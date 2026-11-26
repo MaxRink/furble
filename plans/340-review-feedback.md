@@ -105,6 +105,12 @@ Neighbouring GPS scenarios on both panels, all exit 0: `gps-no-receiver`,
 `gps-autobaud-ladder`, `gps-duty-no-fix`, `gps-receiver-detail`,
 `gps-ubx-detect`.
 
+The full certified e2e suite on the StickS3 binary,
+`sh sim/scripts/run-e2e.sh`: `All 247 end-to-end scenarios passed`. The only
+behavioural change outside the failed-install path is the parser-buffer clear
+moving above the null-queue guard in `reset()`, which is a no-op whenever a queue
+exists.
+
 `python3 tools/pre_review.py --base origin/master`: `PASS: 13 gates` (13 with
 the scanner unit tests, including the citation gate #511 added).
 
@@ -115,12 +121,19 @@ the scanner unit tests, including the citation gate #511 added).
 ## Online gate and merge
 
 `python3 tools/check_review_threads.py --repo MaxRink/furble --pr 509` must pass
-with the rebased head. The PR has no review threads, so the gate is decided by
-the check runs. At `0a0273f4` the only failing lanes were
-`build (m5stack-core-debug)`, which reported
-`flash 1,740,960, exceeds flash_slot 1,740,800 by 160`, and the aggregate
-`success`. That lane is over its slot on every branch since #501; #518 landed
-headroom on master and this branch is measured again against it before merge.
+with the head it is run against. The PR has no review threads, so the gate is
+decided by the check runs.
+
+At `0a0273f4` the only failing lanes were `build (m5stack-core-debug)`, which
+reported `flash 1,740,960, exceeds flash_slot 1,740,800 by 160`, and the
+aggregate `success`. That lane was over its slot on master since #501 for every
+branch, and the 144 bytes this PR adds sat on top of it. #518 then moved the
+Core OTA debug lane to `ESP_LOG_INFO` and landed 24,944 bytes of headroom, so the
+same code measures
+`PASS m5stack-core-debug: flash 1,715,856/1,740,800` at `563971d6`. All 37 checks
+pass at that head, including `build (m5stack-core-debug)`, the aggregate
+`success`, `sim-e2e` with the new scenario, both sanitizer jobs, the coverage
+floor and the size report.
 
 ## Follow-up
 
