@@ -222,6 +222,15 @@ extern "C" void furble_sim_caps_free(void *pointer) {
   releaseAllocation(pointer);
 }
 
+/*
+ * The bound heap_caps_realloc may copy from the block it is replacing. The
+ * registry records the charge, not the requested size, so report the host
+ * allocator's usable size the way furble_sim_fw_realloc does.
+ */
+extern "C" size_t furble_sim_caps_block_size(const void *pointer) {
+  return (pointer == nullptr) ? 0 : usableSize(const_cast<void *>(pointer));
+}
+
 extern "C" void furble_sim_fw_free(void *pointer) {
   releaseAllocation(pointer);
 }

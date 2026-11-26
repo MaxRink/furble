@@ -441,3 +441,39 @@ Related furble plans
 - `plans/41-alternative-hardware.md`, the alternate hardware survey.
 - `plans/50-companion-app-design.md`, the companion app and its security
   section.
+
+## Follow-up: W5500 RESETn pulse is below the vendor minimum (2026-11-25)
+
+Known defect. Recorded here, not fixed in the correction PR.
+
+The WIZnet W5500 datasheet version 1.1.0, section 5.5.1 figure 22 and table 2,
+require RESETn to stay low for at least 500 us. RESETn is pin 37 in the pin
+description table on page 9. The pinned ESP-IDF PHY drives 100 us.
+`w5500_reset_hw()` calls `gpio_set_level(..., 0)` at
+`components/esp_eth/src/spi/w5500/esp_eth_phy_w5500.c:158`, holds for
+`esp_rom_delay_us(100)` at `:160`, then releases at `:161`. The value is
+hard-coded, so furble cannot lengthen it through configuration.
+
+`src/FurbleEthernet.cpp:192` supplies only the GPIO number (`9`, defined at
+`src/FurbleEthernet.cpp:136`). The pulse shape belongs entirely to the PHY.
+
+Fix direction, either one:
+
+1. Drive the pulse in furble before `esp_eth_start()`. Configure the reset pin
+   as an output, hold it low for at least 500 us, release it, and still pass
+   `reset_gpio_num` so the driver's own sequence runs afterwards. This needs no
+   upstream change and keeps the vendor minimum.
+2. Take the constant upstream in esp_eth as a named `W5500_RESET_PULSE_US` with
+   the datasheet citation, and consume it here.
+
+The host suite cannot see this.
+`tests/host/boundaries/ethernet_w5500_test.cpp:183` asserts only
+`config->reset_gpio_num == 9`, so a wrong or shortened pulse passes. Covering it
+would need the fake PHY to model reset timing.
+
+No field symptom has been measured, and no board run has exercised this path:
+the Verification section in this plan is still hardware-gated. The datasheet
+value is a minimum, so a 100 us pulse may still reset the part. Until a bench
+run records the reset margin, treat this as a specification mismatch rather
+than a reported failure. Bench: scope RESETn on the Waveshare board and count
+power cycles to link up. That bench run belongs with verification step 1.

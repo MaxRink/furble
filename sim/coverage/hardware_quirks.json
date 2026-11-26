@@ -2355,12 +2355,13 @@
       "model": "src/FurbleEthernet.cpp",
       "scenario": "sim/scenarios/e2e/hw-boundary-waveshare-eth.txt",
       "assertions": [
+        "eth.reset",
         "eth.dhcp",
         "eth.reconnect",
         "wifi.fallback"
       ],
       "status": "modeled",
-      "note": "EspEthTransport compiled with host SPI/GPIO/W5500/netif/event doubles; production WiFi deferral checked by real-wifi-lifecycle.",
+      "note": "EspEthTransport compiled with host SPI/GPIO/W5500/netif/event doubles; the RESETn pulse is timed on a virtual microsecond clock against the W5500 datasheet 500 us minimum; production WiFi deferral checked by real-wifi-lifecycle.",
       "runner": "sim/scripts/run-boundary-conformance.sh"
     },
     {
@@ -2825,6 +2826,96 @@
       "assertions": [
         "gps.time_resolved",
         "time.gps"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.rail.shared_ext5v",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "EXT_5V as one switched output behind more than one holder",
+      "source": "FurbleBoard.cpp gpsRail and M5PM1.h REG_PWR_CFG 0x06 BOOST_EN",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ir-rail-cut-in-flight.txt",
+      "assertions": [
+        "rail.state",
+        "rail.holders",
+        "rail.refusals"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.ir.rail_dependency",
+      "profile": "sticks3",
+      "category": "peripheral",
+      "feature": "IR TX and RX behind EXT_5V_EN",
+      "source": "src/FurbleBoard.cpp IR pin and M5PM1.h REG_PWR_CFG 0x06 BOOST_EN",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-ir-rail-cut-in-flight.txt",
+      "assertions": [
+        "ir.state",
+        "ir.transmits",
+        "ir.failures"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.pmic_irq_latch",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "PM1 IRQ Status 1 and 2 latches on one aggregated line",
+      "source": "M5PM1 v1.0.6 M5PM1.h REG_IRQ_STATUS1 0x40 and REG_IRQ_STATUS2 0x41",
+      "model": "sim/shim/M5PM1.h",
+      "scenario": "sim/scenarios/e2e/hw-pmic-5vin-latch-blocks-wake.txt",
+      "assertions": [
+        "platform.pmic_irq_status",
+        "platform.pmic_irq",
+        "platform.motion_wake"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.pmic_pwr_cfg_shared",
+      "profile": "sticks3",
+      "category": "power",
+      "feature": "One PWR_CFG byte shared by the rail, the LED and the charge enable",
+      "source": "M5PM1 v1.0.6 M5PM1.h REG_PWR_CFG 0x06 and src/FurblePlatform.cpp setDisplayOff",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-pmic-pwr-cfg-lost-update.txt",
+      "assertions": [
+        "pmic.pwr_cfg",
+        "pmic.pwr_cfg_lost",
+        "rail.state"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.pmic_watchdog_power_cycle",
+      "profile": "sticks3",
+      "category": "reset",
+      "feature": "PM1 watchdog expiry as a system power cycle",
+      "source": "M5PM1 v1.0.6 M5PM1.h REG_WDT_CNT 0x0A (system resets at zero)",
+      "model": "sim/shim/M5PM1.h",
+      "scenario": "sim/scenarios/e2e/watchdog-stall.txt",
+      "assertions": [
+        "platform.watchdog",
+        "pmic.watchdog_cycles",
+        "platform.reset_reason"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.sticks3.rtc_absent",
+      "profile": "sticks3",
+      "category": "board",
+      "feature": "No calendar RTC chip on the board",
+      "source": "docs/console-commands.md (StickS3 and Core have no RTC chip)",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-rtc-capability.txt",
+      "assertions": [
+        "hw.rtc",
+        "hw.rtc_capability",
+        "hw.fail_closed"
       ],
       "status": "modeled"
     }

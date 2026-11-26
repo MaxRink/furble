@@ -201,6 +201,49 @@ full Xcode install. A full Xcode install keeps SwiftPM's normal plugin
 discovery. The iOS/macOS SwiftUI app still needs Xcode; only the package and CLI
 are available from Command Line Tools.
 
+### UI snapshot baseline
+
+`CompanionStatusViewSnapshotTests` renders the shipped `CompanionStatusView`
+through SwiftUI `ImageRenderer` at 360 by 168 points and 1x scale, then compares
+the decoded pixels against the committed
+`Tests/Snapshots/CompanionStatusView.1x.png`. A mismatch fails with the
+differing pixel count and writes `Tests/Snapshots/CompanionStatusView.1x.actual.png`
+beside the baseline. The render pins the `en_US_POSIX` locale, the Gregorian
+calendar, UTC, left-to-right layout, the large text size, the light colour
+scheme and the `aqua` AppKit appearance, and the view reads no clock, so the
+same input gives the same pixels on the same macOS version.
+
+The baseline is a macOS host artifact. The iOS unit-test bundle compiles the
+test out, because a second renderer would need its own baseline. Regenerate the
+PNG after an intended visual change and review it before committing:
+
+```sh
+cd companion/apple
+FURBLE_APPLE_SNAPSHOT_UPDATE=1 swift test --filter CompanionStatusViewSnapshotTests
+git add Tests/Snapshots/CompanionStatusView.1x.png
+```
+
+The flag rewrites the committed PNG from the current render and refuses to run
+when `CI` is set, so CI cannot replace the baseline it compares against.
+
+A passing run prints the comparison it made, so the CI job log carries the
+evidence rather than only a green suite:
+
+```
+snapshot comparison: .../Tests/Snapshots/CompanionStatusView.1x.png matched a
+fresh render on Version 15.8.2 (Build 24H232): 360x168, 60480 pixels, 0 beyond
+8/255 (0.00%, budget 1.00%), largest channel delta 0
+```
+
+`CompanionStatusListRowTests` covers the step the pixels cannot: the app puts
+`CompanionStatusView` inside a `List` section, and SwiftUI flattens the four
+views in its body into four rows. The test hosts that section in AppKit and
+counts the rows SwiftUI builds, so a body that stopped flattening (a `VStack`
+body, say) fails instead of quietly collapsing four rows into one. It compares
+against two controls, a one-view section and the same body wrapped in a `VStack`,
+so it cannot pass by measuring something unrelated. Like the snapshot, it is
+macOS only and the iOS bundle compiles it out.
+
 ## Native Xcode project
 
 The checked-in `project.yml` is the source of truth for the native iOS and

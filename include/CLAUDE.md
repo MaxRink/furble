@@ -22,6 +22,27 @@ Public headers for the app layer in src/, one header per module
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
+- `Control::m_Targets` is owned by `m_Mutex`, and every reader takes it. The
+  1 Hz GPS service is a fourth owner of that vector. It runs on the UI loop,
+  never on `GPS::task()`: the LVGL `gps_service_timer` in display builds and
+  `vUITask()` in headless ones, both from `app_main`'s task, while `GPS::task()`
+  only publishes the fix. `updateGPS()` walks `m_Targets`, so it walks
+  and stores under the same lock, and it releases that lock before posting
+  `CMD_GPS_UPDATE` on the control queue, so that queue's own lock is never taken
+  under `m_Mutex`.
+  `Target::updateGPS()` is therefore a pure member copy with no radio
+  call, allocation or delay, and it must stay one; a snapshot copied out of
+  `m_Targets` to shorten the section would hand that walk ownership of a
+  `Target`, because the vector holds the only reference. `allConnected()` keeps a
+  second, `m_Mutex`-taking entry point for callers that hold nothing, and
+  `allConnectedLocked()` for `connectAll()` and the control task's
+  `STATE_ACTIVE` branch, which also fans commands out under that lock. The lock
+  order inside Control is unchanged: `m_Mutex` stays outermost, then the
+  governor mutex (released), then a hook's own locks. That is Control's order
+  only; the companion order, advertising then `m_Mutex` then `m_BondMutex`, is
+  documented below. The GPS fan-out takes `m_Mutex` under `UI::m_Mutex` on the
+  UI task, the same direction the UI rebuild path already uses; Control never
+  calls into the UI, so that edge stays one-way.
 - `Control::setAdmitHook()` is registered once at boot, before the control
   task starts, with `MemoryPressure::admit()`; host Control harnesses
   register none. `addActive()` calls it under `Control::m_Mutex`, after the
@@ -91,6 +112,11 @@ Public headers for the app layer in src/, one header per module
   enabled; callers must sample charging telemetry and keep policy ticks free of
   NVS writes.
 - `FurbleSettings.h` assigns the IMU enable switch wire id 46.
+- `FurbleSettingsDefaults.h` holds the fresh-device defaults and the
+  board-conditional `displayOff()` policy. Its Core Basic comment carries the
+  IP5306 light-load hold: 64 s below 45 mA, because M5Unified writes
+  `SYS_CTL2` bits 3:2 = `11`, not the 32 s power-on default. Do not restate the
+  32 s datasheet default as the shipped behavior.
 
 - `FurbleCompanionService.h` gates the settings and trigger writes on the
   companion password challenge in `FurbleCompanionAuth.h`. A new privileged
@@ -215,7 +241,15 @@ settings-touching rebase.
   `APPLIED`, `VALID_NO_EFFECT`, `UNAVAILABLE`, or `INVALID`; malformed direct
   actions fail closed. Keep this overload and result enum simulator-only so
   firmware builds retain the production header surface.
+- Under `FURBLE_SIM`, `FurblePlatform.h` declares and befriends the simulator
+  readers for the retained PMIC model: `watchdogState`, `motionWakeState`,
+  `pmicIrqState`, `pmicIrqStatus` and the two injected PMIC events. They exist
+  only so a scenario can observe the aggregated IRQ line and the watchdog
+  cycle, and firmware has no callers for any of them.
 - FurbleWiFi.h exposes station provisioning and NTP status for the app layer.
+  `hasAssignedAddress()` is the live station readiness query: it asks esp-netif
+  for an up netif with a non-zero IPv4 address instead of reading the cached
+  status, so the WebUI gate cannot outlive a lost DHCP lease.
 - `FurbleWebUI.h` owns the HTTPS supervisor and release-retry state. The pure
   ingress checks in `FurbleWebUIProtocol.h` are shared with host coverage. Held
   ownership never crosses a complete Control session replacement.
@@ -246,12 +280,15 @@ settings-touching rebase.
   when the queue is there) and never frees, because a stopped client may still
   deliver a late callback. `m_IncomingMutex` guards `m_Incoming` for
   overlapping clients; hold it only across filling and queueing the copy.
-  `m_Received` belongs to the owner task alone. Lifecycle events carry only the
-  client and event id. Without PSRAM the start gate reserves
-  `EVENT_STORAGE_BYTES`, the queue plus both copies. A failed
-  allocation aborts on every board, so the queue and the copies pick PSRAM from a
-  fresh largest-block reading before allocating, never by trying and falling
-  back, and an internal choice re-runs the start gate first.
+  `m_Received` belongs to the owner task alone. A lifecycle event carries the
+  client, the event id and the esp-mqtt error type and CONNACK code, copied
+  before the callback returns because the owner classifies the failure later.
+  The retry backoff (`m_RetryDelayMs`, `m_NextAttemptMs`) is under `m_Mutex`.
+  Without PSRAM the start gate reserves `EVENT_STORAGE_BYTES`, the queue plus
+  both copies. A failed allocation aborts on every board, so the queue and the
+  copies pick PSRAM from a fresh largest-block reading before allocating, never
+  by trying and falling back, and an internal choice re-runs the start gate
+  first.
 - `FurbleUIMemory.h` owns the panel-sized LVGL draw-buffer contract. Narrow
   panels use one buffer and wait for the SPI DMA before `lv_disp_flush_ready()`;
   wide panels keep two buffers. Both stay DMA-capable internal RAM. Update

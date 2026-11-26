@@ -23,8 +23,23 @@ enum mqtt_event_id_t {
 
 constexpr int MQTT_PROTOCOL_V_3_1_1 = 4;
 
+// esp_mqtt_error_type_t and esp_mqtt_connect_return_code_t from the pinned
+// esp-mqtt header, in the values the component reports.
+constexpr int MQTT_ERROR_TYPE_NONE = 0;
+constexpr int MQTT_ERROR_TYPE_TCP_TRANSPORT = 1;
+constexpr int MQTT_ERROR_TYPE_CONNECTION_REFUSED = 2;
+constexpr int MQTT_ERROR_TYPE_SUBSCRIBE_FAILED = 3;
+
+constexpr int MQTT_CONNECTION_ACCEPTED = 0;
+constexpr int MQTT_CONNECTION_REFUSE_PROTOCOL = 1;
+constexpr int MQTT_CONNECTION_REFUSE_ID_REJECTED = 2;
+constexpr int MQTT_CONNECTION_REFUSE_SERVER_UNAVAILABLE = 3;
+constexpr int MQTT_CONNECTION_REFUSE_BAD_USERNAME = 4;
+constexpr int MQTT_CONNECTION_REFUSE_NOT_AUTHORIZED = 5;
+
 struct esp_mqtt_error_codes_t {
   int error_type;
+  int connect_return_code;
 };
 
 struct esp_mqtt_event_t {
@@ -105,6 +120,14 @@ void reset(void);
 const std::vector<PublishedMessage> &published(void);
 const std::vector<Subscription> &subscriptions(void);
 int startCount(void);
+// Every esp_mqtt_client_start() call, including one that fails.
+int startAttempts(void);
+// The next start() call fails like esp_mqtt_client_start() on a refused socket
+// or a failed client task.
+void failNextStart(void);
+// The next start() call reports a refused CONNACK with this return code, then
+// the disconnect ESP-IDF follows it with, instead of connecting.
+void refuseNextConnect(int connect_return_code);
 bool hasRetained(const std::string &topic);
 void deliver(const std::string &topic, const std::string &payload);
 void deliverFragmented(const std::string &topic,

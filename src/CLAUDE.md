@@ -13,6 +13,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   wait, and the S3 watchdog shutdown stay together.
   An empty connect target set returns idle, never active. A concurrent cancel
   still takes precedence and returns disconnecting.
+  Every walk of `m_Targets` holds `m_Mutex`, including the control task's
+  `STATE_ACTIVE` liveness check and command fan-out and the 1 Hz GPS service's
+  `updateGPS()` fan-out. That service runs on the UI loop, and it releases the
+  lock before posting the command that reaches the control queue. See
+  include/CLAUDE.md for the ownership and lock-order contract (plan 327).
   The control task's queue wait is a 250 ms idle tick. Work that is not a
   command, such as reaping the drain after a cancel, must wake it: the
   interactive disconnect posts one no-op `CMD_ERROR`, or every cancel holds
@@ -81,11 +86,19 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   `m_CycleMutex`. The service passes lock it blocking and never skip: a pass
   that skipped a consumed UART event lost the whole burst, and the cycle went
   degraded for at least the 10 s backoff.
-- `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is SAFE under DFS because the
-  IDF rmt driver holds `ESP_PM_APB_FREQ_MAX` between `rmt_enable` and
-  `rmt_disable`. Do NOT switch to `RMT_CLK_SRC_XTAL`, it does not exist on
-  plain ESP32. Transmission runs on the dedicated ir task, never under the
-  Control mutex.
+- `FurbleIR`: RMT on `RMT_CLK_SRC_DEFAULT` (APB) is safe under DFS here, but not
+  because the driver locks APB. The driver takes `ESP_PM_CPU_FREQ_MAX` for a
+  channel without DMA and `ESP_PM_NO_LIGHT_SLEEP` for one with DMA
+  (`components/esp_driver_rmt/src/rmt_common.c:230`), and `ESP_PM_APB_FREQ_MAX`
+  appears nowhere in `esp_driver_rmt`. `createChannel()` never sets `with_dma`.
+  furble raises the PM CPU maximum itself, 160 MHz by default
+  (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:84`), and APB is
+  80 MHz at that maximum, so the 38 kHz carrier holds. The divisor is
+  fixed at channel creation, before the lock is taken, so this only holds while
+  APB is already 80. Setting `with_dma` on the S3 would swap the lock for
+  `ESP_PM_NO_LIGHT_SLEEP` and let the carrier drift. Do NOT switch to
+  `RMT_CLK_SRC_XTAL`, it does not exist on plain ESP32. Transmission runs on the
+  dedicated ir task, never under the Control mutex.
 - `FurbleFeedback`: optional sound, LED and vibration event outputs. DFS-safe
   by construction: all sound paths go through I2S and the IDF i2s driver holds
   `ESP_PM_APB_FREQ_MAX` while the channel is enabled, so no extra pm lock is
@@ -128,8 +141,21 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   gates the TimeKeeper sync. The ephemeris cache and AID-INI are CASIC only and
   never reach a UBX receiver. The stream split is the pure
   `GpsDemux::split()`; keep demultiplexing there, not in the driver.
+- `FurbleEthernet.cpp` owns the W5500 RESETn pulse. The pinned ESP-IDF W5500
+  PHY hardcodes 100 us in `w5500_reset_hw()`, so the transport drives a 500 us
+  pulse before `esp_eth_driver_install()` (which runs the PHY hardware reset and
+  then the MAC init over SPI) and passes `reset_gpio_num = -1`. Do not hand the
+  pin back: a second 100 us assertion would be the last one and under the
+  datasheet minimum.
 - The duty cycle waits until the receiver is identified and the configuration
-  queue is idle. Standby sends `$PCAS12` only on the NMEA backend and
+  queue is idle. The NMEA sentence prune is `Casic::sentenceCommand()`, never a
+  hand-written `$PCAS03`: an empty field keeps the receiver's rate, so a short
+  sentence cannot turn a sentence off. On UBX the driver follows
+  `Ubx::PlanSummary`: when the plan enables BeiDou B1C it sends the
+  `OPERATEMODE=FULL` write before the signal batch, because a power save mode
+  an earlier session left behind makes the receiver reject B1C (ROM release
+  notes 7.2), and it reports the ANA value the plan actually wrote, which is
+  false with B1C (RN 5.1.5). Standby sends `$PCAS12` only on the NMEA backend and
   RXM-PMREQ (force flag) on UBX. A duty request seen in STANDBY or RAIL_OFF
   is stale (the UI pushed a fix the cycle already parked for) and is dropped;
   a resent PMREQ would wake a UART-wake receiver at once. Rail cycling on UBX without a backup supply
@@ -223,13 +249,21 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Every NVS write of the access point runs under `g_ApStorageMutex`. A clear
   bumps `g_ApGeneration` and cancels the queued work; a save captured under an
   older generation is dropped, so a clear is never undone.
+  `IP_EVENT_STA_LOST_IP` clears `g_GotIp` and the cached address on the same
+  task and notifies the worker, without stopping the station, the NTP client or
+  the driver: esp-netif resets the address to 0 before it posts the event, and
+  the DHCP client recovers on its own. A queued NTP start declines because
+  `startNtp()` re-reads `g_GotIp`. `hasAssignedAddress()` answers readiness
+  from that live station netif instead of the cache; the WebUI gate and its
+  status page call it, and MQTT asks the same question of every netif.
 - `FurbleMemoryPressure`: the runtime load-shedding governor. `tick()` runs
   right after `CrashLog::update()` in both UI loops and reads the internal heap
   once a second. AMBER pauses the WebUI server, RED also pauses the MQTT
   client; each service reads `MemoryPressure::current()` in its own run
   decision and returns through its own start gate. A pause never writes NVS,
   is not a connect failure and never touches BLE, Control, the UI, GPS, WiFi
-  or the companion. The MQTT owner reports the internal queue storage its
+  or the companion, so it never consumes an MQTT retry backoff step either.
+  The MQTT owner reports the internal queue storage its
   next start still needs through `setMQTTStartExtra()`, from the same
   `MQTT::startExtra()` its start gate uses; RED adds it to its exit. Keep the
   two on that one helper. `app_main()` registers `MemoryPressure::admit()` as
@@ -247,11 +281,15 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   lock; include/CLAUDE.md records the hook lock order. Policy and thresholds live in the header and are
   host tested in `tests/host/memory_pressure_test.cpp`.
 - `FurbleWebUI`: HTTPS-only browser and REST surface. Keep it fail closed on
-  password or TLS identity errors. Camera actions stay on `UI::sendRequest`,
-  settings stay on `Provision::apply`, and held releases remain owned until the
-  Control queue accepts them or the camera session ends. Complete Control
-  session replacement expires held ownership by generation, including when
-  disconnect and reconnect both occur between WebUI supervisor polls.
+  password or TLS identity errors. `networkReady()` is
+  `WiFi::hasAssignedAddress()`, and `/api/status` reports the same answer, so a
+  lost DHCP lease closes the listener instead of serving on a dead address; the
+  cached `WiFi::status_t` keeps the last address until the next event. Camera
+  actions stay on `UI::sendRequest`, settings stay on `Provision::apply`, and
+  held releases remain owned until the Control queue accepts them or the camera
+  session ends. Complete Control session replacement expires held ownership by
+  generation, including when disconnect and reconnect both occur between WebUI
+  supervisor polls.
   `HTTPD_MAX_SOCKETS` counts client sockets; ESP-IDF reserves three additional
   internal sockets. The production value is two clients (five total).
   `reloadSetting()` must not create the TLS identity task while `web_ui` is off.
@@ -392,8 +430,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   reached via `ui audit` on the console. Reports clipped labels and label
   overlaps as JSON Lines, see tools/ui-audit.md.
   The display off state machine lives here: `processInactivity` dims or sleeps
-  the panel, sleep/wake pairs the APB lock with a 120 ms SLPIN/SLPOUT dwell,
-  and a wake press is swallowed until every input source reports released.
+  the panel, sleep/wake pairs the APB lock with both 120 ms panel dwells, and a
+  wake press is swallowed until every input source reports released. The dwell
+  rule is per panel: ILI9342C needs 120 ms from SLPIN to the next SLPOUT as
+  well as from SLPOUT to the next SLPIN, so `wakeDisplay()` keeps its wait
+  (`src/FurbleUI.cpp:1887-1897`); ST7789V and ST7796S need only the SLPOUT to
+  next SLPIN interval, which `sleepDisplay()` gates at `:1843-1845`.
   Only a pending low battery power-off countdown holds the panel awake
   through that state machine, the plain warning rides the normal dim/sleep
   path, and the LVGL idle clock is never touched. `wakeDisplay` does not count

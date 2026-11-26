@@ -21,8 +21,15 @@ see the [UI walkthrough](ui-walkthrough.md).
 
 ## Quick reference
 
-Top level menu: `Connect`, `Scan`, `Delete`, `Settings`, `Off`. An `IR` entry
-also appears at the top level when Infrared is supported and enabled.
+Top level menu, in navigation order: `Connect`, `Scan`, `Delete`, `IR`,
+`Settings`, `Level`, `Off`. `IR` is present only when the board has an IR LED
+and Infrared is enabled. `Level` is hidden when the IMU is off or no sensor is
+present.
+
+The 320x240 touch boards draw the same entries on a four-column, two-row grid
+instead of one column. `Connect`, `Scan`, `Delete` and `Settings` fill the first
+row, and the second row holds `IR` in the first cell, `Level` in the second and
+`Off` in the fourth. Button focus still follows the navigation order above.
 
 Two-button navigation (the default and the only navigation model):
 
@@ -57,8 +64,23 @@ Diagnostics, Storage.
 - **Applies** says when a saved change takes effect. `Now` means it takes effect
   without a reboot. `Restart` means the value is read at startup, so it needs a
   reboot or a Restart button. `Next boot` and `Next connection` are noted where
-  they apply. This column follows the firmware's own `appliesImmediately` map,
-  which is also what the serial console reports for each setting.
+  they apply.
+- This column comes from `Settings::appliesImmediately()` in
+  `src/FurbleSettings.cpp`, with five rows refined by what the code does at
+  runtime. Brightness previews on the slider and is saved when you release it,
+  the Inactivity roller updates the timeout as you turn it, and Button Mode is
+  re-read on every shutter press, so all three read `Now` even though the map
+  lists them as restart-only. Connection power save and Sleep while connected
+  are read only when a connection is made (`src/FurbleControl.cpp`), so both
+  read `Next connection`; the map lists Connection power save as restart-only
+  and Sleep while connected as immediate.
+- The serial console answers the same question from its own map, `appliesWhen()`
+  in `src/FurbleConsole.cpp`, so `settings get` prints `immediately`,
+  `on next connect` (Connection power save only) or `on reboot`. The two maps
+  agree on most rows and disagree on five: the console prints `immediately` for
+  Button Mode where `Settings::appliesImmediately()` says restart, and it prints
+  `on reboot` for TX Power, WiFi, NTP and NTP Server where that map says
+  immediate.
 - Settings marked (dangerous) can affect an active camera link or a running
   connection. Change them with care while connected.
 
@@ -83,7 +105,7 @@ that do not fit; focus outlines must not cover adjacent setting names.
 | :--- | :--- | :--- | :--- | :--- |
 | Brightness | 128 | slider, roughly 0 to 240 | Now (live preview) | Saved when you release the slider. |
 | Inactivity timeout | 60 secs | Never, 30 secs, 60 secs, 2 mins, 5 mins, 10 mins | Now | Fresh devices start at 60 secs; an existing stored value is kept. Dims and then sleeps the screen after this idle time. |
-| Screen off | Off (Dim on M5Stack Core Basic) | Dim, Off, Off remote on, Dim then off (button boards). Dim, Off, Dim then off (touch boards) | Restart | Fresh devices start at Off, except the M5Stack Core Basic keeps Dim so its IP5306 boost does not cut the board. Touch boards do not offer the remote-on option. Dim then off dims at the inactivity timeout and sleeps the panel 30 s later. |
+| Screen off | Off (Dim on M5Stack Core Basic) | `Dim`, `Off`, `Off, remote on`, `Dim, then off` (button boards). `Dim`, `Off`, `Dim, then off` (touch boards) | Restart | Fresh devices start at Off, except the M5Stack Core Basic keeps Dim so its IP5306 boost does not cut the board. Touch boards do not offer the remote-on option. `Dim, then off` dims at the inactivity timeout and sleeps the panel 30 s later. |
 | Calibrate | n/a | action | n/a | Touch boards only. Launches touch calibration and stores the result. |
 | Show Title | On | On, Off | Restart | Hiding the title frees header space on narrow stick displays. |
 | Legend | Buttons | Buttons, Bottom, Off | Restart | Physical-button Stick boards only. Buttons keeps the shipped Right legend beside its button, narrowing only the rows level with that floating legend. Row width and translation update during the scroll; label sizing (including button-label wrapping) and the full layout settle wait for the gesture to end. Bottom places all three legends in the navigation band; Off hides the rendered indicators but retains physical input anchors and layout reservation. |
@@ -135,19 +157,17 @@ is enabled.
 | Constellation | Default | Default, GPS, BDS, GPS+BDS, GLONASS, GPS+GLO, BDS+GLO, All | Now | Which satellite systems the receiver uses. |
 | Power saving > Receiver | Always on | Always on, Standby (PCAS12), Rail cycling | Now | Receiver low-power policy. Rail cycling is experimental. |
 | Power saving > Sleep between fixes | No standby | No standby, 5 s, 10 s, 15 s | Now | Standby interval for the PCAS12 policy. |
-| Assisted start | Off | Off, Position and time | Now | Feeds the receiver a position and time hint for a faster fix. |
+| Assisted start | Off | Off, Position and time, Position, time and ephemeris | Now | Feeds the receiver a position and time hint for a faster fix. The ephemeris option also caches and replays receiver frames; its time to first fix benefit is hardware-tuning-pending. |
+| Motion Adaptive | Off | On, Off | Now | Runs the IMU stationary detector while GPS is on and logs each stationary or moving transition. The row renders disabled unless IMU is on and its sensor is present. No receiver policy reads the verdict yet, so it changes no fix rate and saves no power. |
 | Fix Hold | Off | Off, 30 s, 2 min, 10 min, 60 min | Now | Keep sending the last fix to the camera for this long after the receiver loses it, so photos taken in a tunnel or indoors still get a geotag. The held fix keeps its position and advances its clock, and the GPS Data page says how much of the window is left. The window is measured from the moment the fix is declared stale, which is 30 s after the receiver's last good reading, so a 30 s hold can hand the camera a position up to a minute old. The timestamp sent with it counts that whole time, so it is never wrong about how old the fix is. A held fix is not written to the GPX track log. Off sends nothing once the fix is lost, which is the behaviour without this setting. |
 | Extrapolate | Off | On, Off | Now | While a fix is held, project the position along the last measured course and speed instead of repeating it. Needs Fix Hold, a course and speed from the receiver, and at least 2 m/s, so a stationary user is never moved. The projection stops advancing 30 seconds after the fix is lost. Experimental: it is a straight line, so it is wrong as soon as you turn. |
-| GPS Data | n/a | page | n/a | Live position, satellites, speed, altitude, and time, plus the receiver fix source, the time since its last sentence, and its power cycle state. With Fix Hold on it also shows whether the fix is live or held, and how long a held fix has left. The position, altitude and time rows always report the receiver's own last reading, not the held or extrapolated values being sent to the camera. The receiver rows are not shown on the 80x160 M5StickC. |
-| Assisted start | Off | Off, Position and time, Position, time and ephemeris | Now | Feeds the receiver a position and time hint for a faster fix. The ephemeris option also caches and replays receiver frames; its time to first fix benefit is hardware-tuning-pending. |
 | Platform | Do not send | Do not send, Portable, Stationary, Pedestrian, Vehicle | Now | Applies the CASIC dynamic model through CFG-NAVX, with a PCAS11 fallback. On a u-blox M10 it is CFG-NAVSPG-DYNMODEL 0, 2, 3 or 4. The receiver effect is hardware-tuning-pending. |
+| GPS Data | n/a | page | n/a | Live position, satellites, speed, altitude, and time, plus the receiver fix source, the time since its last sentence, and its power cycle state. With Fix Hold on it also shows whether the fix is live or held, and how long a held fix has left. The position, altitude and time rows always report the receiver's own last reading, not the held or extrapolated values being sent to the camera. The receiver rows are not shown on the 80x160 M5StickC. |
 | GPS Signals | Follow Constellation | 0, or a mask of 1 GPS, 2 BeiDou, 4 GLONASS, 8 Galileo, 16 QZSS, 32 SBAS | Now | u-blox M10 only, console and companion only. The constellations the receiver tracks. 0 maps the Constellation row across and leaves Galileo to the receiver. An M10 tracks at most four major systems; BeiDou runs as B1I unless GLONASS is on, then as B1C. A mask the receiver cannot run (QZSS or SBAS without GPS) is refused and the receiver keeps its preset. More systems lower the highest update rate, so a faster Update rate is clamped to what the set supports. Setting it back to 0, or Platform back to Do not send, removes furble's stored value from the receiver; the receiver returns to its own preset at its next start. |
 | GPS Power Save | Off | 0 Off, 1 Cyclic tracking, 2 On/off | Now | u-blox M10 only, console and companion only. Cyclic tracking keeps the fix at 1 Hz or 2 Hz and roughly halves the receiver current (vendor figures 9.5 mA to 5 mA on a MAX-M10S). On/off wakes for one fix per Sleep between fixes interval, at least 5 s, or every 10 s when Sleep between fixes is No standby. Refused with BeiDou B1C, so it stays off with four constellations. The receiver does not process SBAS while it saves power (MAX-M10S integration manual 3.6.2), so SBAS corrections stop. |
 | GPS AssistNow | Off | On, Off | Now | u-blox M10 only, console and companion only. AssistNow Autonomous: the receiver predicts orbits from what it has seen, so a start with data up to about three days old fixes in 3 to 4 s instead of 27 s. Off by default, like the receiver's own default: the background orbit computation costs current, and the orbits live in the receiver's backup memory, which a rail cut erases on boards without a backup supply. So it only helps across standby and on boards that keep that supply. |
-| GPS Data | n/a | page | n/a | Live position, satellites, speed, altitude, and time, plus the receiver fix source, the time since its last sentence, and its power cycle state. The receiver rows are not shown on the 80x160 M5StickC. |
-| GPS Satellites | n/a | page | n/a | Per satellite constellation, PRN, C/N0 and used-in-fix marker, with the in-view and used counts and PDOP, HDOP, VDOP. GSV and GSA capture runs only while the page is open. |
 | Raw NMEA | n/a | page | n/a | Live receiver sentences, fix state, and error counts. Includes a Hot restart button. |
-| Satellites | n/a | page | n/a | GSV/GSA detail: in-view/used counts, DOP, C/N0 and used flags. Capture runs only while this page is open. |
+| Satellites | n/a | page | n/a | Per satellite constellation, PRN, C/N0 and used-in-fix marker, with the in-view and used counts and PDOP, HDOP, VDOP. GSV and GSA capture runs only while the page is open. |
 
 The receiver is set from these when GPS is enabled, and it returns to its own
 defaults the next time it is powered off. Auto declares a receiver only after
@@ -170,7 +190,7 @@ Submenu: `Settings` > `Time`.
 
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| Time zone | UTC | UTC, Auto (GPS), Europe/Berlin, Europe/London, US Eastern, US Central, US Mountain, US Pacific, Australia/Sydney, Asia/Tokyo, India, and 29 more curated zones | Now | Selects the local civil time used for display and camera clock writes. UTC keeps the previous camera clock behaviour. Auto (GPS) uses the nearest curated zone from a fresh wired fix. The page also shows local time with its current offset, plain UTC, the effective zone, and whether the zone is manual, GPS, or UTC. |
+| Time zone | UTC | UTC, Europe/Berlin, Europe/London, US Eastern, US Central, US Mountain, US Pacific, Australia/Sydney, Asia/Tokyo, India, 29 more curated zones, then `Auto (GPS)` as the last roller entry | Now | Selects the local civil time used for display and camera clock writes. UTC keeps the previous camera clock behaviour. Auto (GPS) uses the nearest curated zone from a fresh wired fix. The page also shows local time with its current offset, plain UTC, the effective zone, and whether the zone is manual, GPS, or UTC. |
 
 The manual selection always wins. With `Auto (GPS)` selected, the last derived
 zone is used while the last fresh wired fix is at most 30 minutes old. A
@@ -236,7 +256,7 @@ Submenu: `Settings` > `Text size`.
 
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| Text size | Normal | Small, Normal, Large | Restart | Press the Restart button to save and apply. |
+| Text size | Normal (Small on M5StickC) | Small, Normal, Large (Small, Normal on M5StickC) | Restart | Press the Restart button to save and apply. The 80x160 M5StickC starts a fresh device at Small and drops Large, because that font does not fit the panel; its page says `Large needs a bigger screen`. |
 
 ### Bluetooth
 
@@ -264,9 +284,11 @@ Submenu: `Settings` > `Power`.
 
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
+| Battery Saver | Off | On, Off | Restart | One switch for the low-power profile: connection power save, a 60 s screen off, reconnect backoff, balanced scan, and light sleep while connected on StickS3. Applies after a reboot and keeps your own settings, so turning it off restores them. |
 | Sleep while connected | Off (On on M5StickS3) | On, Off | Next connection (dangerous) | M5StickS3 only. Doze between BLE events while connected. Read when a connection is made, so set it before connecting. Fresh StickS3 devices start at On. |
 | CPU speed | 160 MHz | 80 MHz, 160 MHz, 240 MHz | Now (dangerous) | Higher feels snappier and costs battery. |
 | Battery Style | Icon | Icon, Percent, Both | Now | What the header battery indicator shows. |
+| Auto off while charging | Off | On, Off | Now | Lets `Auto off` power the device off while the charger is connected. Off suppresses `Auto off` while the charger is connected. Not offered on M5Stack Core Basic. |
 | Auto off | Never | Never, 5 mins, 10 mins, 30 mins, 60 mins | Now | Power off after this idle time. Not offered on M5Stack Core Basic. |
 | Low battery | None | None, Warn, Warn then off | Now | Low battery action. Not offered on M5Stack Core Basic. |
 | Battery | n/a | page | n/a | Charge level, voltage, current, charging state, and runtime estimate. Rows the board cannot measure are hidden. |
@@ -343,12 +365,22 @@ esp-mqtt client requires 8,192 free and a 4,096-byte largest block for plain
 MQTT, or 11,264 / 7,168 for TLS. Home Assistant discovery is optional and
 requires 10,240 free and a 4,096-byte largest block after the saved camera list
 loads. Below a floor the firmware logs the measured pair and either defers the
-start (the owner retry limit still applies) or skips only the retained
-discovery records. The broker link and the command path stay up when discovery
-is skipped. The 9,392-byte command event queue lives in PSRAM with an internal
-fallback, and the saved camera list loads on connect rather than at
-initialization. The plain MQTT worker uses a 3 KiB stack and 1,536-byte network
-and outbox buffers; TLS keeps a 6 KiB worker.
+start to the retry backoff or skips only the retained discovery records. The
+broker link and the command path stay up when discovery is skipped. The
+9,392-byte command event queue lives in PSRAM with an internal fallback, and the
+saved camera list loads on connect rather than at initialization. The plain
+MQTT worker uses a 3 KiB stack and 1,536-byte network and outbox buffers; TLS
+keeps a 6 KiB worker.
+
+A broker or network outage never stops the retries. The first failed attempt
+schedules the next one 10 s later, each further failure doubles that gap to a
+60 s cap, and the hub keeps retrying at one attempt a minute until the broker
+returns. The owner task, the event queue and the inbound event copies stay up
+across attempts; only the esp-mqtt client is rebuilt, so every attempt passes
+the heap gates again. A broker that refuses the credentials, the protocol
+version or the client id stops the retries instead, because no amount of
+retrying fixes that: the firmware logs the rejection and `mqtt connect` retries
+after the setting is corrected.
 
 `mqtt://` is intentionally supported for local-broker compatibility, but it is
 unencrypted and sends credentials and commands in plaintext. Use it only on a
@@ -378,6 +410,21 @@ On but the server stays closed and logs the measured budget. The TLS identity is
 created at the next boot when possible; enabling the WebUI for the first time
 after boot uses a short one-shot task, and the log asks for a reboot if that
 task cannot be allocated. See [WebUI and REST API](webui.md).
+
+No menu row reaches the WiFi and NTP settings at all: `WiFi` (wire id 51),
+`WiFi SSID` (52), `WiFi Passphrase` (53), `NTP` (54) and `NTP Server` (55), with
+the keys `wifi`, `wifi_ssid`, `wifi_psk`, `ntp` and `ntp_server`. Both switches
+default Off, the two credentials default empty, and the NTP server defaults
+`pool.ntp.org`. Set them from the console with `wifi set ssid|psk`,
+`wifi enable|disable`, `ntp set server <host>` and `ntp enable|disable|sync`,
+or from the companion app, an authenticated WebUI settings write, SD import and
+export, and provisioning. See [console commands](console-commands.md).
+
+The other settings with no `Settings` page row are already documented above on
+this page: `Companion password` (wire id 47) under Features, `GPS Signals` (48),
+`GPS Power Save` (49) and `GPS AssistNow` (50) in the GPS table, `MQTT` (56),
+`MQTT URI` (57), `MQTT User` (58), `MQTT Password` (59), `MQTT Base` (60) and
+`MQTT Home Assistant` (61) under MQTT, and `WebUI` (62) in the paragraph above.
 
 - **Bulb duration** default 30 seconds. Set it under the connected `Bulb` page,
   `Bulb` > `Duration`. Restart to change is not needed. The value is remembered

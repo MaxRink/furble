@@ -1,0 +1,44 @@
+# One PWR_CFG byte holds the charge enable, both regulated rails, the EXT 5 V
+# output and the status LED level (M5PM1 v1.0.6 M5PM1.h register 0x06). The
+# panel-off path saves the LED level out of that byte and clears it, so its write
+# carries every other bit it read. A rail change between that read and that write
+# is lost, and the shared byte is what makes the loss representable at all.
+#
+# Boot value 31 = 0x1F: charge, DCDC, LDO, EXT 5 V and the status LED on.
+# Cut value 23 = 0x17: the same byte with the EXT 5 V bit cleared.
+# Panel-off value 15 = 0x0F: the LED cleared by a write built from the boot byte,
+# which puts the EXT 5 V bit back.
+#
+# Teeth: model panel-off as its own flag instead of a bit in this byte and
+# pmic.pwr_cfg_lost stays 0 with the rail still off, so the asserts after the
+# inactivity sleep fail.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+# `seed pmic_pwr_cfg_stale` is the read that the interleaved rail change
+# invalidated. The model keeps the boot snapshot for the next LED write.
+seed pmic_pwr_cfg_stale true
+seed inactivity 1
+seed display_off 1
+wait 1000
+assert pmic.pwr_cfg 31
+assert rail.state on
+assert pmic.pwr_cfg_lost 0
+
+# The GPS disable path clears the output bit in the same byte.
+action toggle gps
+wait 2000
+assert setting.gps 0
+assert rail.state off
+assert pmic.pwr_cfg 23
+assert pmic.pwr_cfg_lost 0
+
+# The inactivity sleep runs the panel-off path, which writes the byte it read
+# before the cut. The output bit comes back and the model counts the loss.
+# `wait` advances virtual time; `assert-eventually` only yields to other tasks.
+wait 32000
+assert platform.display_off yes
+assert pmic.pwr_cfg_lost 1
+assert pmic.pwr_cfg 15
+assert rail.state on
+exit

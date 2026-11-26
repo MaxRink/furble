@@ -1132,7 +1132,7 @@ class UI {
 
   static constexpr uint32_t LEFT_LONG_PRESS_MS = 800;
 
-  /** ST7789 and ILI934x need 120 ms between Sleep In and Sleep Out. */
+  /** 120 ms each way on ILI934x, Sleep Out to Sleep In on ST7789 and ST7796. */
   static constexpr uint32_t DISPLAY_SLEEP_DWELL_MS = 120;
   /** UI loop pass with the panel on. */
   static constexpr uint32_t LOOP_ACTIVE_MS = 5;

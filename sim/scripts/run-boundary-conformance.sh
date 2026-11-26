@@ -51,6 +51,7 @@ assert_token() {
 
 assert_token "headless.no_panel touched=0"
 assert_token "headless.services"
+assert_token "eth.reset pulse_us="
 assert_token "eth.dhcp link=up ip=192.0.2.42"
 assert_token "eth.reconnect ip=198.51.100.7"
 assert_token "wifi.fallback wired_defer=1 wired_resume=1"

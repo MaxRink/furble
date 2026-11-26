@@ -6,8 +6,12 @@ wait 400
 assert setting.watchdog 1
 assert platform.watchdog armed
 
-# A stall beyond the shared 45 second timeout expires the retained PMIC before
-# the simulator's next bookkeeping cycle can feed it.
+# A stall beyond the shared 45 second timeout crosses the retained PMIC deadline
+# before the simulator's next bookkeeping cycle can feed it. M5PM1.h REG_WDT_CNT
+# 0x0A resets the system at zero, so the expiry is a PMIC-driven power cycle and
+# not a status flag.
 stall 46000
-assert platform.watchdog expired
+assert platform.watchdog cycled
+assert pmic.watchdog_cycles 1
+assert platform.reset_reason pmic_watchdog
 exit

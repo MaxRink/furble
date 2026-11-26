@@ -69,7 +69,7 @@ Key code:
 | M5StickC | ST7735S, 80x160 | AXP192 LDO2, voltage dimmed | `Light_M5StickC`, brightness mapped to AXP192 register 5..15 | 0.9 mA panel typ, 2.0 mA max, 15 uA typ and 30 uA max sleep-in (v1.1 Table 3 page 30). No LEDC. |
 | M5StickC Plus | ST7789V, 135x240 | AXP192 LDO2, voltage dimmed | same `Light_M5StickC` mapping | 6.0 mA panel typ, 7.5 mA max, 15 uA typ and 30 uA max sleep-in (v1.3 Table 3 page 40). No LEDC. |
 | M5StickS3 | ST7789P3, 135x240 | LEDC PWM, GPIO38, channel 7, 256 Hz, 9-bit | `Light_PWM`, roughly linear duty | 6.0 mA panel typ, 7.5 mA max, and a higher sleep-in than the ST7789V: 20 uA typ, 50 uA max (v0.1 Table 3 page 34). APB lock has a real reason here. |
-| M5Stack Core | ILI9342C, 320x240 | LEDC PWM, GPIO32, 44.1 kHz | `Light_PWM` | 6 to 8 mA panel estimate. ILI9342C V101 has no supply current table at all, only the 0.1 uA logic leakage on page 227. IP5306 cuts power below 45 mA after 32 s. |
+| M5Stack Core | ILI9342C, 320x240 | LEDC PWM, GPIO32, 44.1 kHz | `Light_PWM` | 6 to 8 mA panel estimate. ILI9342C V101 has no supply current table at all, only the 0.1 uA logic leakage on page 227. IP5306 cuts power below 45 mA after 32 s. The IP5306 also cuts power below 45 mA after 64 s. |
 | M5Stack Core2 | ILI9342C, 320x240 | AXP192 DCDC3, voltage dimmed | `Light_M5StackCore2`, 2.4 to 3.3 V | 6 to 8 mA panel estimate, same missing table as Core. No LEDC. |
 
 Sources: `src/M5GFX.cpp` in M5GFX 0.2.27 for the StickS3 PWM setup
@@ -107,12 +107,13 @@ quoting 81.2 mA as the default case.
 - Panel sleep is real SLPIN, not just backlight zero:
   M5GFX `sleep()` is `setBrightness(0)` then `setSleep(true)`; `wakeup()` is
   `setSleep(false)` then restore brightness. `Panel_LCD::setSleep()` writes
-  SLPIN/SLPOUT. Code: `src/FurbleUI.cpp:1863`, `src/FurbleUI.cpp:1897`.
+  SLPIN/SLPOUT. Code: `src/FurbleUI.cpp:1863` for SLPIN and
+  `src/FurbleUI.cpp:1901` for SLPOUT.
 - The panel dwell rule is per panel, and the code enforces both waits through
   one constant: `DISPLAY_SLEEP_DWELL_MS` is 120 ms,
   `include/FurbleUI.h:1136`. `UI::sleepDisplay()` refuses to sleep within that
   window of the last wake, `src/FurbleUI.cpp:1843-1845`, and `UI::wakeDisplay()`
-  waits the window out before waking, `src/FurbleUI.cpp:1891-1892`. The
+  waits the window out before waking, `src/FurbleUI.cpp:1894-1897`. The
   datasheets, re-read on 2026-11-26, split the rule in two. ILI9342C needs
   120 ms in both directions, SLPIN to SLPOUT and SLPOUT to the next SLPIN
   (V101 sections 8.2.11 and 8.2.12, pages 100 and 101). ST7789V v1.3 sections
@@ -120,14 +121,18 @@ quoting 81.2 mA as the default case.
   ST7789P3 v0.1 (pages 143 and 145), ST7796S v1.0 sections 9.2.12 and 9.2.13
   (pages 159 and 160) and ST7796U v1.0 (pages 163 and 164) need 120 ms from
   SLPOUT to the next SLPIN only. All of them also ask for 5 ms after SLPIN and
-  after SLPOUT before any other command. Enforcing both directions everywhere
-  is therefore correct for every panel and costs wake latency only on the ST
-  parts. Do not restate this as a one-way rule, and do not restate it as a
-  two-way datasheet rule for the ST parts; the direction depends on the panel.
+  after SLPOUT before any other command. The SLPIN side is covered, because the
+  next command is the SLPOUT the wake gate holds back 120 ms. On the SLPOUT side
+  the wake path writes only the backlight (`src/FurbleUI.cpp:1901`, `:1905`),
+  which is the LEDC channel or the AXP192, not a panel command. Enforcing both
+  directions everywhere is therefore correct for every panel and costs wake
+  latency only on the ST parts. Do not restate this as a one-way rule, and do
+  not restate it as a two-way datasheet rule for the ST parts; the direction
+  depends on the panel.
 - The APB lock is released when the panel sleeps and reacquired before wake:
-  `src/FurbleUI.cpp:1879`, `src/FurbleUI.cpp:1896`.
+  `src/FurbleUI.cpp:1879`, `src/FurbleUI.cpp:1900`.
 - The icon timer is paused while the panel is off:
-  `src/FurbleUI.cpp:1872`, `src/FurbleUI.cpp:1916`.
+  `src/FurbleUI.cpp:1872`, `src/FurbleUI.cpp:1920`.
 - StickS3 status LED is cut on display off and restored on wake:
   `src/FurblePlatform.cpp:221-254`.
 - LVGL uses partial rendering, two DMA buffers, and `pushImageDMA`:
@@ -395,7 +400,7 @@ absolute model.
   brightness, after the timeout. This is the largest user-visible saving in the
   lane, but it is a product decision and it is not measured.
 - Risk: medium to high. Users may think the device died. On M5Stack Core the
-  IP5306 hard-powers-off after 32 s below 45 mA, so a disconnected screen-off
+  IP5306 hard-powers-off after 64 s below 45 mA, so a disconnected screen-off
   state there is effectively device off. Accessibility and outdoor use also
   matter.
 - Effort: small code change, large verification and documentation effort.
@@ -823,7 +828,8 @@ the file's sha256, so the same copy can be checked again.
   quiescent figures.
   `http://images.shoutwiki.com/mindworks/8/8b/2020_infrasonic_wildfire_detector_APX192_Enhanced_Single_Cell_datasheet_en.pdf`
 - Injoinic IP5306 datasheet v1.01: standby 50 uA, boost cutoff below 45 mA for
-  32 s.
+  32 s at the power-on default. M5Unified 0.2.20 `Power_Class.cpp` writes
+  `SYS_CTL2 0x02 = 0x6C`, bits 3:2 = `11`, which selects 64 s.
   `https://www.laskakit.cz/user/related_files/ip5306.pdf`
 
 ### Licence limits on these documents

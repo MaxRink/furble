@@ -8,5 +8,8 @@ assert platform.watchdog armed
 # intermediate assertions. The 45 second PM1 deadline is crossed after the
 # uint32 wrap.
 stall 45001
-assert platform.watchdog expired
+# M5PM1.h REG_WDT_CNT 0x0A resets the system at zero, so crossing the deadline is
+# a PMIC-driven power cycle and not a status flag.
+assert platform.watchdog cycled
+assert pmic.watchdog_cycles 1
 exit

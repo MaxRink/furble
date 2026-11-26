@@ -7,7 +7,7 @@ Firmware is `src/`, `lib/furble/`, `lib/preferences/`, `lib/blowfish/` and
 `include/`. LVGL, M5GFX, M5Unified, the simulator shims and the test harnesses
 are excluded.
 
-## Why two stacks are unioned
+## Why the stacks are unioned
 
 The host harness (`tests/host`) and the simulator (`sim/`) compile the same
 firmware sources but exercise different halves of them. The host harness owns
@@ -21,12 +21,21 @@ is reachable on one panel only. The M5StickC power button read and the Core
 touch read are structurally excluded from the M5StickS3 build, so they only
 appear as covered once the 80x160 and 320x240 binaries are in the union.
 
+A fourth build compiles the M5StickS3 simulator with `FURBLE_SIM_MQTT=1` and
+runs the scenarios the manifest marks `"transport": "mqtt"`. It exists for one
+reason: `src/FurbleMQTT.cpp` is an empty translation unit unless `FURBLE_MQTT`
+is defined, so the production MQTT owner, its admission gate and its PSRAM
+routing are measured by no other build. It reports as
+`sim m5stick-s3 mqtt (135x240)` and joins the `sim union`.
+
 ## Running it
 
 Needs `clang`, `cmake`, SDL2 and the matching `llvm-profdata` and `llvm-cov`.
 On Debian and Ubuntu that is `clang llvm libclang-rt-dev libsdl2-dev`; the
 compiler-rt package carries the profile and sanitizer runtimes and is only a
-recommended dependency of `clang`. The tool picks the LLVM
+recommended dependency of `clang`. The MQTT-transport build additionally needs
+`libmosquitto-dev libcjson-dev`; without them `sh sim/build.sh` exits rather
+than skipping that stack. The tool picks the LLVM
 tools whose major version matches the clang in use, because the raw profile
 format is tied to it. Override with `LLVM_COV` and `LLVM_PROFDATA`.
 
@@ -49,7 +58,7 @@ python3 tools/coverage.py \
 
 Useful narrowing while iterating:
 
-- `--stack host` or `--stack sim` measures one stack.
+- `--stack host`, `--stack sim` or `--stack sim-mqtt` measures one stack.
 - `--board m5stick-s3` measures one panel.
 - `--skip-build` reuses the binaries already in `--build-dir`.
 - `--summary-from coverage.json` re-renders a report without measuring.
@@ -88,6 +97,14 @@ same tree differ by a fraction of a point, and a floor pinned to the exact
 measurement would fail its own next run. Use `--ratchet-margin 0` to pin the
 exact number anyway; repeated ratchets at the same measurement are a fixed
 point either way.
+
+The MQTT-transport stack is measured but carries no floor yet. Its floor has to
+come from a `clang-18` run, and the branch that added it measured on Apple
+clang 21, so the number is recorded in
+[plans/356-sim-memory-certify.md](../plans/356-sim-memory-certify.md) instead of
+being written into the document. `src/FurbleMQTT.cpp` joins the tracked-file
+list in the same ratchet, for the same reason: its lines exist only in that
+build, so a floor for it would fail every partial local run.
 
 Lowering a floor is deliberate and has to say so:
 

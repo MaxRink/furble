@@ -542,6 +542,14 @@ Plan plan(const Request &request) {
     psm = PSM_OFF;
   }
   out.psm = psm;
+  // With B1C the power write carries only OPERATEMODE=FULL, and it has to reach
+  // the receiver before the signals batch: a power save mode an earlier session
+  // left behind would make the receiver reject a configuration that includes
+  // B1C (RN 7.2 page 15, IFD 4.6 page 127).
+  out.power_before_signals = b1c && (psm == PSM_OFF);
+  // AssistNow is not supported with B1C either (RN 5.1.5 page 8). B1I is the
+  // signal the service covers (DS-MIA table 5 page 6).
+  out.ana = request.ana && !b1c;
 
   uint16_t rate = request.rate_ms;
   if (rate != 0) {
@@ -559,7 +567,7 @@ Plan plan(const Request &request) {
   out.rate_ms = rate;
 
   out.base.push_back({Key::MSGOUT_NAV_PVT_UART1, 1});
-  out.base.push_back({Key::ANA_USE_ANA, request.ana ? 1u : 0u});
+  out.base.push_back({Key::ANA_USE_ANA, out.ana ? 1u : 0u});
   if (rate != 0) {
     out.base.push_back({Key::RATE_MEAS, rate});
   } else {

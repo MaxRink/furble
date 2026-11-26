@@ -335,7 +335,7 @@ boards.
 | GPS UART clock source | With DFS and BLE modem sleep, an APB-clocked UART breaks. The GPS needs `UART_SCLK_XTAL`. A new MCU has a different clock tree. |
 | GPS power lock and light sleep | The lock is S3-only today. On the other ESP32 boards, light sleep through NMEA loses sentences. A C6 or H2 port must port the lock before claiming the S3 battery number. |
 | Display APB lock | The LCD backlight PWM flickers unless the display holds `ESP_PM_APB_FREQ_MAX`. A new panel driver must reacquire it after sleep. |
-| Panel sleep dwell | ST7789 and ILI934x need a 120 ms dwell between SLPIN and SLPOUT. M5GFX does not enforce it. |
+| Panel sleep dwell | The rule is per panel. ILI9342C needs 120 ms in both directions (V101 8.2.11 and 8.2.12); ST7789V 9.1.11 and 9.1.12 and ST7796S V1.0 9.2.12 and 9.2.13 need 120 ms from SLPOUT to the next SLPIN, plus 5 ms after SLPIN and after SLPOUT before any other command. M5GFX 0.2.27 sends the bare command, and furble enforces both 120 ms waits, so a port keeps them and adds its own panel rules. |
 | PMIC first transaction | The M5PM1 fails its first I2C transaction after idle sleep. A new PMIC will have its own wake quirk. |
 | Native USB reset on open | The S3 resets when the host opens the USB Serial/JTAG port. A port with a different USB stack changes the recovery and flashing flow. |
 | PSRAM and DMA | Display buffers must stay in internal DMA-capable RAM. A port with PSRAM must repeat the allocation audit. |

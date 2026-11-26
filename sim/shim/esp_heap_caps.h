@@ -6,12 +6,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #else
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #endif
 
 /*
@@ -56,6 +58,21 @@ typedef int esp_err_t;
 
 typedef void (*esp_alloc_failed_hook_t)(size_t size, uint32_t caps, const char *function_name);
 
+/*
+ * The per-heap metadata ESP-IDF declares in multi_heap.h and reports through
+ * heap_caps_get_info(). Keep the field names and order, so a firmware reader
+ * that names a member compiles here unchanged.
+ */
+typedef struct {
+  size_t total_free_bytes;
+  size_t total_allocated_bytes;
+  size_t largest_free_block;
+  size_t minimum_free_bytes;
+  size_t allocated_blocks;
+  size_t free_blocks;
+  size_t total_blocks;
+} multi_heap_info_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -63,6 +80,8 @@ extern "C" {
 size_t furble_sim_heap_free(uint32_t capabilities);
 size_t furble_sim_heap_largest(uint32_t capabilities);
 size_t furble_sim_heap_minimum(uint32_t capabilities);
+/* Fills info from the modelled pool the caps name, in one locked read. */
+void furble_sim_heap_info(multi_heap_info_t *info, uint32_t capabilities);
 /* True when the modelled pool the caps name can hold size, with block overhead. */
 bool furble_sim_heap_fits(size_t size, uint32_t capabilities);
 bool furble_sim_heap_should_fail(size_t bytes, const char *owner);
@@ -76,6 +95,12 @@ esp_err_t heap_caps_register_failed_alloc_callback(esp_alloc_failed_hook_t callb
  */
 void *furble_sim_caps_alloc(size_t alignment, size_t size, uint32_t capabilities);
 void furble_sim_caps_free(void *pointer);
+/*
+ * Host block size of a pointer furble_sim_caps_alloc returned, the bound a
+ * realloc copy may read. The simulator reports the host allocator's usable
+ * size; host unit targets report the same through their fallback.
+ */
+size_t furble_sim_caps_block_size(const void *pointer);
 
 #ifdef __cplusplus
 }
@@ -125,6 +150,54 @@ static inline void heap_caps_free(void *ptr) {
   furble_sim_caps_free(ptr);
 }
 
+/*
+ * ESP-IDF 5.5.3 heap_caps_base.c: heap_caps_calloc_base rejects an overflowing
+ * block count, allocates the total from the pool the caps name and zeroes it,
+ * then heap_caps_calloc() reports a failure through the failed-alloc hook,
+ * which aborts under CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS. The hook is
+ * handed the wrapped n * size, as the device does. Routing the allocation
+ * through heap_caps_malloc keeps the charge, the caps filtering and the abort
+ * policy of a plain heap_caps_malloc.
+ */
+static inline void *heap_caps_calloc(size_t count, size_t size, uint32_t capabilities) {
+  if ((size != 0) && (count > (SIZE_MAX / size))) {
+    furble_sim_heap_alloc_failed(count * size, capabilities, "heap_caps_calloc");
+    return NULL;
+  }
+  const size_t total = count * size;
+  void *pointer = heap_caps_malloc(total, capabilities);
+  if (pointer != NULL) {
+    memset(pointer, 0, total);
+  }
+  return pointer;
+}
+
+/*
+ * heap_caps_realloc_base grows in place when multi_heap can, and otherwise
+ * allocates the new block, copies and frees the old one. The model has no
+ * in-place growth, so this always takes the copy path: the new block is charged
+ * before the old one is refunded, which is the peak a device also reaches when
+ * it cannot grow in place. A failed allocation leaves the old block untouched
+ * and returns NULL, as multi_heap_realloc does.
+ */
+static inline void *heap_caps_realloc(void *pointer, size_t size, uint32_t capabilities) {
+  if (pointer == NULL) {
+    return heap_caps_malloc(size, capabilities);
+  }
+  if (size == 0) {
+    heap_caps_free(pointer);
+    return NULL;
+  }
+  void *moved = heap_caps_malloc(size, capabilities);
+  if (moved == NULL) {
+    return NULL;
+  }
+  const size_t previous = furble_sim_caps_block_size(pointer);
+  memcpy(moved, pointer, previous < size ? previous : size);
+  heap_caps_free(pointer);
+  return moved;
+}
+
 static inline size_t heap_caps_get_free_size(uint32_t capabilities) {
   return furble_sim_heap_free(capabilities);
 }
@@ -135,6 +208,17 @@ static inline size_t heap_caps_get_largest_free_block(uint32_t capabilities) {
 
 static inline size_t heap_caps_get_minimum_free_size(uint32_t capabilities) {
   return furble_sim_heap_minimum(capabilities);
+}
+
+/*
+ * One pool per query: the SPIRAM bit selects the external pool and every other
+ * set selects the internal one. The per-caps getters above aggregate every pool
+ * the set matches, but one multi_heap_info_t describes one heap, so a
+ * MALLOC_CAP_8BIT or MALLOC_CAP_DEFAULT query here reports the internal pool
+ * alone while heap_caps_get_free_size() of the same set sums both.
+ */
+static inline void heap_caps_get_info(multi_heap_info_t *info, uint32_t capabilities) {
+  furble_sim_heap_info(info, capabilities);
 }
 
 #endif

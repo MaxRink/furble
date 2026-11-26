@@ -30,13 +30,26 @@ class CompanionLocationContractTest(unittest.TestCase):
         self.assertIn("requestWhenInUseAuthorization()", text)
 
     def test_ios_status_distinguishes_receiver_and_phone(self):
-        text = (
+        app = (
             ROOT
             / "companion/apple/Sources/FurbleCompanionApp/FurbleCompanionApp.swift"
         ).read_text(encoding="utf-8")
-        self.assertIn("gpsStatusLabel(status)", text)
-        self.assertIn('return "Receiver, ', text)
-        self.assertIn('return "Phone"', text)
+        # The status rows live in the shared package view so the app and the UI
+        # snapshot test render the same code. The app has to hand the live
+        # status to that view, and the view has to own the GPS label that
+        # separates a wired receiver from the phone source. Asserting both
+        # files keeps the intent: a single mapping reaches the iOS status row.
+        self.assertIn("CompanionStatusView(status: client.status)", app)
+        self.assertNotIn("gpsStatusLabel", app)
+
+        view = (
+            ROOT
+            / "companion/apple/Sources/FurbleCompanionCore/CompanionStatusView.swift"
+        ).read_text(encoding="utf-8")
+        self.assertIn('LabeledContent("GPS", value: gpsStatusLabel(status))', view)
+        self.assertIn('return "Receiver, ', view)
+        self.assertIn('return "Phone"', view)
+        self.assertIn('return "No fix"', view)
 
     def test_android_declares_precise_location(self):
         manifest = (

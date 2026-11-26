@@ -81,14 +81,14 @@ and target boundary (a new seam needs a contract test and an entry here):
 | Input/navigation | LVGL event callbacks and menu handlers | `simulatorHome`, `simulatorBack`, and `simScenarioAction` are script entry points. `driverTick` runs in the UI task's locked phase, so actions and physical-input shims share LVGL ownership; direct page/focus selection is limited to deterministic setup or input timing SDL cannot reproduce. |
 | Host mutex visibility | Production lock discipline is unchanged: `Camera::m_Mutex` is acquired and released at exactly the same points | `Furble::connect_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where `Sim::SchedulerMutex` reserves ownership for one waiter and publishes that waiter before wake. Selection follows task priority then wait order, so host wake timing cannot create an extra virtual disconnect slice (issue #279). This models wake order, not FreeRTOS mutex priority inheritance, which remains unsupported. |
 | Camera links | Production `Control`, `Camera`, `CameraList` and every vendor class, over MockNimBLE | `sim/BleSim.cpp` registers the virtual peers a scenario seeds and injects faults at the transport only (`mockDropLink`, `setConnectShouldFail`, peer standby drop, withheld registration). `Control::simDropActiveLink()` is defined there and severs the real link; it no longer overrides any control state. A FauxNY camera has no radio, so `Camera::resetConnectionState()` stands in for its link loss. Pairing scenarios substitute only the controller prompt through `Camera::hostSetPairingRequest()` and read injected answers from MockNimBLE. `ble.peer.<n>.writes` and `ble.peer.<n>.last_write` read the peer's own `writes()` journal, one template reader over the vendor payload fields, so a scenario asserts the far end of a shutter, focus or handshake path without the driver knowing vendor layouts. |
-| GPS/UART | Production parser, configuration, retry and power-lock logic, including UBX detection and the UBX backend | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. `seed gps_model` picks the CASIC model, the virtual u-blox M10 (`sim/ubx_m10.{h,cpp}`, host-tested in `gps-ubx-m10`) or an NMEA-only receiver. The simulator's `Platform::setRail(GPS)` reports the Port A rail to the fake and returns the fake's rail as the read-back, because the host has no PMIC rail to observe; `GPS::setRailPower()` is the firmware path unchanged. |
+| GPS/UART | Production parser, configuration, retry and power-lock logic, including UBX detection and the UBX backend | Fake UART/receiver is the lowest host-device boundary; replies and faults are injected as bytes/events on a worker thread. `seed gps_model` picks the CASIC model, the virtual u-blox M10 (`sim/ubx_m10.{h,cpp}`, host-tested in `gps-ubx-m10`) or an NMEA-only receiver. The board has one switched EXT 5 V output, so `sim/hardware_model.cpp` owns it: `Platform::setRail(GPS)` asks the model as the GPS holder and returns the model's read-back, and the fake receiver follows that answer instead of deciding it. `GPS::setRailPower()` is the firmware path unchanged. `rail.state`, `rail.holders` and `rail.refusals` expose the shared output. |
 | Power/display hardware | Production policy and lock ownership | M5PM1, ESP-IDF power, timer, random, NVS, sleep, flash and system calls are host implementations. Observable state is exposed through `platform_state` rather than replacing policy code. |
 | IMU motion engines | Production `IMU::MotionSource`, backend selection, the software fallback and every consumer | The BMI270 and MPU6886 engines are register programming against a bus the host does not have. `sim/FurbleIMUSim.cpp` supplies a virtual backend per chip that models fixed per-axis slope thresholds and event semantics only, driven by the same `Sim::imuGetAccel` surface the software backend reads. `seed imu_chip` decides which chip the modelled board carries. The register encoding is covered by `tests/host/imu_motion_encoding_test.cpp`, not here. This does not certify the physical MPU6886 interrupt path or its clear-on-read race. |
 | IMU bus visibility | Production lock discipline is unchanged: the engines, the spirit level, the IMU live page and the console probe all take the same lock at the same points | `Furble::imu_mutex_t` is `std::mutex` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerMutex`, the same reason and pattern as `connect_mutex_t`: a task waiting on the IMU bus stops being runnable instead of being timed out by the host-clock deadlock breaker (issue #279). |
 | Scan callback wait visibility | Production `Scan::stop()` still waits for an in-flight custom callback at the same point | `Furble::scan_condition_t` is `std::condition_variable` everywhere except a `FURBLE_SIM` build, where it is `Sim::SchedulerConditionVariable`. A waiter stops being runnable, so the radio task that must finish the callback gets the turn. As a plain condition variable it kept the control task runnable and holding the turn until the 2 s host stall breaker parked it, and a parked task runs outside the turn, so a loaded host let a cancel burn its 30 s cap (issue #289). A notify releases waiters but does not preempt the notifier, because the notifier still holds the lock the waiter must take and priority inheritance is not modeled. `tests/test_sim_wait_visibility.py` rejects a production condition variable that is neither sim-only nor aliased this way. `FURBLE_SIM_SCHED_TRACE=1` prints the task table and backtrace whenever the scheduler stops waiting for a task, which is how this wait was found. |
 | Optional hardware | Production capability checks and menu paths | IR, feedback and SD shims report an env-selected capability because no host GPIO/SD/audio device exists. They do not bypass UI or persistence handlers. The linked host-boundary suite compiles the production IR, SD and feedback drivers against peripheral doubles; see `sim/scripts/run-boundary-conformance.sh`. |
 | Build-time observations | Production behavior is unchanged | `FURBLE_SIM` adds profiler counters, query-only state, the UI-task switch registry, click-streak input injection, the scan-start probe, and the post-`lv_task_handler` `fuzzCycleComplete` seam. The dependency-free `fuzz_machine` owns fuzzer phase/cadence state and counters; these are observability/input seams, not alternate policy. Plan 158 now covers retained task lifecycle records and delete-other quiescence. The cooperative simulator unwind is safer than abrupt cleanup but is not FreeRTOS cleanup parity; production Companion remains blocked pending worker-owned shutdown. Scheduler priority, boundary preemption, same-tick dispatch, and queue ownership are modeled at simulator scheduler boundaries; instruction-level preemption, core affinity, and CPU-time accounting remain unsupported. |
-| Internal heap | Production gates (`WebUIMemory::supervisorGate`/`serverGate`), the board's heap abort policy and log formats | `sim/heap_model.cpp` carries a seeded internal free/largest pair when a scenario asks for one. After the seed, the WebUI supervisor, WebUI HTTPS task, MQTT owner and esp-mqtt client are charged explicitly. One UI timer period (1 s) after the production `UI_FIRST_FRAME` boot mark, once no LVGL animation runs, `sim/heap_count.cpp` also charges every device allocation. Allocations made from UI construction until then are baseline blocks: uncharged, but refunded if freed later. It charges the replaced global `operator new`/`delete`, LVGL's C library allocator (compiled against `furble_sim_fw_malloc`), every device task stack and every queue at its 84-byte control block plus storage, each with the TLSF header and poisoning overhead of the pinned ESP-IDF. Default `malloc` follows `heap_caps_malloc_default`: internal up to `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`, PSRAM above it, then either pool. `heap_caps_malloc_prefer` checks each caps set's pool before charging it and aborts only when none fits, as ESP-IDF does; `MALLOC_CAP_DEFAULT` without the PSRAM bit charges the internal pool first and PSRAM second, the priority order of `components/heap/port/esp32s3/memory_layout.c` in the pinned SDK, and the `heap_caps_get_*` queries aggregate the same way (`free` and `minimum` sum the matching pools, `largest` takes the maximum). It over-reports two ways. `MALLOC_CAP_RETENTION` is DIRAM only on the device (`components/heap/port/esp32s3/memory_layout.c:45`), and the model returns its whole merged internal pool, so it adds the DRAM and RTC share. A set no heap carries returns zero on the device and resolves to a pool here: `MALLOC_CAP_SPIRAM` with `MALLOC_CAP_INTERNAL`, `MALLOC_CAP_TCM`, `MALLOC_CAP_IRAM_8BIT`, `MALLOC_CAP_CACHE_ALIGNED`, `MALLOC_CAP_DMA_DESC_AHB`, `MALLOC_CAP_DMA_DESC_AXI`, `MALLOC_CAP_INVALID`, `MALLOC_CAP_PID2` to `MALLOC_CAP_PID7`, and `MALLOC_CAP_EXEC`, whose only carrier is the IRAM type row and whose one IRAM region the MEMPROT build omits (`memory_layout.c:85`). No caller uses any of them today. An allocation counts when it runs on a device task thread outside a `HostAllocScope`. Every sim function that production code calls, and every lock in the heap model and power profiler, enters a host scope; add one to any new `FURBLE_SIM` hook that allocates. Host sizes are 64-bit, so pointer-heavy objects are counted at up to twice their device size: the count is an upper bound. Object sizes also differ between macOS libc++ and Linux libstdc++: the NimBLE mock client a camera connect keeps is 24 bytes larger on Linux, so `hw-memory-webui-first-boot.txt` accepts both figures after its connect. That scenario pins the shipped physical-button layout with `seed no_touch true`: the layout's Main page navigation indicators are cached at boot and not redrawn after the session's image cache drop, so its post-disconnect figures are 480 bytes above the touch layout's. Test-double bookkeeping, such as the NimBLE mock's IO capability record, runs in a host scope and is not charged. A modelled allocation failure aborts with status 3 and a panic crash record, as `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS` does on every board, so firmware NULL fallbacks are never certified. `sim/webui_memory_model.cpp` runs the production WebUI gate but not the HTTPS server, identity generation or TLS. It logs the production fail-closed sentence. The model does not claim fragmentation parity. |
+| Internal heap | Production gates (`WebUIMemory::supervisorGate`/`serverGate`), the board's heap abort policy and log formats | `sim/heap_model.cpp` carries a seeded internal free/largest pair when a scenario asks for one. After the seed, the WebUI supervisor, WebUI HTTPS task, MQTT owner and esp-mqtt client are charged explicitly. One UI timer period (1 s) after the production `UI_FIRST_FRAME` boot mark, once no LVGL animation runs, `sim/heap_count.cpp` also charges every device allocation. Allocations made from UI construction until then are baseline blocks: uncharged, but refunded if freed later. It charges the replaced global `operator new`/`delete`, LVGL's C library allocator (compiled against `furble_sim_fw_malloc`), every device task stack and every queue at its 84-byte control block plus storage, each with the TLSF header and poisoning overhead of the pinned ESP-IDF. Default `malloc` follows `heap_caps_malloc_default`: internal up to `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`, PSRAM above it, then either pool. `heap_caps_malloc_prefer` checks each caps set's pool before charging it and aborts only when none fits, as ESP-IDF does; `MALLOC_CAP_DEFAULT` without the PSRAM bit charges the internal pool first and PSRAM second, the priority order of `components/heap/port/esp32s3/memory_layout.c` in the pinned SDK, and the `heap_caps_get_*` queries aggregate the same way (`free` and `minimum` sum the matching pools, `largest` takes the maximum). It over-reports two ways. `MALLOC_CAP_RETENTION` is DIRAM only on the device (`components/heap/port/esp32s3/memory_layout.c:45`), and the model returns its whole merged internal pool, so it adds the DRAM and RTC share. A set no heap carries returns zero on the device and resolves to a pool here: `MALLOC_CAP_SPIRAM` with `MALLOC_CAP_INTERNAL`, `MALLOC_CAP_TCM`, `MALLOC_CAP_IRAM_8BIT`, `MALLOC_CAP_CACHE_ALIGNED`, `MALLOC_CAP_DMA_DESC_AHB`, `MALLOC_CAP_DMA_DESC_AXI`, `MALLOC_CAP_INVALID`, `MALLOC_CAP_PID2` to `MALLOC_CAP_PID7`, and `MALLOC_CAP_EXEC`, whose only carrier is the IRAM type row and whose one IRAM region the MEMPROT build omits (`memory_layout.c:85`). No caller uses any of them today. `heap_caps_calloc` composes through `heap_caps_malloc` and zeroes the block, so the charge, the caps filtering and the abort policy are the malloc ones; an overflowing block count reports the wrapped total through the failed-alloc hook, as `heap_caps_calloc_base` does. `heap_caps_realloc` allocates, copies and frees, because the model has no in-place growth: the new block is charged before the old one is refunded, and a failure leaves the old block valid. `heap_caps_get_info` fills `multi_heap_info_t` under one lock, but resolves one pool per query from the SPIRAM bit where the getters above sum every matching pool, so a `MALLOC_CAP_8BIT` or `MALLOC_CAP_DEFAULT` info read reports the internal pool alone and its `minimum_free_bytes` is the internal watermark for every caps set; `allocated_blocks` counts the blocks the model charged (two per task) and `free_blocks` is one for a non-empty pool, because the model carries no fragmentation. `heap_caps_zalloc` is still absent from the shim; no firmware source calls it. A PSRAM task stack requested while PSRAM is absent or failed records the allocation failure like the pool-exhaustion branch beside it, so the board abort policy runs instead of a `pdFAIL` fallback the device cannot reach. An allocation counts when it runs on a device task thread outside a `HostAllocScope`. Every sim function that production code calls, and every lock in the heap model and power profiler, enters a host scope; add one to any new `FURBLE_SIM` hook that allocates. Host sizes are 64-bit, so pointer-heavy objects are counted at up to twice their device size: the count is an upper bound. Object sizes also differ between macOS libc++ and Linux libstdc++: the NimBLE mock client a camera connect keeps is 24 bytes larger on Linux, so `hw-memory-webui-first-boot.txt` accepts both figures after its connect. That scenario pins the shipped physical-button layout with `seed no_touch true`: the layout's Main page navigation indicators are cached at boot and not redrawn after the session's image cache drop, so its post-disconnect figures are 480 bytes above the touch layout's. Test-double bookkeeping, such as the NimBLE mock's IO capability record, runs in a host scope and is not charged. A modelled allocation failure aborts with status 3 and a panic crash record, as `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS` does on every board, so firmware NULL fallbacks are never certified. `sim/webui_memory_model.cpp` runs the production WebUI gate but not the HTTPS server, identity generation or TLS. It logs the production fail-closed sentence. The model does not claim fragmentation parity. |
 | Board configuration | Production `#if defined(CONFIG_*)` memory branches | `tools/gen_sim_sdkconfig.py` writes the memory-relevant sdkconfig subset of the modelled board into `sdkconfig_sim.h`, which the build force-includes into firmware and simulator sources only. Target identity (`CONFIG_IDF_TARGET_*`) stays out because M5GFX and M5Unified key on it. |
 | Crash record | `include/FurbleCrashRecord.h`, `include/FurbleCrashLog.h`, the panic-safe RTC writer and the console `crash` command | `sim/CrashLogSim.cpp` stores the same record in a sidecar next to `FURBLE_SIM_PREFS` so the real `restart` path can prove one-shot reporting. It is host persistence, not an RTC claim; production writes only RTC memory. |
 
@@ -300,7 +300,15 @@ including empty strings and failed-save rollback.
   failure now stops the launch with a dyld error on stderr, never a dialog.
   `otool -L sim/build/furble-sim` lists both libraries. Without SDL3 the build
   links SDL2 alone only for a real SDL2; sdl2-compat without SDL3 fails the
-  build with a `brew install sdl3` message.
+  build with a `brew install sdl3` message. The SDL3 `-needed_library` must
+  follow SDL2 on the link line, which is why `CMakeLists.txt` passes it through
+  `target_link_libraries` and not `target_link_options`: CMake emits link
+  options before the libraries, and ld64 binds an undefined symbol to the
+  first input dylib that exports it. SDL3 ahead of SDL2 binds `SDL_PollEvent`
+  to SDL3, whose `SDL_Event` is 128 bytes against the 56 the SDL panel
+  compiles against, so the poll overruns the caller's frame and
+  `__stack_chk_fail` aborts with status 134 on a plain `wait 100` / `exit`
+  script. `nm -m` on the binary must report `_SDL_PollEvent` from libSDL2.
 
 ### Optional native MQTT transport
 
@@ -330,9 +338,13 @@ failures as coordination-window evidence, not as a UI-service ordering defect.
 The host transport charges its modelled 6 KiB esp-mqtt client task to the heap
 model and returns `ESP_ERR_NO_MEM` when it cannot. A refused connection emits
 both the error and the disconnect event, and a small wall-clock worker retries
-the socket at the component's one-second cadence, so the production
-`MAX_CONNECT_FAILURES` accounting runs. `FURBLE_SIM_MQTT_FAST_RECONNECT` only
-shortens that host retry cadence for a bounded scenario.
+the socket at the component's one-second cadence, so the production retry
+accounting runs. The production owner retires that transport on the first
+retryable failure and rebuilds it on the backoff deadline, so the worker's
+cadence only decides how fast the first failure arrives.
+`FURBLE_SIM_MQTT_FAST_RECONNECT` only shortens that cadence. The backoff gaps
+themselves run on the virtual clock, so a scenario crosses them with `wait` and
+reads `mqtt.retry_delay`.
 
 ## Determinism caveats
 
@@ -545,6 +557,24 @@ shortens that host retry cadence for a bounded scenario.
   `M5PM1::begin()`, just as the PMIC is independent of an ESP32 reset.
   `platform.download_lock` exposes the long-press recovery state so a scenario
   can prove that firmware never leaves manual download recovery locked.
+- `sim/shim/M5PM1.h` follows M5PM1 v1.0.6: register addresses, bit fields and
+  edge cases carry the vendor register in a comment. IRQ Status 1 (0x40) and
+  Status 2 (0x41) are latches cleared only by a write, write 0 to clear, and
+  both feed the one aggregated line into GPIO13, so `platform.pmic_irq` reads
+  the pair and `platform.motion_wake` reads `blocked` while an unmasked latch
+  holds it. A watchdog expiry is the vendor's system reset at zero, so it is
+  modelled as a system power cycle (`platform.watchdog cycled`,
+  `pmic.watchdog_cycles`, reset reason `pmic_watchdog`) rather than a status
+  flag. `sim/hardware_model.cpp` owns the single PWR_CFG byte (0x06), where the
+  EXT 5 V output, the status LED level and the charge enable share one
+  read-modify-write hazard, and the one switched 5 V output that the GPS and IR
+  holders share.
+- `hw.rtc` has one verified row per profile in `sim/hardware_model.cpp`
+  (`RTC_FACTS`), checked when a profile is selected and at boot. `hw.rtc_capability`
+  reports `match` or `mismatch` and a mismatch also sets `hw.fail_closed`. The
+  StickS3 and the Core have no RTC chip (`docs/console-commands.md`); the
+  StickC family and the Core2/Tough BM8563 do. Update the row with the citation
+  when a board-level pass changes a fact.
 - The simulator consumes `Watchdog::PM1_TIMEOUT_S` and its watchdog boundary
   scenarios cover normal feeding, just-before expiry, exact-boundary expiry,
   and uint32 clock wrap. Keep those scenarios aligned with the host watchdog
@@ -640,7 +670,13 @@ shortens that host retry cadence for a bounded scenario.
   followed STANDBY or RAIL_OFF, which isolates the wake from that baseline.
   Neither is a coherent delivered-geotag claim. Total UART write count,
   exact `$PCAS12,5*1B` command count, and the last command are available as
-  `uart.count`, `uart.standby_5s_commands`, and `uart.last`. `camera.count` reports
+  `uart.count`, `uart.standby_5s_commands`, and `uart.last`. `uart.pcas03`
+  reports the last `$PCAS03` sentence the driver sent, without its line ending,
+  and reads empty until a scenario seeds `gps_uart_mode nack`: the sentence
+  prune reaches the port only as the fallback for an unacknowledged `CFG-MSG`
+  frame, and the fake receiver acknowledges every one of those by default.
+  `uart.last` cannot stand in for it because the prune's own binary frames
+  follow the fallback. `camera.count` reports
   the current simulated camera-list row count, allowing scan-result
   de-duplication scenarios to assert that a repeated fake advertisement does not
   add a second row.
@@ -815,7 +851,9 @@ shortens that host retry cadence for a bounded scenario.
   before assuming its own work is what it costs.
 - `sim/scripts/run-watchdog.sh` is the explicit M5StickS3 watchdog gate. It
   runs all retained-PMIC feed and boundary scenarios against the default freshly built
-  binary; do not substitute a stale binary or a different panel profile.
+  binary; do not substitute a stale binary or a different panel profile. Its
+  boundary asserts read `platform.watchdog cycled` with `pmic.watchdog_cycles`,
+  because crossing the deadline is a PMIC-driven power cycle.
 - Connection-state coverage: `connstate-page-sweep.txt` visits every page
   reachable during a connected session (connected menu, Remote shutter, Bulb,
   Cameras, Intervalometer, GPS Data), drops the link on each, and asserts the
@@ -1085,10 +1123,15 @@ shortens that host retry cadence for a bounded scenario.
   `page-matrix.txt` rather than duplicating them elsewhere.
 - All simulator scenarios are catalogued in `sim/scenarios/manifest.json`.
   Every entry declares its suite owner, board matrix, capabilities, and
-  expected exit status. Obsolete scenarios must be non-certified with a reason.
+  expected exit status. An entry whose assertions need the optional native
+  MQTT transport declares `"transport": "mqtt"`; the default is `default`, the
+  ordinary build, and `--list-certified` selects one transport at a time so
+  neither binary runs the other's scenarios. Obsolete scenarios must be
+  non-certified with a reason.
   CI suite sweeps use the checker's `--list-certified` output rather than file
   globs, so nested and newly added certified scenarios run on every declared
-  board. Keep suite runners manifest-driven.
+  board. Keep suite runners manifest-driven: `sim/scripts/run-memory.sh` reads
+  its list from the MQTT-transport selection instead of naming files.
 - `seed fb_output 0..4` models the persisted feedback output selection. Page
   and overflow matrices seed `fb_output 1` so the sound volume route is truly
   reachable when feedback capability is enabled. `feedback-hidden-route.txt`
@@ -1176,7 +1219,10 @@ shortens that host retry cadence for a bounded scenario.
   behaviour and what `Platform::canCutGpsRail()` then reports; the Core build
   reports false on its own. `gps_rail_refused` also keeps the rail on but
   leaves `canCutGpsRail()` true, which models a PMIC that refuses the cut (a
-  Core2 on a low battery). `gps_m10_unresolved` reports a 3D fix with a valid
+  Core2 on a low battery). Both seeds are applied to the hardware model, which
+  is the rail's only owner; `pmic_pwr_cfg_stale` keeps the PWR_CFG byte
+  snapshot taken at boot for the next panel-off read-modify-write so a lost
+  update is representable. `gps_m10_unresolved` reports a 3D fix with a valid
   but unresolved time. `gps_gnss`, `gps_psm` and `gps_ana` seed the u-blox
   settings. A waking receiver prints its first epoch one measurement period
   after it starts.

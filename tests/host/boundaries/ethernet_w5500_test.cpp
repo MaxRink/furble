@@ -2,7 +2,17 @@
 // src/FurbleEthernet.cpp. The ESP-IDF SPI, GPIO, W5500 MAC/PHY, netif and event
 // loop are doubles. Link/DHCP/reconnect and teardown ordering are asserted from
 // the production transport callbacks.
+//
+// The RESETn pulse is measured, not just counted. WIZnet W5500 datasheet
+// v1.1.0 section 5.5.1 (figure 22, table 2) requires RESETn low for at least
+// 500 us, so BoundaryHost timestamps every GPIO edge against a virtual
+// microsecond clock that only esp_rom_delay_us() advances. A production path
+// that drops the delay, shortens it, or moves the pulse after the install fails
+// the measured checks. Handing the pin back to the ESP-IDF PHY is caught
+// separately, by the reset_gpio_num == -1 assertion in the PHY constructor,
+// because that pin number is the PHY's only input.
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -11,6 +21,8 @@
 #include <vector>
 
 #include "FurbleEthernet.h"
+#include "boundary_host.h"
+#include "driver/gpio.h"
 #include "esp_eth.h"
 #include "esp_eth_mac_spi.h"
 #include "esp_event.h"
@@ -44,6 +56,16 @@ int g_EventUnregistrations = 0;
 int g_MacIoctl = 0;
 uint8_t g_Mac[6] = {};
 
+// The Waveshare ESP32-S3-ETH RESETn line, as src/FurbleEthernet.cpp wires it.
+constexpr int RESET_PIN = 9;
+// WIZnet W5500 datasheet v1.1.0 section 5.5.1, figure 22 and table 2.
+constexpr uint64_t RESET_LOW_MIN_US = 500;
+
+// Reset-line edge count when the current init() started. beginInit() snapshots
+// it, and checkResetPrecedes() requires the init to add its own low and high
+// edges after it.
+std::size_t g_ResetEdgesAtInitStart = 0;
+
 struct Handler {
   esp_event_base_t base;
   int32_t id;
@@ -58,6 +80,46 @@ std::vector<Handler> g_Handlers;
 void check(bool condition, const char *message) {
   if (!condition) {
     std::cerr << "ETH FAIL: " << message << '\n';
+    g_Failures++;
+  }
+}
+
+// Width of the most recent low-to-high RESETn pulse in virtual microseconds, or
+// -1 when the line never completed a pulse.
+int64_t lastResetPulseMicros(void) {
+  const std::vector<BoundaryHost::GpioEdge> edges = BoundaryHost::gpioEdges(RESET_PIN);
+  if (edges.size() < 2) {
+    return -1;
+  }
+  const BoundaryHost::GpioEdge &low = edges[edges.size() - 2];
+  const BoundaryHost::GpioEdge &high = edges[edges.size() - 1];
+  if ((low.level != 0) || (high.level != 1)) {
+    return -1;
+  }
+  return static_cast<int64_t>(high.micros - low.micros);
+}
+
+// Call immediately before Furble::Ethernet::init(), so the checks inside that
+// init() only accept edges this init() drove.
+void beginInit(void) {
+  g_ResetEdgesAtInitStart = BoundaryHost::gpioEdges(RESET_PIN).size();
+}
+
+// The pulse has to be complete, released, and driven by this init(), before
+// anything talks to the chip.
+void checkResetPrecedes(const char *consumer) {
+  const std::vector<BoundaryHost::GpioEdge> edges = BoundaryHost::gpioEdges(RESET_PIN);
+  // Growth against the snapshot makes the check per init(). Edges left over
+  // from an earlier init() cannot satisfy it, so a pulse moved after the
+  // restart's install fails here as well.
+  const bool grew = edges.size() >= g_ResetEdgesAtInitStart + 2;
+  const bool paired = grew && (edges[edges.size() - 2].level == 0) && (edges.back().level == 1);
+  const bool released =
+      !edges.empty() && (edges.back().level == 1) && (BoundaryHost::gpioLevel(RESET_PIN) == 1);
+  if (!paired || !released) {
+    std::cerr << "ETH FAIL: the W5500 RESETn pulse did not complete before " << consumer
+              << " (edges " << edges.size() << " from a baseline of " << g_ResetEdgesAtInitStart
+              << ")\n";
     g_Failures++;
   }
 }
@@ -180,7 +242,11 @@ esp_eth_mac_t *esp_eth_mac_new_w5500(const eth_w5500_config_t *config, const eth
 
 esp_eth_phy_t *esp_eth_phy_new_w5500(const eth_phy_config_t *config) {
   g_PhyNew++;
-  check(config != nullptr && config->reset_gpio_num == 9, "the W5500 reset pin changed");
+  // -1 keeps w5500_reset_hw() off the pin, so its hardcoded 100 us pulse can
+  // never follow the production 500 us one. A pin number here means the last
+  // reset assertion would again be the under-spec ESP-IDF pulse.
+  check(config != nullptr && config->reset_gpio_num == -1,
+        "the ESP-IDF W5500 PHY still owns the reset pin");
   auto *phy = new esp_eth_phy_t;
   phy->del = [](esp_eth_phy_t *value) {
     g_PhyDel++;
@@ -192,6 +258,8 @@ esp_eth_phy_t *esp_eth_phy_new_w5500(const eth_phy_config_t *config) {
 
 esp_err_t esp_eth_driver_install(const esp_eth_config_t *config, esp_eth_handle_t *handle) {
   g_DriverInstall++;
+  // esp_eth_driver_install() runs phy->reset_hw() and then mac->init() over SPI.
+  checkResetPrecedes("esp_eth_driver_install");
   check(config != nullptr && config->mac != nullptr && config->phy != nullptr,
         "the Ethernet driver was installed without MAC/PHY");
   auto *instance = new int(0);
@@ -207,6 +275,7 @@ esp_err_t esp_eth_driver_uninstall(esp_eth_handle_t handle) {
 
 esp_err_t esp_eth_start(esp_eth_handle_t handle) {
   g_Start++;
+  checkResetPrecedes("esp_eth_start");
   check(handle != nullptr, "Ethernet start received a null handle");
   return ESP_OK;
 }
@@ -272,6 +341,7 @@ void run(void) {
     g_CallbackIP = ip;
   });
 
+  beginInit();
   check(Furble::Ethernet::init(), "the production W5500 transport did not initialize");
   check(g_SpiInit == 1, "the SPI bus was not initialized once");
   check(g_MacNew == 1 && g_PhyNew == 1, "the W5500 MAC/PHY were not created");
@@ -280,10 +350,17 @@ void run(void) {
   check(g_NetifNew == 1 && g_GlueNew == 1 && g_Attach == 1,
         "the Ethernet netif was not created and attached");
   check(g_MacIoctl == 1, "the MAC address ioctl was not issued");
+  check(BoundaryHost::gpioDirection(RESET_PIN) == GPIO_MODE_OUTPUT,
+        "the W5500 RESETn pin was not driven as an output");
+  check(BoundaryHost::gpioLevel(RESET_PIN) == 1, "the W5500 was left in reset");
+  const int64_t pulseUs = lastResetPulseMicros();
+  check(pulseUs >= static_cast<int64_t>(RESET_LOW_MIN_US),
+        "the W5500 RESETn pulse is shorter than the datasheet 500 us");
   check(g_Mac[0] == 0x10 && g_Mac[5] == 0x15, "the Ethernet MAC address is wrong");
   check(g_EventRegistrations == 3 && g_EventUnregistrations == 0,
         "the transport did not register all three event handlers");
   check(!Furble::Ethernet::isConnected(), "Ethernet started connected");
+  std::cout << "eth.reset pulse_us=" << pulseUs << " min=500 pin=" << RESET_PIN << '\n';
   std::cout << "eth.init spi=1 mac=1 phy=1 event_handlers=3 clock_hz=20000000\n";
 
   emitGotIP("192.0.2.1");
@@ -340,14 +417,20 @@ void run(void) {
   check(g_CallbackCount == before, "a queued event after stop fired the callback");
   check(!Furble::Ethernet::isConnected(), "a queued event after stop revived Ethernet");
 
+  beginInit();
   check(Furble::Ethernet::init(), "the W5500 transport did not restart");
   check(g_SpiInit == 2 && g_NetifNew == 2 && g_EventRegistrations == 6,
         "restart did not rebuild the transport");
+  const int64_t restartPulseUs = lastResetPulseMicros();
+  check(restartPulseUs >= static_cast<int64_t>(RESET_LOW_MIN_US),
+        "the restarted transport did not pulse the W5500 RESETn for 500 us");
+  check(BoundaryHost::gpioEdges(RESET_PIN).size() == 4,
+        "the restarted transport did not drive a fresh RESETn pulse");
   emitLink(true);
   emitGotIP("203.0.113.9");
   check(Furble::Ethernet::isConnected(), "the restarted transport did not connect");
   check(g_CallbackCount == before + 1, "the restarted transport did not notify once");
-  std::cout << "eth.restart handlers=6 ip=203.0.113.9\n";
+  std::cout << "eth.restart handlers=6 ip=203.0.113.9 pulse_us=" << restartPulseUs << '\n';
   Furble::Ethernet::stop();
 }
 

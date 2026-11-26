@@ -17,6 +17,10 @@ Rules:
   filled with an invented document.
 - A datasheet number is not a local measurement. See `measurement-plan.md` for
   the boundary and promotion rules.
+- Per-part register and timing citations live in
+  [`docs/components/`](../components/README.md). This file records the document
+  inventory a power lane cited. That corpus records what the firmware depends on,
+  with the code location and a verification state per fact.
 
 ## 1. SoC, radio, and module datasheets
 
@@ -44,7 +48,7 @@ whole document.
 | Sitronix ST7796S | ST7796S datasheet, https://dl.espressif.com/dl/schematics/ST7796S_SPEC_V1.0.pdf | v1.0, 2014/11, 279 pages, sha256 212f7a8e, read 2026-11-26 | 320x480, 262K colours. 5 ms after SLPIN, and 120 ms from SLPOUT to the next SLPIN only (sections 9.2.12 and 9.2.13, pages 159 and 160). MIPI DSI in section 8.5, page 94 | Opened at the cover and both sleep sections | Display |
 | Sitronix ST7796U | ST7796U datasheet, https://www.smartdisplaytech.com/wp-content/uploads/2023/03/ST7796S_spec.pdf | v1.0, 2020/02, 287 pages, sha256 c907c64e, read 2026-11-26 | 320x480, 16.7M colours. 5 ms after SLPIN, and 120 ms from SLPOUT to the next SLPIN only (sections 9.2.12 and 9.2.13, pages 163 and 164). MIPI DSI in section 8.5, page 98. The host file is named `ST7796S_spec.pdf` while the cover and the page footers say ST7796U. LilyGo's T-Lora Pager document names ST7796U for its 480x222 panel | Opened at the cover, the contents and both sleep sections | Display |
 | ILITEK ILI9342C | ILI9342C datasheet, https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/datasheet/core/ILI9342C-ILITEK.pdf | V101, document ILI9342C_DTS_V101_20111214, 235 pages and complete at 235 of 235, sha256 604a35c0, read 2026-11-26 | No supply current table anywhere in the document. Section 18.2 page 227 gives only plus or minus 0.1 uA logic input leakage, so the model keeps its ST7789V analogy tagged estimated: 6 to 8 mA operating, 15 to 100 uA sleep-in. Dwell is 120 ms in both directions, SLPIN to SLPOUT and SLPOUT to the next SLPIN (sections 8.2.11 and 8.2.12, pages 100 and 101). Section 19 page 235 carries both the 2011/12/14 V101 line and a 2011/12/26 item | Opened at the cover, the contents, both sleep sections, the DC characteristics and the revision history | Display, Board |
-| ILITEK ILI9341 | ILI9341 datasheet, https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf | V1.11, document ILI9341_DS_V1.11.pdf, 245 pages, sha256 a9bbfdf6, read 2026-11-26 | Page 236: standby current IST 100 uA maximum at VCI 2.8 V and 25 C, used as the ILI9342C sleep-in high bound | Opened at the cover and page 236 | Display, Board |
+| ILITEK ILI9341 | ILI9341 datasheet, https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf | V1.11, document ILI9341_DS_V1.11.pdf, 245 pages, sha256 a9bbfdf6, read 2026-11-26 | Page 236: standby current IST 100 uA maximum at VCI 2.8 V and 25 C, used as the ILI9342C sleep-in high bound. The same 120 ms pair in both directions as the ILI9342C | Opened at the cover and page 236 | Display, Board |
 | Chipone CO5300 | CO5300 datasheet V0.01, https://files.waveshare.com/wiki/common/Co5300_Datasheet.pdf | V0.01, 2023/07/24, 226 pages, sha256 2ad0461a, read 2026-11-26 | Page 103: deep stand-by IDSTB 2 uA VDDI plus 1 uA VCI; Sleep In 110 uA VDDI plus 25 uA VCI on DSI LP, 85 uA plus 25 uA on DSI ULP. Revision history page 2 records 0.01 "Update Deep Stand-by mode current". Commands start at section 7.1, page 117. The last page is 226 | Opened at the cover, the revision history, the current table, the command table start and the last page | Display |
 | Chipone CO5300 | CO5300 datasheet V0.00, https://files.waveshare.com/wiki/common/CO5300_Datasheet_V0.00.pdf | V0.00, 2023/03/28, 226 pages, sha256 20161057, read 2026-11-26 | The same page count and the same Sleep In rows as V0.01, with no deep stand-by row on page 103 | Opened at page 103 to compare | Display |
 | Sino Wealth SH1106 | SH1106 datasheet V2.3, https://www.pololu.com/file/0J1813/SH1106.pdf | V2.3, June 2013, 49 pages, sha256 ab5ce5f3, read 2026-11-26 | Page 35: sleep current 5 mA maximum, not microamps, in both rows, the VDD1 and VDD2 row at 3 V and 3.7 V and the external VPP row at 9 V, both at TA 25 C. Revision history page 49: 2.1 April 2012 raises the maximum VPP to 14.0 V, 2.2 April 2012, 2.3 June 2013 changes the power on and off sequence on pages 32 to 34 | Opened at page 35 and page 49 | Display |
@@ -56,7 +60,7 @@ whole document.
 | Part | Document | Revision | Relevant limit | Lane status | Cited by |
 | --- | --- | --- | --- | --- | --- |
 | X-Powers AXP192 | AXP192 enhanced single-cell Li-battery PMIC datasheet, http://images.shoutwiki.com/mindworks/8/8b/2020_infrasonic_wildfire_detector_APX192_Enhanced_Single_Cell_datasheet_en.pdf | No revision string; cover says X-Powers 2010 | Off mode 27 uA at BAT 3.8 V; suspend 86 uA; DCDC1 26 uA no load; DCDC2 and DCDC3 20 uA each; LDO2 and LDO3 100 uA each; LDOIO0 90 uA; `REG 82H` ADC enable 1; `REG 83H` ADC enable 2; `REG 84H` ADC sample rate, 25 Hz default; `REG 12H` rail enables; `REG 28H` LDO2/LDO3 voltage; `REG 27H` DCDC3; `REG 33H` charge enable, 4.2 V, current | Opened by Board lane; no revision string in the fetched copy | Board, Display, SoC |
-| Injoinic IP5306 | IP5306 datasheet, https://www.laskakit.cz/user/related_files/ip5306.pdf | V1.01 | Standby 50 uA; input quiescent 100 uA; boost shuts off after 32 s of continuous load below 45 mA; the public datasheet does not tabulate the register map | Opened by Board lane | Board, Display, SoC |
+| Injoinic IP5306 | IP5306 datasheet, https://www.laskakit.cz/user/related_files/ip5306.pdf | V1.01 | Standby 50 uA; input quiescent 100 uA; boost shuts off after 32 s of continuous load below 45 mA at the power-on default of `SYS_CTL2` bits 3:2 = `01`; M5Unified 0.2.20 writes `0x02 = 0x6C`, bits 3:2 = `11`, so the shipped Core cuts at 64 s; the public datasheet does not tabulate the register map | Opened by Board lane | Board, Display, SoC |
 | M5Stack M5PM1 | M5Stack M5PM1 Chip User Manual, https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/M5PM1_Datasheet_EN.pdf | V1.9 | `PWR_CFG` 0x06 default 0x17 (LED enable, 5 V boost off, 3.3 V LDO on, 3.3 V DCDC on, charge on); `I2C_CFG` 0x09 `SLP_TO` bits 3:0, 0 disables idle sleep, first transaction after a wake fails; `WDT_CNT` 0x0A seconds, 0 disables; `WDT_KEY` 0x0B feed 0xA5; `SYS_CMD` 0x0C 0xA1 power off; `HOLD_CFG` 0x07 retains 5 V, LDO, and GPIO state | Opened by Board lane | Board, SoC |
 
 ## 4. Sensors, GNSS, audio, storage, and actuators
@@ -73,9 +77,10 @@ whole document.
 | CASIC protocol | Multimode navigation receiver protocol, http://www.espruino.com/files/CASIC_en.pdf | Not stated | `$PCAS` family, `BA CE` framing, `AID-INI`, `CFG-NAVX`, `MON-HW`; the printed checksum formula is wrong and the L76K id-first form is the one the code uses | Quoted by GPS/IMU lane | GPS/IMU |
 | Quectel L76K | GNSS protocol specification v1.1, https://www.waveshare.net/w/upload/d/dd/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf | v1.1 | PCAS02, PCAS03, PCAS04, PCAS10; GSV and GSA fields; id-first checksum | Quoted by GPS/IMU lane | GPS/IMU |
 | NS4168 | NS4168 datasheet, https://www.chipsourcetek.com/Uploads/file/NS4168.pdf | Not stated | 13 mA quiescent at 5 V; 1 uA shutdown leakage | Quoted through the model | Board, Display |
-| WIZnet W5500 | W5500 datasheet v1.0.6, https://www.wiznet.io/wp-content/uploads/wiznethome/Chip/W5500/Document/W5500_ds_v1.0.6.pdf | v1.0.6 | PHY power-down mode exists; link-dependent current; the exact figure is not quoted because the copy was not opened | Not reopened by the Board lane | Board, Wi-Fi |
+| WIZnet W5500 | WIZnet W5500 datasheet version 1.1.0, dated 17DEC2022, https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf | v1.1.0, 1,893,745 bytes, sha256 7b826b808084ccd986bcc22904c00a07a508ef42fb93d079fe7150a4c4f1a63d | Section 1.1 page 10, `RSTn` pin 37: "RESET should be held low at least 500 us for W5500 reset". Section 5.5.1 page 60 and figure 22, Reset Timing: `TRC` minimum 500 us, `TPL` (RSTn released to internal PLOCK) maximum 1 ms. Section 5.5.2: regulator wake 10 us. Section 5.3 page 59: `IDD1` 132 mA, `IDD2` 13 mA in PHY power-down. Section 5.4 page 60: link currents 128, 75 and 65 mA. Section 3.1 page 29, section 4.1 page 32, `SHAR` registers 0x0009 to 0x000E page 33. The pinned PHY hard-codes 100 us (`components/esp_eth/src/spi/w5500/esp_eth_phy_w5500.c:160`), the defect recorded in `plans/implemented/42-waveshare-eth-node.md`; `src/FurbleEthernet.cpp` now drives the 500 us pulse itself in `resetW5500()`, which meets `TRC`, and passes `reset_gpio_num = -1` so the PHY adds no second, under-spec assertion. It adds no wait for `TPL`, so the release-to-PLL guard is an open item, not a compliance claim | Opened for this PR; copy size and sha256 verified above. v1.0.6 is superseded, its linked URL redirects to HTTP 404, and the v1.1.0 history on pages 66 to 67 changes only the RPU minimum and the package text | Board, Wi-Fi |
 | Vybronics VC1030B028F | Coin vibration motor datasheet, https://www.vybronics.com/coin-vibration-motors/with-brushes/v-c1030b028f | Not stated | 64 mA typical operating, 85 mA rated maximum, more at start and stall. Representative part because M5Stack names no motor | Quoted through the model | Board |
 | BM8563 RTC | BM8563 documentation, cited for the Plus2 alarm wake | Not stated | RTC alarm is the Plus2 timed-wake source | Cited, not opened | Board, SoC |
+| NXP PCF8563 | PCF8563 Real-Time Clock/Calendar product data sheet, https://www.nxp.com/docs/en/data-sheet/PCF8563.pdf | Rev. 11.1, 19 January 2026 | Timer control 0x0E and timer value 0x0F carry the Plus2 alarm wake. M5Unified writes 0x0E = 0x82 for a 1 Hz tick and 0x83 for a 1/60 Hz tick, so the same count means seconds or minutes. The register and timing facts are on docs/components/pcf8563.md | Front matter and the voltage-low section opened; the timer section number was not supplied | Board, SoC |
 | FT6336U touch controller | Core2 touch documentation and FT6336U datasheet | Not stated | Monitor and hibernate modes exist; current not in the tree; the datasheet was not opened by the Board lane | Not opened | Board, Display |
 | ES8311 codec and AW8737 amplifier | M5Stack StickS3 product page | Web page, no revision | Parts are named; quiescent currents are not in the tree | Cited, not opened | Board |
 
@@ -249,7 +254,6 @@ not verified for this register.
 | Part or area | Gap | Consequence |
 | --- | --- | --- |
 | AXP192 | No revision string in the fetched copy; cover says 2010 | A register claim must name the copy used, not a revision number |
-| W5500 | Datasheet not opened; exact PHY current not quoted | NB-02 and the Waveshare rows cannot quote a current |
 | FT6336U | Datasheet not opened; current not in the tree | P-069 uses a placeholder 0.5 to 2 mA range |
 | ES8311 and AW8737 | No documents opened; quiescent currents not in the tree | RL-09 assumes a closed speaker is idle, but does not measure it |
 | BM8563 | Documentation cited, not opened | The Plus2 alarm wake path is unverified |
@@ -272,8 +276,11 @@ not verified for this register.
 3. **Revision conflicts.** The AXP192 copy has no revision string. The ESP32-S3
    copy is v2.2. The IP5306 copy is V1.01. The M5PM1 copy is V1.9. The ESP32
    copy is v5.3. The ST7789V copy is v1.3. The ST7735S copy is v1.1. The
-   MPU-6886 copy is v1.1. The W5500 copy is v1.0.6. Do not copy a number from a
-   secondary document into a primary claim without opening the primary.
+   MPU-6886 copy is v1.1. The W5500 copy is v1.1.0, dated 17DEC2022, with the
+   size and checksum in section 4. The v1.0.6 copy named by an earlier revision
+   of this register is superseded and its URL now returns HTTP 404, so the
+   register quotes v1.1.0 only. Do not copy a number from a secondary document
+   into a primary claim without opening the primary.
 4. **Board files are split.** The repository has one board file
    (`boards/waveshare-esp32-s3-eth.json`). Panel pins, backlight drive, and
    brightness mapping come from M5GFX 0.2.27 and M5Unified 0.2.20. There is no
@@ -296,7 +303,15 @@ not verified for this register.
 8. **The 40.1 mA Wi-Fi station figure is a published vendor measurement, not a
    datasheet line.** It is a whole-chip average, not a delta, and the clock is
    not stated.
-9. **The display and touch documents may not be redistributed.** Sitronix and
+9. **The W5500 reset gap is closed, its current gap is not.** The v1.1.0 copy in
+   section 4 is opened and checksummed, so the 500 us `RSTn` minimum, the 1 ms
+   `TPL` release-to-PLL maximum, the 13 mA PHY power-down current and the three
+   link currents are quoted from a primary document rather than a secondary
+   one. None of them is a local measurement: NB-02 still needs a bench run. The
+   reset path itself has an open item, because `src/FurbleEthernet.cpp` pulses
+   `RSTn` for 500 us and then talks SPI without waiting the up-to-1 ms `TPL`,
+   and the ESP-IDF PHY adds no wait of its own once `reset_gpio_num` is -1.
+10. **The display and touch documents may not be redistributed.** Sitronix and
    ILITEK print the same sentence in every page footer: the document "shall not be
    distributed, reproduced, or disclosed in whole or in part without prior
    written permission" of the vendor. Chipone's Important Notice on page 226 of
@@ -304,7 +319,7 @@ not verified for this register.
    datasheet grant no redistribution right either. This register therefore
    records the URL, the revision, the page count and the hash, and never a copy,
    and no vendor PDF is committed to this repository.
-10. **A register value taken from a driver is labelled as such.** The Linux
+11. **A register value taken from a driver is labelled as such.** The Linux
    `hynitron_cstxxx.c` driver is GPL-2.0-only and the ESPHome CST92xx component
    is GPLv3, so neither can be consulted for this MIT tree. The only driver
    source used for touch registers is the MIT-licensed Rust `cst92xx` crate,
@@ -312,14 +327,14 @@ not verified for this register.
    ported from the MIT SensorLib. The CST9217 datasheet carries no register map,
    so every register address in this corpus is code-derived and is attributed to
    that crate.
-11. **There is no vendor copy of the SH1106 datasheet and there will not be
+12. **There is no vendor copy of the SH1106 datasheet and there will not be
    one.** `sino-wealth.com` returns NXDOMAIN and its Wayback captures are HTML
    only. The live `sinowealth.com` is a Chinese MCU vendor site. Its Wayback
    set holds 106 PDF URLs, all MCU part documents, and none of them an SH1106.
    The two usable copies are the Pololu mirror and the Crystalfontz OCR copy,
    both V2.3.
    `buydisplay.com/download/ic/SH1106.pdf` answers 403 to an automated fetch.
-12. **A vendor prefix names a vendor.** Sitronix parts start with ST, so
+13. **A vendor prefix names a vendor.** Sitronix parts start with ST, so
    ST7735S, ST7789V, ST7789P3, ST7796S and ST7796U are Sitronix. Sino Wealth
    parts start with SH, so SH1106 is Sino Wealth. "Sino Wealth ST7796S"
    conflates two vendors. Sitronix's own AIoT DDI table lists ST7796U, ST7796UI,
@@ -343,7 +358,7 @@ was opened. Every `unknown` names the artifact that closes it.
 | `m5stick-s3` | ESP32-S3 v2.2 | M5PM1 V1.9 | ST7789P3 v0.1 2022/03, 276 pages, sha256 26e62a24, read 2026-11-26 | BMI270 suffix 08 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | unknown | documented, audio, battery, FCC gaps |
 | `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26 | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | unknown | documented, IMU, SD, battery, FCC gaps |
 | `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C V101, read 2026-11-26, plus FT6336U, still not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | unknown | documented for AXP192; AXP2101 datasheet is an open gap |
-| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 v1.0.6 not opened | none | none | none | microSD, WS2812 | none | unknown | documented, W5500, FCC gaps |
+| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 v1.1.0 opened | none | none | none | microSD, WS2812 | none | unknown | documented, FCC gap |
 | `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | unknown | documented for the SoC, board document missing |
 | `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101, read 2026-11-26 | as Core | as Core | as Core | unknown | same gaps as Core |
 

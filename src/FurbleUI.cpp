@@ -1838,7 +1838,7 @@ void UI::sleepDisplay(void) {
     return;
   }
 
-  // The panel datasheets require 120 ms between Sleep Out and Sleep In.
+  // The panel datasheets require 120 ms from Sleep Out to the next Sleep In.
   // Refuse to sleep too soon after a wake, the inactivity timer retries.
   if ((tick() - m_WakeTick) < DISPLAY_SLEEP_DWELL_MS) {
     return;
@@ -1884,9 +1884,13 @@ void UI::wakeDisplay(void) {
     return;
   }
 
-  // The panel datasheets require 120 ms between Sleep In and Sleep Out.
-  // M5GFX setSleep issues the bare commands, so enforce the dwell here.
-  // This runs on the UI task without the Control mutex, a short delay is safe.
+  // The ILI934x pair needs 120 ms this way too, from Sleep In to the next
+  // Sleep Out (ILI9342C V101 8.2.11, 8.2.12), so it is required on
+  // m5stack-core, m5stack-core2 and the core usb debug profile. ST7789 and
+  // ST7796 bound only Sleep Out to the next Sleep In, which sleepDisplay()
+  // gates, plus 5 ms after SLPIN or SLPOUT before any other command. M5GFX
+  // 0.2.27 writes the bare command and no delay, so both 120 ms waits are
+  // furble's and satisfy all four panels. No Control mutex is held here.
   uint32_t elapsed = tick() - m_SleepTick;
   if (elapsed < DISPLAY_SLEEP_DWELL_MS) {
     vTaskDelay(pdMS_TO_TICKS(DISPLAY_SLEEP_DWELL_MS - elapsed));

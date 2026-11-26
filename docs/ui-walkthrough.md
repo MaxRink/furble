@@ -71,6 +71,8 @@ The main menu is the home screen. Its entries in order are:
 - **IR**: fire the camera over infrared. This entry appears only when the board
   has an IR LED and Infrared is enabled.
 - **Settings**: the settings tree, described below.
+- **Level**: the spirit level, shown when the IMU is enabled and its sensor is
+  present.
 - **Off**: power the device off.
 
 The header shows the connection state and the battery indicator.
@@ -206,7 +208,7 @@ page, and the page carries no focusable control for the buttons to scroll it
 with, so the rows would render below the fold with no way to reach them. Raw
 NMEA carries the HDOP, degraded state, and receiver counters on that board.
 
-### GPS Satellites
+### Satellites
 
 ![GPS satellite detail page](img/gps-satellites.png)
 
@@ -592,9 +594,10 @@ hardware-labelled captures.
 ## Level and IMU diagnostics
 
 Enable `Settings` > `Sensors` > `IMU`, then press the Sensors page's Restart
-button. The setting is off by default. After restart, **Level** appears in
-Connected and **IMU** appears under Settings > Diagnostics. The level follows
-roll and pitch and rotates to the side-bubble view when the device is laid over.
+button. The setting is off by default. After restart, **Level** appears on the
+home menu and in Connected, and **IMU** appears under Settings > Diagnostics.
+The level follows roll and pitch and rotates to the side-bubble view when the
+device is laid over.
 
 ![Level, portrait](img/pending-28/level-portrait.png)
 ![Level, side bubble tube off center](img/pending-28/level-bubble.png)

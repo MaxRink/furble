@@ -23,6 +23,9 @@ std::string g_DestroyTopic;
 std::string g_DestroyPayload;
 esp_mqtt_client_handle_t g_Recycled = nullptr;
 int g_StartCount = 0;
+int g_StartAttempts = 0;
+bool g_FailNextStart = false;
+int g_RefusedConnectCode = -1;
 int g_NextMessageID = 1;
 int g_LastTaskStackSize = 0;
 int g_LastBufferSize = 0;
@@ -118,7 +121,8 @@ void emit(esp_mqtt_client_handle_t client,
           bool retain = false,
           int message_id = 0,
           int current_data_offset = 0,
-          int total_data_len = -1) {
+          int total_data_len = -1,
+          esp_mqtt_error_codes_t *error = nullptr) {
   if ((client == nullptr) || (client->handler == nullptr)) {
     return;
   }
@@ -133,6 +137,7 @@ void emit(esp_mqtt_client_handle_t client,
   event.current_data_offset = current_data_offset;
   event.retain = retain;
   event.msg_id = message_id;
+  event.error_handle = error;
   client->handler(client->handler_arg, nullptr, 0, &event);
 }
 
@@ -166,6 +171,9 @@ void reset(void) {
   g_Subscriptions.clear();
   g_Retained.clear();
   g_StartCount = 0;
+  g_StartAttempts = 0;
+  g_FailNextStart = false;
+  g_RefusedConnectCode = -1;
   g_NextMessageID = 1;
   g_LastTaskStackSize = 0;
   g_LastBufferSize = 0;
@@ -181,6 +189,18 @@ const std::vector<Subscription> &subscriptions(void) {
 
 int startCount(void) {
   return g_StartCount;
+}
+
+int startAttempts(void) {
+  return g_StartAttempts;
+}
+
+void failNextStart(void) {
+  g_FailNextStart = true;
+}
+
+void refuseNextConnect(int connect_return_code) {
+  g_RefusedConnectCode = connect_return_code;
 }
 
 bool hasRetained(const std::string &topic) {
@@ -335,7 +355,23 @@ extern "C" esp_err_t esp_mqtt_client_start(esp_mqtt_client_handle_t client) {
   if (client == nullptr) {
     return ESP_FAIL;
   }
+  g_StartAttempts++;
+  if (g_FailNextStart) {
+    g_FailNextStart = false;
+    return ESP_FAIL;
+  }
   client->started = true;
+  if (g_RefusedConnectCode >= 0) {
+    // A refused CONNACK: the component reports the error and then the
+    // disconnect the application's accounting runs on.
+    const int connect_return_code = g_RefusedConnectCode;
+    g_RefusedConnectCode = -1;
+    client->connected = false;
+    esp_mqtt_error_codes_t error = {MQTT_ERROR_TYPE_CONNECTION_REFUSED, connect_return_code};
+    emit(client, MQTT_EVENT_ERROR, nullptr, 0, nullptr, 0, false, 0, 0, -1, &error);
+    emit(client, MQTT_EVENT_DISCONNECTED, nullptr, 0, nullptr, 0, false, 0, 0, -1, &error);
+    return ESP_OK;
+  }
   client->connected = true;
   g_StartCount++;
   emit(client, MQTT_EVENT_CONNECTED);

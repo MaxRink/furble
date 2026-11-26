@@ -112,8 +112,8 @@ feed (P-077) and disabling the USB Serial/JTAG console in release (P-205).
    inability to hold a steady state below 45 mA remain open.
 7. **Camera parity is out of scope.** The camera rows measure link power, not
    protocol parity. No errata or application note is cited, and several vendor
-   documents were not opened: W5500 current, FT6336U, ES8311, AW8737, BM8563, and
-   the board schematics.
+   documents were not opened: FT6336U, ES8311, AW8737, BM8563, and the board
+   schematics.
 
 ## What this change set does
 

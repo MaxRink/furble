@@ -111,15 +111,10 @@ void furble_sim_uart_set_model(const char *model,
                                bool unresolved);
 // The modelled board keeps the receiver's V_BCKP supplied.
 bool furble_sim_uart_gps_backup(void);
-// The modelled board's rail cannot be switched off.
-bool furble_sim_uart_rail_fixed(void);
-void furble_sim_uart_set_rail_fixed(bool fixed);
-// The rail can be switched, but the PMIC refuses to cut it (a Core2 on a low
-// battery). Platform::canCutGpsRail() still reports true.
-void furble_sim_uart_set_rail_refused(bool refused);
 // Whether the GPS supply rail is on, which is what getExtOutput() reads.
 bool furble_sim_uart_rail_on(void);
-// The GPS supply rail as the board switches it.
+// The rail read-back the hardware model returned for the receiver's view.
+// `seed gps_rail_fixed` and `seed gps_rail_refused` are decided in the model.
 void furble_sim_uart_set_rail(bool on);
 // Virtual M10 observability, see furble_sim_m10_query in sim/fake_uart.cpp.
 std::string furble_sim_m10_query(const std::string &key);

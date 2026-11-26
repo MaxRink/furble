@@ -133,6 +133,27 @@ int main() {
   check(secretPost.responseBody.find("not writable here") != std::string::npos,
         "the password rejection names the reason");
 
+  // Plan 342: the network gate and the status page follow the live station
+  // address. A lost DHCP lease must close the gate instead of leaving the
+  // server serving on a dead address, and the cached snapshot must not be
+  // reported as connected.
+  check(webui.hostNetworkReady(), "the network gate is closed while an address is held");
+  Furble::WiFi::stationAddress = false;
+  check(!webui.hostNetworkReady(), "the network gate stayed open after a lost IP");
+  const auto lostStatus = host_webui_http::invoke(HTTP_GET, "/api/status", validHeaders, "");
+  check(lostStatus.responseStatus == "200 OK", "status GET succeeded after a lost IP");
+  check(lostStatus.responseBody.find("\"connected\":false") != std::string::npos,
+        "the status page reported a lost address as connected");
+  check(lostStatus.responseBody.find("\"ip\":\"\"") != std::string::npos,
+        "the status page kept the stale address");
+  Furble::WiFi::stationAddress = true;
+  check(webui.hostNetworkReady(), "a fresh IP did not reopen the network gate");
+  const auto gotStatus = host_webui_http::invoke(HTTP_GET, "/api/status", validHeaders, "");
+  check(gotStatus.responseBody.find("\"connected\":true") != std::string::npos,
+        "the status page did not report the fresh address as connected");
+  check(gotStatus.responseBody.find("\"ip\":\"192.0.2.10\"") != std::string::npos,
+        "the status page did not report the cached address");
+
   auto noAuth = validHeaders;
   noAuth.erase("Authorization");
   check(shutter(R"({"action":"press"})", noAuth).responseStatus == "401 Unauthorized",

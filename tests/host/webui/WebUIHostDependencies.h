@@ -327,6 +327,10 @@ class WiFi {
     int rssi = -42;
   };
   static status_t getStatus() { return {}; }
+  // The live station address. A lost DHCP lease clears this while the cached
+  // snapshot above keeps the last address.
+  inline static bool stationAddress = true;
+  static bool hasAssignedAddress() { return stationAddress; }
   static bool setEnabled(bool) { return true; }
   static void clearRememberedAccessPoint() {}
   static bool setNtpEnabled(bool) { return true; }

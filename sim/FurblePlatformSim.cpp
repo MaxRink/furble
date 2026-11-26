@@ -2,6 +2,7 @@
 #include <cstdlib>
 
 #include <fstream>
+#include <string>
 
 #include <M5GFX.h>
 #include <M5Unified.h>
@@ -60,6 +61,10 @@ Platform &Platform::getInstance(void) {
 
 #if defined(FURBLE_M5STICKS3)
     instance.m_M5PM1.begin(nullptr);
+    // A PM1 watchdog expiry resets the system, not a status bit. The host has no
+    // reset line, so the model records the power cycle in the hardware model and
+    // the run continues under the new reset reason.
+    M5PM1::setPowerCycleHook([]() { Sim::hwNoteWatchdogCycle(); });
     // Seed the retained state with the unsafe value used by older firmware.
     // Two calls model the required wake retry. The production boot path below
     // must clear and verify it, so removing that path makes the scenario fail.
@@ -126,6 +131,11 @@ uint8_t Platform::getPWRClickCount(void) {
 void Platform::update(void) {
   M5.update();
   furble_sim_uart_update();
+#if defined(FURBLE_M5STICKS3)
+  // The PM1 counts down on its own. This is the tick that lets the model act on
+  // a deadline that a scripted stall skipped.
+  m_M5PM1.pollDeadlines();
+#endif
   // The production Scan expires its own deadline from isActive(); the virtual
   // radio delivers advertisements and the scan-end event on its own task, so
   // there is nothing for the platform tick to pump here any more.
@@ -236,12 +246,13 @@ void Platform::watchdogFeed(void) {
 #endif
 }
 
-namespace {
-bool displayOffRequested = false;
-}
-
 void Platform::setDisplayOff(bool off) {
-  displayOffRequested = off;
+  // The firmware body saves the PM1 status LED level out of PWR_CFG and clears
+  // it while the panel is off, then restores it on wake. The EXT 5 V output bit
+  // shares that byte, so this path drives the same register instead of a local
+  // flag: a write built from a read that a rail change has since invalidated
+  // loses the change, and the model counts it.
+  Sim::hwSetDisplayOff(off);
 }
 
 // The IMU interrupt reaches an ESP32 pin only on the boards whose schematic
@@ -377,7 +388,7 @@ bool Platform::canCutGpsRail(void) {
   // Firmware reads the board profile. The 320x240 build models the Core
   // Basic, whose profile has no GPS rail. A scenario can also fix the rail on
   // (`seed gps_rail_fixed`) to model a Core or Waveshare board on a Stick.
-  return Board::profile().gpsRail && !furble_sim_uart_rail_fixed();
+  return Board::profile().gpsRail && !Sim::hwRailFixed();
 }
 
 bool Platform::hasGpsBackupSupply(void) {
@@ -443,15 +454,19 @@ bool Platform::setRail(Rail rail, bool on) {
     return false;
   }
   // Same calls as firmware, so the hardware model sees the same rail traffic.
-  // The host has no Port A rail, so the fake receiver is told what the PMIC
-  // was asked and its rail is the read-back: `gps_rail_fixed` and
-  // `gps_rail_refused` keep it on.
-  furble_sim_uart_set_rail(on);
+  // The board has one switched 5 V output behind more than one holder, so the
+  // hardware model owns it. The model returns the read-back: it refuses a cut
+  // while another holder still needs the output, and it keeps the rail on where
+  // the board cannot switch it (`seed gps_rail_fixed`) or the PMIC refuses a cut
+  // (`seed gps_rail_refused`). The fake receiver follows that read-back so the
+  // GPS driver's restart decision sees the same answer as hardware.
   M5.Power.setExtOutput(on, m5::ext_PA);
   if (M5.Power.getExtOutput() != on) {
     M5.Power.setExtOutput(on, m5::ext_PA);
   }
-  return furble_sim_uart_rail_on() == on;
+  const bool readBack = Sim::hwSetRail(Sim::rail_holder_t::GPS, on);
+  furble_sim_uart_set_rail(readBack);
+  return readBack == on;
 }
 
 uint32_t Platform::getBatteryFailCount(void) {
@@ -481,12 +496,75 @@ bool consumeWatchdogFeedSuppression(void) {
 const char *watchdogState(void) {
 #if defined(FURBLE_M5STICKS3)
   auto &platform = Platform::getInstance();
-  if (platform.m_M5PM1.watchdogExpired()) {
-    return "expired";
+  platform.m_M5PM1.pollDeadlines();
+  // An expiry is a PMIC-driven system power cycle, so the answer is what the
+  // chip did, not a status bit it left behind.
+  if (platform.m_M5PM1.watchdogPowerCycles() != 0) {
+    return "cycled";
   }
   return platform.m_WatchdogEnabled ? "armed" : "disabled";
 #else
   return "unavailable";
+#endif
+}
+
+const char *motionWakeState(void) {
+#if defined(FURBLE_M5STICKS3)
+  auto &platform = Platform::getInstance();
+  if (!platform.m_MotionWakeArmed) {
+    return "idle";
+  }
+  // The motion interrupt reaches the SoC through the PMIC's aggregated IRQ line
+  // (PYG1_IRQ into GPIO13). The line is level active, so a latch in Status 2
+  // that the motion path never clears holds it asserted and a later edge cannot
+  // wake anything.
+  return platform.m_M5PM1.irqLineAsserted() ? "blocked" : "armed";
+#else
+  return "unavailable";
+#endif
+}
+
+const char *pmicIrqState(void) {
+#if defined(FURBLE_M5STICKS3)
+  auto &platform = Platform::getInstance();
+  return platform.m_M5PM1.irqLineAsserted() ? "asserted" : "idle";
+#else
+  return "unavailable";
+#endif
+}
+
+const char *pmicIrqStatus(void) {
+#if defined(FURBLE_M5STICKS3)
+  auto &platform = Platform::getInstance();
+  // The scenario thread formats and compares this value, so one buffer per
+  // thread keeps the returned pointer valid without sharing mutable state.
+  thread_local std::string status;
+  status = std::to_string(platform.m_M5PM1.irqStatus1()) + ","
+           + std::to_string(platform.m_M5PM1.irqStatus2());
+  return status.c_str();
+#else
+  return "unavailable";
+#endif
+}
+
+bool pmicInjectSystemIrq(uint8_t bits) {
+#if defined(FURBLE_M5STICKS3)
+  auto &platform = Platform::getInstance();
+  platform.m_M5PM1.injectSysIrq(bits);
+  return true;
+#else
+  (void)bits;
+  return false;
+#endif
+}
+
+bool pmicClearSystemIrq(void) {
+#if defined(FURBLE_M5STICKS3)
+  auto &platform = Platform::getInstance();
+  // Write 0 to Status 2, which is the only thing that clears the latch.
+  return platform.m5pm1Access([&platform]() { return platform.m_M5PM1.irqClearSysAll(); });
+#else
+  return false;
 #endif
 }
 
@@ -500,7 +578,7 @@ const char *downloadLockState(void) {
 }
 
 const char *displayOffState(void) {
-  return displayOffRequested ? "yes" : "no";
+  return hwDisplayOffState();
 }
 
 }  // namespace Sim

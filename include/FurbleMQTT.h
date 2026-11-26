@@ -63,7 +63,9 @@ class MQTT {
   bool simTaskCreated(void) const;
   /** Simulator observability: bounded connection-failure accounting. */
   uint32_t simConnectFailures(void) const;
-  /** Simulator observability: the retry limit stopped the client. */
+  /** Simulator observability: the current retry backoff step in milliseconds. */
+  uint32_t simRetryDelayMs(void) const;
+  /** Simulator observability: the failure classifier stopped the client. */
   bool simBlocked(void) const;
 #endif
 
@@ -77,6 +79,10 @@ class MQTT {
   uint32_t hostTaskWaitMs(void) const;
   /** Whether the pre-task owner gate admitted the owner task. */
   bool hostTaskCreated(void) const { return m_Task != nullptr; }
+  /** Connection-failure accounting, retry step and classifier block state. */
+  uint32_t hostConnectFailures(void) const;
+  uint32_t hostRetryDelayMs(void) const;
+  bool hostBlocked(void) const;
 #endif
 
  private:
@@ -89,7 +95,15 @@ class MQTT {
   static constexpr uint32_t CAMERAS_PERIOD_MS = 1000;
   static constexpr uint32_t BATTERY_PERIOD_MS = 60 * 1000;
   static constexpr uint32_t GPS_PERIOD_MS = 10 * 1000;
-  static constexpr uint32_t MAX_CONNECT_FAILURES = 10;
+  // A broker or router outage must never silence the hub until a reboot, so a
+  // retryable failure always schedules another attempt. The gap doubles from
+  // RETRY_INITIAL_MS to RETRY_MAX_MS and then stays there: one attempt a
+  // minute is negligible traffic, and it rejoins a returning broker inside a
+  // minute. The 300 s WiFi cap would leave a shutter command unanswered for
+  // minutes, and the old flat 10 s retry hit the removed ten-failure limit
+  // after about 100 s of outage.
+  static constexpr uint32_t RETRY_INITIAL_MS = 10 * 1000;
+  static constexpr uint32_t RETRY_MAX_MS = 60 * 1000;
   static constexpr uint32_t MAX_HOLD_MS = 60 * 1000;
   static constexpr uint32_t OFFLINE_ACK_TIMEOUT_MS = 250;
   static constexpr size_t EVENT_QUEUE_LENGTH = 4;
@@ -137,8 +151,11 @@ class MQTT {
   void processEvent(const queued_event_t &event);
   void processDueTimers(void);
   void servicePendingReleases(void);
-  /** Handle a connected or disconnected event already matched to m_Client. */
-  void handleLifecycleEvent(int32_t event_id);
+  /**
+   * Handle a connected or disconnected event already matched to m_Client. The
+   * error fields decide whether a disconnect is retryable or permanent.
+   */
+  void handleLifecycleEvent(int32_t event_id, int32_t error_type, int32_t connect_return_code);
   void handleEvent(const queued_event_t &event);
   void handleData(const queued_event_t &event);
   void handleCommand(const std::string &topic, const std::string &payload);
@@ -154,6 +171,14 @@ class MQTT {
   bool startClient(void);
   void stopClient(void);
   void loadTopics(void);
+  /** True when no backoff deadline holds the next start attempt back. */
+  bool retryDue(void) const;
+  /** Count one retryable failure, grow the backoff and schedule the next try. */
+  void scheduleRetry(void);
+  /** A live session starts the retry policy over. */
+  void clearRetry(void);
+  /** The current backoff step in milliseconds, zero when none is pending. */
+  uint32_t retryDelayMs(void) const;
 
   bool publish(const std::string &topic,
                const std::string &payload,
@@ -222,12 +247,22 @@ class MQTT {
   bool m_LifecyclePending = false;
   esp_mqtt_client_handle_t m_LifecycleClient = nullptr;
   int32_t m_LifecycleEvent = 0;
+  // The esp-mqtt error classification that came with the lifecycle event. It is
+  // copied because the classifier reads it on the owner task, after the client
+  // task has returned from the callback and its event object is gone.
+  int32_t m_LifecycleErrorType = 0;
+  int32_t m_LifecycleConnectReturnCode = 0;
   bool m_Reload = false;
   bool m_ManualDisconnect = false;
   bool m_StopClient = false;
   bool m_Blocked = false;
   bool m_ClearDiscovery = false;
   uint32_t m_ConnectFailures = 0;
+  // Capped exponential backoff. m_RetryDelayMs is the current step, zero when
+  // no retry is pending; m_NextAttemptMs is the earliest next start attempt,
+  // zero when the next one may run immediately. Both are guarded by m_Mutex.
+  uint32_t m_RetryDelayMs = 0;
+  uint64_t m_NextAttemptMs = 0;
   mutable uint32_t m_LastNetworkLogMs = 0;
 
   bool m_IntervalRunning = false;

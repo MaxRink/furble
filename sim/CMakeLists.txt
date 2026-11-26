@@ -303,8 +303,15 @@ if(APPLE)
   find_library(FURBLE_SDL3_LIBRARY SDL3 PATHS /opt/homebrew/lib /usr/local/lib
                NO_DEFAULT_PATH)
   if(FURBLE_SDL3_LIBRARY)
-    target_link_options(furble-sim PRIVATE
-                        "LINKER:-needed_library,${FURBLE_SDL3_LIBRARY}")
+    # Link SDL3 after SDL2::SDL2. CMake emits LINK_OPTIONS before the
+    # libraries, and ld64 binds an undefined symbol to the first input dylib
+    # that exports it, so a -needed_library SDL3 ahead of SDL2 makes SDL2 API
+    # calls (SDL_PollEvent and friends) resolve to SDL3. SDL3's SDL_Event is
+    # 128 bytes against the 56 the SDL panel compiles against, so the poll
+    # overruns that frame and __stack_chk_fail aborts with 134. Keep in step
+    # with sim/build.sh.
+    target_link_libraries(furble-sim PRIVATE
+                          "-Wl,-needed_library,${FURBLE_SDL3_LIBRARY}")
   else()
     # A real SDL2 needs no SDL3. sdl2-compat without SDL3 would fail at
     # launch through that dialog, so stop at configure time.

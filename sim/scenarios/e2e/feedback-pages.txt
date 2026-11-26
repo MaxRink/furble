@@ -1,0 +1,69 @@
+# The two Feedback sub-pages the certified suite never asserted: Feedback Events
+# and Feedback Volume. Both are built inside addFeedbackMenu
+# (src/FurbleUI.cpp:11865-12025), so they reach the screen only when more than one
+# feedback output is offered. In the simulator that is the FURBLE_SIM_FEEDBACK
+# shim reporting the full output set (sim/shim/FurbleFeedback.h:61-78), not the
+# hardware profile. page-matrix is the only file that visits them.
+#
+# Feedback Volume is hidden unless the selected output supports sound
+# (src/FurbleUI.cpp:11853-11863), and the whole Feedback menu is skipped when
+# only the Off output is available (src/FurbleUI.cpp:11870-11874). The scenario
+# therefore seeds fb_output 1, the Sound output, which is what page-matrix uses
+# to make both pages reachable, and asserts the pair through their real menu
+# buttons.
+#
+# Feedback Events renders four switches: Shutter fired, Countdown, Connect and
+# disconnect, and Low battery (src/FurbleUI.cpp:11976-11979). The switches are in
+# the input group, so the page loads with a switch focused and row_text names the
+# row the encoder sits on. Feedback Volume renders a Volume label and one slider
+# (src/FurbleUI.cpp:11982-12022). Neither page is touched with "action select":
+# the sibling Feedback page carries a "Restart to apply" button
+# (src/FurbleUI.cpp:11924-11937), and a stray activation on this shared input
+# group is not worth the risk.
+seed fb_output 1
+wait 400
+
+home
+wait 200
+assert ui.page main
+
+# --- Feedback Events -------------------------------------------------------
+action nav settings
+wait 200
+assert ui.page settings
+action nav feedback
+wait 200
+assert ui.page feedback
+action nav feedback_events
+wait 250
+assert ui.page feedback_events
+assert ui.back visible
+assert ui.focus_on_page yes
+assert ui.row_text Shutter_fired
+print ui.overflow
+action scroll bottom
+wait 100
+assert ui.scroll_bottom 0
+action scroll top
+wait 100
+assert ui.scroll_top 0
+
+# --- Feedback Volume -------------------------------------------------------
+home
+wait 200
+assert ui.page main
+action nav settings
+wait 200
+assert ui.page settings
+action nav feedback
+wait 200
+assert ui.page feedback
+action nav feedback_volume
+wait 250
+assert ui.page feedback_volume
+assert ui.back visible
+assert ui.focus_on_page yes
+assert ui.overflow no
+assert ui.label_overlaps 0
+
+exit

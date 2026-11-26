@@ -2,8 +2,14 @@
 
 Debug builds (`FURBLE_CONSOLE`, every `<board>-debug` env) add a USB serial
 command console on the same port that carries the log. It lets a developer or a
-host script drive furble without walking the menu tree. No release build
-contains it.
+host script drive furble without walking the menu tree. No release board image
+contains it: the six non-debug board environments carry no console, and the
+non-debug `waveshare-s3-eth` env drops the one its headless parent would pass
+down. The release workflow does publish the `-debug` image for `m5stack-core2`,
+`m5stick-c`, `m5stick-c-plus`, `m5stick-s3` and `waveshare-s3-eth`, and every
+`-debug` env sets `-DFURBLE_CONSOLE=1`, so those published images contain it. It
+is also in the `esp32-s3-headless` developer hub image, which the reproducible
+workflow builds.
 
 Open it and type `help`:
 
@@ -39,13 +45,17 @@ About page and exposed through companion BLE Device Information.
 | `boot` | `boot timing` prints the last boot timeline, its mark deltas, and the cycle-counter reset estimate. See [boot timing](../boot-timing.md). |
 | `status` | State, targets, uptime, heap, memory pressure, battery, reset reason. `memory_pressure` is `normal`, `amber` (WebUI server paused) or `red` (WebUI and MQTT client paused). |
 | `crash` | `crash [last]` prints the retained previous-boot crash record. After a failed-allocation abort it adds the `crash.alloc_*` lines. See [crash diagnostics](../crash-diagnostics.md). |
-| `power` | `stats`, or `log <seconds>` / `log off` for a CSV power log. |
+| `imu` | `imu status` for the sensor probe, or `imu scale [value]` for gesture calibration. See below. |
+| `power` | `stats`, `log <seconds>` / `log off` for a CSV power log, or `off` to power the device off. `off` reports `not supported in this build` on a display-less image, because the power-off path runs on the UI task. |
 | `perf` | `tasks`, `heap`, or `lvgl [overlay on\|off]`. |
 | `heap` | `heap trace start [records]`, `stop`, or `dump`: ESP-IDF standalone heap tracing in leak mode, debug images only. `start` takes 1 to 1000 records (default 100) from internal RAM and refuses when the largest block cannot hold twice that. |
 | `gps` | GPS status and control, see below. |
 | `motion` | `status` for the motion source, or `scale [0.25-4.0]` to calibrate it. |
 | `time` | `status` reports wall-clock validity and source; `flush` persists it. |
+| `wifi` | `status`, `set ssid\|psk <value>`, `enable`, `disable`, `connect`, `disconnect`, or `forget`; Wi-Fi station control. See below. |
+| `ntp` | `status`, `set server <host>`, `enable`, `disable`, or `sync`; NTP client control. |
 | `settings` | `list`, `get <name>`, `set <name> <value>`. |
+| `provision` | `provision <hex\|base64 TLV blob>` decodes a provisioning bundle and applies its settings. |
 | `companion` | `start` (open the 60 s pairing window), `stop`, `status`, `reidentify` (rotate the LE address and drop only the companion bond), or `password set <pw>`, `clear`, `status`. See [BLE debug status](BLE-Debug). |
 | `ui` | `audit`, `page`, or `back` for UI diagnostics and navigation. |
 | `cameras` | `list` saved cameras, or `status` for the active targets. |
@@ -56,6 +66,9 @@ About page and exposed through companion BLE Device Information.
 | `disconnect` | Disconnect all cameras. |
 | `mqtt` | `status`, `connect`, `disconnect`, or `discovery clear`; MQTT broker control. |
 | `shutter` | `press`, `release`, or `hold <ms>`. |
+| `interval` | `interval start \| stop \| status`; the Timer page workflow. |
+| `bulb` | `bulb start \| stop \| status`; the Bulb page workflow. |
+| `display` | `display status \| mode gui \| console \| brightness <value>`; the display workflow. |
 | `focus` | `press` or `release`. |
 | `ir` | `ir fire [protocol]`, 0 Nikon, 1 Sony, 2 Canon, 3 Canon 2s. |
 | `scan` | `start`, `stop`, or `list`. |
@@ -163,9 +176,10 @@ StickS3 baseline, and the PSRAM memory-test build option.
 
 ## crash
 
-`status` and the crash record name reset reasons as `poweron`, `software`,
-`panic`, `int_wdt`, `task_wdt`, `other_wdt`, `brownout`, `usb_uart_chip_reset`,
-`jtag`, `power_glitch` or `cpu_lockup`.
+`status` and the crash record name reset reasons as `unknown`, `poweron`,
+`external`, `software`, `panic`, `int_wdt`, `task_wdt`, `other_wdt`,
+`deepsleep`, `brownout`, `sdio`, `usb_uart_chip_reset`, `jtag`, `efuse`,
+`power_glitch` or `cpu_lockup`. Any other value prints `other`.
 
 
 `crash` and `crash last` print the record retained across the last reset:
@@ -200,7 +214,10 @@ See [crash diagnostics](../crash-diagnostics.md).
 
 ## settings
 
-- `settings list` prints every setting as `key: value`.
+- `settings list` prints every setting as `key: value`, except the companion
+  password: the row is skipped, and `settings get`/`settings set` refuse it. Read
+  it with `companion password status`, which reports only `set`, `unset` or
+  `unavailable`.
 - `settings get <name>` prints the name, type, value, and when a change applies.
 - `settings set <name> <value>` saves a setting. Values are range checked and
   rejected when the board does not support the setting, for example
@@ -285,13 +302,13 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
 ## gps
 
 - `gps` with no argument prints enabled, fix, satellites, lat, lon, alt, age,
-  date, time, and error counts. `fix` is `yes` only while the position, the GGA
-  quality, and a location younger than the 30 s freshness bound all hold; it
-  turns `no` at 30 s even when the receiver still reports a quality. It also
-  reports the receiver state behind the fix:
-  `receiver` (`detecting`, `present` or `absent`), `baud` (the baud the
-  autobaud ladder locked, or the configured fixed baud, 0 when none),
-  `degraded` and `retries` for the power cycle health, `source` (`uart`,
+  date, time, and the `chars` and `sentences` counters. `fix` is `yes` only
+  while the position, the GGA quality, and a location younger than the 30 s
+  freshness bound all hold; it turns `no` at 30 s even when the receiver still
+  reports a quality. It also reports the receiver state behind the fix:
+  `receiver` (`unknown`, `detecting`, `present` or `absent`), `detected_baud`
+  (the baud the autobaud ladder locked, or the configured fixed baud, 0 when
+  none), `degraded` and `retries` for the power cycle health, `source` (`uart`,
   `companion` or `none`), `cycle` (the power cycle state), `policy`
   (`always_on`, `standby` or `rail_cycle`), `duty` (standby seconds), `rate`
   (configured fix interval in ms, 0 for the receiver default), `sentence_age`

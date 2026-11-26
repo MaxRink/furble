@@ -26,6 +26,10 @@ namespace HAL {
 
 class AXP2101 {
  public:
+  /*
+   * 7-bit TWSI address. Section 6.3 gives the default slave address as
+   * 0x68/0x69 in 8-bit form, so 0x34 is that address shifted right by one.
+   */
   static constexpr uint8_t ADDRESS = 0x34;
 
   /** Switchable outputs. VRTC is not one, see the header comment. */
@@ -59,7 +63,11 @@ class AXP2101 {
     DISCHARGING,
   };
 
-  /** Power key events latched in REG 49 bits 3:0 (section 6.13.2.44). */
+  /**
+   * Power key events latched in REG 49 bits 3:0 (section 6.13.2.44): short
+   * press (bit 3), long press (bit 2), falling edge (bit 1) and rising edge
+   * (bit 0). REG 41 bits 3:0 enable them one for one (section 6.13.2.41).
+   */
   struct PowerKey {
     bool shortPress;
     bool longPress;
@@ -127,13 +135,48 @@ class AXP2101 {
    */
   bool setBackupCharge(bool enable, uint16_t millivolts = 3300);
 
-  /** Enable the short and long press interrupts (REG 41 bits 3:2). */
+  /**
+   * Enable or disable all four power key event interrupts (REG 41 bits 3:0).
+   *
+   * All four bits are written together because section 6.12.1 sets a status
+   * bit only when its enable bit is set, and section 6.13.2.41 leaves bits 1:0
+   * at 0. Enabling bits 3:2 alone would leave PowerKey::falling and
+   * PowerKey::rising latched never, so the API would promise two events the
+   * part cannot deliver.
+   *
+   * Cost of the two edge interrupts: REG 49 bits are latches and the IRQ pin
+   * carries their level, not an edge (sections 6.13.2.44 and 6.12.1), so one
+   * latched bit holds the line asserted until readPowerKey() writes it back. A
+   * board that wires the PMIC IRQ pin to a GPIO level interrupt or a wake input
+   * re-enters its handler for as long as a bit stays set, and sees two
+   * assertions per press, once as the key falls and once as it rises. Draining
+   * REG 49 is therefore part of every entry, not a tidy-up after the first
+   * one: a handler that returns with a bit still set runs again immediately,
+   * and a wake-on-IRQ design counts two wake events per press. The alternative,
+   * enabling only bits 3:2, has no edges to report.
+   */
   bool enablePowerKeyIrq(bool enable);
 
-  /** Read and clear the latched power key events (REG 49, write 1 to clear). */
+  /**
+   * Read and clear the latched power key events (REG 49, write 1 to clear).
+   *
+   * Only the four key bits are decoded and cleared (REG 49 bits 3:0); the
+   * battery and VBUS bits stay for whoever else reads them. A field can only
+   * be true if enablePowerKeyIrq() turned its bit on, see section 6.12.1.
+   */
   bool readPowerKey(PowerKey &key);
 
-  /** Soft power off, REG 10 bit 0 (section 6.13.2.7). VRTC stays up. */
+  /**
+   * Soft power off, REG 10 bit 0 (section 6.13.2.7). VRTC stays up.
+   *
+   * This does not drain REG 49. The press that reaches here has already latched
+   * its falling edge and its short or long press there, and the release after
+   * the rails drop latches a rising edge. If REG 49 survives soft power off,
+   * as VRTC staying up allows, the next boot's readPowerKey() reports that
+   * release as a phantom rising edge of a press nobody made on this boot. A
+   * board that powers off from the key should clear REG 49 first, or ignore the
+   * first read after boot.
+   */
   bool powerOff(void);
 
  private:

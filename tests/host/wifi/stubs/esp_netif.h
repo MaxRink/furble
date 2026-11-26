@@ -9,4 +9,6 @@ struct esp_netif_ip_info_t {
 };
 esp_netif_t *esp_netif_create_default_wifi_sta(void);
 int esp_netif_get_ip_info(esp_netif_t *, esp_netif_ip_info_t *);
+// The station netif stays up across a lost DHCP lease; only the address goes.
+bool esp_netif_is_netif_up(esp_netif_t *);
 const char *esp_ip4addr_ntoa(const esp_ip4_addr_t *, char *, int);

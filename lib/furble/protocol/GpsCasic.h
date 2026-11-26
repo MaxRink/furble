@@ -90,6 +90,28 @@ class Autobaud {
 };
 
 /*
+ * NMEA output profiles for $PCAS03, the sentence rate command.
+ *
+ * The CASIC specification V6.3.2 section 2.7.4 (page 42) and V4.2.0.3 section
+ * 1.6.4 (page 27) both define fourteen rate fields at the same positions; the
+ * older V4.2.0.3 adds four more (res3, res4, res5 and nTIM in slots 16 to 19)
+ * that V6.3.2 dropped. An empty field keeps the receiver's existing rate, so a
+ * short sentence cannot turn a sentence off: a body that stopped after nANT
+ * leaves DHV, LPS, UTC and GST at whatever the receiver had.
+ *
+ * Every body here therefore writes all fourteen fields. The two reserved
+ * fields stay empty, as the V4.2.0.3 worked example does.
+ */
+enum class SentenceSet : uint8_t {
+  PRUNE,     /**< RMC and GGA only, for the GPS_NMEA setting */
+  SATELLITE, /**< RMC, GGA, GSA and GSV while the satellite page is open */
+  STANDARD,  /**< the eight sentences a CASIC receiver ships with */
+};
+
+/** The `$PCAS03` body without `$` or checksum. `sendCommand()` adds those. */
+std::string sentenceCommand(SentenceSet set);
+
+/*
  * Per satellite detail parsed directly from GSV and GSA.
  *
  * The pinned TinyGPS++ fork parses GGA and RMC only, so GSV and GSA are dropped

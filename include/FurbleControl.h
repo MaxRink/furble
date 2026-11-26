@@ -53,6 +53,18 @@ class Control {
     std::shared_ptr<Camera> getCamera(void) const;
     cmd_t getCommand(void);
     BaseType_t sendCommand(cmd_t cmd);
+
+    /**
+     * Record the GPS fix the target task hands to the camera.
+     *
+     * Caller must hold Control::m_Mutex: Control::updateGPS() walks m_Targets and
+     * calls this in the same critical section, which is what keeps the target
+     * alive across the call. That is a lifetime contract, not reader
+     * synchronization: the target task reads both fields with no lock in the
+     * CMD_GPS_UPDATE case (FurbleControl.cpp:198), so that read stays the
+     * handoff race recorded in plan 327. Pure member assignment, so it must
+     * never grow a radio call, a heap allocation or a delay.
+     */
     void updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync);
 
     void task(void);
@@ -163,16 +175,27 @@ class Control {
 
   /**
    * Update GPS and timesync values.
+   *
+   * Runs on the task that drives the 1 Hz GPS service, the UI loop: the LVGL
+   * gps_service_timer in display builds and vUITask() in headless ones, both
+   * from app_main's task. Never on GPS::task(), which only publishes the fix.
+   * Holds m_Mutex for the walk and the per-target store only, never across a
+   * radio call or a delay; the command that wakes the control task is posted
+   * with the lock released.
    */
   BaseType_t updateGPS(const Camera::gps_t &gps, const Camera::timesync_t &timesync);
 
   /**
    * Are all active cameras still connected?
    *
-   * False when there are no active cameras. An empty session is not vacuously
-   * connected: returning true for one published STATE_ACTIVE for a session
-   * containing nothing, so the UI signalled CONNECTED while sendCommand()
-   * iterated an empty target list and the shutter did nothing.
+   * Safe from any task that does not already hold m_Mutex: it takes the lock
+   * and delegates to allConnectedLocked(). A caller already inside m_Mutex must
+   * call allConnectedLocked() instead, because m_Mutex is a plain std::mutex,
+   * so re-entering here self-deadlocks. False when there are no active cameras.
+   * An empty session is not vacuously connected: returning true for one
+   * published STATE_ACTIVE for a session containing nothing, so the UI
+   * signalled CONNECTED while sendCommand() iterated an empty target list and
+   * the shutter did nothing.
    */
   bool allConnected(void);
 
@@ -458,6 +481,14 @@ class Control {
 
   // Caller holds m_Mutex. Reuse the drain set for deliberately declined peers.
   bool retireCancelledTargetsLocked(void);
+
+  /**
+   * The target walk behind allConnected(), for callers already holding m_Mutex.
+   *
+   * addActive() reallocates m_Targets and disconnect() empties it from other
+   * tasks, so this walk has to run under the lock that owns the vector.
+   */
+  bool allConnectedLocked(void);
 
   /**
    * Is a prior teardown still draining?

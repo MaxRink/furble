@@ -10,3 +10,4 @@ int esp_event_handler_register(esp_event_base_t, int32_t, esp_event_handler_t, v
 #define IP_EVENT_STA_GOT_IP 1
 #define WIFI_EVENT_STA_DISCONNECTED 2
 #define WIFI_EVENT_STA_CONNECTED 3
+#define IP_EVENT_STA_LOST_IP 4
