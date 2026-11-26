@@ -59,7 +59,7 @@ Rules:
 | CASIC protocol | Multimode navigation receiver protocol, http://www.espruino.com/files/CASIC_en.pdf | Not stated | `$PCAS` family, `BA CE` framing, `AID-INI`, `CFG-NAVX`, `MON-HW`; the printed checksum formula is wrong and the L76K id-first form is the one the code uses | Quoted by GPS/IMU lane | GPS/IMU |
 | Quectel L76K | GNSS protocol specification v1.1, https://www.waveshare.net/w/upload/d/dd/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf | v1.1 | PCAS02, PCAS03, PCAS04, PCAS10; GSV and GSA fields; id-first checksum | Quoted by GPS/IMU lane | GPS/IMU |
 | NS4168 | NS4168 datasheet, https://www.chipsourcetek.com/Uploads/file/NS4168.pdf | Not stated | 13 mA quiescent at 5 V; 1 uA shutdown leakage | Quoted through the model | Board, Display |
-| WIZnet W5500 | W5500 datasheet, https://www.wiznet.io/wp-content/uploads/wiznethome/Chip/W5500/Document/W5500_ds_v1.0.6.pdf | v1.1.0 quoted for the reset pulse; the linked copy is v1.0.6 | RESETn must stay low for at least 500 us (version 1.1.0, section 5.5.1 figure 22 and table 2; RESETn is pin 37 in the pin description table on page 9). The pinned PHY hard-codes 100 us (`components/esp_eth/src/spi/w5500/esp_eth_phy_w5500.c:160`), a known defect recorded in `plans/implemented/42-waveshare-eth-node.md`. PHY power-down mode exists; link-dependent current; the exact figure is not quoted because the copy was not opened | Reset minimum quoted by the correction lane; PHY current still not reopened by the Board lane | Board, Wi-Fi |
+| WIZnet W5500 | WIZnet W5500 datasheet version 1.1.0, dated 17DEC2022, https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf | v1.1.0, 1,893,745 bytes, sha256 7b826b808084ccd986bcc22904c00a07a508ef42fb93d079fe7150a4c4f1a63d | Section 1.1 page 10, `RSTn` pin 37: "RESET should be held low at least 500 us for W5500 reset". Section 5.5.1 page 60 and figure 22, Reset Timing: `TRC` minimum 500 us, `TPL` (RSTn released to internal PLOCK) maximum 1 ms. Section 5.5.2: regulator wake 10 us. Section 5.3 page 59: `IDD1` 132 mA, `IDD2` 13 mA in PHY power-down. Section 5.4 page 60: link currents 128, 75 and 65 mA. Section 3.1 page 29, section 4.1 page 32, `SHAR` registers 0x0009 to 0x000E page 33. The pinned PHY hard-codes 100 us (`components/esp_eth/src/spi/w5500/esp_eth_phy_w5500.c:160`), the defect recorded in `plans/implemented/42-waveshare-eth-node.md`; `src/FurbleEthernet.cpp` now drives the 500 us pulse itself in `resetW5500()`, which meets `TRC`, and passes `reset_gpio_num = -1` so the PHY adds no second, under-spec assertion. It adds no wait for `TPL`, so the release-to-PLL guard is an open item, not a compliance claim | Opened for this PR; copy size and sha256 verified above. v1.0.6 is superseded, its linked URL redirects to HTTP 404, and the v1.1.0 history on pages 66 to 67 changes only the RPU minimum and the package text | Board, Wi-Fi |
 | Vybronics VC1030B028F | Coin vibration motor datasheet, https://www.vybronics.com/coin-vibration-motors/with-brushes/v-c1030b028f | Not stated | 64 mA typical operating, 85 mA rated maximum, more at start and stall. Representative part because M5Stack names no motor | Quoted through the model | Board |
 | BM8563 RTC | BM8563 documentation, cited for the Plus2 alarm wake | Not stated | RTC alarm is the Plus2 timed-wake source | Cited, not opened | Board, SoC |
 | FT6336U touch controller | Core2 touch documentation and FT6336U datasheet | Not stated | Monitor and hibernate modes exist; current not in the tree; the datasheet was not opened by the Board lane | Not opened | Board, Display |
@@ -235,7 +235,6 @@ not verified for this register.
 | Part or area | Gap | Consequence |
 | --- | --- | --- |
 | AXP192 | No revision string in the fetched copy; cover says 2010 | A register claim must name the copy used, not a revision number |
-| W5500 | Datasheet not opened for PHY current; the reset minimum is quoted from version 1.1.0 section 5.5.1 while the linked copy is v1.0.6 | NB-02 and the Waveshare rows cannot quote a current |
 | FT6336U | Datasheet not opened; current not in the tree | P-069 uses a placeholder 0.5 to 2 mA range |
 | ES8311 and AW8737 | No documents opened; quiescent currents not in the tree | RL-09 assumes a closed speaker is idle, but does not measure it |
 | BM8563 | Documentation cited, not opened | The Plus2 alarm wake path is unverified |
@@ -258,9 +257,11 @@ not verified for this register.
 3. **Revision conflicts.** The AXP192 copy has no revision string. The ESP32-S3
    copy is v2.2. The IP5306 copy is V1.01. The M5PM1 copy is V1.9. The ESP32
    copy is v5.3. The ST7789V copy is v1.3. The ST7735S copy is v1.1. The
-   MPU-6886 copy is v1.1. The W5500 reset minimum is quoted from version
-   1.1.0 while the linked copy is v1.0.6. Do not copy a number from a
-   secondary document into a primary claim without opening the primary.
+   MPU-6886 copy is v1.1. The W5500 copy is v1.1.0, dated 17DEC2022, with the
+   size and checksum in section 4. The v1.0.6 copy named by an earlier revision
+   of this register is superseded and its URL now returns HTTP 404, so the
+   register quotes v1.1.0 only. Do not copy a number from a secondary document
+   into a primary claim without opening the primary.
 4. **Board files are split.** The repository has one board file
    (`boards/waveshare-esp32-s3-eth.json`). Panel pins, backlight drive, and
    brightness mapping come from M5GFX 0.2.27 and M5Unified 0.2.20. There is no
@@ -283,6 +284,14 @@ not verified for this register.
 8. **The 40.1 mA Wi-Fi station figure is a published vendor measurement, not a
    datasheet line.** It is a whole-chip average, not a delta, and the clock is
    not stated.
+9. **The W5500 reset gap is closed, its current gap is not.** The v1.1.0 copy in
+   section 4 is opened and checksummed, so the 500 us `RSTn` minimum, the 1 ms
+   `TPL` release-to-PLL maximum, the 13 mA PHY power-down current and the three
+   link currents are quoted from a primary document rather than a secondary
+   one. None of them is a local measurement: NB-02 still needs a bench run. The
+   reset path itself has an open item, because `src/FurbleEthernet.cpp` pulses
+   `RSTn` for 500 us and then talks SPI without waiting the up-to-1 ms `TPL`,
+   and the ESP-IDF PHY adds no wait of its own once `reset_gpio_num` is -1.
 
 ## 13. Per-board component and document coverage
 
@@ -302,7 +311,7 @@ was opened. Every `unknown` names the artifact that closes it.
 | `m5stick-s3` | ESP32-S3 v2.2 | M5PM1 V1.9 | ST7789P3, panel document unknown | BMI270 suffix 08 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | unknown | documented, panel, audio, battery, FCC gaps |
 | `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101 | Gray variant part not recorded | SD, speaker | Core reports 0, capacity unknown | unknown | documented, IMU, SD, battery, FCC gaps |
 | `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C V101 plus FT6336U, not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 390 mAh, vendor page | unknown | documented for AXP192; AXP2101 datasheet is an open gap |
-| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 reset minimum quoted from v1.1.0, linked copy v1.0.6 not opened | none | none | none | microSD, WS2812 | none | unknown | documented, W5500, FCC gaps |
+| `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 v1.1.0 opened | none | none | none | microSD, WS2812 | none | unknown | documented, FCC gap |
 | `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | unknown | documented for the SoC, board document missing |
 | `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101 | as Core | as Core | as Core | unknown | same gaps as Core |
 

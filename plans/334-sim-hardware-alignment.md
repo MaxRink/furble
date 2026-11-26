@@ -16,8 +16,15 @@ rule it has no bus for. Each item is a correctness fix, not a redesign.
 
 ### Source
 
-WIZnet W5500 datasheet v1.1.0 section 5.5.1, figure 22 and table 2: RESETn must
-be held low for at least 500 us.
+WIZnet W5500 datasheet version 1.1.0, dated 17DEC2022, live at
+https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf, 1,893,745 bytes,
+sha256 `7b826b808084ccd986bcc22904c00a07a508ef42fb93d079fe7150a4c4f1a63d`.
+Section 1.1 page 10, pin 37 `RSTn`: "RESET should be held low at least 500 us
+for W5500 reset". Section 5.5.1 page 60 and figure 22, Reset Timing: `TRC`
+minimum 500 us, `TPL` (RSTn released to internal PLOCK) maximum 1 ms. The corpus
+URL for v1.0.6 returns HTTP 404, and the v1.1.0 document history on pages 66 to
+67 changes only the RPU minimum and the package text, so both reset figures are
+unchanged from v1.0.6.
 
 ### What the tree did
 
@@ -74,10 +81,13 @@ the PHY received GPIO 9. It now fails if the pulse is shorter than 500 us:
 
 ### Left alone
 
-- No settling delay after the pulse is released. The W5500 datasheet timing
-  table is the only source in hand, ESP-IDF adds none after its own pulse, and
-  a value invented here would be unverified. The MAC init over SPI already runs
-  after the pulse.
+- No settling delay after the pulse is released, which is an open item rather
+  than a compliance claim. Figure 22 bounds `TPL`, the release to internal
+  PLOCK, at 1 ms maximum, so the MAC init over SPI can reach the chip before
+  its PLL locks. ESP-IDF adds no wait either, because `reset_gpio_num = -1`
+  skips `w5500_reset_hw()`. Adding a wait would change production timing and
+  needs a board check, so it is recorded in
+  `docs/power/datasheet-register.md` item 9 and in the remaining gates below.
 - The SPI pins, clock, queue depth and interrupt pin are unchanged.
 - No change to `esptool`/monitor behaviour, or to the Waveshare board profile.
 
@@ -108,7 +118,9 @@ even quoted the written register value correctly and then read the wrong field.
   register evidence where the document carries citations:
   `docs/power/board-power.md` (summary, board table, boot register block, sleep
   table, PM-06, PM-07, PM-09, PM-12, the run-length note, and both source
-  rows), `docs/power/datasheet-register.md`, `docs/power/ble.md`,
+  rows, the M5Unified one now naming `Power_Class.cpp` for the register
+  writes and `IP5306_Class.cpp` for the constants and the keep-on setter),
+  `docs/power/datasheet-register.md`, `docs/power/ble.md`,
   `docs/power/measurement.md`, `docs/power/measurement-plan.md`,
   `docs/power/display.md`, `docs/power/opportunity-matrix.md`,
   `tools/power-model/README.md` and the `board-currents.yaml` threshold note.
@@ -145,17 +157,23 @@ datasheet fact.
 
 ### Source
 
-Sitronix ST7796S V1.0 section 9.2.12 and 9.2.13, the same rule in the ST7789 and
-ILI934x families: 120 ms after SLPOUT before the next SLPIN, and 5 ms after
-SLPOUT before any other command.
+The rule is per panel, and the corrected wording is the one PR 473 carries.
+ILI9342C V101 sections 8.2.11 and 8.2.12 (pages 100 and 101) need 120 ms in
+both directions. Sitronix ST7796S V1.0 sections 9.2.12 and 9.2.13 and ST7789V
+sections 9.1.11 and 9.1.12 need 120 ms from Sleep Out to the next Sleep In
+only. Both families want 5 ms after SLPIN and after SLPOUT before any other
+command.
 
 ### What the tree does
 
 `src/FurbleUI.cpp` already implements the rule in the display state machine:
 `sleepDisplay()` refuses to enter SLPIN within `DISPLAY_SLEEP_DWELL_MS` (120) of
 a wake, and `wakeDisplay()` waits out the remainder of a sleep before SLPOUT.
-The header comment for `DISPLAY_SLEEP_DWELL_MS` was corrected on a separate
-branch, so this change does not touch it.
+Both waits are furble's, because M5GFX 0.2.27 `Panel_LCD::setSleep(bool)` writes
+the bare `SLPIN`/`SLPOUT` command with no delay
+(`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`). The two comment lines that stated
+the rule backwards were aligned to PR 473's wording in this PR rather than
+duplicated here; see the review round below.
 
 ### Why the simulator is not the place to assert it
 
@@ -174,17 +192,18 @@ assert against:
   observability, but that would assert the guard against itself, not the
   panel. It would also be a simulator-only timing model with no hardware
   counterpart, which `sim/CLAUDE.md` forbids for policy.
-- The one-way rule is stricter than the firmware in one direction only: the
-  guard also waits 120 ms after SLPIN before SLPOUT, which no datasheet
-  requires and no panel can object to.
+- The ILI9342C is the panel where both directions matter, and the wake guard is
+  what satisfies the Sleep In to Sleep Out half. On the ST panels that half is
+  stricter than any datasheet requires, and no panel can object to it.
 
 The reason is recorded in `docs/sim-coverage.md` under a new `## Not modelled`
 section so a later reader does not assume the display scenarios cover it.
 
 ### Left alone
 
-- No change to `src/FurbleUI.cpp` or `include/FurbleUI.h`. The implementation is
-  correct and its comments belong to the other change.
+- No behaviour change to `src/FurbleUI.cpp` or `include/FurbleUI.h`. Only the
+  two comments that stated the panel rule backwards changed, to PR 473's
+  wording, so a merge with that branch is a no-op rather than a conflict.
 - No new simulator scenario, query or assertion for panel timing, for the
   reasons above.
 
@@ -219,6 +238,129 @@ The first `pio run` attempt failed to compile and caught a real defect that the
 host shim could not: IDF types `gpio_num_t` as an enum, so `gpio_set_level()`
 needs a `static_cast`. The shim declares it as `int`, which is why the host
 build accepted the uncast version. The cast is in the committed code.
+
+After the review round the gates were re-run at the amended head:
+`ctest -R '^(boundary-|settings-default-policy)'` 20 of 20,
+`tools/run_sanitized_host_tests.sh '^(boundary-|settings-default-policy)'` 20 of
+20 under ASan and UBSan, `sim/scripts/run-boundary-conformance.sh` 18 of 18 with
+every token found, `tools/check_sim_coverage.py` complete at 198 of 198 modeled
+hardware entries, `sh sim/scripts/check-doc-tokens.sh` reports the tokens
+present, `tools/pre_review.py --base origin/master` passes all 10 gates, and
+`clang-format` is clean on the changed C and C++ files.
+
+## Review round 1: documentation completeness and test hardening
+
+An independent review of PR 482 returned CHANGES REQUIRED while CI was green.
+The production pulse, its ordering and the 64 s IP5306 reading were verified and
+survived mutation, so that behaviour is unchanged. This round closes the
+document gaps, hardens the boundary test and handles the discarded GPIO
+results.
+
+### Blocking items
+
+- **B1, README cutoff.** `README.md` still said the Core's IP5306 boost cuts the
+  board below 45 mA "after 32 seconds". It now says 64 seconds, which is what
+  M5Unified 0.2.20 writes at boot (`0x02 = 0x6C`, bits 3:2 = `11`); 32 s is only
+  the power-on default of that field.
+- **B2, L01 rows.** `docs/power/measurement.md` and
+  `docs/power/measurement-plan.md` still said "Boost off 32 to 40 s after the
+  load drops" in the L01 rows while the S25 rows in the same files said 64 s. An
+  operator following L01 would have scored a correctly behaving Core as a
+  failure. Both rows now read "64 to 72 s", which keeps the 8 s observation
+  slack the original row carried above the datasheet value instead of
+  rescaling it.
+- **B3, W5500 register row.** `docs/power/datasheet-register.md` recorded the
+  W5500 document as v1.0.6 with "the exact figure is not quoted because the copy
+  was not opened", and section 12 warned against copying a number from a
+  secondary document. The row now cites the opened copy: WIZnet W5500 datasheet
+  version 1.1.0, dated 17DEC2022,
+  `https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf`, 1,893,745
+  bytes, sha256 `7b826b808084ccd986bcc22904c00a07a508ef42fb93d079fe7150a4c4f1a63d`.
+  It quotes section 1.1 page 10 pin 37 ("RESET should be held low at least
+  500 us"), section 5.5.1 page 60 and figure 22 (`TRC` minimum 500 us, `TPL`
+  maximum 1 ms), section 5.5.2 (10 us regulator wake), section 5.3 page 59
+  (`IDD1` 132 mA, `IDD2` 13 mA in PHY power-down), section 5.4 page 60 (128, 75
+  and 65 mA link currents) and the register pages in 3.1, 4.1 and `SHAR`.
+  Section 12 item 3 reconciles v1.0.6 against v1.1.0: the corpus URL for v1.0.6
+  is dead (HTTP 404), and v1.1.0's own history on pages 66 to 67 changes only
+  the RPU minimum and the package text, so the reset figures are unchanged.
+  `docs/power/board-power.md` carried the same "not opened" wording and is
+  corrected with it, together with its NB-02 citation and evidence tag, its
+  source-table row, its revision note and its URL list. `docs/power/summary.md`
+  no longer lists the W5500 current among the documents that were not opened.
+  - The row states the open item instead of claiming compliance: `TPL`, the RSTn
+    release to internal PLOCK, is up to 1 ms, `resetW5500()` releases the line
+    and returns, and `reset_gpio_num = -1` means ESP-IDF adds no wait either, so
+    the first SPI transaction can run before the PLL locks. Section 12 item 9
+    records it as a gap and the remaining gates carry it.
+
+### Non-blocking items
+
+- **N1.** The test header claimed that a production path handing the pin back to
+  the PHY "fails these checks instead of passing a GPIO-number assertion". It
+  fails a GPIO-number assertion, the `reset_gpio_num == -1` check in the PHY
+  constructor. The header now separates the measured checks from that one.
+- **N2.** `checkResetPrecedes()` accepted any completed pulse, so a pulse moved
+  after the install passed on the previous init's edges. `beginInit()` snapshots
+  the edge count before each `Furble::Ethernet::init()` and the check requires
+  two fresh edges, a low then a high, plus a released line. Evidence below.
+- **N3.** `resetW5500()` discarded `gpio_config()` and both `gpio_set_level()`
+  results while every other `init()` step logs and bails. It now returns bool,
+  logs each failure through the existing `logError()`, and `init()` returns
+  false before the SPI bus is touched. The success path is the same pulse.
+- **N4.** The constant's comment now says `eth_phy_config_t` does declare
+  `hw_reset_assert_time_us` (`esp_eth_phy.h:276-283` in the pinned 5.5.3 copy)
+  but only the 802.3-derived PHYs read it, and the W5500 PHY never does
+  (`esp_eth_phy_w5500.c:152-164`), so `reset_gpio_num` is the only usable knob.
+  The review quoted `esp_eth_phy.h:289-297` and `esp_eth_phy_w5500.c:369-373`,
+  which match a newer IDF than the pinned 5.5.3, so the pinned copy is cited.
+- **N5.** The doubled blank line before `## Checkers` in `docs/sim-coverage.md`
+  is gone.
+- **N6.** `src/FurbleUI.cpp` claimed the panel datasheets require 120 ms between
+  Sleep In and Sleep Out. PR 473's rule is per panel: ILI9342C V101 8.2.11 and
+  8.2.12 need 120 ms both ways, ST7789V 9.1.11 and 9.1.12 and ST7796S V1.0
+  9.2.12 and 9.2.13 bound only Sleep Out to the next Sleep In, plus 5 ms after
+  either command. The `wakeDisplay()` comment and the `DISPLAY_SLEEP_DWELL_MS`
+  header comment now carry PR 473's wording verbatim, so a merge with that
+  branch is a no-op. The panel rule text in this plan is corrected the same way.
+
+### Mutation evidence
+
+Every run is `boundary_ethernet_test` against the pinned host doubles, with the
+mutation applied to `src/FurbleEthernet.cpp` or the `gpio_config()` double and
+reverted afterwards.
+
+| Mutation | Test version | Result |
+| :--- | :--- | :--- |
+| `resetW5500()` moved after `esp_eth_driver_install()` | test at `3dff7409` | 1 failure, first init only: `the W5500 RESETn pulse did not complete before esp_eth_driver_install`. The restarted transport passed on the previous init's two edges, which is the hole N2 names |
+| same mutation | hardened test | 2 failures, one per init: `... before esp_eth_driver_install (edges 0 from a baseline of 0)` and `... before esp_eth_driver_install (edges 2 from a baseline of 2)` |
+| `W5500_RESET_LOW_US = 100` | hardened test | `the W5500 RESETn pulse is shorter than the datasheet 500 us` and `the restarted transport did not pulse the W5500 RESETn for 500 us` |
+| `gpio_config()` double returns `ESP_FAIL` | hardened test | logs `[E] ethernet: W5500 RESETn pin configuration failed: ESP_FAIL (0xffffffff)` and `init()` returns false before the SPI bus, so the discarded result cannot pass silently |
+
+The per-finding record with its own evidence column is
+[334-review-feedback.md](334-review-feedback.md), as `AGENTS.md` requires for a
+review thread.
+
+### Rebase reconciliation after #473
+
+`fix/sim-hw-align` was rebased onto master after PR 473 merged, because both
+branches rewrote the W5500 row in `docs/power/datasheet-register.md`.
+
+- The four conflict hunks keep master's #473 text for everything it owns: the
+  ST7796S row, the ILI9342C V101 and ILI9341 dwell pairs, the `ILI9342C V101`
+  panel cells and the section 12 revision note. `src/FurbleUI.cpp` and
+  `include/FurbleUI.h` are byte-identical to master after the rebase, so N6 is
+  closed by #473 itself and this branch carries no second wording.
+- The W5500 row keeps #473's facts, the PHY's hard-coded 100 us
+  (`esp_eth/src/spi/w5500/esp_eth_phy_w5500.c:160`) and its citation in
+  `plans/implemented/42-waveshare-eth-node.md`, and records that this branch
+  removes that defect by driving the pulse in `resetW5500()` and passing
+  `reset_gpio_num = -1`. The v1.1.0 size and sha256, the `TPL` open item and
+  the current figures are this branch's.
+- One #473 citation is corrected rather than kept: it placed `RSTn` pin 37 on
+  page 9. In the opened copy the pin row and the "at least 500 us" note are on
+  page 10, whose footer reads `10 / 67`, so the row cites page 10. The v1.0.6
+  URL #473 linked redirects to HTTP 404, which the row now states.
 
 ## Remaining gates
 

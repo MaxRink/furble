@@ -1232,17 +1232,17 @@ Estimates are not measurements unless the label says `measured-local`.
 - Current behavior: the W5500 is initialized and started at boot. There is no
   link-down power-down call and no explicit PHY reset or power-down in
   `Ethernet::stop()` beyond `esp_eth_stop()` and driver uninstall.
-- Evidence: `code` (`src/FurbleEthernet.cpp`), `unverified` PHY register
-  detail.
-- Estimated saving: 0 battery runtime, because the board has no battery. The
-  W5500 datasheet gives a link-dependent current and a PHY power-down mode;
-  the exact figure is not quoted here because the datasheet copy was not
-  opened.
+- Evidence: `code` (`src/FurbleEthernet.cpp`), W5500 datasheet v1.1.0 sections
+  5.3 and 5.4.
+- Estimated saving: 0 battery runtime, because the board has no battery. W5500
+  datasheet v1.1.0 section 5.4 page 60 gives 128, 75 and 65 mA for the link
+  states, and section 5.3 page 59 gives `IDD2` 13 mA in PHY power-down. No
+  local measurement exists, so NB-02 stays a gate rather than a saving.
 - Risk: medium. Powering the PHY down can drop the link and delay recovery.
 - Effort: medium.
 - Required test: 5 V input current with link up, link down, and PHY powered
   down; link recovery time after power-down.
-- Citation: WIZnet W5500 datasheet v1.0.6; `src/FurbleEthernet.cpp`;
+- Citation: WIZnet W5500 datasheet v1.1.0; `src/FurbleEthernet.cpp`;
   `plans/implemented/42-waveshare-eth-node.md`.
 
 #### NB-03 StickS3 and headless: USB Serial/JTAG current and the USJ lock
@@ -1398,7 +1398,7 @@ given so the next reader does not reopen them without new facts.
 | LK-04 | Disable internal pulls during sleep now | Deep sleep is unused; the change can float a wake pin | 0 | n/a (rejected) | `code`, sdkconfig |
 | PL-09 | Change TX power or add 2M PHY as a power project | The average saving is below 0.5 mA; the connected floor dominates | 0 | n/a (rejected) | `code`, `model` |
 | PL-10 | Remove the charging `NO_LIGHT_SLEEP` lock | External power, no battery runtime; the lock's origin is undocumented | 0 | n/a (rejected) | `code` |
-| NB-02 | Power down the W5500 PHY | No battery; the link is the node's job | 0 | n/a (rejected) | `code`, `unverified` datasheet detail |
+| NB-02 | Power down the W5500 PHY | No battery; the link is the node's job | 0 | n/a (rejected) | `code`, W5500 datasheet v1.1.0 |
 | NB-03 | Disable USB Serial/JTAG in release | It is the only flashing and console path on the StickS3 | 0 | n/a (rejected) | `code`, sdkconfig |
 | NB-04 | Optimize the Core USB debug profile | Developer rescue profile, UART console defeats light sleep by design | 0 | n/a (rejected) | `code` |
 
@@ -1552,7 +1552,7 @@ not-reopened row as a new verification.
 | AXP192 | same | `REG 84H` ADC sample rate, default `0x32` (25 Hz); M5Unified writes the same; `REG 12H` rail enables; `REG 28H` LDO2 and LDO3 voltage; `REG 27H` DCDC3; `REG 33H` charge enable, 4.2 V, current. | Opened. |
 | AXP192 | same | Off mode 27 uA at BAT 3.8 V; suspend 86 uA; DCDC1 26 uA no load; DCDC2 and DCDC3 20 uA each; LDO2 and LDO3 100 uA each; LDOIO0 90 uA. | Opened. |
 | IP5306 | Injoinic IP5306 datasheet V1.01 | Automatic load detection below 45 mA; 32 s at the power-on default of `SYS_CTL2` bits 3:2 = `01`; standby 50 uA; input quiescent 100 uA. | Opened. The public datasheet does not tabulate the register map. |
-| IP5306 | M5Unified 0.2.20 `Power_Class.cpp` | `REG_SYS_CTL0` `0x00` bit 1 boost normally open; `REG_SYS_CTL2` `0x02` light-load time field, board init `0x02 = 0x6C` = bits 3:2 `11` = 64 s per the M5Unified bitfield comment; `REG_CHG_DIG_CTL0` `0x24` charge current. | Opened as vendor code, not a datasheet. |
+| IP5306 | M5Unified 0.2.20 `Power_Class.cpp` (register writes and bitfield comments) and `IP5306_Class.cpp` (register constants and the keep-on setter) | `REG_SYS_CTL0` `0x00` bit 1 boost normally open; `REG_SYS_CTL2` `0x02` light-load time field, board init `0x02 = 0x6C` = bits 3:2 `11` = 64 s per the M5Unified bitfield comment; `REG_CHG_DIG_CTL0` `0x24` charge current. | Opened as vendor code, not a datasheet. |
 | M5PM1 | M5Stack M5PM1 Chip User Manual V1.9 | `PWR_CFG` `0x06`: bit 4 LED, bit 3 5 V boost, bit 2 3.3 V LDO, bit 1 3.3 V DCDC, bit 0 charge. Default `0x17`. | Opened. |
 | M5PM1 | same | `I2C_CFG` `0x09`: `SLP_TO` bits 3:0, 0 disables idle sleep. The first transaction after a wake fails. | Opened. |
 | M5PM1 | same | `WDT_CNT` `0x0A` seconds, 0 disables; `WDT_KEY` `0x0B` feed `0xA5`; `SYS_CMD` `0x0C` `0xA1` power off. | Opened. |
@@ -1568,15 +1568,17 @@ not-reopened row as a new verification.
 | AT6558 | CASIC AT6558 datasheet, used as the AT6668 proxy | Tracking 23 mA typical BD plus GPS; standby below 10 uA; VBAT 10 uA typical. | Not reopened here. Repo model, datasheet-tagged. |
 | ATGM336H | ATGM336H module manual | Module current below 25 mA typical, 100 mA peak excluding antenna; VBAT 10 uA. | Not reopened here. Repo model, datasheet-tagged. |
 | NS4168 | NS4168 datasheet | Quiescent 13 mA at 5 V; shutdown 1 uA. | Not reopened here. Repo model, datasheet-tagged. |
-| W5500 | WIZnet W5500 datasheet v1.0.6 | PHY power-down mode exists; the exact current is not quoted here because the datasheet copy was not opened. | Not reopened. |
+| W5500 | WIZnet W5500 datasheet v1.1.0, dated 17DEC2022 | `RSTn` low at least 500 us, `TPL` up to 1 ms from release to internal PLOCK; `IDD1` 132 mA; `IDD2` 13 mA in PHY power-down; link currents 128, 75 and 65 mA. | Opened for this change. Not a local measurement, and no post-release `TPL` wait is implemented. |
 
 Note on revisions. The AXP192 copy fetched for this note carries no revision
 string. Its cover says "X-Powers, 2010"; the PDF metadata dates it 2011-08-08
 and the copy is 53 pages. Use those identifiers, not a revision number. The
-IP5306 copy is V1.01. The M5PM1 copy is V1.9. The ESP32-S3 copy is v2.2. If a
-future review needs a register claim from the not-reopened rows, open the exact
-revision first; do not copy a number from this table as if it were
-re-verified.
+IP5306 copy is V1.01. The M5PM1 copy is V1.9. The ESP32-S3 copy is v2.2. The
+W5500 copy is v1.1.0, dated 17DEC2022; it replaces the v1.0.6 URL this note
+carried, which now returns HTTP 404, and the v1.1.0 history on pages 66 to 67
+changes only the RPU minimum and the package text. If a future review needs a
+register claim from the not-reopened rows, open the exact revision first; do
+not copy a number from this table as if it were re-verified.
 
 ## 8. Model corrections and open questions
 
@@ -1688,7 +1690,7 @@ Open questions that block a default change:
   https://github.com/Albresky/GPS-ATGM336H-Library/blob/master/manual/C90770_ATGM336H-5N31_2016-12-26.pdf
 - NS4168: https://www.chipsourcetek.com/Uploads/file/NS4168.pdf
 - W5500:
-  https://www.wiznet.io/wp-content/uploads/wiznethome/Chip/W5500/Document/W5500_ds_v1.0.6.pdf
+  https://docs.wiznet.io/img/products/w5500/W5500_ds_v110e.pdf
 - M5Stack StickS3: https://docs.m5stack.com/en/core/StickS3
 - M5Stack Unit GPS v1.1:
   https://docs.m5stack.com/en/unit/Unit-GPS%20v1.1

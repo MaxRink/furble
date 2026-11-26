@@ -652,7 +652,7 @@ start is not integrated is a failed measurement.
 
 | ID | State | Board | Expected | Acceptance | Instrument | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| L01 | Core IP5306 cutoff, load below 45 mA | m5stack-core | Boost off 32 to 40 s after the load drops; post-cutoff 0.05 mA | T-state plus T-floor for the post-cutoff value | I1 | unknown |
+| L01 | Core IP5306 cutoff, load below 45 mA | m5stack-core | Boost off 64 to 72 s after the load drops; post-cutoff 0.05 mA | T-state plus T-floor for the post-cutoff value | I1 | unknown |
 | L02 | Deep sleep | all | Not implemented; no `esp_deep_sleep` call in the tree | Not measurable | None | unknown |
 
 L02 is deliberately an `unknown` row. Do not invent a deep-sleep number for

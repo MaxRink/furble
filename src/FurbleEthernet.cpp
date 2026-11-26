@@ -137,10 +137,12 @@ constexpr int ETH_SPI_INT_GPIO = 10;
 constexpr int ETH_SPI_RST_GPIO = 9;
 constexpr int ETH_SPI_CLOCK_HZ = 20 * 1000 * 1000;
 // WIZnet W5500 datasheet v1.1.0 section 5.5.1, figure 22 and table 2: RESETn
-// must stay low for at least 500 us. The pinned ESP-IDF W5500 PHY hardcodes
-// 100 us in w5500_reset_hw() (components/esp_eth/src/spi/w5500/
-// esp_eth_phy_w5500.c), and its only knob is reset_gpio_num, so the transport
-// drives the pulse itself and passes -1 to keep the PHY off the pin.
+// must stay low for at least 500 us. eth_phy_config_t does declare
+// hw_reset_assert_time_us (esp_eth_phy.h:276-283), but only the 802.3-derived
+// PHYs read it. The pinned ESP-IDF W5500 PHY hardcodes 100 us in
+// w5500_reset_hw() (esp_eth_phy_w5500.c:152-164) and its only knob is
+// reset_gpio_num, so the transport drives the pulse itself and passes -1 to
+// keep the PHY off the pin.
 constexpr uint32_t W5500_RESET_LOW_US = 500;
 
 class EspEthTransport final: public Ethernet::Transport {
@@ -157,7 +159,9 @@ class EspEthTransport final: public Ethernet::Transport {
     // Reset the W5500 before anything speaks SPI to it. esp_eth_driver_install()
     // runs the PHY hardware reset and then initialises the MAC over SPI, so the
     // pulse has to precede the install, which in turn precedes esp_eth_start().
-    resetW5500();
+    if (!resetW5500()) {
+      return false;
+    }
 
     spi_bus_config_t busConfig = {};
     busConfig.mosi_io_num = ETH_SPI_MOSI_GPIO;
@@ -355,19 +359,35 @@ class EspEthTransport final: public Ethernet::Transport {
    * The line is left driven high: the W5500 reset is active low and the PHY no
    * longer owns the pin. Every init() pulses again, so a restart after stop()
    * resets the chip as well.
+   *
+   * Returns false when a GPIO call fails, so init() logs and stops instead of
+   * talking SPI to a chip whose reset line it could not drive.
    */
-  static void resetW5500(void) {
+  static bool resetW5500(void) {
     gpio_config_t config = {};
     config.pin_bit_mask = 1ULL << ETH_SPI_RST_GPIO;
     config.mode = GPIO_MODE_OUTPUT;
     config.pull_up_en = GPIO_PULLUP_DISABLE;
     config.pull_down_en = GPIO_PULLDOWN_DISABLE;
     config.intr_type = GPIO_INTR_DISABLE;
-    gpio_config(&config);
+    esp_err_t err = gpio_config(&config);
+    if (err != ESP_OK) {
+      logError("W5500 RESETn pin configuration", err);
+      return false;
+    }
     const auto resetPin = static_cast<gpio_num_t>(ETH_SPI_RST_GPIO);
-    gpio_set_level(resetPin, 0);
+    err = gpio_set_level(resetPin, 0);
+    if (err != ESP_OK) {
+      logError("W5500 RESETn assertion", err);
+      return false;
+    }
     esp_rom_delay_us(W5500_RESET_LOW_US);
-    gpio_set_level(resetPin, 1);
+    err = gpio_set_level(resetPin, 1);
+    if (err != ESP_OK) {
+      logError("W5500 RESETn release", err);
+      return false;
+    }
+    return true;
   }
 
   static void logError(const char *operation, esp_err_t err) {
