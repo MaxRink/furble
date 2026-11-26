@@ -5,6 +5,12 @@
 # rig build so the shipped header title renders), then drives the capture
 # scenarios for each theme with every optional feature enabled.
 #
+# Two generated images depend on the built binary rather than on the page: the
+# Device info and About heap rows come from the modelled allocator, so a rebuild
+# from a different revision changes those figures and nothing else. Two runs of
+# one binary are byte-identical. Do not add a gate that compares a fresh render
+# with the committed bytes.
+#
 # Output layout:
 #   docs/img/<page>.png                  default theme, StickS3, primary detail set
 #   docs/img/dark-<page>.png             dark theme, StickS3, primary detail set
@@ -104,6 +110,12 @@ done
 # the per-section walkthrough embeds resolve.
 run_capture s3 docs-screenshots.txt "$IMG" Default "$IMG/boot-splash.png"
 run_capture s3 docs-screenshots-dark.txt "$IMG" Dark
+
+# Feedback Volume page. The Volume row only exists while the selected output
+# includes sound, and the passes above have to keep the shipped Off output, so
+# this page gets its own run with the Sound output seeded. Default theme only:
+# the walkthrough embeds the one picture.
+run_capture s3 docs-screenshots-volume.txt "$IMG" Default
 
 # Scroll strips for the settings pages that are taller than the StickS3 panel, so
 # the walkthrough pictures every row of a scrolling page and not just its top.

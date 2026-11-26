@@ -19,6 +19,10 @@ gating), see the companion reference:
   outline (dark theme) marks it.
 - Navigation is described with the three logical inputs: previous, select, next.
   See [Controls](#controls) for how those map to real buttons on each board.
+- Some row labels wrap onto a second line and a few long roller options are
+  clipped on the 135 px panel. The text beside each picture gives the full
+  option list, and [Settings reference](Settings-Reference) gives each value's
+  default and when it applies.
 
 ## Controls
 
@@ -85,9 +89,18 @@ These three entries open list pages driven by live Bluetooth activity:
   connects to it.
 - **Delete** lists saved cameras so you can remove one.
 
-These pages are driven by real button presses into a scanning radio, which the
-headless simulator does not exercise, so they have no captured screenshot here.
-The connecting overlay they lead to is shown next.
+The simulator seeds a saved camera and a fake scan, so each list renders with an
+entry in the full walkthrough shipped in the repository. The connecting overlay
+they lead to is shown next.
+
+### IR
+
+![IR page](img/ir.png)
+
+The IR entry opens a page with a single Fire button. Selecting it fires the
+shutter over the IR LED using the protocol set under `Settings` > `Infrared`. The
+entry exists only when the board reports an IR LED and that setting is on. The
+Connected menu carries the same page as **IR**.
 
 ## Connecting
 
@@ -155,20 +168,50 @@ capture with autofocus. On touch boards the on-screen Shutter, Focus, and
 Shutter Lock buttons are always visible; the screenshot shows the button-board
 indicators. A per-camera hide/disable treatment remains a UI follow-up.
 
+### Cameras
+
+![Cameras page](img/cameras.png)
+
+Cameras lists every camera in the session's target set with its live status, so
+one picture covers single and multi-connect: each row is the camera name and one
+of `connected`, `reconnecting`, `reconnecting <n>%`, `lost`, `disconnecting` or
+`idle`. The list rebuilds once a second while the page is open and the session is
+active, and with Multi-Connect on it holds one row per camera you connected.
+
 ### Bulb
+
+![Bulb page](img/bulb-menu.png)
+
+Bulb is a timed long exposure. The page carries the Duration row, a hint that the
+camera must be in its own bulb (B) mode, and Start.
 
 ![Bulb duration page](img/bulb.png)
 
-Bulb is a timed long exposure. Set the Duration with the spinner (value, then
-unit: milliseconds, seconds, or minutes), press Start, and the shutter releases
-when the timer reaches zero. The camera must be in its own bulb (B) mode. The
-chosen duration is remembered for next time.
+The Duration row opens the spinner: the value, then the unit (milliseconds,
+seconds, or minutes). The chosen duration is remembered for next time.
+
+Start opens the run page and holds the shutter for the chosen duration:
+
+![Bulb run page](img/bulb-run.png)
+
+The run page counts the exposure down and Stop releases the shutter early and
+returns to the duration page. When the timer reaches zero the state reads
+`Done (<elapsed>)` and the button becomes Restart. A camera class with no way to
+end a held exposure cannot start one, and the Connected menu's Bulb row is
+disabled for that camera.
 
 ### Interval
 
 Interval opens the same page as `Settings` > `Timer`, described under
 [Timer](#timer). It runs the intervalometer with the stored Count, Delay,
 Shutter, and Wait values. Press Start to run and Stop to end early.
+
+![Intervalometer run page](img/timer-run.png)
+
+The run page shows the state, the frame counter and the remaining time. The state
+is `WAIT` during the initial delay, `SHUTTER` while the shutter is held, `DELAY`
+between frames, `FINISHED` at the end of a counted run, and `IDLE` after Stop.
+Stop releases the shutter and returns to the Timer page.
 
 ### GPS Data
 
@@ -282,6 +325,28 @@ probing requires two checksummed NMEA sentences; an unsuccessful probe marks the
 receiver absent and cuts the external rail before one delayed retry. Auto
 detection has simulator coverage and is pending live AT6668 verification.
 
+Each receiver row opens its own page:
+
+- **GPS Baud**: Auto, 9600, 115200.
+- **Update rate**: Default, 1000 ms, 500 ms, 200 ms, 100 ms.
+- **Sentences**: Default, RMC+GGA.
+- **Constellation**: Default, GPS, BDS, GPS+BDS, GLONASS, GPS+GLO, BDS+GLO, All.
+- **Power saving**: two rollers, Receiver (Always on, Standby (PCAS12), Rail
+  cycling) and Sleep between fixes (No standby, 5 s, 10 s, 15 s).
+- **Assisted start**: Off, Position and time, Position, time and ephemeris.
+- **Fix Hold**: Off, 30 s, 2 min, 10 min, 60 min.
+- **Platform**: Do not send, Portable, Stationary, Pedestrian, Vehicle.
+
+| | |
+| :--- | :--- |
+| ![GPS Baud page](img/gps-baud.png) | ![Update rate page](img/gps-rate.png) |
+| ![Sentences page](img/gps-sentences.png) | ![Constellation page](img/gps-constellation.png) |
+| ![Power saving page](img/gps-power.png) | ![Assisted start page](img/gps-assist.png) |
+| ![Fix Hold page](img/gps-hold.png) | ![Platform page](img/gps-platform.png) |
+
+Motion Adaptive and Extrapolate are switches on the GPS page itself, so they have
+no page of their own.
+
 ### Time
 
 ![Time settings](img/settings-time.png)
@@ -300,8 +365,16 @@ immediately when a fresh fix is outside the 30-degree nearest-zone radius.
 The Timer submenu is the intervalometer configuration. Count is the number of
 frames, Delay is the time between frames, Shutter is how long the shutter is held
 per frame, and Wait is the initial delay before the first frame. A Start button
-runs the sequence. Each value is set with a spinner (value plus a unit of ms, s,
-or min).
+runs the sequence.
+
+Each row opens its own page. Count carries the Infinite switch plus three digit
+rollers; Delay, Shutter and Wait carry the digits and a unit roller (ms, s, min).
+Infinite counts frames until Stop instead of stopping at the set count.
+
+| | |
+| :--- | :--- |
+| ![Count page](img/timer-count.png) | ![Delay page](img/timer-delay.png) |
+| ![Shutter page](img/timer-shutter.png) | ![Wait page](img/timer-wait.png) |
 
 ### Theme
 
@@ -361,8 +434,18 @@ The Feedback submenu picks an Output (Off, Sound, Light, Vibrate, or a
 combination, filtered to what the board supports), a per-event mask (Shutter
 fired, Countdown, Connect and disconnect, Low battery), and a Volume slider when
 the chosen output includes sound. The submenu is skipped on boards with no output
-beyond Off. The simulator models such a board, so this page has no captured
-screenshot; see the [settings reference](Settings-Reference#feedback).
+beyond Off; the simulator reports the full output set behind
+`FURBLE_SIM_FEEDBACK`, which is what the capture harness sets. See the
+[settings reference](Settings-Reference#feedback) for the values.
+
+![Feedback settings](img/settings-feedback.png)
+![Feedback events](img/feedback-events.png)
+![Feedback volume](img/feedback-volume.png)
+
+The events page carries one switch per mask bit. The Volume page only exists
+while the chosen output includes sound, so its picture comes from a separate
+capture pass that seeds Sound (`sim/scripts/docs-screenshots-volume.txt`); the
+Feedback page above keeps the shipped Off default.
 
 ### Diagnostics
 
@@ -379,6 +462,14 @@ Diagnostics groups read-only status pages.
 - **Power state**: clock frequency, sleep, power-lock rows, tickless idle, and a
   Dump locks button.
 - **BLE**: a live BLE status row.
+
+The `Heap: <free> B, min <minimum> B` row on Device info, and the same row on
+About, come from the modelled allocator, so they describe the binary that drew
+the picture: two runs of one binary print the same figures and a binary built
+from a different revision does not. The images are pictures of one build, not
+fixed values, and the UI screenshots workflow never compares a fresh render with
+the committed bytes; its only image comparison is the committed GPS satellite
+pair against its wiki mirror.
 
 ### Storage
 
@@ -407,19 +498,41 @@ green outline. Set it under `Settings` > `Theme` > `Dark` and press Restart.
 ## What the simulator models
 
 The screenshots come from the SDL simulator, which runs the real UI code over a
-modeled M5StickS3 panel. A few things it does not model, and why they have no
-screenshot:
+modeled M5StickS3 panel. The pages that used to be described in words only are
+modelled and captured:
 
-- **Boot splash**: drawn to the display before the LVGL UI starts, so it is
-  replaced by the main menu before capture.
-- **Scan, Connect, and Delete list pages**: driven by real button presses into a
-  live scanning radio, which the headless run does not exercise.
-- **Infrared, Feedback, and Storage submenus**: gated on an IR LED, a real
-  feedback output, and an SD card slot respectively. The modeled board reports
-  none of these, so the submenus are hidden. They are documented from the
-  firmware source in the [settings reference](Settings-Reference).
+- **Boot splash**: captured through a dedicated hook that snapshots the splash
+  before the LVGL UI replaces it (`FURBLE_SIM_CAPTURE_SPLASH`).
+- **Scan, Connect, and Delete list pages**: a seeded saved camera and a fake scan
+  populate the lists so they render with entries.
+- **Infrared, Feedback, and Storage submenus**: the simulator reports an IR LED, a
+  feedback output, and a mounted SD card behind the `FURBLE_SIM_IR`,
+  `FURBLE_SIM_FEEDBACK`, and `FURBLE_SIM_SD` capture flags, so the submenus
+  render. These flags are sim only and never change the on-device hardware
+  detection.
+- **Connected-session pages and settings submenus**: the Cameras list, the
+  Interval and Bulb run pages, the IR page and every GPS and Timer submenu are
+  captured as well. No gate compares a fresh render with the committed bytes:
+  the heap rows above make that equality binary-dependent, so the UI screenshots
+  workflow's only image comparison is the committed GPS satellite pair against
+  its wiki mirror.
 
-To regenerate the screenshots, build the simulator (see `sim/CLAUDE.md`) and run
-`sim/scripts/docs-screenshots.txt` for the default theme and
-`sim/scripts/docs-screenshots-dark.txt` (with `FURBLE_SIM_THEME=Dark`) for the
-dark theme.
+## Pages that are actions, not screens
+
+Four names in the simulator's page map have no screen of their own, so there is
+nothing to photograph:
+
+- **Off** (`power_off`): the main menu tile calls the power-off path directly, so
+  the device stops with the main menu still on screen and the tile's own page is
+  never loaded.
+- **Disconnect** (`remote_disconnect`): the Connected entry drops the camera and
+  returns to the main menu.
+- **Interval** (`remote_timer`) and **GPS Data** (`remote_gps`): the Connected
+  entries load the shared Timer and GPS Data pages, so `ui.page` reports `timer`
+  and `gps_data` there and the entry's own page stays unloaded.
+
+Every other page in the map is pictured in this tour. To regenerate the
+screenshots, build the simulator (see `sim/CLAUDE.md`) and run
+`sim/scripts/docs-capture.sh`, which rebuilds the simulator once per panel class
+and drives the default and dark sets, the scroll strips, the text size gallery
+and the Feedback Volume pass.

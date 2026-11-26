@@ -1,0 +1,29 @@
+# Docs walkthrough capture, Feedback Volume page, M5StickS3 135x240.
+#
+# The Volume row only exists while the selected Feedback output includes sound:
+# UI::updateFeedbackVolumeVisibility() hides it for Off, Light and Vibrate, and
+# the shipped default output is Off. This pass therefore seeds Sound, and it runs
+# as its own scenario so the Feedback page capture in docs-screenshots.txt keeps
+# showing the shipped default. The harness (sim/scripts/docs-capture.sh) runs it
+# with FURBLE_SIM_FEEDBACK=1, which is what makes the board report a speaker.
+seed fauxny true
+seed fb_output 1
+wait 500
+
+home
+wait 300
+action nav settings
+wait 350
+assert ui.page settings
+action nav feedback
+wait 350
+assert ui.page feedback
+
+# One slider over the full 0 to 255 volume range.
+action nav feedback_volume
+wait 350
+assert ui.page feedback_volume
+capture feedback-volume
+print ui.page
+
+exit
