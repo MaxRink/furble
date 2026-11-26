@@ -47,8 +47,13 @@ Model change, `sim/hardware_model.cpp`:
   model also claimed an RTC for the Core, the headless S3 and the Waveshare
   build. All three now say no, which is what `docs/console-commands.md` and the
   `docs/power/board-power.md` headless row record. `hw-profile-core-uart.txt`,
-  `hw-profile-headless.txt`, `hw-profile-waveshare.txt`, `hw-audio-ir-sd-faults.txt`
-  and the Core and WaveShare boundary scripts are the regression surface.
+  `hw-profile-headless.txt`, `hw-profile-waveshare.txt`,
+  `hw-pmic-ip5306-core.txt`, `hw-audio-ir-sd-faults.txt` and the Core and
+  WaveShare boundary scripts are the regression surface. The four profile
+  scenarios asserted the old value, so each now reads `hw.rtc no` with
+  `hw.rtc_capability match` beside it, and `hw-pmic-ip5306-core.txt` joins the
+  list because the Core profile it seeds has the same correct answer.
+  `hw-audio-ir-sd-faults.txt` and the boundary scripts needed no change.
 - `rtcCapabilityMatchesLocked()` compares the selected profile with its row when
   a profile is selected and again at `hwStart()`. A mismatch logs `SIM FAIL`,
   names the row, and sets the model's fail-closed flag. It does not exit, so a
@@ -228,39 +233,46 @@ Scenario evidence:
 
 ## Gates
 
-Run in `/tmp/furble-s3sim` on branch `fix/sticks3-sim-align`, all passing:
+Run in `/tmp/furble-s3sim` on `fix/sticks3-sim-align` rebased onto `a5cb2e14`,
+all passing:
 
-- `python3 tools/check_sim_scenarios.py` and
-  `python3 tools/check_sim_coverage.py`: both manifests complete, 412 scenarios
-  and 204 hardware entries.
+- `python3 tools/check_sim_scenarios.py`: manifest complete, 420 scenarios, and
+  all 245 certified e2e entries for the m5stick-s3 board still present.
+- `python3 tools/check_sim_coverage.py`: 204/204 hardware, 20/20 crash, 11/11
+  fuzz and 6912/6912 permutations modelled.
 - `sh sim/scripts/check-doc-tokens.sh`: tokens present.
 - `python3 tools/pre_review.py --base origin/master`: 10 gates pass.
-- `sh sim/build.sh`: builds `sim/build/furble-sim`.
-- The four new scenarios, run directly with the dummy SDL drivers, exit 0:
+- Host suite: `cmake -S tests/host -B /tmp/furble-s3sim-host
+  -DCMAKE_BUILD_TYPE=Debug`, `cmake --build /tmp/furble-s3sim-host --parallel 6`
+  and `ctest --test-dir /tmp/furble-s3sim-host -j 4`: 196/196 tests pass,
+  including `pmic_recovery_test` and `sim_clock_test`, which cover the latch and
+  power-cycle model directly.
+- The four new scenarios exit 0 under the dummy SDL drivers with the
+  `sim/scripts/run-e2e.sh` environment (`FURBLE_SIM_IR`, `FURBLE_SIM_FEEDBACK`
+  and `FURBLE_SIM_SD` set, which the capability and GPX paths need):
   `hw-rtc-capability`, `hw-pmic-5vin-latch-blocks-wake`,
   `hw-ir-rail-cut-in-flight`, `hw-pmic-pwr-cfg-lost-update`.
-- The changed and adjacent scenarios exit 0: `hw-psram-octal-sticks3`,
-  `watchdog-stall`, `clock-wrap`, `watchdog-before`, `watchdog-feed`,
-  `clock-wrap-before`, `pmic-flash-recovery`, `watchdog-disabled`,
-  `gps-ubx-rail-fixed`, `gps-ubx-rail-refused`, `gps-fixed-baud-absent`,
-  `gps-duty-standby-cycle`, `console-mode-led-off`, `screen-off-flush-gate`,
-  `display-dim-then-off`, `imu-gesture-wake-tap`, `imu-gesture-wake-shake`,
-  `hw-audio-ir-sd-faults`, `hw-profile-{stickc,stickc-plus,core-uart,headless,tough,waveshare}`,
-  `hw-pmic-{sticks3,axp192-core2,brownout-crash}`, `hw-motion-{light-sleep,no-wake-when-off}`,
-  `hw-power-button-state-machine`, `hw-crash-reset-matrix`,
-  `hw-psram-{absent-core,init-fail}`, `hw-memory-webui-first-boot`,
-  `hw-boot-settings-migration`, `blind-remote-shutter`, `gps-autobaud-ladder`,
-  `gps-ubx-standby`, `gps-no-receiver`.
+- The full certified e2e set for the m5stick-s3 board, 245 scenarios, passes
+  245/245.
+- The adjacent set passes 43/43: `hw-psram-octal-sticks3`, `watchdog-stall`,
+  `clock-wrap`, `watchdog-before`, `watchdog-feed`, `clock-wrap-before`,
+  `pmic-flash-recovery`, `watchdog-disabled`, `gps-ubx-rail-fixed`,
+  `gps-ubx-rail-refused`, `gps-fixed-baud-absent`, `gps-duty-standby-cycle`,
+  `console-mode-led-off`, `screen-off-flush-gate`, `display-dim-then-off`,
+  `imu-gesture-wake-tap`, `imu-gesture-wake-shake`, `hw-audio-ir-sd-faults`,
+  `hw-profile-{stickc,stickc-plus,core-uart,headless,tough,waveshare}`,
+  `hw-pmic-{sticks3,axp192-core2,ip5306-core,brownout-crash}`,
+  `hw-motion-{light-sleep,no-wake-when-off}`, `hw-power-button-state-machine`,
+  `hw-crash-reset-matrix`, `hw-psram-{absent-core,init-fail}`,
+  `hw-memory-webui-first-boot`, `hw-boot-settings-migration`,
+  `blind-remote-shutter`, `gps-autobaud-ladder`, `gps-ubx-standby`,
+  `gps-no-receiver`.
 - `sh sim/scripts/run-watchdog.sh`: the retained-PMIC boundary set passes.
 - `sh sim/scripts/run-invalid.sh`: the malformed-script set passes.
-- `tests/host/pmic_recovery_test` and `tests/host/sim_clock_test` pass, covering
-  the latch and power-cycle model directly.
 
-The CMake entry point (`cmake -S sim -B ...`) was also tried and is not usable
-for scenario runs in this environment: its binary aborts in
-`lgfx::v1::Panel_sdl::_event_proc()` with a stack-protector failure for an
-unmodified tree as well, so the failure predates this change and is not
-attributed to it. The documented direct build is what the gates above used.
+The scenario gates ran against `sim/build/furble-sim` built from this tree by
+`sh sim/build.sh`. This re-run is what caught the four profile scenarios that
+still asserted `hw.rtc yes`; they are corrected above.
 
 Still needs hardware. None of this is a device measurement:
 
