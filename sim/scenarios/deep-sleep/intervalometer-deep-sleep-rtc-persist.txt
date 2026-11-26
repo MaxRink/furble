@@ -14,8 +14,10 @@ assert hw.rtc_clock valid
 assert hw.rtc_epoch 1767225600
 assert time.rtc_available yes
 assert time.source rtc
+assert time.epoch_s 1767225600
 wait 3000
 assert hw.rtc_epoch 1767225603
+assert time.epoch_s 1767225603
 restart
 assert hw.rtc_model backed
 assert hw.rtc_clock valid
@@ -23,6 +25,8 @@ assert hw.rtc_epoch 1767225603
 assert time.rtc_available yes
 assert time.valid yes
 assert time.source rtc
+assert time.epoch_s 1767225603
 wait 1000
 assert hw.rtc_epoch 1767225604
+assert time.epoch_s 1767225604
 exit

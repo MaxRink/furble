@@ -140,7 +140,7 @@ Handling:
 - Do not touch `MAX_AGE_MS` itself. Other code paths depend on it.
 
 Fujifilm on-request path. `Fujifilm::updateGeoData()`
-(`lib/furble/Fujifilm.cpp:132-137`) only writes when the camera has asked, by
+(`lib/furble/Fujifilm.cpp:323-345`) only writes when the camera has asked, by
 setting `m_GeoRequested`. The request can arrive at any time, including while the
 receiver is in standby. The wake path must be short enough that the camera gets
 data soon after asking. Measure it. If a cold restart of the receiver takes longer

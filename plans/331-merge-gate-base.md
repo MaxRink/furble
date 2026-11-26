@@ -1,7 +1,10 @@
 # 331 - Merge gate reads workflow filters at the PR base
 
-Status: implemented on `fix/464-base-workflows`, closing issue #464. Every
-result below is a local run on that branch. No CI run is claimed.
+Status: merged in #478 as `b57f0118`, closing issue #464. The status line used
+to say the work was implemented on `fix/464-base-workflows`; that read as an
+unmerged branch after the merge. Every result below is a local run on that
+branch, plus the review round recorded under "Follow-up" at the end of this
+file. No CI run is claimed.
 
 ## Defect
 
@@ -61,11 +64,11 @@ the override.
 - The gate wires those two together and passes the texts into
   `covering_workflows(changed, workflows=workflows)`. When texts are supplied,
   that function reads no directory at all.
-- The #450 item 11 guard is gone. A pull request cannot edit the commit it
-  targets, so an edit to its branch copy of a workflow no longer changes the
-  decision and no longer has to disqualify the override. A PR that deletes a
-  workflow on its branch now fails closed whenever the base filters covered the
-  paths that workflow would have checked.
+- The #450 item 11 guard was removed when this landed, on the argument that a
+  pull request cannot edit the commit it targets, so an edit to its branch copy
+  of a workflow no longer changes the decision. The follow-up at the end of this
+  file restores it: the base read fixes a stale clone, and the guard is still
+  what stops a PR that broadens its own filter from passing an outage.
 - Local mode is kept and named: `covering_workflows` with no texts calls
   `read_local_workflows(workflow_dir)` and reads `.github/workflows` from the
   checkout. It is a test-only fallback. `--pr` is mandatory, so the gate cannot
@@ -122,9 +125,10 @@ The first row is the defect with historical data: the old gate accepted a
 
 ## Tests
 
-`python3 -m unittest tests.test_check_review_threads` runs 40 tests, all
-offline. Before the change the new suite reported 20 errors, because the fetch
-seam did not exist. The new and changed tests:
+`python3 -m unittest tests.test_check_review_threads` ran 40 tests at this
+merge, all offline; the follow-up below makes it 41. Before the change the new
+suite reported 20 errors, because the fetch seam did not exist. The new and
+changed tests:
 
 - `test_override_is_refused_when_the_base_workflow_covers_a_changed_path`
   covers issue #464's acceptance. It uses a synthetic clone copy of `main.yml`
@@ -133,10 +137,10 @@ seam did not exist. The new and changed tests:
   set, so the test does not carry the coupling this plan removes.
 - `test_gate_fetches_the_workflows_at_the_base_ref` binds the seam: it requires
   one `fetch_workflows` call with the oid the payload returned.
-- `test_override_holds_when_the_pr_broadens_its_own_workflow_copy` replaces
-  `test_no_checks_override_is_refused_when_the_pr_edits_a_workflow`. The old
-  test encoded the local-tree rule. The base commit cannot be edited by the PR,
-  so the branch copy no longer decides and the override holds.
+- `test_override_holds_when_the_pr_broadens_its_own_workflow_copy` replaced
+  `test_no_checks_override_is_refused_when_the_pr_edits_a_workflow`, on the
+  argument that the base commit cannot be edited by the PR. The follow-up
+  reverses this: it is the test that encoded the fail-open case below.
 - `test_missing_base_oid_fails_closed` requires exit 2 and proves the workflow
   fetch is never reached.
 - `test_workflow_fetch_error_fails_closed` and
@@ -163,3 +167,33 @@ The network is behind one seam, `fetch_workflows`, which the gate tests stub.
 describe the base-ref read, the fail-closed cases and the test-only local
 fallback. `plans/314-review-feedback.md` row 11 keeps its original text and
 carries a dated note that the guard and its test were removed.
+
+## Follow-up: the override still accepted a workflow edit
+
+Source: the retrospective review of #478 (`plans/357-review-feedback.md`). The
+base-ref read fixes the stale-clone direction and the fail-closed cases above
+all hold. It does not fix the other direction the #450 item 11 guard closed.
+
+A pull request that broadens its own workflow filter is a case the base filters
+cannot see. Filtering `web-installer/index.html` against a base `main.yml` whose
+`paths-ignore` excludes `web-installer/**` yields no covering workflow, so the
+override was accepted, while the pull request's own copy of a workflow now
+selects that path. GitHub evaluates the pull request's copy for its
+pull_request run, so such a head should have had checks and a missing check is
+an Actions failure. `test_override_holds_when_the_pr_broadens_its_own_workflow_copy`
+encoded exactly that acceptance, and a mutation run of the suite with the guard
+removed reproduces it: three cases exit 0 where they must exit 1.
+
+On master the case is refused today only because `pre-review.yml` keeps
+`.github/workflows/**` in its `paths`. Nothing tests or documents that entry as
+load bearing, so one edit to that list reopens the hole.
+
+Fixed by refusing the override whenever a changed path is
+`.github/workflows/` or below, which is the #450 guard, kept beside the base
+read rather than instead of it. The refusal names the files. Tests:
+`test_override_is_refused_when_the_pr_edits_a_workflow` (with a stub base that
+covers nothing, so only the guard can refuse) and
+`test_override_is_refused_for_a_deleted_workflow_and_a_workflow_directory`.
+`test_override_holds_when_the_pr_broadens_its_own_workflow_copy` is gone.
+`python3 -m unittest tests.test_check_review_threads` runs 41 tests, all
+offline.

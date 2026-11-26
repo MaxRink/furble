@@ -176,9 +176,10 @@ CLAUDE.md whose directory it touches.
 - Run `python3 tools/pre_review.py --base origin/master` before pushing. It
   runs the diff hygiene, settings contract, and C++ safety scanners,
   clang-format 21 on the changed C and C++ files, the CI workflow and
-  simulator manifest checks, the datasheet citation gate
-  (`tools/check_datasheet_citations.py`), the coupling ratchet, and the
-  scanner unit tests. The ratchet fails when a per-file count of board
+  simulator manifest checks, the coupling ratchet, the datasheet citation gate
+  (`tools/check_datasheet_citations.py`), the documentation citation gate
+  (`tools/check_doc_citations.py`), and the scanner unit tests. The ratchet
+  fails when a per-file count of board
   guards, `M5.` calls, `M5.getBoard()` or ESP/NimBLE public header types
   grows; after a reduction run `python3 tools/check_coupling_ratchet.py
   --update` and commit `tools/coupling_ratchet.json`. pre_review passes its
@@ -191,6 +192,16 @@ CLAUDE.md whose directory it touches.
   every push, against each pushed commit. The tracked `.claude/settings.json`
   sets that hook path for Claude Code sessions through `GIT_CONFIG_COUNT`, so
   a failing gate blocks an agent's push. `git push --no-verify` skips one push.
+- `python3 tools/check_doc_citations.py` checks every `file:line` citation in
+  every non-ignored Markdown file: the path exists, the line is inside the file,
+  and a symbol the citation annotates sits on that line or inside its definition.
+  It reads a symbol only from the code span the citation annotates, so a wrong
+  line inside the same file passes when the sentence names no symbol; see
+  `CONTRIBUTING.md` for the full list of what it cannot see. Citations into an
+  unvendored tree go in `tools/doc_citations.json` with a reason, and an
+  intentionally approximate citation goes in its `allow` list, which fails when
+  an entry suppresses nothing. pre_review runs the full sweep; `--base REV`
+  narrows it to the citations a range could break.
 - Run the fuzz gate before any hardware image build:
   `python3 tools/check_fuzz.py --full --host-build <host-build> --mqtt-binary
   sim/build-mqtt/furble-sim`. `--smoke` is the pull-request budget. It runs
@@ -365,9 +376,12 @@ was off from 2026-10-21 to 2026-11-13 and PRs merged with no CI; see
 no-checks rule only with `--allow-no-checks "<reason>"`, which is printed.
 That rule decides from the workflow files at the pull request's base commit,
 read at `baseRefOid` through `gh api repos/{owner}/{name}/contents/.github/workflows?ref=<oid>`,
-and never from the checkout. A clone can be stale against the base, and a PR
-edits only its own copy of a workflow, so a local tree cannot show what CI
-should have run. The gate fails closed, with exit 2, when the base oid is
+and never from the checkout. A clone can be stale against the base, so a local
+tree cannot show what CI should have run. A pull request that edits
+`.github/workflows/` never qualifies for the override: GitHub evaluates the
+pull request's own copy of a workflow for its pull_request run, so the edit
+changes what CI runs and the base filters cannot see a broadened filter. The
+gate fails closed, with exit 2, when the base oid is
 missing, when the API errors, and when a base workflow cannot be fetched or
 parsed. The checkout-reading local mode is a test-only fallback: `--pr` is
 mandatory, so the gate never reaches it. See `plans/331-merge-gate-base.md`.

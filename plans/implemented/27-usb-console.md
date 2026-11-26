@@ -238,7 +238,7 @@ it is the same mechanism PR50, the companion app, will need. Do not take
 reaching into it from another translation unit would be the wrong shape.
 
 **Settings go through `Settings::save` directly.** It is NVS through
-`Preferences` (`src/FurbleSettings.cpp:39-45`) and is safe from any task. But
+`Preferences` (`src/FurbleSettings.cpp:342`) and is safe from any task. But
 saving is not the same as applying. Some settings are read on every use, for
 example `MULTICONNECT` at `src/FurbleUI.cpp:1438` and `RECONNECT` at
 `src/FurbleUI.cpp:1243`, and those take effect immediately. Others are cached in

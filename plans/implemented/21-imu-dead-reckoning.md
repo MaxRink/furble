@@ -6,7 +6,7 @@ Implementation state (2026-11-13): merged in `e9009bc9`. The "known gap" for wir
 ## Goal
 
 Keep supplying a position to the camera when the GPS fix goes away. Today furble
-silently stops. `GPS::update()` (`src/FurbleGPS.cpp:161-192`) only calls
+silently stops. `GPS::update()` (`src/FurbleGPS.cpp:2500-2771`) only calls
 `Control::updateGPS()` when location, date and time are all valid and all newer
 than `MAX_AGE_MS`, which is 30 s (`include/FurbleGPS.h:38`). One tunnel, one
 camera bag, one GPS standby window from PR15, and photos stop being tagged with
@@ -220,8 +220,8 @@ timestamp only (`lib/furble/Fujifilm.cpp:105-118`). There is no accuracy or
 satellite count field, so a Fujifilm body cannot be told the fix is held. The
 only available control is time. Bound the hold and let the user choose the bound.
 
-`gps_t::satellites` (`lib/furble/Camera.h:54`) is carried into the Nikon payload
-(`lib/furble/NikonSmart.cpp:223`, `lib/furble/NikonSmart.h:112`). Do not zero it
+`gps_t::satellites` (`lib/furble/Camera.h:132`) is carried into the Nikon payload
+(`lib/furble/NikonSmart.cpp:207`, `lib/furble/NikonSmart.h:112`). Do not zero it
 to signal degradation. A camera may treat zero satellites as no fix and reject
 the record, and that behaviour is untestable here because no Nikon body is
 available. Replay the cached satellite count unchanged. Consider clamping it in a
@@ -233,7 +233,7 @@ when it geotags from a cached location.
 
 ### Fujifilm on request path
 
-`Fujifilm::updateGeoData()` (`lib/furble/Fujifilm.cpp:132-137`) only writes when
+`Fujifilm::updateGeoData()` (`lib/furble/Fujifilm.cpp:323-345`) only writes when
 the body set `m_GeoRequested`. The request arrives on the camera's schedule, and
 `Control::updateGPS()` is the only thing that refreshes the stored values. Under
 hold, that path keeps working with no change: `GPS::update()` still runs at 1 Hz

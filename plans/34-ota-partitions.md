@@ -329,7 +329,7 @@ nvs, data, nvs, 0x9000, 24K
 Identical offset, identical size. The NVS region is untouched by the layout
 change. Everything in it survives a reflash that does not erase the whole chip:
 
-- every entry in `Settings::m_Setting` (`src/FurbleSettings.cpp:11-24`),
+- every entry in `Settings::m_Setting` (`src/FurbleSettings.cpp:30`),
   brightness, theme, TX power, GPS, intervalometer, multiconnect, reconnect,
   autoconnect, touch calibration
 - the saved camera list from `lib/furble/CameraList.h:28-62`
@@ -421,24 +421,24 @@ the appearance of rollback safety with none of the substance.
 Define the health check as all of the following, evaluated within 30 seconds of
 boot:
 
-1. **NVS opened.** `Settings::init()` (`src/main.cpp:28`) returned and a known
+1. **NVS opened.** `Settings::init()` (`src/main.cpp:424-426`) returned and a known
    key reads back. If NVS is unreadable the device has no cameras and no
    settings, which is a failure even if it does not crash.
-2. **Platform initialised.** `Platform::init()` (`src/main.cpp:27`) returned and
+2. **Platform initialised.** `Platform::init()` (`src/main.cpp:442`) returned and
    `Platform::getInstance().m_Init` is true, meaning `M5.begin()` completed at
    `src/FurblePlatform.cpp:22`. On the StickS3 this also covers the M5PM1 PMIC
    bring-up at `src/FurblePlatform.cpp:34-38`.
-3. **BLE host up.** `Device::init()` (`src/main.cpp:29`) returned and the NimBLE
+3. **BLE host up.** `Device::init()` (`src/main.cpp:477`) returned and the NimBLE
    stack reports initialised. This is the one that catches a broken NimBLE
    component update.
-4. **Control task alive.** The task created at `src/main.cpp:32` is running and
+4. **Control task alive.** The task created at `src/main.cpp:517` is running and
    its queue accepts a no-op. `Control::sendCommand`
-   (`src/FurbleControl.cpp:183-185`) is a zero-timeout `xQueueSend`, so a full
+   (`src/FurbleControl.cpp:605`) is a zero-timeout `xQueueSend`, so a full
    queue means the control task is not draining, which means the shutter will
    not work.
 5. **UI loop ticking**, in a GUI build. `UI::task`
-   (`src/FurbleUI.cpp:2123-2134`) has completed at least 100 iterations, which
-   at the 5 ms delay on line 2133 is about half a second of a live LVGL handler.
+   (`src/FurbleUI.cpp:13416-13474`) has completed at least 100 iterations, which
+   at the 5 ms `LOOP_ACTIVE_MS` delay is about half a second of a live LVGL handler.
    In a `FURBLE_NO_DISPLAY` build from `plans/33-wifi-hub.md`, substitute the
    headless loop.
 6. **Heap floor.** `esp_get_free_heap_size()` above a per board threshold. Pick

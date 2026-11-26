@@ -96,8 +96,9 @@ the other's layout.
 ### Spinner ownership
 
 `Spinner::update()` ends with `m_Intervalometer->save()`
-(`src/FurbleUIIntervalometer.cpp:51`), and `Intervalometer::save()` writes the
-whole `interval_t` (`src/FurbleUIIntervalometer.cpp:14-18`). A bulb spinner must
+(`src/FurbleUIIntervalometer.cpp:271`), and `Intervalometer::save()`
+(`src/FurbleUIIntervalometer.cpp:78`) writes the whole `interval_t`.
+A bulb spinner must
 not write the intervalometer setting. The smallest correct change is to give
 `Spinner` an owner that knows how to save itself:
 
@@ -115,7 +116,7 @@ Do not copy `addSpinnerPage`. It is 120 lines of per board layout work at
 One `lv_timer` in one shot form. On start:
 
 1. `shutterLock(Control::getInstance())`, which sends `CMD_SHUTTER_PRESS` and
-   sets `m_ShutterLock` (`src/FurbleUI.cpp:506-521`).
+   sets `m_ShutterLock` (`src/FurbleUI.cpp:2148`).
 2. Record the end time as `tick() + duration_ms` using
    `SpinValue::toMilliseconds()` and `UI::tick()` (`src/FurbleUI.cpp:380`).
 3. Start a 333 ms refresh timer that renders the remaining time with
@@ -139,7 +140,7 @@ is correct. Verify they are re-enabled after release.
   Confirm that path covers the bulb page too, and add an explicit release on page
   exit if it does not.
 - A disconnect during an exposure must cancel the timer. `doDisconnect` is at
-  `src/FurbleUI.cpp:1251-1263`. Add the timer pause there, next to the existing
+  `src/FurbleUI.cpp:8632`. Add the timer pause there, next to the existing
   `lv_timer_pause(m_ConnectTimer)`.
 - Long exposures interact with the inactivity timer at
   `src/FurbleUI.cpp:2094-2112`, which only dims the display today. Dimming during

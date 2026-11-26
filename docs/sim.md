@@ -532,7 +532,9 @@ calendar by the requested sleep interval. A cold boot (`reset_reason` `poweron`,
 `brownout` or `power_glitch`) is a complete power loss: the sidecar is
 discarded, the registers come back unset, and an install seed cannot resurrect
 the old reading. A scenario without `rtc_model` removes the sidecar so no run
-inherits another one's chip.
+inherits another one's chip. An orderly exit removes it with the generated
+store, and the startup sweep removes it with a dead pid's store, so a scripted
+run leaves neither behind.
 
 Because the modelled chip is what `std::time()` reports while it is installed,
 a scenario's `resume_fixture` wake times are computed on the same clock
@@ -1567,8 +1569,9 @@ whatever the production stack does after a fault is what the scenario observes.
   simulator; a scripted run overrides it with a per-run path
   `.pio/furble-sim-preferences-<scenario>-<pid>-<random>.bin` and removes it
   again on an orderly exit. When a run is about to create its generated store,
-  it reclaims stores left by dead pids; a `.generated` sidecar marks a store as
-  simulator-owned, so a caller-owned path matching the name pattern is kept.
+  it reclaims stores left by dead pids, along with their `.tmp.<pid>` and
+  `.rtc` sidecars; a `.generated` sidecar marks a store as simulator-owned, so
+  a caller-owned path matching the name pattern is kept.
   A live pid, the current process, and unrelated files are also kept. The path
   is prepared on the
   main thread before SDL setup and

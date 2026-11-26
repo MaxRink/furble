@@ -44,7 +44,7 @@ behaviour in the code before it was used.
 | 2 | BMI270 duration | nothing | BMI270 1.6 section 5.2.40, pages 92 and 93 | `src/FurbleIMUMotionBMI270.cpp:96-108` |
 | 3 | MPU-6886 threshold scale | doc error, assumption presented as datasheet fact; vendor document defect recorded | MPU-6886 1.1 sections 8.20 to 8.22, table 15, section 5.1 step 4 | `src/FurbleIMUMotionMPU6886.cpp:41-43` |
 | 4 | QMI8658A motion co-processor | nothing (no backend exists in this tree) | QMI8658A Rev D sections 9.4 to 9.6 | absent |
-| 5 | Simulator and boundary doubles | bug, in the double only | BMI270 1.6 page 92 for the resolution, MPU-6886 1.1 sections 8.20 to 8.22 for the missing figure | `sim/FurbleIMUSim.cpp:31-41`, `sim/FurbleIMUSim.cpp:109-135` |
+| 5 | Simulator and boundary doubles | bug, in the double only | BMI270 1.6 page 92 for the resolution, MPU-6886 1.1 sections 8.20 to 8.22 for the missing figure | `sim/FurbleIMUSim.cpp:31-41`, `sim/FurbleIMUSim.cpp:110-127` |
 
 ### 1. BMI270 any-motion resolution: the code writes the documented default
 

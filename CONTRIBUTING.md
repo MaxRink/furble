@@ -160,6 +160,34 @@ after joining backslash continuations, plus each `#define` that names one.
 Capability macros must be `#define`d in `include/FurbleBoardCaps.h`; the scan
 covers `sim/` and `tests/host/` as well.
 
+The citation gate, `tools/check_doc_citations.py`, checks the `file:line` and
+`file:start-end` citations in every non-ignored Markdown file. It fails a path
+that names no file in this checkout, a line past the end of its file, and a
+citation that names a symbol which is not on the cited line and not inside that
+symbol's definition. The symbol half is deliberately narrow: it reads a symbol
+only from the inline code span the citation annotates, so `legendSelectable()`
+followed by `(src/FurbleUI.cpp:11344)` is checked, while a symbol mentioned
+earlier in the sentence is not. Citations into a tree this checkout does not
+contain (ESP-IDF, M5GFX, LVGL, esptool, newlib) are declared in
+`tools/doc_citations.json` with a reason and counted as external, not verified.
+A bare filename such as `Camera.h:203` is counted as unresolved and not
+resolved, because the name may match a test stub or an upstream copy rather than
+the file the author meant. An intentionally approximate citation goes in the
+`allow` list of the same file with a reason; an entry that suppresses nothing
+fails, so the list cannot rot into a blanket.
+
+Be aware of what it cannot catch. A citation that names no symbol is checked for
+its path and range only, so a wrong line inside the file passes. Drift that stays
+inside one definition passes, and a definition's attached comment block counts as
+part of it, so comment lines inserted directly above a cited definition pass too.
+A symbol that appears on the cited line only in a comment or a log string
+satisfies the on-line rule. A line that holds the named symbol and contradicts
+the prose passes. `--base REV` checks only the citations that range could break
+(every citation in a changed document, plus every citation anywhere that targets
+a changed file, which is how a source edit that moves lines fails an untouched
+plan), and it trusts every citation outside the range. pre_review runs the full
+sweep, because the tree is clean and the sweep is one pass over the docs.
+
 To run it on every push, enable the tracked hook once per clone:
 
 ```sh
@@ -205,8 +233,11 @@ without it the override fails closed.
 The filters come from the pull request's base commit, named by `baseRefOid` in
 the pull request payload and read through
 `gh api repos/{owner}/{name}/contents/.github/workflows?ref=<oid>`. They never
-come from your checkout, because a clone can be stale against the base and a
-pull request can edit only its own copy of a workflow. The gate fails closed,
+come from your checkout, because a clone can be stale against the base. A pull
+request that edits `.github/workflows/` never qualifies for the override: GitHub
+evaluates the pull request's own copy of a workflow for its pull_request run, so
+the edit changes what CI runs and the base filters cannot see a broadened
+filter. The gate fails closed,
 with exit 2, when the base oid is missing, when the API errors, and when a
 workflow at that commit cannot be fetched or parsed, so a broken base is never
 a pass. The checkout-reading local mode is a test-only fallback: `--pr` is

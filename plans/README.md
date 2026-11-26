@@ -120,6 +120,7 @@ the git history. They are no longer ownership rows.
 | [332-imu-motion-scale-audit.md](332-imu-motion-scale-audit.md) | IMU motion wake scale audit against the BMI270 revision 1.6, MPU-6886 revision 1.1 and QMI8658A Rev D documents; one scale definition shared by the backends, the simulator double and the host tests |
 | [332-imu-motion-scale-review-feedback.md](332-imu-motion-scale-review-feedback.md) | Review-feedback record for PR 504: the bytes decode to 83.0 and 70.3 mg, both durations obey the 50 Hz sample rule, the MPU-6886 count size is an assumption everywhere and no register value changed, plus the two component pages the change left contradicting the code |
 | [332-sim-rtc.md](332-sim-rtc.md) | Battery-backed RTC in the simulator: seeded calendar chip, `FURBLE_SIM` TimeKeeper seam, and the stale, valid, late and lost deep-sleep scenarios (#455) |
+| [332-review-feedback.md](332-review-feedback.md) | Review-feedback record for the simulator RTC model: the unasserted production epoch, the leaked `.rtc` sidecar, the completed scenario table, and the board-row duplication |
 | [342-wifi-lost-ip.md](342-wifi-lost-ip.md) | Lost DHCP lease: `IP_EVENT_STA_LOST_IP` clears the WiFi cache, and the WebUI gate and status page read the live station address |
 | [342-review-feedback.md](342-review-feedback.md) | Review-feedback record for the lost-lease fix: doc paragraph, deliberate-stop gate test, and five recorded follow-ups |
 | [339-mqtt-retry-backoff.md](339-mqtt-retry-backoff.md) | Capped exponential MQTT retry backoff and a WiFi-style failure classifier, so an outage never blocks the hub |
@@ -202,6 +203,7 @@ implemented.
 | [75-false-connected.md](implemented/75-false-connected.md) | False Connected when the camera is not in pairing mode. Promotion to ACTIVE is gated on GATT plumbing, not on the camera-side registration confirmation |
 | [80-camera-lifetime.md](implemented/80-camera-lifetime.md) | Use after free: CameraList owns Cameras by unique_ptr and load()/clear() free them while Control holds raw pointers across an in-flight connect. Own Cameras by shared_ptr so a connecting or active Camera outlives the list |
 | [352-m5gfx-board-pin.md](352-m5gfx-board-pin.md) | M5GFX board pinning: the Waveshare pin named a board with no `autodetect` arm, so the retry fell back to `board_unknown` and M5Unified probed GPIO 4, 8, 10, 12 and 38; the no-probe patch returns the display-less family before the first probe, with a build-time check |
+| [352-review-feedback.md](352-review-feedback.md) | Review-feedback record for PR 499: the gate revert, the two-patch upgrade counterfactual, the `FURBLE_HAS_INTERNAL_I2C` board audit and three gate blind spots |
 
 ## Simulator stability
 
@@ -213,6 +215,8 @@ implemented.
 | [301-sim-ui-buttons.md](implemented/301-sim-ui-buttons.md) | Interactive on-screen A/B/C or A/B/PWR buttons in a top-view control window that drives the same emulated GPIOs as the keyboard, without covering the panel or its overlays |
 | [334-sim-hardware-alignment.md](334-sim-hardware-alignment.md) | Simulator and production alignment with verified vendor rules: W5500 RESETn 500 us, the IP5306 64 s cutoff, and the panel dwell the simulator cannot model |
 | [334-review-feedback.md](334-review-feedback.md) | Review-feedback record for PR 482: the README and L01 cutoff values, the opened W5500 datasheet revision, and the boundary test hardening |
+| [348-sticks3-sim-align.md](348-sticks3-sim-align.md) | Align the StickS3 simulator model with the verified board facts: RTC absence, the shared EXT 5 V output, the one PWR_CFG byte, the PMIC IRQ latches and a fuller M5PM1 shim |
+| [348-review-feedback.md](348-review-feedback.md) | Review-feedback record for PR 502: the PWR_CFG reset default against the M5PM1 manual, the RTC rows against the profile table and vendor pages, and the host and scenario revert proofs |
 
 ## Tooling and web installer
 
@@ -236,7 +240,9 @@ implemented.
 | [142-bt-journal-memory.md](implemented/142-bt-journal-memory.md) | Compact, capability-aware Bluetooth journal storage and loss accounting |
 | [359-sony-legacy-generation.md](359-sony-legacy-generation.md) | Sony 2019 generation (upstream issue 316): legacy advertisement accepted, a verified 158-byte ATT MTU floor with an honest location skip, and a best-effort DD11 write gated on the discovered DD00 profile |
 | [359-review-feedback.md](359-review-feedback.md) | Review-feedback record for PR 508: the missing directory guides, the flash delta and its external blocker, the saved-record behaviour change, the retryable-failure latch and the mock client's charged size, plus the four pre-rebase red checks and whether they were real |
+| [345-doc-citation-gate.md](345-doc-citation-gate.md) | Gate that checks `file:line` citations in every Markdown file: the path exists, the line is in range, and an annotated symbol is on that line or inside its definition. Fixes the four line drift #473 left in plans 338, 303 and the CLAUDE docs |
 | [344-android-ui-snapshot.md](344-android-ui-snapshot.md) | Robolectric UI snapshot test for the Android companion main screen: pinned rendering inputs, committed baseline, runs inside `./gradlew test` |
+| [511-review-feedback.md](511-review-feedback.md) | Review-feedback record for PR 511: the re-derived 86 finding count at the merge base, the gate's real detection envelope, the symbol-rule sample and twelve churn spot checks, plus the five stale citations reading found in the files the PR touched |
 | [344-review-feedback.md](344-review-feedback.md) | Review-feedback record for PR 483: the gate's real detection envelope, node assertions, locale restore, exported test activity, resolved Compose UI test versions, uncacheable regeneration and the platform jar download |
 | [474-companion-coverage.md](474-companion-coverage.md) | Companion coverage audit: the layer matrix both apps are documented against, five more Android baselines, visible snapshot results in CI, the golden-corpus contract test and the trigger fixture defect it found |
 | [347-core-debug-flash-headroom.md](347-core-debug-flash-headroom.md) | Core dual-OTA debug headroom: compile furble at `ESP_LOG_INFO` on `m5stack-core-debug`, 431 bytes of slot slack to 25,807, and why the other debug envs keep VERBOSE |
@@ -249,7 +255,9 @@ implemented.
 | [118-sim-ethernet-coverage.md](implemented/118-sim-ethernet-coverage.md) | Host Ethernet netif coverage for the transport-neutral MQTT seam |
 | [119-companion-gatt-sim.md](implemented/119-companion-gatt-sim.md) | Companion GATT host coverage, implemented by the companion harness |
 | [121-sim-usage-fault-docs.md](implemented/121-sim-usage-fault-docs.md) | Simulator usage and fault-injection reference, implemented |
+| [357-review-feedback.md](357-review-feedback.md) | Retrospective review of seven merged pull requests (#471, #472, #478, #492, #495, #503, #506, #517), with what held, what was wrong and the follow-up fixes |
 | [355-sim-cmake-entry-point.md](355-sim-cmake-entry-point.md) | The CMake simulator entry point's macOS abort: the SDL3-before-SDL2 link order behind it, the #506 fix, the two differences that remain against sim/build.sh, and the missing smoke step |
+| [355-review-feedback.md](355-review-feedback.md) | Review-feedback record for PR 517: the CMake build and three stock scenarios, the `nm -m` binding, and the reverted link order that returns exit 134 |
 | [343-apple-ui-snapshot.md](343-apple-ui-snapshot.md) | First Apple UI snapshot: the shipped Status section body compared to a committed 1x baseline in the existing `swift test` target |
 | [343-review-feedback.md](343-review-feedback.md) | Review-feedback record for PR 480: baseline provenance on the `macos-15` image, the comparison the CI job reports, and the List row-flattening test |
 

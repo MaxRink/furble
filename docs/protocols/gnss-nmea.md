@@ -44,7 +44,7 @@ These ids are the L76K numbering appendix values
   (`lib/furble/protocol/GpsCasic.cpp:235-330`).
 - A GSA sentence replaces the current solution for its system. A combined
   `GNGSA` with no system id replaces every system
-  (`lib/furble/protocol/GpsCasic.cpp:360-382`). NMEA 4.1 appends a system id,
+  (`lib/furble/protocol/GpsCasic.cpp:400-425`). NMEA 4.1 appends a system id,
   which takes precedence over the talker prefix.
 - C/N0 is defined as 00 to 99 dB-Hz and is clamped (`lib/furble/protocol/GpsCasic.cpp:309`).
 - The satellite table keeps at most 32 satellites in view and 64 used entries

@@ -134,7 +134,7 @@ Confidence:
 ## Why the shutter silently does nothing
 
 This matches the report and confirms the diagnosis. `sendShutterCommand`
-(`lib/furble/Fujifilm.cpp:68-75`) only checks `m_Shutter != nullptr` and
+(`lib/furble/Fujifilm.cpp:179`) only checks `m_Shutter != nullptr` and
 `m_Shutter->canWrite()`. Both are true after discovery, so the write goes out
 with response. A camera that never registered furble ignores the shutter write
 at the application layer while still ATT-ACKing it. The write "succeeds" and the

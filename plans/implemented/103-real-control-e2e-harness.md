@@ -41,7 +41,7 @@ The harness (`tests/host/control_e2e/`) links, unchanged:
 It provides only the small seams the real control needs off-target, all host-test
 only, none touching the firmware binary:
 
-- `control_e2e/freertos_shim.cpp` plus `freertos/` headers: real `std::thread`
+- `tests/host/control_e2e/freertos_shim.cpp` plus `freertos/` headers: real `std::thread`
   tasks and mutex or condition-variable queues, so the control task, the
   per-target tasks and the scenario thread run concurrently like the device.
 - `control_e2e/doubles/` slim `Platform`, `Power` and `Settings` doubles: the
