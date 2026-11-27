@@ -62,9 +62,10 @@ bool BQ27220::read(Reading &reading) {
   // to 100". The manual gives this field no out-of-range sentinel, unlike
   // TimeToEmpty() (section 2.11, page 23, 0xFFFF means not discharging), so a
   // word above 100 is not an SOC and the call reports no reading rather than a
-  // full battery: an all-ones word from a gauge that is not estimating is the
-  // field case this refuses, and 100 percent there is the one answer that
-  // hides it.
+  // full battery. What a gauge that is not estimating actually returns here is
+  // not stated anywhere in the chapter, and the all-ones field case is inferred
+  // from the neighbouring fields rather than documented; the range check does
+  // not depend on it, and a clamp would turn any such word into 100 percent.
   const uint16_t soc = words[4];
   if (soc > 100) {
     return false;

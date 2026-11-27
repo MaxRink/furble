@@ -643,8 +643,9 @@ void testSx1262(void) {
 
   // Table 8-2 tabulates no standby-to-sleep time, so BUSY may arrive late; a
   // part that asserts it after the settle window is healthy. The calibration
-  // level itself must still be seen: section 8.3.1 has BUSY high after the
-  // reset release, so one poll of it is enough for the rise wait.
+  // level itself must still be seen. Section 9.1, page 60, sets BUSY high in
+  // STARTUP at power-up or after a reset, so one poll of it is enough for the
+  // rise wait, and a part whose line is already high costs nothing.
   FakeRadio late;
   late.busyPolls = 1;
   late.sleepConfirmPolls = 10;  // BUSY stays low for 1 ms after SetSleep
@@ -658,20 +659,31 @@ void testSx1262(void) {
     check(e.rfind("spi", 0) != 0, "sx1262 no command while BUSY is high");
   }
   // A stuck BUSY spends the reset pulse plus the whole ready budget and returns
-  // before SetSleep, so 10,200 us is its real cost. The bound here is the
-  // documented total on purpose: the first version restated the driver's own
-  // constants, and the four cold starts plus reset bound that replaced them
-  // (14,200 us from Table 8-2) was looser than the path it guarded, so a
-  // 14,000 us ready budget fitted it. The two checks above are what hold the
-  // header at 15,700 us; this case proves the wait stops inside it.
+  // before SetSleep, so 10,200 us is its real cost: the rise wait is satisfied
+  // by BUSY already being high and never delays, so the 1 ms assert budget is
+  // not spent. The header states that sum, and this case pins it exactly rather
+  // than only bounding it, because 11,200 us (reset plus both waits) was stated
+  // once and nothing noticed.
+  constexpr uint32_t STUCK_HIGH_SPEND_US = SX1262::RESET_PULSE_US + SX1262::READY_BUDGET_US;
+  check(STUCK_HIGH_SPEND_US == 10'200,
+        "sx1262 stuck-high spend is the reset pulse plus the ready budget");
+  check(stuck.delayed == STUCK_HIGH_SPEND_US,
+        "sx1262 stuck BUSY spends reset plus the ready budget, 10,200 us");
+  // The bound here is the documented total on purpose: the first version
+  // restated the driver's own constants, and the four cold starts plus reset
+  // bound that replaced them (14,200 us from Table 8-2) was looser than the
+  // path it guarded, so a 14,000 us ready budget fitted it. The two checks
+  // above are what hold the header at 16,700 us; this case proves the wait
+  // stops inside it.
   check(stuck.delayed <= DOCUMENTED_SLEEP_BOUND_US,
         "sx1262 stuck BUSY stays inside the documented total");
 
-  // Section 8.3.1 documents BUSY high while the chip calibrates and low in
-  // STDBY_RC, and no table bounds the rise. A part that has not raised it yet
-  // is healthy, so the ready wait cannot be the only level sampled: it passes
-  // in the window between the reset release and the start of the calibration
-  // and sends SetSleep from a state section 13.1.1 does not accept it in.
+  // BUSY is high while the chip calibrates and no table bounds the rise, so a
+  // part that has not raised it yet is healthy. The window between the reset
+  // release and the start of the calibration is inferred rather than
+  // documented, but a ready wait alone would pass in it and send SetSleep from
+  // a state section 13.1.1 does not accept it in, which is what this case
+  // models.
   FakeRadio slowStart;
   slowStart.busyLowPollsAfterReset = 5;  // BUSY rises 500 us after the release
   check(SX1262::sleep(slowStart), "sx1262 waits for BUSY to rise after reset");

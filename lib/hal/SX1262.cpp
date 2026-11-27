@@ -29,9 +29,11 @@ bool SX1262::sleep(Port &port) {
 
   // Step 2, first half: the chip raises BUSY as its calibration starts and
   // drops it in STDBY_RC (8.3.1, 9.1). Wait for the rise before waiting for the
-  // fall, because the level is low between the reset release and the start of
-  // the calibration: a ready wait sampled only for low passes in that window
-  // and sends SetSleep from a state the command is not accepted in (13.1.1).
+  // fall. The window this guards is inferred, not documented: the part is said
+  // to be low between the reset release and the start of the calibration, which
+  // would let a ready wait sampled only for low pass and send SetSleep from a
+  // state the command is not accepted in (13.1.1). If the line is already high
+  // the wait is satisfied on its first sample and costs nothing.
   if (!waitBusy(port, true, BUSY_ASSERT_BUDGET_US)) {
     return false;
   }

@@ -51,9 +51,15 @@ Two sources are used that pass 2 did not open:
 
 | # | Severity | Defect | Document | Fix | Test evidence |
 | ---: | :--- | :--- | :--- | :--- | :--- |
-| 1 | medium | `SX1262::sleep()` waited only for BUSY **low** after releasing NRESET, and `waitBusy()` samples the pin before its first delay. The level is low in the window between the reset release and the start of the calibration, so the wait returned at zero delay, and SetSleep went out during the window in which the command is not accepted. The header claimed the step "waits for the level", which it did only when the level had already changed. | DS.SX1261-2.W.APP Rev 2.2, section 8.3.1 page 55 (BUSY is high while the chip calibrates and drops in STDBY_RC), section 9.1 Startup, and section 13.1.1 (SetSleep is accepted from STDBY only) | `sleep()` now waits for BUSY **high** within a new `BUSY_ASSERT_BUDGET_US` (1,000 us) and then for low within the existing 10,000 us ready budget. The header's total bound moves from 15,700 us to 16,700 us and the stuck-BUSY cost from 10,200 us to 11,200 us, both restated in the test. | `sx1262 waits for BUSY to rise after reset`, `sx1262 polls BUSY until it rises before SetSleep`, `sx1262 BUSY that never rises fails`, `sx1262 no command before BUSY has risen`, `sx1262 BUSY that never rises stops inside the assert budget`, and the re-pinned `sx1262 header total bound is the documented 16,700 us`. Reverting the added wait fails four of them. |
+| 1 | medium | `SX1262::sleep()` waited only for BUSY **low** after releasing NRESET, and `waitBusy()` samples the pin before its first delay. The **inferred** window between the reset release and the start of the calibration is a low line, so the ready wait returned at zero delay and SetSleep could go out while the command's accepted-from state was still STDBY. The header claimed the step "waits for the level", which it did only when the level had already changed. The inference is labelled as one: the document gives the mechanism (9.1 page 60 sets BUSY high in STARTUP at power-up or after a reset, 8.3.1 page 55 drops it as the radio leaves Sleep, 13.1.12 page 80 has it high during calibration) and no clause or table for the window itself. | DS.SX1261-2.W.APP Rev 2.2, sections 8.1 page 53, 8.3.1 page 55, 9.1 page 60, 13.1.12 page 80, and section 13.1.1 page 72 (SetSleep is accepted from STDBY only) | `sleep()` now waits for BUSY **high** within a new `BUSY_ASSERT_BUDGET_US` (1,000 us) and then for low within the existing 10,000 us ready budget. The header's total bound moves from 15,700 us to 16,700 us. The two early returns are unchanged in cost: a line that never rises spends 1,200 us, and a line stuck high spends the 200 us reset plus the 10,000 us ready budget, **10,200 us**, because the rise wait is satisfied by its first sample and never delays. Both sums are pinned exactly in the test. | `sx1262 waits for BUSY to rise after reset`, `sx1262 polls BUSY until it rises before SetSleep`, `sx1262 BUSY that never rises fails`, `sx1262 no command before BUSY has risen`, `sx1262 BUSY that never rises stops inside the assert budget`, the re-pinned `sx1262 header total bound is the documented 16,700 us`, and the two spend checks `sx1262 stuck-high spend is the reset pulse plus the ready budget` and `sx1262 stuck BUSY spends reset plus the ready budget, 10,200 us`. Reverting the added wait fails four of them, and the spend checks fail on any constant change that moves either sum. |
 | 2 | medium | `BQ27220::read()` clamped StateOfCharge() to 100 when the word read above 100. The manual gives the field a range of 0 to 100 and **no** out-of-range sentinel, and every neighbouring 16-bit field in the same chapter does have one (`TimeToEmpty()` 0xFFFF, `ChargingVoltage()` and `ChargingCurrent()` 65535). An all-ones SOC word from a gauge that is not estimating was therefore reported as a full battery, which is the one answer that hides a dead gauge. | SLUUBD4A section 2.21 page 25 of 91 (range 0 to 100), section 2.11 page 23 (the 0xFFFF sentinel it does not have), sections 2.23 and 2.24 page 25 | The clamp is gone. A word above 100 makes `read()` return false and leaves `reading` untouched, which is the contract the header already had for a failed transfer. | `bq27220 soc above 100 is not a reading` (101), `bq27220 soc 0xFFFF is not a reading` and `bq27220 soc 100 is a reading`. Reverting the clamp fails the first two. |
-| 3 | low | `sim/shim/M5PM1.h` documented `PWR_CFG` as register `0x00` in three places. `0x00` is `DEVICE_ID`; `PWR_CFG` is `0x06`. The code in the shim was already right, so this is a wrong comment in a double, the class of error that makes a later reader model the wrong register. | M5PM1 Chip User Manual V1.9 register list, `PWR_CFG` 0x06 page 13 of 33, as recorded in `docs/components/m5pm1.md`; M5Unified 0.2.20 `M5PM1_Class.cpp` line 15 (`DEVICE_ID` 0x00) and `:18` (`PWR_CFG` 0x06) | The three comments name 0x06 and the identity register, with the library lines cited. | No host case: a comment carries no behaviour. The behavioural half is already pinned by the platform PMIC cases, which drive the shim through `setLedEnLevel`/`getPowerConfig`. |
+| 3 | low | `sim/shim/M5PM1.h` documented `PWR_CFG` as register `0x00` in three places. `0x00` is `DEVICE_ID`; `PWR_CFG` is `0x06`. The code in the shim was already right, so this is a wrong comment in a double, the class of error that makes a later reader model the wrong register. | M5PM1 Chip User Manual V1.9 register list, `PWR_CFG` 0x06 page 13 of 33, as recorded in `docs/components/m5pm1.md`; M5Unified 0.2.20 `M5PM1_Class.cpp` line 15 (`DEVICE_ID` 0x00) and `:18` (`PWR_CFG` 0x06) | The three comments name 0x06 and the identity register, with the library lines cited. | No host case: a comment carries no behaviour. The behavioural half of the same shim has no test either: the platform PMIC cases drive `tests/host/boundaries/platform_shims/M5PM1.h`, a different double that already recorded 0x06 at its lines 25 to 34, and nothing asserts `sim/shim/M5PM1.h`'s LED or power-config path. |
+
+Two archived plans still state the pre-change bound: plan 322's SX1262 row and
+plan 353's defect 3 and decisions sections both say 15,700 us, which was the
+total before this pass added the rise wait. They are historical records of what
+those passes did and are not rewritten here; the current bound is 16,700 us and
+`lib/hal/SX1262.h` is the only place it is stated as a contract.
 
 ### What defect 1 changes for a board
 
@@ -197,14 +203,14 @@ page 56, as recorded in `docs/components/sx1262.md`.
 
 | Fact | Document | Code | State |
 | :--- | :--- | :--- | :--- |
-| NRESET is a pulse, typically 100 us low | section 8.1, page 53 | `lib/hal/SX1262.h:77` (200 us), `lib/hal/SX1262.cpp:26-28` | VERIFIED |
-| BUSY is high while the chip calibrates after reset and drops in STDBY_RC | section 8.3.1 page 55, section 9.1 | `lib/hal/SX1262.cpp:30-37` | VERIFIED, and the fix above is the code change this row produced |
-| SetSleep is accepted from STDBY only | section 13.1.1 | `lib/hal/SX1262.cpp:41-48` | VERIFIED |
-| SetSleep is opcode 0x84 and takes one sleepConfig byte | section 13.1.1 | `lib/hal/SX1262.h:75-76` | VERIFIED from the section recorded in the component page; the opcode value itself stays CITED, because this pass did not reopen the command table |
-| After SetSleep the chip must not see SPI for 500 us | section 13.1.1 | `lib/hal/SX1262.h:79`, `lib/hal/SX1262.cpp:50` | VERIFIED from the section recorded in the component page |
-| BUSY is held high for the whole sleep | section 9.3 | `lib/hal/SX1262.cpp:52-55` | VERIFIED |
-| SLEEP to STDBY_RC is 340 us typical warm and 3500 us typical cold; the document has no reset-to-ready row | Table 8-2, page 56 | `lib/hal/SX1262.h:78` (10 ms ready budget) | VERIFIED |
-| STDBY_RC is 0.6 mA and the sleep configuration here is 160 nA | Table 3-5, page 17 | `lib/hal/SX1262.h:11`, `lib/hal/SX1262.h:26` | VERIFIED |
+| NRESET is a pulse, typically 100 us low | section 8.1, page 53 | `lib/hal/SX1262.h:84` (200 us), `lib/hal/SX1262.cpp:26-28` | VERIFIED |
+| BUSY is high while the chip calibrates after reset and drops in STDBY_RC | section 9.1 page 60, section 8.3.1 page 55, section 13.1.12 page 80 | `lib/hal/SX1262.cpp:30-44` | VERIFIED, and the fix above is the code change this row produced. The low window after the release stays inferred, see defect 1 |
+| SetSleep is accepted from STDBY only | section 13.1.1, page 72 | `lib/hal/SX1262.cpp:41-49` | VERIFIED |
+| SetSleep is opcode 0x84 and takes one sleepConfig byte | section 13.1.1 with Table 13-1, page 72 | `lib/hal/SX1262.h:82-83` | VERIFIED: the opcode and the one-byte form were read on page 72 in the review of this PR. The sleepConfig bit encoding stays CITED from Table 13-2, which was not read |
+| After SetSleep the chip must not see SPI for 500 us | section 13.1.1 Caution, page 72 | `lib/hal/SX1262.h:86`, `lib/hal/SX1262.cpp:52` | VERIFIED, read as the Caution on page 72 in the review of this PR |
+| BUSY is held high for the whole sleep | section 9.3 | `lib/hal/SX1262.cpp:54-57` | VERIFIED |
+| SLEEP to STDBY_RC is 340 us typical warm and 3500 us typical cold; the document has no reset-to-ready row | Table 8-2, page 56 | `lib/hal/SX1262.h:85` (10 ms ready budget) | VERIFIED |
+| STDBY_RC is 0.6 mA and the sleep configuration here is 160 nA | Table 3-5, page 17 | `lib/hal/SX1262.h:11`, `lib/hal/SX1262.h:36` | VERIFIED |
 | Known limitations: 500 kHz bandwidth modulation quality with a workaround in register 0x0889, PA clamping, implicit header timeout, inverted IQ | section 15, pages 109 and 110 | none, the driver only sleeps the part | VERIFIED, no erratum document exists for this part |
 
 ### TDK InvenSense MPU-6886 (shipped, `src/FurbleIMUMotionMPU6886.cpp`)
@@ -263,8 +269,8 @@ recorded in `docs/components/m5pm1.md`; M5Unified 0.2.20 `M5PM1_Class.cpp`.
 
 | Fact | Document | Code | State |
 | :--- | :--- | :--- | :--- |
-| `DEVICE_ID` is 0x00 and `PWR_CFG` is 0x06, reset 0x17 with the 5 V boost off | register list page 6 to 11, section 2 register (7) page 13 | `sim/hardware_model.cpp:643-662` | VERIFIED, and `M5PM1_Class.cpp` line 15 and line 18 name the same two addresses. The simulator shim comment that named 0x00 is defect 3 above |
-| `PWR_CFG` bit 0 charge, bit 1 DCDC, bit 2 LDO, bit 3 boost, bit 4 LED | section 2 register (7), page 13 | `sim/hardware_model.cpp:645-649` | VERIFIED, and `M5PM1_Class.cpp` lines 40 to 44 names the same five bits |
+| `DEVICE_ID` is 0x00 and `PWR_CFG` is 0x06, reset 0x17 with the 5 V boost off | register list page 6 to 11, section 2 register (7) page 13 | `sim/hardware_model.cpp:870-889` | VERIFIED, and `M5PM1_Class.cpp` line 15 and line 18 name the same two addresses. The simulator shim comment that named 0x00 is defect 3 above |
+| `PWR_CFG` bit 0 charge, bit 1 DCDC, bit 2 LDO, bit 3 boost, bit 4 LED | section 2 register (7), page 13 | `sim/hardware_model.cpp:874-878` | VERIFIED, and `M5PM1_Class.cpp` lines 40 to 44 name the same five bits |
 | `I2C_CFG` 0x09, `SLP_TO` bits 3:0 with 0 disabling idle sleep | section 2 register (10), page 15 | `M5PM1_Class.cpp` line 64 | VERIFIED |
 | The first I2C transaction after idle sleep fails and must be retried once | section 2 register (10) note 2, page 15 | `src/FurblePlatform.cpp:685-697` and the `m5pm1Access` wrapper | VERIFIED |
 | `WDT_CNT` 0x0A seconds, `WDT_KEY` 0x0B fed 0xA5 | section 2 registers (11) and (12), page 15 | `src/FurblePlatform.cpp:320-357` | VERIFIED |
@@ -315,8 +321,8 @@ Each row names the measurement or document a device would need.
 | U-4 | MPU-6886 ACCEL_INTEL_CTRL bit 1, which the driver sets through 0xC2 | A readback of register 0x69 after `arm()` on a StickC, or the section that defines bit 1 |
 | U-5 | BMI270 behaviour of the preserved out_conf bits 14:11 | Bosch's own any-motion configuration code and a scope on INT1 with the config-file value against a cleared one |
 | U-6 | SX1262 BUSY rise time after the NRESET release, which sizes `BUSY_ASSERT_BUDGET_US` | A scope on BUSY from the NRESET rising edge on a board that carries the part |
-| U-7 | SX1262 SetSleep opcode 0x84 and the 500 us no-SPI window, as values rather than as section numbers | Reopening section 13.1.1 of DS.SX1261-2.W.APP Rev 2.2 |
-| U-8 | BQ27220 the twice-per-second rule as text | Section 5.3 page 64 of SLUUBD4A, which this pass's mirror renders as the timing diagram only |
+| U-7 | **closed by the review of this PR**: SX1262 SetSleep opcode 0x84 is Table 13-1 page 72 and the 500 us no-SPI window is the Caution on the same page. The sleepConfig bit encoding (Table 13-2) stays open | none for the opcode or the window; Table 13-2 for the encoding |
+| U-8 | **closed by the review of this PR**: the twice-per-second rule is section 5.3 page 64 of SLUUBD4A verbatim. This pass's text mirror rendered that page as the timing diagram only | none, read on page 64 |
 | U-9 | IP5306 register 0x78, the level M5Unified decodes | An Injoinic register list that includes 0x78, or an application note |
 | U-10 | XL9555 address strap on a board with more than one expander | The board schematic, and a driver change to pass the shifted address |
 | U-11 | The AXP192 battery voltage arithmetic M5Unified uses for every AXP192 board | A bench comparison of `M5.Power.getBatteryLevel()` against a meter at two pack voltages |
@@ -343,16 +349,22 @@ Run in `/tmp/furble-halverify` on this branch.
 | :--- | :--- |
 | `cmake -S tests/host -B /tmp/halverify-host-build` | configures the host suite |
 | `cmake --build /tmp/halverify-host-build --target hal_drivers_test` | builds with `-Wall -Wextra -Werror` |
-| `/tmp/halverify-host-build/hal_drivers_test` | `hal-drivers: PASS (239 checks)`, up from 219 |
+| `/tmp/halverify-host-build/hal_drivers_test` | `hal-drivers: PASS (241 checks)`, up from 219 |
 | `python3 -m unittest tests.test_check_datasheet_citations` | OK after the pin above |
 | `sh tools/run_sanitized_host_tests.sh '^hal-drivers$'` | `sanitized host tests: PASS`, 1 of 1 under ASan and UBSan |
-| `ctest --test-dir /tmp/halverify-host-build --output-on-failure` | `100% tests passed out of 221`, 544 s |
+| `ctest --test-dir /tmp/halverify-host-build --output-on-failure` | `100% tests passed out of 223` after the rebase, 221 before it |
 | `python3 tools/pre_review.py --base origin/master` | 13 gates pass, exit 0, including the datasheet citation gate and the documentation citation gate |
 | `python3 tools/check_datasheet_citations.py` | `32 cited, 3 page gaps, 0 errors of 35 tokens` |
 | `python3 tools/check_doc_citations.py` | `0 errors of 3229 citations in 176 files` |
 | `sh sim/scripts/check-doc-tokens.sh` | `sim documentation tokens are present` |
 | `python3 tools/check_portability_inventory.py` | `portable contract: clean` |
 | `clang-format --dry-run --Werror` on the six changed C and C++ files | clean, clang-format 21.1.2 |
+
+The two spend checks were added in the review remediation: `sx1262 stuck-high
+spend is the reset pulse plus the ready budget` compares the constant sum with
+the literal 10,200 and `sx1262 stuck BUSY spends reset plus the ready budget,
+10,200 us` compares the measured spend with it, so a stated cost that drifts from
+the measured one fails rather than reading correctly.
 
 Mutation checks, each run by reverting one change and rebuilding. Reverting the
 SX1262 BUSY-rise wait fails `sx1262 polls BUSY until it rises before SetSleep`,
@@ -362,11 +374,33 @@ BQ27220 clamp fails `bq27220 soc above 100 is not a reading` and `bq27220 soc
 0xFFFF is not a reading`. The tree was restored and the suite re-ran green after
 each.
 
+## Review of the fix
+
+The independent review of PR 540 confirmed the direction of both driver fixes and
+found two blockers and eight smaller findings. Every one is recorded with its
+disposition in [540-review-feedback.md](540-review-feedback.md). The two blockers
+were a stated cost the driver does not spend and a page renumbered under its own
+citations:
+
+- The stuck-BUSY spend was stated as 11,200 us. It is 10,200 us, because a line
+  that is already high satisfies the rise wait on its first sample and the assert
+  budget is never spent. The header, this plan and the check that guards the
+  bound are corrected, and two host cases now pin the sum exactly rather than
+  bounding it.
+- `docs/components/sx1262.md` renumbered its constants table but left eight
+  citations on the lines the added header comment had moved. Every citation in
+  that page was re-derived from the post-change source and checked line by line.
+
 ## Left open
 
 - The defect 1 fix makes a radio whose BUSY never rises a failure instead of a
   silent pass. No board carries the part yet, so the change is exercised only by
   the host cases.
+- The window the rise wait guards is an inference, not a datasheet statement: no
+  clause says BUSY is low between the NRESET release and the start of the
+  calibration. The wait is safe either way, because a line that is already high
+  satisfies it without a delay, and U-6 is the scope measurement that would
+  settle it.
 - `BUSY_ASSERT_BUDGET_US` is a driver choice, like `SLEEP_CONFIRM_BUDGET_US`. It
   is 1 ms against a rise the document does not bound; a scope on a real part is
   the only thing that can size it (U-6).

@@ -15,18 +15,23 @@
  *  1. Pulse NRESET low for 200 us. Section 8.1 needs typically 100 us. A reset
  *     reaches STDBY_RC from any state, including a sleep or RX left behind by
  *     other firmware, and SetSleep is only accepted from STDBY (13.1.1).
- *  2. Wait for BUSY to rise, then for it to fall. After reset the chip
- *     calibrates and drops BUSY in STDBY_RC (sections 8.3.1 and 9.1), so the
- *     level goes high first and low when the part is ready. Both waits are
- *     needed: BUSY is low for the moment between the reset release and the
- *     start of the calibration, and sampling only for low there reports a part
- *     that has not started yet as ready, then sends SetSleep while the
- *     accepted-from state is still STDBY. Table 8-2, page 56, gives 3.5 ms
- *     typical for SLEEP to STDBY_RC, and the document has no reset-to-ready
- *     figure, so the 10 ms ready budget is an engineering margin and the 1 ms
- *     assert budget is a driver choice for a level no table bounds. A BUSY
- *     timeout here leaves the radio in STDBY_RC at 0.6 mA (Table 3-5, page 17)
- *     rather than the sleep state, so the caller must retry or hold NRESET low.
+ *  2. Wait for BUSY to rise, then for it to fall. A reset is followed by
+ *     calibration (8.1, page 53), BUSY is set high in STARTUP at power-up or
+ *     after a reset and goes low as the radio leaves Sleep (9.1 page 60, 8.3.1
+ *     page 55), and BUSY is high during calibration (13.1.12, page 80). So the
+ *     level should go high first and low when the part is ready. The rise wait
+ *     exists because of one inference the document does not state: that the
+ *     line is low for the moment between the reset release and the start of the
+ *     calibration, which would let a ready wait sampled only for low pass and
+ *     send SetSleep while the accepted-from state is still STDBY (13.1.1). The
+ *     wait is safe even if that window does not exist: a line that is already
+ *     high satisfies it on the first sample and it never delays. Table 8-2,
+ *     page 56, gives 3.5 ms typical for SLEEP to STDBY_RC, and the document has
+ *     no reset-to-ready figure, so the 10 ms ready budget is an engineering
+ *     margin and the 1 ms assert budget is a driver choice for a level no table
+ *     bounds. A BUSY timeout here leaves the radio in STDBY_RC at 0.6 mA
+ *     (Table 3-5, page 17) rather than the sleep state, so the caller must
+ *     retry or hold NRESET low.
  *  3. SetSleep: opcode 0x84, sleepConfig 0x00 (Table 13-1, Table 13-2): cold
  *     start, RTC wake off. All blocks off, 160 nA (Table 3-5).
  *  4. Wait 500 us, the window in which the chip must not see SPI (13.1.1).
@@ -40,9 +45,11 @@
  * no-SPI settle and 5,000 us confirming sleep, so 16,700 us at worst. sleep()
  * never spins without a budget. The host test sums these five constants against
  * this total, so a changed step that leaves this paragraph behind fails there.
- * A BUSY that never rises spends the reset pulse and the assert budget, 1,200
- * us, and returns before SetSleep; a BUSY stuck high spends 11,200 us of reset
- * and waits and also returns before SetSleep.
+ * The two early returns do not spend the total. A BUSY that never rises spends
+ * the reset pulse and the assert budget, 1,200 us. A BUSY stuck high spends the
+ * reset pulse and the ready budget, 10,200 us, because the rise wait is already
+ * satisfied and never delays. Both return before SetSleep, and the host test
+ * pins both sums.
  *
  * Any falling edge on NSS wakes the chip (9.3). The board adapter must keep
  * NSS high through MCU light and deep sleep.
