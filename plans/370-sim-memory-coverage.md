@@ -40,6 +40,7 @@ Call sites are counted over `src/`, `lib/` and `include/` at the base commit
 | :--- | ---: | :--- | :--- |
 | `heap_caps_malloc` | 5 | `sim/shim/esp_heap_caps.h` to `sim/heap_model.cpp` | pool exhaustion, `alloc_fail`, `task_create_fail` |
 | `heap_caps_aligned_alloc` | 2 | same entry point | same |
+| `heap_caps_malloc_prefer` | 1 (`src/FurbleUI.cpp:123`) | same shim, each set's pool tested before the charge | `prefer-exhausted` when no set fits |
 | `heap_caps_calloc` | 3 | same shim, zeroing and overflow guard | pool exhaustion, overflow, `alloc_fail` |
 | `heap_caps_realloc` | 0 | same shim, copy path | exhaustion and `alloc_fail` in unit tests |
 | `heap_caps_free` | 5 | same shim to the device registry | double free |
@@ -55,9 +56,17 @@ Call sites are counted over `src/`, `lib/` and `include/` at the base commit
 | `new`/`new[]` | 2 nothrow, 25 `std::make_unique` | replaced `operator new` family in `sim/heap_count.cpp` | `alloc_fail` after this plan |
 | PSRAM allocator | 2 explicit `MALLOC_CAP_SPIRAM` sites plus default routing | `heapSetPsram()`, `takeExternalLocked()` | `psram_mode`, `psram_free`, `psram_largest` after this plan |
 
-`esp_heap_caps_init()` and a bare `malloc()` family are absent by
-construction: the shim declares neither, so a firmware call would fail to link
-rather than silently succeed on the host heap.
+`esp_heap_caps_init()` is absent by construction: the shim declares no such
+symbol, so a firmware call would fail to link.
+
+A bare `malloc`/`calloc`/`realloc`/`free`/`strdup`/`strndup`, or
+`pvPortMalloc`/`vPortFree`, does **not** fail to link. `sim/shim/esp_heap_caps.h`
+includes the C library headers, the host libc resolves those symbols, and a
+firmware call would succeed on the host heap with no model charge at all. No
+call site exists today; the guarantee is enforced by
+`tools/check_sim_heap_escape.py`, which strips comments and literals and fails on
+a bare call in `src/`, `lib/` or `include/`, and which `tools/pre_review.py` runs
+as the `simulator heap escape` gate.
 
 ## Coverage before and after
 
@@ -73,7 +82,7 @@ rather than silently succeed on the host heap.
 | `heap_caps_malloc_prefer` all-sets failure aborts | none | unit | `prefer-exhausted` |
 | `heap_caps_realloc` on a failing size aborts, old block untouched | unit | unit | `realloc-exhausted` |
 | `new`/`malloc` failure by pool exhaustion aborts | unit (implicit) | unit | `sim-heap-caps` default-routing cases |
-| `new`/`malloc` failure by exact size and owner | none | unit + seed | `malloc-injected`, `alloc_fail` |
+| `new`/`malloc` failure by exact size and owner | none | unit | `malloc-injected`; the `alloc_fail` seed reaches this path but no scenario or fixture drives it (see Known limits) |
 | n-th (ordered) allocation failure | boundary only | unit + fixture | `sim-heap-caps` ordered case, `panic-mqtt-reconnect-alloc` |
 | PSRAM exhausted while internal RAM is healthy | unit (realloc only) | unit + fixture + seed | `sim-heap-caps` PSRAM case, `panic-psram-exhausted-task-alloc` |
 | Fragmentation (`largest` far below `free`) | unit (governor only) | unit + scene | `sim-heap-caps` fragmentation case, `memory-fragmented-largest-only` |
@@ -99,9 +108,11 @@ Model, all under `sim/`:
 
 - `sim/heap_count.cpp`: the exact-size probe now runs on the plain device
   `new`/`malloc` path too, and only for an allocation that would otherwise be
-  charged (device thread, outside a host scope). A bounded set of recently
-  released addresses makes a second free of the same block abort like
-  `multi_heap_free` instead of reaching the host allocator.
+  charged (device thread, outside a host scope). A window of the last 4,096
+  releases, each stamped with a sequence number, makes a second free of the same
+  block abort like `multi_heap_free` instead of reaching the host allocator. The
+  stamp is what keeps a reused address tracked: without it, the stale order
+  entry a reuse leaves behind evicts the live one when it reaches the front.
 - `sim/heap_model.cpp`, `sim/heap_model.h`: `fail_rule_t` carries a `skip`, so
   `heapSetAllocFailureAfter()` can fail the n-th matching request;
   `heapNoteDoubleFree()` shares one `panicExit()` with the allocation abort.
@@ -109,7 +120,15 @@ Model, all under `sim/`:
   which is the only way to fail a reconnect (see Known limits).
 - `sim/driver.cpp`: three seeds, `alloc_fail <owner|any>:<bytes|any>[:<nth>]`,
   `psram_free` and `psram_largest`, each rejected at scenario load when
-  malformed.
+  malformed. `psram_free` is capped at the modelled 8 MiB module.
+- `tools/check_sim_heap_escape.py`: the gate that makes the "no bare malloc in
+  the firmware" guarantee real. `sim/shim/esp_heap_caps.h` includes the C library
+  headers, so such a call links against the host libc and escapes the model; the
+  gate strips comments and literals and fails on a bare
+  `malloc`/`calloc`/`realloc`/`free`/`strdup`/`strndup`, `pvPortMalloc` or
+  `vPortFree` in `src/`, `lib/` or `include/`. `tools/pre_review.py` runs it as
+  the `simulator heap escape` gate and `tests/test_check_sim_heap_escape.py`
+  covers the scanner.
 
 Tests and evidence:
 
@@ -117,8 +136,12 @@ Tests and evidence:
   injection; PSRAM exhaustion with a healthy internal pool; fragmentation
   through both the model and `heap_caps_get_info`.
 - `tests/host/sim_heap_caps_shim_test.cpp`: `calloc-overflow`,
-  `prefer-exhausted`, `malloc-injected` and `double-free` abort cases in the
-  existing forked-child harness.
+  `prefer-exhausted`, `malloc-injected`, `double-free` and
+  `freed-window-duplicate` abort cases in the existing forked-child harness. The
+  last one is the regression for the stamped release window: it releases an
+  address, reuses it, releases it again, pushes the second release through the
+  window and then frees it a third time, which must abort rather than reach the
+  host allocator.
 - `sim/scenarios/e2e/memory-fragmented-largest-only.txt`: 60,000 free with a
   3,000-byte largest block closes the WebUI supervisor gate and enters RED.
 - `sim/fixtures/hardware/panic-camera-connect-alloc.txt`,
@@ -142,6 +165,7 @@ memory_pressure_test`):
 sim heap caps: PASS
 === sim_heap_caps_shim_test ===
 [E] heap: Heap block freed twice
+SIM PANIC: heap block freed twice in task heap-caps-test aborts the device
 SIM PANIC: heap block freed twice in task heap-caps-test aborts the device
 sim-heap-caps-shim: PASS
 === sim_webui_memory_model_test ===
@@ -214,6 +238,45 @@ assert ok: ui.page = main
 assert ok: platform.watchdog = armed
 ```
 
+The stamped release window is load-bearing. Reverting only the stamp comparison
+in `markFreedLocked` (`counts.freed.erase(oldest.first)` for the stamp check), so
+the stale order entry a reuse leaves behind erases the live one, fails the new
+case instead of aborting on the modelled line:
+
+```text
+SIM PANIC: heap block freed twice in task heap-caps-test aborts the device
+  FAIL: freed-window-duplicate did not exit normally
+FAIL: 1 heap_caps shim check(s)
+```
+
+The heap escape gate is load-bearing too. A probe `return malloc(64);` added to
+`src/FurbleMQTT.cpp`:
+
+```text
+$ python3 tools/check_sim_heap_escape.py
+bare heap calls escape the simulator heap model:
+  src/FurbleMQTT.cpp:528: malloc()
+Use heap_caps_malloc/heap_caps_calloc/heap_caps_free, the replaced operator new family, or add the API to sim/shim/ with a model charge.
+$ echo $?
+1
+```
+
+With the probe reverted it passes: `simulator heap escape check passed for 248
+firmware source(s)`. `python3 -m unittest tests.test_check_sim_heap_escape` runs
+6 cases, including the clean tree, every bare family member, comments and
+literals, prefixed and member names, and a missing firmware tree.
+
+The three seed rejections all exit 2 before the scenario runs:
+
+```text
+$ furble-sim --script big-psram.txt      # psram_free 209715200
+Invalid psram_free: 209715200 exceeds the modelled 8388608-byte PSRAM module
+$ furble-sim --script no-mode.txt        # psram_free without psram_mode
+psram_free and psram_largest require psram_mode quad or psram_mode octal, not a profile
+$ furble-sim --script bad-largest.txt    # psram_largest above psram_free
+Invalid psram_largest: 8192 exceeds psram_free 4096
+```
+
 Regression sample on the same binary, no assertion failure and no panic in any
 of them: `memory-counted-camera-connect`, `memory-webui-fail-closed`,
 `memory-pressure-webui-shed`, `main-menu-gap-pages`, `display-settings-pages`,
@@ -262,11 +325,26 @@ doc citations in the tree: 2820 line-checked (100 symbol-checked), 125 external,
 - The ThreadSanitizer build links the sanitizer's own `operator new`/`delete`,
   so C++ allocations are not charged there. Only the GPS concurrency scenarios
   run on that build and none asserts a heap figure.
-- The double-free detector keeps the last 4,096 released addresses. A second
-  free separated by more than that many allocations, with the address reused in
-  between, is the same false negative the host allocator has. A double free is
-  not a failed allocation, so the panic record's `alloc_size` fields stay zero
-  and the record carries the modelled line instead.
+- The double-free detector keeps the last 4,096 **releases** as stamped
+  (address, sequence) pairs, and only a stamp that still matches the address's
+  own release erases it. A free, reuse and second free of one address therefore
+  keeps its newest release tracked; `freed-window-duplicate` in
+  `sim-heap-caps-shim` is the regression. A second free held apart by more than
+  4,096 other releases is the same false negative the host allocator has. A
+  double free is not a failed allocation, so the panic record's `alloc_size`
+  fields stay zero and the record carries the modelled line instead.
+- The fifth `heap_caps_malloc` site, the `heap trace` buffer
+  (`src/FurbleConsole.cpp`, behind `CONFIG_HEAP_TRACING_STANDALONE`), is
+  compiled out of the simulator: the modelled board turns tracing off, so the
+  simulator builds the stub. The debug sdkconfigs turn standalone tracing on,
+  and `heap_trace_init_standalone()`/`heap_trace_start()` allocate too with no
+  `sim/shim/esp_heap_trace.h`, so that site has no failure injection in either
+  configuration. It is a console diagnostic, not a service admission path.
+- The plain `new`/`malloc` probe is covered by `malloc-injected` only. The
+  `alloc_fail` seed reaches `sim/heap_count.cpp`, but every fixture that uses it
+  fails an admission probe instead: `panic-mqtt-reconnect-alloc` drives
+  `sim/SimMQTTClient.cpp`, which is the only seed consumer today. A fixture that
+  fails a real firmware `new` through `alloc_fail` is open work.
 - The MQTT client start gate floors (8,192 free, 4,096 largest) exceed the
   3,088-byte plain client block, so pool exhaustion can never reach that
   allocation. `alloc_fail` is what makes it reachable, and the fixture asserts

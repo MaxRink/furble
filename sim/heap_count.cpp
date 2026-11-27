@@ -8,7 +8,6 @@
 #include <mutex>
 #include <new>
 #include <unordered_map>
-#include <unordered_set>
 
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
@@ -69,26 +68,40 @@ using table_t = std::unordered_map<void *,
  * Recently released device blocks, so a second free of the same address is
  * recognised instead of reaching the host allocator, which would abort with
  * "double free detected" or, worse, free a live host block silently. An
- * address leaves this set the moment any allocation hands it out again, which
+ * address leaves this map the moment any allocation hands it out again, which
  * is the tcache key the host allocator itself uses, so a reused address is
  * never reported.
  *
- * Bounded: a long run releases far more blocks than this, and an old address
- * that has since been reused is not evidence of anything. A double free is
- * normally separated by few allocations, and the runner would have to reuse
- * and re-release thousands of blocks between the two frees to hide one.
+ * Bounded by releases, not by addresses: `freedOrder` holds the last
+ * FREED_HISTORY_BLOCKS releases as (pointer, release sequence) pairs, and an
+ * entry is only erased from `freed` when the sequence it carries is still the
+ * address's own. Without that stamp a free, reuse and second free of one
+ * address leaves two entries in the order, and popping the stale one erases
+ * the live entry with its most recent release only a few allocations back.
+ *
+ * A long run releases far more blocks than this, and an evicted address that
+ * has since been reused is not evidence of anything. A double free is normally
+ * separated by few allocations, so the release window is the bound that
+ * matters; a double free held apart by more than FREED_HISTORY_BLOCKS other
+ * releases is the same false negative the host allocator has.
  */
 constexpr size_t FREED_HISTORY_BLOCKS = 4096;
 
-using freed_set_t =
-    std::unordered_set<void *, std::hash<void *>, std::equal_to<void *>, MallocAllocator<void *>>;
-using freed_order_t = std::deque<void *, MallocAllocator<void *>>;
+// Address to the sequence number of its most recent release.
+using freed_map_t = std::unordered_map<void *,
+                                       uint64_t,
+                                       std::hash<void *>,
+                                       std::equal_to<void *>,
+                                       MallocAllocator<std::pair<void *const, uint64_t>>>;
+using freed_release_t = std::pair<void *, uint64_t>;
+using freed_order_t = std::deque<freed_release_t, MallocAllocator<freed_release_t>>;
 
 struct registry_t {
   std::mutex mutex;
   table_t table;
-  freed_set_t freed;
+  freed_map_t freed;
   freed_order_t freedOrder;
+  uint64_t freedSequence = 0;
   std::atomic<size_t> live {0};
 };
 
@@ -101,20 +114,24 @@ registry_t &registry(void) {
   return *instance;
 }
 
-// Caller holds the registry mutex.
+// Caller holds the registry mutex. The order keeps its stale entry; eviction
+// compares the sequence before it touches `freed`.
 void markAllocatedLocked(registry_t &counts, void *pointer) {
   counts.freed.erase(pointer);
 }
 
 // Caller holds the registry mutex.
 void markFreedLocked(registry_t &counts, void *pointer) {
-  if (!counts.freed.insert(pointer).second) {
-    return;
-  }
-  counts.freedOrder.push_back(pointer);
+  const uint64_t sequence = ++counts.freedSequence;
+  counts.freed[pointer] = sequence;
+  counts.freedOrder.emplace_back(pointer, sequence);
   while (counts.freedOrder.size() > FREED_HISTORY_BLOCKS) {
-    counts.freed.erase(counts.freedOrder.front());
+    const freed_release_t oldest = counts.freedOrder.front();
     counts.freedOrder.pop_front();
+    const auto tracked = counts.freed.find(oldest.first);
+    if ((tracked != counts.freed.end()) && (tracked->second == oldest.second)) {
+      counts.freed.erase(tracked);
+    }
   }
 }
 
@@ -188,7 +205,11 @@ void releaseAllocation(void *pointer) {
       // Not a live device block. An address this registry released earlier is
       // a double free, which multi_heap_free aborts on once the freed block's
       // head canary no longer matches; anything else is a host block.
-      doubleFree = counts.freed.erase(pointer) != 0;
+      const auto released = counts.freed.find(pointer);
+      doubleFree = released != counts.freed.end();
+      if (doubleFree) {
+        counts.freed.erase(released);
+      }
     }
   }
   if (doubleFree) {

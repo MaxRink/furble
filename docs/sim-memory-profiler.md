@@ -37,7 +37,11 @@ owner, 3 KiB plain worker, a 9,392-byte MQTT event queue in PSRAM, a
 `heap.*` queries expose the pool. `mem.*` queries expose the static map, owner
 totals, leaks, timeline count and watermarks.
 
-`sim/shim/esp_heap_caps.h` is the firmware-facing surface. `heap_caps_malloc`,
+`sim/shim/esp_heap_caps.h` is the firmware-facing surface. It includes the C
+library headers, so a bare `malloc` in the firmware would compile, link and run
+on the host heap with no model charge; `tools/check_sim_heap_escape.py` fails
+such a call in `src/`, `lib/` or `include/` and `tools/pre_review.py` runs it as
+the simulator heap escape gate. `heap_caps_malloc`,
 `heap_caps_malloc_prefer`, `heap_caps_calloc` and `heap_caps_realloc` charge the
 pool their caps name, filter caps the same way, and abort through the same
 policy. `heap_caps_realloc` has no in-place growth here: it charges the new

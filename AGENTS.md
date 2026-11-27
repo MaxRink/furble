@@ -45,10 +45,15 @@ requests. Keep pull request jobs path-filtered and read-only for fork safety,
 and run `python3 tools/check_ci_workflows.py` after changing workflow triggers.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
 it before pushing. It includes clang-format 21 on the changed C and C++ files, the coupling
-ratchet, the datasheet citation gate and the documentation citation gate: a
+ratchet, the datasheet citation gate, the documentation citation gate and the
+simulator heap escape gate: a
 per-file board guard, `M5.` call, `M5.getBoard()`
 or public header ESP/NimBLE type count may not grow, and a reduction is locked
-in with `python3 tools/check_coupling_ratchet.py --update`. pre_review passes
+in with `python3 tools/check_coupling_ratchet.py --update`. The heap escape gate
+(`tools/check_sim_heap_escape.py`) fails a bare `malloc`/`calloc`/`realloc`/
+`free`/`strdup`/`strndup`, `pvPortMalloc` or `vPortFree` call in `src/`, `lib/`
+or `include/`, because the shim includes the C library headers and such a call
+would run on the host heap with no model charge. pre_review passes
 `--base` to it, so `--update` cannot absorb growth over the base manifest.
 `git config core.hooksPath .githooks` runs it from
 `.githooks/pre-push` on every push; the tracked `.claude/settings.json` sets
@@ -123,9 +128,9 @@ Every sdkconfig aborts on a failed allocation and the simulator does the same:
 `SIM PANIC`, a panic record and exit status 3. `sh sim/scripts/run-panic-fixtures.sh`
 certifies the abort fixtures with the default and `FURBLE_SIM_MQTT=1` binaries.
 The seven fixtures cover a failed `heap_caps_malloc`, a failed icon malloc
-without PSRAM, a PSRAM task stack on a board without PSRAM, an exhausted
-internal pool during a camera connect, a task stack on a present but too small
-PSRAM pool, a failed MQTT owner task and a failed MQTT client task on the retry.
+without PSRAM, a PSRAM task stack on a board without PSRAM, a failed per-camera
+task allocation during a connect, a task stack on a present but too small PSRAM
+pool, a failed MQTT owner task and a failed MQTT client task on the retry.
 A block freed twice aborts the same way (`SIM PANIC: heap block freed twice`),
 which `sim-heap-caps-shim` certifies; see `plans/370-sim-memory-coverage.md`.
 The simulator build force-includes the board's memory sdkconfig subset from

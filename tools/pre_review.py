@@ -97,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
       ("CI workflow contract", [PYTHON, "tools/check_ci_workflows.py"]),
       ("simulator scenario manifest", [PYTHON, "tools/check_sim_scenarios.py"]),
       ("simulator hardware coverage", [PYTHON, "tools/check_sim_coverage.py"]),
+      ("simulator heap escape",
+       [PYTHON, "tools/check_sim_heap_escape.py", "--root", str(root)]),
       ("coupling ratchet",
        [PYTHON, "tools/check_coupling_ratchet.py", "--root", str(root), "--base", args.base]),
       ("datasheet citations",

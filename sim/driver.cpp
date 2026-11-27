@@ -2811,6 +2811,15 @@ void applyScenarioSettings(void) {
     const size_t largestBytes = (psramLargestSeed != scenarioSettings.end())
                                     ? parseUnsigned(psramLargestSeed->second)
                                     : freeBytes;
+    // The modelled part carries an 8 MiB module (hwSetPsramMode). A larger
+    // seed would model hardware nobody builds, so it is a load error.
+    constexpr size_t PSRAM_MODULE_BYTES = 8u * 1024u * 1024u;
+    if (freeBytes > PSRAM_MODULE_BYTES) {
+      std::cerr << "Invalid psram_free: " << freeBytes << " exceeds the modelled "
+                << PSRAM_MODULE_BYTES << "-byte PSRAM module\n";
+      requestExit(2);
+      return;
+    }
     if (largestBytes > freeBytes) {
       std::cerr << "Invalid psram_largest: " << largestBytes << " exceeds psram_free " << freeBytes
                 << '\n';

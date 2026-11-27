@@ -730,9 +730,9 @@ pool to a ready but nearly full one: `psram_mode` alone always seeds the whole
 8 MiB module, so without them no scenario reaches a PSRAM allocation that fails
 while the internal pool is healthy. They require an explicit `psram_mode quad`
 or `psram_mode octal`, because a pool a profile seeded is re-seeded from the
-profile at boot and would silently undo the trim; a malformed value,
-`psram_mode` from another source and `psram_largest` above `psram_free` all fail
-at scenario load.
+profile at boot and would silently undo the trim. A malformed value,
+`psram_mode` from another source, `psram_largest` above `psram_free` and
+`psram_free` above the modelled 8 MiB module all fail at scenario load.
 `pmic_variant` is `m5pm1`, `axp192`, `axp2101`, `ip5306` or `none`.
 `battery_gauge` is `none`, `voltage`, `voltage_current`, `voltage_charge` or
 `four_level`. `battery_state` is `present`, `absent`, `charging`, `full` or

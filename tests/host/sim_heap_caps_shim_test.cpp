@@ -271,6 +271,7 @@ enum class AbortCase {
   PreferExhausted,
   MallocInjected,
   DoubleFree,
+  FreedWindowDuplicate,
 };
 
 const char *abortCaseName(AbortCase which) {
@@ -289,6 +290,8 @@ const char *abortCaseName(AbortCase which) {
       return "malloc-injected";
     case AbortCase::DoubleFree:
       return "double-free";
+    case AbortCase::FreedWindowDuplicate:
+      return "freed-window-duplicate";
   }
   return "unknown";
 }
@@ -329,7 +332,7 @@ void runAbortCase(AbortCase which) {
     // task, so the rule names the task the request came from.
     Furble::Sim::heapSetAllocFailureOnce(128, "heap-caps-test");
     (void)furble_sim_fw_malloc(128);
-  } else {
+  } else if (which == AbortCase::DoubleFree) {
     // A block this registry released is freed again. multi_heap_free aborts
     // on an already-freed block, so the model must too, instead of handing the
     // pointer to the host allocator.
@@ -339,6 +342,41 @@ void runAbortCase(AbortCase which) {
     }
     furble_sim_fw_free(block);
     furble_sim_fw_free(block);
+  } else {
+    /* Release one address, reuse it, release it again, then push its second
+     * release off the front of the window with other releases. The stale entry
+     * the reuse left behind must not erase the live one: popping it once took
+     * the address out of the window a few allocations after its last release,
+     * and the double free below then reached the host allocator instead of
+     * aborting.
+     *
+     * The churn uses a different size class so the host allocator does not
+     * hand the first block back on every iteration, which would re-enter the
+     * same path and hide the defect.
+     */
+    constexpr size_t BLOCK = 64;
+    constexpr size_t CHURN_BLOCK = BLOCK + 64;
+    constexpr size_t CHURN_RELEASES = 4095;
+    void *first = furble_sim_fw_malloc(BLOCK);
+    if (first == nullptr) {
+      _exit(94);
+    }
+    furble_sim_fw_free(first);
+    void *reused = furble_sim_fw_malloc(BLOCK);
+    if (reused != first) {
+      // The window invariant needs the address back. Fail loudly rather than
+      // pass on a host allocator that did not reuse the block.
+      _exit(95);
+    }
+    furble_sim_fw_free(reused);
+    for (size_t index = 0; index < CHURN_RELEASES; index++) {
+      void *churn = furble_sim_fw_malloc(CHURN_BLOCK);
+      if (churn == nullptr) {
+        _exit(96);
+      }
+      furble_sim_fw_free(churn);
+    }
+    furble_sim_fw_free(first);
   }
   _exit(92);
 }
@@ -468,6 +506,10 @@ int main(void) {
   // A block freed twice aborts like multi_heap_free does, and the record names
   // the modelled line instead of an allocation size.
   checkAbortCase(AbortCase::DoubleFree, {"task=heap-caps-test", "line=Heap block freed twice"});
+  // The release window keeps the newest release of a reused address: the stale
+  // entry a reuse leaves behind must not evict the live one.
+  checkAbortCase(AbortCase::FreedWindowDuplicate,
+                 {"task=heap-caps-test", "line=Heap block freed twice"});
 
   if (g_Failures != 0) {
     std::cerr << "FAIL: " << g_Failures << " heap_caps shim check(s)\n";

@@ -115,8 +115,8 @@ memory profile scenarios, and
 `sh sim/scripts/run-boundary-conformance.sh` runs the 29 linked boundary ctest
 cases. `sh sim/scripts/run-panic-fixtures.sh` runs the seven allocation-abort
 fixtures: a failed `heap_caps_malloc`, a failed icon malloc without PSRAM, a
-PSRAM task stack on a board without PSRAM, an exhausted internal pool during a
-camera connect, a task stack on a present but too small PSRAM pool, a failed
+PSRAM task stack on a board without PSRAM, a failed per-camera task allocation
+during a connect, a task stack on a present but too small PSRAM pool, a failed
 MQTT owner task and a failed MQTT client task on the retry. `sim-heap-caps-shim`
 covers the abort the host fixture cannot express, a block freed twice, in its
 forked-child harness. The
