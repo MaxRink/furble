@@ -16,6 +16,7 @@ on:
       - 'sdkconfig.m5stick-s3'
       - 'sdkconfig.m5stick-c'
       - '.clang-tidy'
+      - 'tools/ci-apt-install.sh'
       - '.github/workflows/static-analysis.yml'
   workflow_dispatch:
 
@@ -42,11 +43,13 @@ jobs:
       - name: Fetch the base ref
         run: git fetch origin master:refs/remotes/origin/master
 
+      # Third-party apt sources on the runner image are dropped before the
+      # update (plan 375). A package this step needs that cannot be installed
+      # still fails it.
       - name: Install analyzers
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            clang-tidy cppcheck cmake ninja-build clang libsdl2-dev
+          sh tools/ci-apt-install.sh clang-tidy cppcheck cmake ninja-build \
+            clang libsdl2-dev
 
       - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:

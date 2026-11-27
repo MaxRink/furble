@@ -23,6 +23,7 @@ name: Power model gate
       - 'tools/power-model/**'
       - 'tools/gen_lv_conf.py'
       - 'tools/check_sim_scenarios.py'
+      - 'tools/ci-apt-install.sh'
       - '.github/workflows/power-gate.yml'
   workflow_dispatch:
 
@@ -53,10 +54,11 @@ jobs:
           path: sim/.pio
           key: ${{ runner.os }}-power-gate-${{ hashFiles('sim/platformio.ini', '.github/workflows/power-gate.yml') }}
 
+      # Third-party apt sources on the runner image are dropped before the
+      # update (plan 375). A package this step needs that cannot be installed
+      # still fails it.
       - name: Install SDL2 and Clang
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y clang libsdl2-dev
+        run: sh tools/ci-apt-install.sh clang libsdl2-dev
 
       # These are the same pinned shallow clones the UI screenshot workflow
       # uses. build.sh never invokes PlatformIO; it only needs the four source

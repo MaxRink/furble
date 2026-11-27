@@ -588,6 +588,82 @@ jobs:
     self.assertNotEqual(dropped, text)
     self.assertNotIn("m5stack-core-debug", self._run_discover(dropped))
 
+  def test_every_apt_step_uses_the_shared_helper(self):
+    for workflow_name in (
+        "coverage.yml",
+        "static-analysis.yml",
+        "power-gate.yml",
+        "ui-screenshots.yml",
+        "sim-e2e.yml",
+    ):
+      document = CHECKER._load_workflow(
+          ROOT / ".github" / "workflows" / workflow_name)
+      self.assertEqual(
+          CHECKER._lint_apt_through_helper(document), [],
+          f"{workflow_name} still calls apt directly",
+      )
+      scripts = "\n".join(
+          step["run"]
+          for _, step in CHECKER._steps(document)
+          if isinstance(step.get("run"), str)
+      )
+      self.assertIn(CHECKER.APT_HELPER, scripts, workflow_name)
+
+  def test_direct_apt_call_is_rejected(self):
+    document = CHECKER._load_text("""
+'on': pull_request
+jobs:
+  build:
+    steps:
+      - name: Install SDL2 and Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clang libsdl2-dev
+""")
+    errors = CHECKER._lint_apt_through_helper(document)
+    self.assertEqual(len(errors), 2, errors)
+    self.assertTrue(all(CHECKER.APT_HELPER in error for error in errors), errors)
+
+  def test_apt_failure_suppression_is_rejected(self):
+    document = CHECKER._load_text("""
+'on': pull_request
+jobs:
+  build:
+    steps:
+      - run: |
+          sudo apt-get update || true
+""")
+    errors = CHECKER._lint_apt_through_helper(document)
+    self.assertEqual(len(errors), 1, errors)
+
+  def test_apt_in_a_comment_is_allowed(self):
+    document = CHECKER._load_text("""
+'on': pull_request
+jobs:
+  build:
+    steps:
+      - run: |
+          # sudo apt-get update is done by tools/ci-apt-install.sh
+          sh tools/ci-apt-install.sh clang
+""")
+    self.assertEqual(CHECKER._lint_apt_through_helper(document), [])
+
+  def test_apt_lint_applies_without_a_pull_request_trigger(self):
+    document = CHECKER._load_text("""
+'on':
+  push:
+    branches: [master]
+jobs:
+  build:
+    steps:
+      - run: sudo apt-get install -y clang
+""")
+    self.assertEqual(CHECKER._lint_document(document), [
+        "job 'build' calls apt directly, use tools/ci-apt-install.sh so a "
+        "broken third-party source cannot fail the step: "
+        "sudo apt-get install -y clang",
+    ])
+
 
 if __name__ == "__main__":
   unittest.main()

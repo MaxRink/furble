@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Check that pull-request validation workflows are safe for stacked PRs.
 
+The checker also keeps every apt call on the shared helper. Run 45916366927
+failed the "Simulator power regression" job with a 403 from
+packages.microsoft.com before a single test ran, because a bare `apt-get
+update` fails when any configured source cannot be fetched, including one the
+job never uses. `tools/ci-apt-install.sh` drops those sources and still fails
+on a package the job needs, so a workflow that calls apt directly is a
+regression even when it works today.
+
 The checker uses PyYAML's structural loader instead of matching YAML text.
 ``BaseLoader`` deliberately leaves scalar values as strings, so the YAML 1.1
 loader quirk that turns an unquoted ``on`` key into ``True`` cannot hide a
@@ -86,6 +94,19 @@ def _construct_mapping(
 
 WorkflowLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping
+)
+
+
+# Every apt call in a workflow goes through one helper. It drops third-party
+# sources from the runner image before the update and keeps the failure for a
+# package the job actually needs. A bare call here is the regression that run
+# 45916366927 hit: a 403 from packages.microsoft.com failed the "Simulator
+# power regression" job before it ran a single test, even though the job only
+# installs clang and libsdl2-dev from the Ubuntu archive.
+APT_HELPER = "tools/ci-apt-install.sh"
+APT_INVOCATION_RE = re.compile(
+    r"(?:^|[\s;&|(])(?:sudo\s+)?(?:apt-get|apt|aptitude)\s+"
+    r"(?:-\S+\s+)*(?:update|install|upgrade|dist-upgrade|full-upgrade)\b"
 )
 
 
@@ -179,9 +200,54 @@ def _permission_requests_write(document: Mapping[str, Any]) -> bool:
   return visit(document)
 
 
+def _steps(document: Mapping[str, Any]):
+  """Yield (job id, step) for every mapping step in the workflow."""
+
+  jobs = document.get("jobs")
+  if not isinstance(jobs, Mapping):
+    return
+  for job_id, job in jobs.items():
+    if not isinstance(job, Mapping):
+      continue
+    steps = job.get("steps")
+    if not isinstance(steps, Sequence) or isinstance(steps, (str, bytes)):
+      continue
+    for step in steps:
+      if isinstance(step, Mapping):
+        yield job_id, step
+
+
+def _lint_apt_through_helper(document: Mapping[str, Any]) -> list[str]:
+  """Reject an apt call that bypasses the shared helper.
+
+  The helper removes third-party sources the job does not need, so an
+  unrelated repository cannot fail the step, while a package that cannot be
+  installed still does. A workflow that calls apt directly loses both halves
+  of that: it can fail on the unrelated repository, or it can be repaired with
+  `|| true` and then pass without the package. Comment lines are allowed so
+  the reason can be explained next to the step.
+  """
+
+  errors: list[str] = []
+  for job_id, step in _steps(document):
+    script = step.get("run")
+    if not isinstance(script, str):
+      continue
+    for line in script.splitlines():
+      stripped = line.strip()
+      if not stripped or stripped.startswith("#"):
+        continue
+      if APT_INVOCATION_RE.search(stripped):
+        errors.append(
+            f"job {job_id!r} calls apt directly, use {APT_HELPER} so a broken "
+            f"third-party source cannot fail the step: {stripped}"
+        )
+  return errors
+
+
 def _lint_document(document: Mapping[str, Any]) -> list[str]:
   blocks = _event_blocks(document)
-  errors: list[str] = []
+  errors: list[str] = _lint_apt_through_helper(document)
   if "pull_request_target" in blocks:
     errors.append("uses pull_request_target")
   errors.extend(_lint_concurrency(document))
