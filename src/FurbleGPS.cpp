@@ -426,12 +426,14 @@ void GPS::enable(void) {
   wakeGPSService(m_Queue);
   const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
 
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   // The vendor text backend's fixed state lives on the heap, not in .bss: about
   // 300 bytes that the classic ESP32 DRAM budget cannot spare. It is allocated
   // here, before the UART task is woken and before any gate measures free bytes,
   // and released at the end of disable(). A failed allocation leaves the text
   // backends off and the NMEA and UBX paths untouched.
   (void)ensureTextState();
+#endif
 
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
   loadAidCache();
@@ -449,7 +451,9 @@ void GPS::enable(void) {
   m_EphReplayArmed = false;
   m_MonHwPending = false;
   resetUbx();
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   resetText();
+#endif
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
     m_ConfigStatusCount = 0;
@@ -788,6 +792,7 @@ void GPS::serviceCycle(void) {
 
   if (m_RailOffPending) {
     bool answered = false;
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
     // A text state is only absent while GPS is off or after a failed
     // allocation, so the queue is empty then and the UBX branch answers.
     const bool textSave =
@@ -803,8 +808,15 @@ void GPS::serviceCycle(void) {
       const std::lock_guard<std::mutex> ubx(m_UbxMutex);
       answered = m_UbxSosBackup != 0;
     }
+#else
+    {
+      const std::lock_guard<std::mutex> ubx(m_UbxMutex);
+      answered = m_UbxSosBackup != 0;
+    }
+#endif
     if (answered || tickReached(now, m_RailOffDeadline)) {
       if (!answered) {
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
         if ((m_TextState == nullptr) || text().save_queue.empty()) {
           const std::lock_guard<std::mutex> ubx(m_UbxMutex);
           m_UbxSosBackup = 2;
@@ -813,13 +825,17 @@ void GPS::serviceCycle(void) {
           const std::lock_guard<std::mutex> save(m_TextMutex);
           text().status.save = 2;
         }
-      }
-      if (m_TextState != nullptr) {
-#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
-        text().save_session.clear();
+#else
+        const std::lock_guard<std::mutex> ubx(m_UbxMutex);
+        m_UbxSosBackup = 2;
 #endif
+      }
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+      if (m_TextState != nullptr) {
+        text().save_session.clear();
         text().save_queue.clear();
       }
+#endif
       m_RailOffPending = false;
       enterRailOff(now);
     }
@@ -870,9 +886,11 @@ void GPS::serviceCycle(void) {
           break;
         case backend_t::QUECTEL:
         case backend_t::UNICORE:
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
           // The vendor layer decides whether this part and this interval can do
           // standby at all, and it reports the refusal rather than pretending.
           textStandby(now);
+#endif
           break;
         case backend_t::NMEA:
           sendCommand("PCAS12," + std::to_string(m_DutySeconds));
@@ -1169,6 +1187,7 @@ void GPS::railOffOrRestart(void) {
     sendUbx(Ubx::cfgRst(Ubx::RST_HOT, Ubx::RST_MODE_GNSS_START));
   }
   m_UbxStopped = false;
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if (!cut) {
     // The same for a vendor text part: the save sent PAIR003, so a refused cut
     // leaves a powered receiver with its GNSS engine off and nothing else
@@ -1180,6 +1199,7 @@ void GPS::railOffOrRestart(void) {
     // enabled, which is the common boot path on a board with GPS switched off.
     text().stopped = false;
   }
+#endif
 }
 
 void GPS::beginResync(uint32_t now) {
@@ -1406,11 +1426,13 @@ void GPS::restart(uint8_t mode) {
     return;
   }
 
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if ((getBackend() == backend_t::QUECTEL) || (getBackend() == backend_t::UNICORE)) {
     // PAIR004/005/006, or $RESET with a hot, warm or cold clear mask.
     textRestart(mode);
     return;
   }
+#endif
 
   sendCommand("PCAS10," + std::to_string(mode));
 }
@@ -2554,7 +2576,9 @@ void GPS::disable(void) {
   m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::UNKNOWN));
   m_DetectedBaud.store(0);
   resetUbx();
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   resetText();
+#endif
   m_EphCapture = false;
   m_EphPollActive = false;
   m_EphReplayArmed = false;
@@ -2591,10 +2615,12 @@ void GPS::disable(void) {
   m_Source.store(SOURCE_NONE);
   m_Satellites.store(0);
 
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   // Everything that reads the text state has finished: the save path above, the
   // rail restart, resetText() and the console, which sees an empty record from
   // here on. Give the bytes back while GPS is off.
   freeTextState();
+#endif
 }
 
 bool GPS::setRailPower(bool enable) {

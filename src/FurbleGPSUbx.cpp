@@ -114,6 +114,7 @@ bool GPS::serviceDetect(uint32_t now) {
     return true;
   }
 
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   // A vendor text answer decides at once: the receiver that answered will never
   // answer another vendor's probe, so waiting out the window only delays its
   // configuration.
@@ -127,6 +128,7 @@ bool GPS::serviceDetect(uint32_t now) {
     case GpsText::Dialect::NONE:
       break;
   }
+#endif
 
   bool poll = false;
   const Ubx::Detect::Result result = m_Detect.service(now, poll);
@@ -374,10 +376,12 @@ void GPS::pollUbxSatellites(void) {
 
 bool GPS::beginSaveOnShutdown(uint32_t now) {
   const backend_t backend = getBackend();
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if ((backend == backend_t::QUECTEL) || (backend == backend_t::UNICORE)) {
     // A text part saves with its own command, which never stops the GNSS first.
     return textSave(now);
   }
+#endif
   // A rail that is already off has nothing left to save. A late duty request
   // can arrive just after the cut, and must not mark the backup as refused.
   // A rail the board cannot cut must not lose a running receiver to a GNSS
@@ -407,11 +411,13 @@ bool GPS::beginSaveOnShutdown(uint32_t now) {
 
 void GPS::saveOnShutdownBlocking(void) {
   const backend_t backend = getBackend();
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if ((backend == backend_t::QUECTEL) || (backend == backend_t::UNICORE)) {
     // disable() parks the GPS task first, so the text save can read the UART.
     textSaveBlocking();
     return;
   }
+#endif
   const uint32_t start = Platform::getInstance().tick();
   if (!beginSaveOnShutdown(start)) {
     return;
