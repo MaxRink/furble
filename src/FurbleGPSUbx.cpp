@@ -31,17 +31,10 @@ const char *GPS::backendName(backend_t backend) {
       return "nmea";
     case backend_t::UBX:
       return "ubx";
-#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
     case backend_t::QUECTEL:
       return "quectel";
     case backend_t::UNICORE:
       return "unicore";
-#else
-    // Neither enum value can be reached without the text backend; the default
-    // keeps the switch exhaustive in a text-off build.
-    default:
-      break;
-#endif
   }
   return "unknown";
 }
