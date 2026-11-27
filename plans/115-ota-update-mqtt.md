@@ -229,13 +229,20 @@ Deviations from the plan text:
   independent review caught it; see
   [115-review-feedback.md](115-review-feedback.md). `OTA::externalPowerPresent()`
   is the rule, and a board without VBUS sense keeps the floor.
-- `waveshare-s3-eth-debug` raises its static DRAM budget from 55 KiB to 56 KiB.
-  The slice links the handler, the admission policy and the status store into
-  the firmware, which costs 288 bytes of static DRAM on that image, and the env
-  kept only 224 bytes of headroom on master, so `check_size_budget.py` failed
-  while every host suite passed. The new value is what `--write` records:
-  measured plus the 512-byte headroom, rounded up to a KiB, which leaves 960
-  bytes. No other env moved. See [115-review-feedback.md](115-review-feedback.md).
+- The OTA status store and the MQTT singleton live in the heap, not in .bss.
+  The slice linked a 188-byte store plus its 8-byte guard into the image, and
+  the MQTT singleton that holds the handler, the context and the status payload
+  grew by about 43 bytes. `waveshare-s3-eth-debug` measured 56,096 on master
+  with 224 bytes of headroom, so the 288-byte slice failed
+  `check_size_budget.py` while every host suite passed. Both owners are now
+  heap allocated: the MQTT singleton (952 bytes) at `MQTT::init()`, which is
+  before the owner gate and therefore leaves that gate's free-byte measurement
+  unchanged, and the status store (188 bytes) at console start and in
+  `MQTT::init()`. Static DRAM falls to 55,256 on that env, so the recorded
+  56,320-byte budget is unchanged and the image keeps 1,064 bytes of headroom.
+  The release profile falls to 46,136 at its 48,128-byte budget. The saving
+  applies to every MQTT profile and to every console build, not only to the
+  debug image. See [115-review-feedback.md](115-review-feedback.md).
 - The engine advances once per MQTT owner iteration whether or not the broker is
   connected. Gating the step on the connection froze a running transfer in
   `busy()` during an outage, with no command able to abort it. Only the publish

@@ -3852,6 +3852,12 @@ void task(void) {
 }  // namespace
 
 void Console::init(void) {
+  // Allocate the OTA status record at console start, not on the first
+  // `ota status`, so the command path never allocates. The record lives in the
+  // heap because console builds count every byte of .bss against their static
+  // DRAM budget.
+  (void)OTA::StatusStore::getInstance();
+
   startTransport();
 
   esp_console_config_t config = ESP_CONSOLE_CONFIG_DEFAULT();

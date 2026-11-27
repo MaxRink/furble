@@ -347,7 +347,15 @@ settings-touching rebase.
   both copies. A failed allocation aborts on every board, so the queue and the
   copies pick PSRAM from a fresh largest-block reading before allocating, never
   by trying and falling back, and an internal choice re-runs the start gate
-  first.
+  first. `getInstance()` owns the 952-byte singleton in the heap
+  (`MQTTInstance` in `src/FurbleMQTT.cpp`), created in `MQTT::init()` before
+  the owner gate measures free bytes. Do not move it back to .bss:
+  `waveshare-s3-eth-debug` has a static DRAM budget with no room for it.
+- `FurbleOTAStatus.h` owns the 188-byte OTA status store in the heap
+  (`StatusStoreInstance` in `src/FurbleOTAStatus.cpp`), created at console
+  start and in `MQTT::init()`. Do not make it a static object or allocate it
+  from a command path; console builds count every byte of .bss against their
+  static DRAM budget.
 - `FurbleUIMemory.h` owns the panel-sized LVGL draw-buffer contract. Narrow
   panels use one buffer and wait for the SPI DMA before `lv_disp_flush_ready()`;
   wide panels keep two buffers. Both stay DMA-capable internal RAM. Update

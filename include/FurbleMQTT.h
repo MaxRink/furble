@@ -39,6 +39,18 @@ struct cJSON;
 
 namespace Furble {
 
+/**
+ * Heap owner for the MQTT singleton.
+ *
+ * The singleton is large (about a kilobyte of strings, topic caches and the
+ * OTA handler state) and it is created in MQTT::init() during app_main.
+ * Keeping it off .bss returns that static DRAM to the boot heap on every MQTT
+ * profile. The allocation happens before the owner gate, so the gate measures
+ * the same free bytes it measured while the object lived in .bss. The type
+ * exists only to reach the private constructor; nothing else constructs it.
+ */
+struct MQTTInstance;
+
 class MQTT {
  public:
   static MQTT &getInstance(void);
@@ -121,6 +133,7 @@ class MQTT {
 
  private:
   MQTT() = default;
+  friend struct MQTTInstance;
 
   static constexpr uint32_t TASK_PERIOD_MS = 1000;
   // A rejected shutter or focus release leaves the camera held, so retry it on

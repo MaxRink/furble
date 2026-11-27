@@ -1,9 +1,14 @@
 #include "FurbleOTAStatus.h"
 
 #include <cstring>
+#include <memory>
 
 namespace Furble {
 namespace OTA {
+
+struct StatusStoreInstance final: StatusStore {
+  StatusStoreInstance() = default;
+};
 
 namespace {
 
@@ -217,8 +222,11 @@ std::string formatStatus(const Status &status) {
 }
 
 StatusStore &StatusStore::getInstance(void) {
-  static StatusStore instance;
-  return instance;
+  // Created at console start and in MQTT::init(), so no command or publish
+  // path allocates. A failed allocation aborts under the image-wide heap
+  // policy.
+  static std::unique_ptr<StatusStoreInstance> instance = std::make_unique<StatusStoreInstance>();
+  return *instance;
 }
 
 void StatusStore::set(const Status &status) {

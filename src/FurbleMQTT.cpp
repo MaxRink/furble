@@ -12,6 +12,7 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
+#include <memory>
 #include <new>
 #include <utility>
 
@@ -52,6 +53,10 @@
 #include "protocol/CameraListProtocol.h"
 
 namespace Furble {
+
+struct MQTTInstance final: MQTT {
+  MQTTInstance() = default;
+};
 
 namespace {
 
@@ -278,11 +283,21 @@ ConnectClass classifyFailure(int32_t error_type, int32_t connect_return_code) {
 }  // namespace
 
 MQTT &MQTT::getInstance(void) {
-  static MQTT instance;
-  return instance;
+  // The singleton is created in MQTT::init() at app_main. Keeping it in the
+  // heap returns its static DRAM to the boot heap on every MQTT profile; the
+  // allocation happens before the owner gate, so that gate sees the same free
+  // bytes it saw when the object lived in .bss.
+  static std::unique_ptr<MQTTInstance> instance = std::make_unique<MQTTInstance>();
+  return *instance;
 }
 
 void MQTT::init(void) {
+  // Create the OTA status record here, before the owner gate measures free
+  // bytes. The record moved from .bss to the heap, so this keeps the gate's
+  // view of free RAM unchanged and keeps the allocation out of the command and
+  // publish paths.
+  (void)OTA::StatusStore::getInstance();
+
   // The saved camera list is loaded on demand by publishCameras() and
   // publishDiscovery(). Loading it here made MQTT take about 5 KiB even when
   // the start gate then refused the client.

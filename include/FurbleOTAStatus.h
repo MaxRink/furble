@@ -12,6 +12,15 @@
 namespace Furble {
 namespace OTA {
 
+/**
+ * Heap owner for the status store.
+ *
+ * The store is created at console start and in MQTT::init(), not as a static
+ * object. It is small (188 bytes) and does not need to sit in .bss on every
+ * console build. The type exists only to reach the private constructor.
+ */
+struct StatusStoreInstance;
+
 /** Bytes reserved for an installed or available version in a status record. */
 constexpr size_t STATUS_VERSION_BYTES = 64;
 
@@ -117,6 +126,7 @@ class StatusStore {
 
  private:
   StatusStore() = default;
+  friend struct StatusStoreInstance;
 
   mutable std::mutex m_Mutex;
   Status m_Status {};
