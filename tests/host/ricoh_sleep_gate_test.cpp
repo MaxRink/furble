@@ -20,19 +20,39 @@ bool check(bool condition, const char *message) {
   return condition;
 }
 
+// Capture writes only. A sleeping body now makes the shutter path relink, and
+// that reconnect repeats the connect-path identity write, so the journal is not
+// capture writes alone. The refusal this test protects is the pair of capture
+// writes, never the connect identity write.
+std::vector<Furble::Host::RicohVirtualCamera::Write> captureWrites(
+    const std::vector<Furble::Host::RicohVirtualCamera::Write> &writes) {
+  const std::string flavorUuid =
+      Furble::Host::RicohVirtualCamera::shootingFlavorCharacteristicUUID().toString();
+  const std::string operationUuid =
+      Furble::Host::RicohVirtualCamera::operationRequestCharacteristicUUID().toString();
+  std::vector<Furble::Host::RicohVirtualCamera::Write> filtered;
+  for (const auto &write : writes) {
+    if ((write.characteristic == flavorUuid) || (write.characteristic == operationUuid)) {
+      filtered.push_back(write);
+    }
+  }
+  return filtered;
+}
+
 bool checkCaptureWrites(const std::vector<Furble::Host::RicohVirtualCamera::Write> &writes,
                         const char *label) {
   const std::string flavorUuid =
       Furble::Host::RicohVirtualCamera::shootingFlavorCharacteristicUUID().toString();
   const std::string operationUuid =
       Furble::Host::RicohVirtualCamera::operationRequestCharacteristicUUID().toString();
-  bool passed = check(writes.size() == 2, label);
-  if (writes.size() == 2) {
+  const auto capture = captureWrites(writes);
+  bool passed = check(capture.size() == 2, label);
+  if (capture.size() == 2) {
     passed &= check(
-        writes[0].characteristic == flavorUuid && writes[0].payload == std::vector<uint8_t> {0},
+        capture[0].characteristic == flavorUuid && capture[0].payload == std::vector<uint8_t> {0},
         "awake capture selects immediate shooting flavor first");
-    passed &= check(writes[1].characteristic == operationUuid
-                        && writes[1].payload == std::vector<uint8_t> {1, 1},
+    passed &= check(capture[1].characteristic == operationUuid
+                        && capture[1].payload == std::vector<uint8_t> {1, 1},
                     "awake capture then starts OperationRequest with AF");
   }
   return passed;
@@ -63,12 +83,20 @@ int main() {
     return 1;
   }
 
-  // Asleep at connect time: no side-effect writes at all.
+  // Asleep at connect time: no capture write at all. This body never leaves
+  // standby, so the wake path relinks once and its bounded probe expires
+  // without authorizing anything. Plan 149 phase 2 adds the wake; the phase 1
+  // invariant it must preserve is that no capture write reaches a body in
+  // BLE_STARTUP.
   peer.clearEvents();
   camera.shutterPress();
   bool passed =
-      check(peer.writes().empty(),
+      check(captureWrites(peer.writes()).empty(),
             "shutter refused in BLE_STARTUP: no ShootingFlavor or OperationRequest write");
+  passed &= check(peer.captureRequestsWhileAsleep() == 0,
+                  "no capture request reaches the body while it is in BLE_STARTUP");
+  passed &=
+      check(peer.reconnectCount() == 1, "the refusal path attempts exactly one wake reconnect");
 
   // Camera wakes while the connection is held. The connect-time probe cached
   // BLE_STARTUP; only a fresh pre-capture read can see CAPTURE now. This is
@@ -85,8 +113,10 @@ int main() {
   peer.setOperationMode(MODE_BLE_STARTUP);
   peer.clearEvents();
   camera.shutterPress();
-  passed &= check(peer.writes().empty(),
+  passed &= check(captureWrites(peer.writes()).empty(),
                   "shutter refused again after camera re-enters BLE_STARTUP mid-connection");
+  passed &= check(peer.captureRequestsWhileAsleep() == 0,
+                  "the second standby refusal writes no capture either");
 
   // An OperationMode read failure is indistinguishable from an unknown state
   // and must also be a safe refusal.
@@ -94,7 +124,10 @@ int main() {
   peer.setOperationModeReadFails(true);
   peer.clearEvents();
   camera.shutterPress();
-  passed &= check(peer.writes().empty(), "shutter refused when OperationMode read fails");
+  passed &=
+      check(captureWrites(peer.writes()).empty(), "shutter refused when OperationMode read fails");
+  passed &= check(peer.captureRequestsWhileAsleep() == 0,
+                  "a failed OperationMode read never writes a capture");
 
   // Reads recover: capture works again.
   peer.setOperationModeReadFails(false);

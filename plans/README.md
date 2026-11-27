@@ -372,7 +372,8 @@ the bench work.
 | [146-setstate-sleep-lock-order.md](implemented/146-setstate-sleep-lock-order.md) | Acquire the sleep lock before publishing the active control state |
 | [147-connect-reclaim-order.md](implemented/147-connect-reclaim-order.md) | Failed-connect reclaim ordering for the Ricoh secure-timeout use-after-free |
 | [148-teardown-connect-cancel.md](implemented/148-teardown-connect-cancel.md) | Connect cancellation token for the registration-wait teardown wedge |
-| [149-ricoh-sleep-shutter-gate.md](149-ricoh-sleep-shutter-gate.md) | Fresh OperationMode gate so a sleeping GR IV never receives capture writes |
+| [149-ricoh-sleep-shutter-gate.md](149-ricoh-sleep-shutter-gate.md) | Fresh OperationMode gate and bounded reconnect wake so a sleeping GR IV never receives capture writes |
+| [149-review-feedback.md](149-review-feedback.md) | Review-feedback record for PR 532: the writes a failed wake really makes, what the three wake budgets really bound, the cancelled press that dropped a working link, and the cancel coverage it cost |
 | [150-nimble-taskdata-race.md](implemented/150-nimble-taskdata-race.md) | Vendored esp-nimble-cpp fix for the task data release use-after-scope race |
 | [151-fujifilm-registration-followups.md](implemented/151-fujifilm-registration-followups.md) | Registration follow-ups: Secure stale-bond recovery, timeout define, geotag doc reconciliation |
 | [152-menu-focus-outline-dedup.md](implemented/152-menu-focus-outline-dedup.md) | Drop the focus ring on menu rows that already carry the accent fill |

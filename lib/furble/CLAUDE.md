@@ -149,6 +149,47 @@ protocol core.
   Operation Request starts capture. Do not map focus to a timer or capture
   operation without a verified autofocus command. Source:
   https://github.com/dm-zharov/ricoh-gr-bluetooth-api
+- Ricoh's standby wake runs only from the shutter path and only on a fresh
+  `OperationMode` read of BLE_STARTUP. It is a link sequence, not a
+  characteristic write: `Camera::reconnectInPlace()` drops the link, keeps it
+  down for the settle interval, reconnects and re-runs the vendor `_connect()`,
+  so every characteristic pointer is re-derived after the rediscovery. Never
+  wake the body by writing CameraPower; no source verifies that, and the
+  Ricoh Imaging handler treats the write as a power-state request. A
+  notification, including an OperationMode or CameraPower transition, is a
+  diagnostic and never authorizes a capture: a held or re-established link can
+  repeat a stale value. The budgets in `Ricoh.h` are design bounds pending
+  bench measurement. See `plans/149-ricoh-sleep-shutter-gate.md`.
+- A vendor command path may call `Camera::reconnectInPlace()` when a body needs
+  a fresh link before a command is safe. It owns `Camera::m_Mutex` for the whole
+  sequence, publishes `m_CancelClient` so a teardown can abort it, restores
+  client self-delete on success and returns the client to the pool on failure.
+  It deliberately leaves `m_Active`, `m_Paired` and the target ownership alone:
+  a wake is not a connect cycle. Do not reimplement it in a vendor class, and do
+  not call it while holding another Camera lock. Its connect timeout bounds the
+  GAP connect only: the vendor `_connect()` also runs a security handshake that
+  waits on the peer, so never describe the call as bounded by that timeout. On
+  the failure path it runs the vendor `_disconnect()` while `m_Connected` still
+  describes the link, so a vendor teardown may keep gating on `isConnected()`.
+  A caller must check `connectCancelled()` before it drops a working link: a
+  press that arrives during a teardown must not relink the camera.
+- New waits on the connect path go through `Camera::pollDelay()`, never a bare
+  `vTaskDelay` or `sleep_for` and never a vendor class's own copy. It slices the
+  wait and polls the cancel token in its own body, which is the plan 170 rule
+  `tests/test_connect_cancel_contract.py` enforces, and it owns the
+  scheduler-clock-versus-wall-clock choice. Do not include `<freertos/*>` from a
+  vendor class to get `vTaskDelay`: the host and simulator shims declare
+  conflicting queue types and clang-tidy fails the translation unit. Seven
+  waits predate the seam and stay as they are, each polling
+  `connectCancelled()` in its own body and so already satisfying the gate:
+  the ATT MTU poll (`Camera.cpp:1245-1249`),
+  `Fujifilm::waitForRegistration()` (`Fujifilm.cpp:155-159`),
+  `FujifilmSecure::_connect()` (`FujifilmSecure.cpp:493`),
+  `FujifilmBasic::_connect()` (`FujifilmBasic.cpp:141`),
+  `CanonEOSSmart::_connect()` (`CanonEOSSmart.cpp:131`),
+  `DJIOsmo::finishProtocolConnection()` (`DJIOsmo.cpp:326`) and
+  `Lumix::startSession()` (`Lumix.cpp:301`). Convert one only while you are
+  already changing that function's body.
 - Vendor GATT traffic goes through the protected `Camera::gattWrite`,
   `gattRead`, and `gattSubscribe` wrappers. The console-only journal hooks
   live at that seam, so companion traffic and raw explorer traffic stay out

@@ -1,12 +1,27 @@
 #include <chrono>
 #include <cstring>
 
+#include <esp_timer.h>
+
 #include "RicohVirtualCamera.h"
 #include "WriteJournal.h"
 
 namespace Furble {
 namespace Host {
 namespace {
+
+// OperationMode values the peer reports. CAPTURE authorizes a capture write;
+// BLE_STARTUP is the standby state that must refuse one.
+constexpr uint8_t OPERATION_MODE_CAPTURE = 0x00;
+constexpr uint8_t OPERATION_MODE_BLE_STARTUP = 0x02;
+constexpr uint8_t CAMERA_POWER_ON = 0x01;
+
+// Virtual-clock milliseconds. The simulator runs on its own clock and host
+// suites on the mock clock, so the wake delay has to come from esp_timer
+// rather than from the host clock.
+uint32_t nowMs(void) {
+  return static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+}
 
 const NimBLEUUID INFO_SERVICE {0x9A5ED1C5, 0x74CC, 0x4C50, 0xB5B666A48E7CCFF1};
 const NimBLEUUID MODEL_CHARACTERISTIC {0x35FE6272, 0x6AA5, 0x44D9, 0x88E1F09427F51A71};
@@ -274,6 +289,13 @@ bool RicohVirtualCamera::handleOperationRequest(const std::vector<uint8_t> &valu
   if (m_Busy && (code == 0x01)) {
     return false;
   }
+  // A capture start in BLE standby is the write that cold boots a real GR IV
+  // and can wedge its firmware. Count it so a gate regression is visible, and
+  // refuse it rather than recording a capture the body cannot perform.
+  if ((code == 0x01) && (m_Config.operation_mode != OPERATION_MODE_CAPTURE)) {
+    m_CaptureRequestsWhileAsleep++;
+    return false;
+  }
   m_HaveOperationRequest = true;
   m_LastOperationCode = code;
   m_LastOperationArg = arg;
@@ -420,12 +442,50 @@ void RicohVirtualCamera::cancelFlappyTimer() {
   }
 }
 
+void RicohVirtualCamera::setSleepingBody(bool wake_on_reconnect, uint32_t wake_delay_ms) {
+  m_Config.wake_on_reconnect = wake_on_reconnect;
+  m_Config.wake_delay_ms = wake_delay_ms;
+  m_Config.camera_power = CAMERA_POWER_ON;
+  m_Config.operation_mode = OPERATION_MODE_BLE_STARTUP;
+  m_WakePending = false;
+}
+
+bool RicohVirtualCamera::sleeping() const {
+  return m_Config.operation_mode == OPERATION_MODE_BLE_STARTUP;
+}
+
+size_t RicohVirtualCamera::linkSessions() const {
+  return m_LinkSessions.load();
+}
+
+size_t RicohVirtualCamera::reconnectCount() const {
+  const size_t sessions = m_LinkSessions.load();
+  return sessions > 0 ? sessions - 1 : 0;
+}
+
+size_t RicohVirtualCamera::operationModeReadCount() const {
+  return m_OperationModeReads;
+}
+
+size_t RicohVirtualCamera::captureRequestsWhileAsleep() const {
+  return m_CaptureRequestsWhileAsleep;
+}
+
 bool RicohVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddress &address) {
   if (m_Connected || address != m_Config.address) {
     return false;
   }
   m_Client = &client;
   m_Connected = true;
+  const size_t sessions = ++m_LinkSessions;
+  // A sleeping body leaves BLE standby only on a fresh link, and only when the
+  // model says it does. The first link is the ordinary connect to an already
+  // sleeping camera, which stays asleep; every later link is a reconnect the
+  // wake path performed.
+  if (m_Config.wake_on_reconnect && (sessions > 1) && sleeping()) {
+    m_WakePending = true;
+    m_WakeAtMs = nowMs() + m_Config.wake_delay_ms;
+  }
   const std::lock_guard<std::recursive_mutex> lock(m_FlappyMutex);
   m_Subscriptions.clear();
   return true;
@@ -623,8 +683,21 @@ NimBLEAttValue RicohVirtualCamera::read(NimBLEClient &client,
     return NimBLEAttValue({m_Config.camera_power});
   }
   if (matches(service, CAMERA_SERVICE) && matches(characteristic, OPERATION_MODE_CHARACTERISTIC)) {
+    m_OperationModeReads++;
     if (m_Config.operation_mode_read_fails)
       return {};
+    // A sleeping body that wakes on a fresh link reports BLE_STARTUP until the
+    // wake delay has elapsed, then CAPTURE. The transition is announced on both
+    // characteristics a GR IV notifies, so a test can see that the wake is
+    // observable in the notification stream while the gate still decides from
+    // this fresh read.
+    if (m_WakePending && (nowMs() >= m_WakeAtMs)) {
+      m_WakePending = false;
+      m_Config.operation_mode = OPERATION_MODE_CAPTURE;
+      m_Config.camera_power = CAMERA_POWER_ON;
+      emitNotification(CAMERA_SERVICE, POWER_CHARACTERISTIC, {CAMERA_POWER_ON});
+      emitNotification(CAMERA_SERVICE, OPERATION_MODE_CHARACTERISTIC, {OPERATION_MODE_CAPTURE});
+    }
     return NimBLEAttValue({m_Config.operation_mode});
   }
   return NimBLEAttValue({0x00});
@@ -837,6 +910,10 @@ const NimBLEUUID &RicohVirtualCamera::cameraServiceUUID() {
 
 const NimBLEUUID &RicohVirtualCamera::powerCharacteristicUUID() {
   return POWER_CHARACTERISTIC;
+}
+
+const NimBLEUUID &RicohVirtualCamera::operationModeCharacteristicUUID() {
+  return OPERATION_MODE_CHARACTERISTIC;
 }
 
 const NimBLEUUID &RicohVirtualCamera::geotagEnableCharacteristicUUID() {

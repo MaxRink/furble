@@ -115,9 +115,38 @@ conflated (`plans/CLAUDE.md`).
 
 | Vendor | Shutter | Focus | GPS | Citation |
 | :--- | :--- | :--- | :--- | :--- |
-| Ricoh | `OperationRequest {0x01, 0x01}` means capture with autofocus, not a focus-only command | no-op until a distinct operation is verified | yes | `plans/CLAUDE.md`, `lib/furble/Ricoh.h:17-33` |
+| Ricoh | `OperationRequest {0x01, 0x01}` means capture with autofocus, not a focus-only command | no-op until a distinct operation is verified | yes | `plans/CLAUDE.md`, `lib/furble/Ricoh.h` |
 | LUMIX | shutter and GPS with clock | no opcode exists, so focus is disabled | yes | `lib/furble/Lumix.h` |
 | DJI Osmo Action | shutter toggles video recording | disabled | not implemented | `lib/furble/DJIOsmo.h` |
+
+### Ricoh standby gate and wake
+
+A GR IV in BLE standby keeps the link up and reports CameraPower `0x01` ON
+while `OperationMode` (`1452335A-EC7F-4877-B8AB-0F72E18BB295`, Camera service)
+reads `0x02` BLE_STARTUP. A capture write in that state cold boots the body and
+can wedge its firmware, so phase 1 of [plan 149](../plans/149-ricoh-sleep-shutter-gate.md)
+requires a fresh `OperationMode` read of `0x00` CAPTURE before every capture.
+`CameraPower` (`B58CE84C-0666-4DE9-BEC8-2D27B27B3211`) is not an authorization
+source for exactly that reason.
+
+| Step | Behaviour | Source |
+| :--- | :--- | :--- |
+| Gate | A fresh `OperationMode` read before every shutter press. `CAPTURE` authorizes, `BLE_STARTUP` enters the wake, every other value and a failed read refuse. | `lib/furble/Ricoh.cpp` |
+| Wake sequence | Drop the link, keep it down for the settle interval, reconnect to the same bonded peer, re-run the whole connect handshake (identification, security, discovery, subscriptions, state probe). The handshake repeats the connect-path paired-device identity write and the four CCCD subscriptions before any CAPTURE read exists, which is what furble already does on every cold connect to a sleeping body. No characteristic write wakes the body and no capture write happens before the confirming read. | `lib/furble/Ricoh.cpp`, `lib/furble/Camera.cpp` |
+| Wake confirmation | One fresh `OperationMode` read every 50 ms until it reports `CAPTURE` inside the probe budget. Another mode ends the attempt immediately. | `lib/furble/Ricoh.cpp` |
+| Notifications | Both characteristics notify and furble subscribes to both, but a held or freshly re-established link can repeat a stale value, so a notification is a diagnostic and never authorizes a capture. | `lib/furble/Ricoh.cpp` |
+| Behaviour on timeout | Nothing is written, the relinked connection stays up, and the next press retries the wake. A failed reconnect reclaims the client instead, which leaves the camera reported as disconnected. | `lib/furble/Camera.cpp` |
+
+The budgets are design bounds, not measurements: `FURBLE_RICOH_WAKE_SETTLE_MS`
+200 ms, `FURBLE_RICOH_WAKE_CONNECT_TIMEOUT_MS` 5000 ms and
+`FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS` 2000 ms in `lib/furble/Ricoh.h`. They bound
+different things: the settle is a minimum, the connect timeout covers the GAP
+connect only, and the probe budget is checked between reads. The connect
+handshake's security step is bounded by the peer and the supervision timeout,
+not by the 5 s, so a body that stalls the encryption exchange keeps the shutter
+task busy for longer than the three numbers suggest. Whether a reconnect wakes a
+real GR IV, whether the body is still connectable after furble terminates the
+link, and how long it then needs are all untested on hardware.
 
 ## Connection behaviour
 

@@ -45,6 +45,13 @@ const NimBLEUUID Ricoh::GPS_INFO_CHR_UUID {0x28F59D60, 0x8B8E, 0x4FCD, 0xA81F61B
 namespace {
 
 constexpr uint32_t GPS_MIN_INTERVAL_MS = 10 * 1000;
+// Spacing between the wake state machine's fresh OperationMode reads. Nothing
+// documents the cadence a GR IV wants, so this only needs to be short against
+// FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS and long enough not to flood the link.
+constexpr uint32_t WAKE_POLL_MS = 50;
+// Slice the wake pause so a teardown that lands during it is honoured inside
+// the wait itself (plan 170), without a second read per slice.
+constexpr uint32_t WAKE_PAUSE_SLICE_MS = 10;
 constexpr double GPS_MIN_DELTA_DEG = 0.00001;
 constexpr double GPS_MIN_DELTA_ALT_M = 1.0;
 
@@ -408,46 +415,208 @@ bool Ricoh::setGeotagEnable(bool enabled) {
   return writeByte(m_GeotagEnable, enabled ? 0x01 : 0x00, "GeotagEnable");
 }
 
-bool Ricoh::captureAllowed(void) {
+Ricoh::ModeRead Ricoh::readOperationMode(uint8_t &mode) {
+  mode = STATE_UNKNOWN;
+  if (!isConnected()) {
+    return ModeRead::FAILED;
+  }
+  if (m_OperationMode == nullptr || !m_OperationMode->canRead()) {
+    // The Ricoh matcher also accepts bodies that expose the shooting service
+    // without the GR camera service. Those cannot report a power state and shot
+    // fine before this gate, so the gate only applies when the characteristic
+    // exists. The GR IV always exposes it.
+    return ModeRead::UNAVAILABLE;
+  }
+  NimBLEAttValue value;
+  if (!gattRead(m_OperationMode, value) || value.length() < 1) {
+    return ModeRead::FAILED;
+  }
+  mode = value.data()[0];
+  m_LastOperationMode = mode;
+  return ModeRead::VALUE;
+}
+
+Ricoh::GateResult Ricoh::captureGate(uint8_t &mode) {
   // A GR IV in BLE standby keeps the link up and reports CameraPower ON while
   // OperationMode is BLE_STARTUP. A capture write in that state cold boots the
   // camera (lens extends) and can wedge its firmware. Power ON is not
   // sufficient; only a fresh OperationMode read of CAPTURE authorizes the
-  // shutter writes. The cached state can stay stale for the whole held
-  // connection, so it is never consulted here. A non-CAPTURE reading is always
-  // a safe refusal.
+  // shutter writes. The cached state and the notification stream can stay stale
+  // for the whole held connection, so neither is consulted here. A non-CAPTURE
+  // reading is always a safe refusal.
   if (!isConnected()) {
     ESP_LOGW(LOG_TAG, "Ricoh shutter refused: not connected");
-    return false;
+    return GateResult::REFUSED;
   }
-  if (m_OperationMode == nullptr || !m_OperationMode->canRead()) {
-    // The Ricoh matcher also accepts bodies that expose the shooting service
-    // without the GR camera service. Those cannot report a power state and
-    // shot fine before this gate, so the gate only applies when the
-    // characteristic exists. The GR IV always exposes it.
+  const ModeRead read = readOperationMode(mode);
+  if (read == ModeRead::UNAVAILABLE) {
     ESP_LOGW(LOG_TAG, "Ricoh OperationMode unavailable; allowing capture");
-    return true;
+    return GateResult::AUTHORIZED;
   }
-  NimBLEAttValue value;
-  if (!gattRead(m_OperationMode, value) || value.length() < 1) {
+  if (read == ModeRead::FAILED) {
     ESP_LOGW(LOG_TAG, "Ricoh shutter refused: OperationMode read failed");
+    return GateResult::REFUSED;
+  }
+  if (mode == static_cast<uint8_t>(OperationMode::CAPTURE)) {
+    return GateResult::AUTHORIZED;
+  }
+  if (mode == static_cast<uint8_t>(OperationMode::BLE_STARTUP)) {
+    return GateResult::ASLEEP;
+  }
+  ESP_LOGW(LOG_TAG, "Ricoh shutter refused: mode 0x%02X %s", mode, opModeName(mode));
+  return GateResult::REFUSED;
+}
+
+const char *Ricoh::wakeStateName(WakeState state) {
+  switch (state) {
+    case WakeState::IDLE:
+      return "IDLE";
+    case WakeState::RELINK:
+      return "RELINK";
+    case WakeState::PROBE:
+      return "PROBE";
+    case WakeState::AWAKE:
+      return "AWAKE";
+    case WakeState::FAILED:
+      return "FAILED";
+  }
+  return "?";
+}
+
+bool Ricoh::wakePause(uint32_t milliseconds) {
+  // One implementation of a cancellable wait, on the Camera side: it owns the
+  // scheduler-clock rule and the plan 170 poll. Ten millisecond slices keep the
+  // probe responsive to a teardown without spraying reads.
+  return pollDelay(milliseconds, WAKE_PAUSE_SLICE_MS);
+}
+
+bool Ricoh::wakeFromStandby(uint8_t asleepMode) {
+  // Wake state machine, run on the target task with no other Camera lock held.
+  //
+  // RELINK is the only transition out of IDLE because dropping and
+  // re-establishing the link is the only wake sequence the plan records. Writing
+  // CameraPower is not an option: no source verifies that it wakes the body, and
+  // the peer models the write as accepted-or-refused rather than as a wake.
+  //
+  // PROBE is the only state that can authorize a capture, and it authorizes on
+  // the fresh read it just performed, never on a cached value or a notification.
+  // A GR IV notifies CameraPower and OperationMode transitions, but a held or
+  // freshly re-established link can repeat a stale value, so a notification is a
+  // diagnostic here and never a verdict.
+  //
+  // FAILED writes no capture command, and leaves the link in whatever state
+  // RELINK reached, so the user keeps a usable connection and the next press can
+  // try again. The reconnect handshake itself repeats the connect-path identity
+  // write and the subscriptions before any CAPTURE read authorizes a capture;
+  // the invariant this path protects is the capture writes.
+  //
+  // A press that arrives while the session is already being torn down must not
+  // drop a working link. Control::disconnect() sets the cancel token before it
+  // posts the teardown, so relinking here can only lengthen the drain, and the
+  // teardown then has to take down the link this path just rebuilt. The plan 148
+  // cancel contract is that a cancelled press unwinds without touching the
+  // camera.
+  if (connectCancelled()) {
+    ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: cancelled by the user", wakeStateName(WakeState::IDLE),
+             wakeStateName(WakeState::FAILED));
     return false;
   }
-  const uint8_t mode = value.data()[0];
-  m_LastOperationMode = mode;
-  if (mode == static_cast<uint8_t>(OperationMode::CAPTURE))
-    return true;
-  if (mode == static_cast<uint8_t>(OperationMode::BLE_STARTUP)) {
-    ESP_LOGW(LOG_TAG, "Ricoh shutter refused: camera asleep (mode 0x%02X BLE_STARTUP)", mode);
-  } else {
-    ESP_LOGW(LOG_TAG, "Ricoh shutter refused: mode 0x%02X %s", mode, opModeName(mode));
+
+  WakeState state = WakeState::RELINK;
+  ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: camera asleep (mode 0x%02X %s)",
+           wakeStateName(WakeState::IDLE), wakeStateName(state), asleepMode,
+           opModeName(asleepMode));
+
+  int64_t deadlineUs = 0;
+  while (state == WakeState::RELINK || state == WakeState::PROBE) {
+    if (state == WakeState::RELINK) {
+      // The reconnect re-runs the whole connect handshake, so every
+      // characteristic pointer is re-derived after the drop instead of surviving
+      // it. Reusing a pointer across the rediscovery is the standby use-after-free
+      // class this file already carries a regression for.
+      if (!reconnectInPlace(FURBLE_RICOH_WAKE_CONNECT_TIMEOUT_MS, FURBLE_RICOH_WAKE_SETTLE_MS)) {
+        ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: the link did not come back", wakeStateName(state),
+                 wakeStateName(WakeState::FAILED));
+        state = WakeState::FAILED;
+        break;
+      }
+      deadlineUs =
+          esp_timer_get_time() + (static_cast<int64_t>(FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS) * 1000);
+      ESP_LOGI(LOG_TAG, "Ricoh wake %s -> %s: link re-established, waiting up to %u ms",
+               wakeStateName(state), wakeStateName(WakeState::PROBE),
+               static_cast<unsigned>(FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS));
+      state = WakeState::PROBE;
+      continue;
+    }
+
+    // PROBE: one fresh OperationMode read per pass, bounded by the deadline.
+    if (!isConnected()) {
+      ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: the link dropped during the wake",
+               wakeStateName(state), wakeStateName(WakeState::FAILED));
+      state = WakeState::FAILED;
+      break;
+    }
+    if (connectCancelled()) {
+      ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: cancelled by the user", wakeStateName(state),
+               wakeStateName(WakeState::FAILED));
+      state = WakeState::FAILED;
+      break;
+    }
+
+    uint8_t mode = STATE_UNKNOWN;
+    const ModeRead read = readOperationMode(mode);
+    if (read == ModeRead::VALUE) {
+      if (mode == static_cast<uint8_t>(OperationMode::CAPTURE)) {
+        ESP_LOGI(LOG_TAG, "Ricoh wake %s -> %s: fresh OperationMode read reports CAPTURE",
+                 wakeStateName(state), wakeStateName(WakeState::AWAKE));
+        state = WakeState::AWAKE;
+        break;
+      }
+      if (mode != static_cast<uint8_t>(OperationMode::BLE_STARTUP)) {
+        // A body that came back in another mode is not going to reach CAPTURE by
+        // waiting, so stop instead of burning the whole budget.
+        ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: the body reports mode 0x%02X %s",
+                 wakeStateName(state), wakeStateName(WakeState::FAILED), mode, opModeName(mode));
+        state = WakeState::FAILED;
+        break;
+      }
+    }
+
+    if (esp_timer_get_time() >= deadlineUs) {
+      ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: no CAPTURE after %u ms", wakeStateName(state),
+               wakeStateName(WakeState::FAILED),
+               static_cast<unsigned>(FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS));
+      state = WakeState::FAILED;
+      break;
+    }
+    if (!wakePause(WAKE_POLL_MS)) {
+      ESP_LOGW(LOG_TAG, "Ricoh wake %s -> %s: cancelled during the probe", wakeStateName(state),
+               wakeStateName(WakeState::FAILED));
+      state = WakeState::FAILED;
+      break;
+    }
   }
-  return false;
+
+  return state == WakeState::AWAKE;
 }
 
 void Ricoh::shutterPress(void) {
-  if (!captureAllowed())
+  uint8_t mode = STATE_UNKNOWN;
+  GateResult gate = captureGate(mode);
+  if (gate == GateResult::ASLEEP) {
+    // The wake's terminal read is the authorization: it is a fresh OperationMode
+    // read of CAPTURE, taken immediately before the capture writes. Re-reading
+    // here would add a round trip without adding any safety.
+    if (!wakeFromStandby(mode)) {
+      ESP_LOGW(LOG_TAG, "Ricoh shutter refused: camera did not wake (mode 0x%02X %s)", mode,
+               opModeName(mode));
+      return;
+    }
+    gate = GateResult::AUTHORIZED;
+  }
+  if (gate != GateResult::AUTHORIZED) {
     return;
+  }
   if (!setShootingFlavor(ShootingFlavor::IMMEDIATE))
     return;
   writeOperation(OperationCode::START, OperationParameter::AF);

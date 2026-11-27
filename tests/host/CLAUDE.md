@@ -45,6 +45,33 @@ so the double cannot model a sensitivity the hardware does not have. It includes
 `${FURBLE_ROOT}/sim` for that header and needs no stubs. `imu-motion-encoding`
 owns the register bytes and decodes them back to mg through the same header.
 
+`ricoh-wake` owns the Ricoh GR IV standby wake. Its peer models a sleeping body
+(`setSleepingBody()`): the link stays up, CameraPower reads ON and OperationMode
+reads BLE_STARTUP until the central drops and re-establishes the link, after
+which it reports CAPTURE once the modelled wake delay has passed. The test
+asserts both directions of the machine, one relink per attempt, at least one
+post-relink poll, capture writes in order, no capture request while the body is
+asleep (`captureRequestsWhileAsleep()`), and that a wake timeout refuses while
+the relinked connection stays usable. `ricoh-sleep-gate` owns the phase 1
+invariant on the same peer and asserts it as "no capture write", not "no write":
+the wake repeats the connect-path identity write. Keep both: a peer that only
+models a refusal cannot show that the gate survives a wake. Both cancel cases
+must stay: the host build compiles `Ricoh.cpp`'s wait on the wall clock, so the
+delay hook cannot reach it, and the probe-time cancel is delivered by a helper
+thread that waits for the peer to accept the reconnect. Do not replace that with
+a pre-press `cancelConnect()`, which the pre-relink check short-circuits before
+the probe runs.
+
+`ricoh-wake` also pins the control-task stall the wake would otherwise cause.
+`Control::sampleAdaptivePower()` samples `Camera::getRssi()` from state active,
+which is the only state a wake runs in, and the wake holds `Camera::m_Mutex` for
+its relink (the settle, the reconnect and its handshake). The probe that follows
+runs without it. A helper thread therefore hammers `getRssi()` while a
+never-waking body is driven through a wake, and asserts the sampler sees
+contended reads and reports the "no reading" 0 instead of waiting. Reverting the
+`try_lock` in `getRssi()` makes every call wait the relink out, so the sampler
+never sees a contended read and fails the assertion.
+
 Provisioning tests cover Legend Off through the production apply path and NVS
 store. Keep `Furble::Settings` qualified outside its namespace; run both the
 ordinary and MQTT-enabled provisioning targets when changing this coverage.

@@ -127,6 +127,17 @@ The following devices have been tested and confirmed to work:
      furble screen before confirmation. Untested on hardware: the modal, the
      layout and the injected answer are covered by the host peer handshake and
      the simulator, but no GR IV has run it on a bench yet.
+   - A GR IV in BLE standby keeps the link up and still reports CameraPower ON,
+     so a shutter press is gated on a fresh OperationMode read and no capture is
+     written unless it reports CAPTURE. A standby body instead gets one wake
+     attempt: furble drops the link, reconnects with a five second connect
+     timeout, and then polls a fresh CAPTURE reading for up to two seconds
+     before allowing the capture writes. If the body does not report CAPTURE,
+     the press is refused and the connection stays up. The reconnect repeats the
+     connect-path identification and subscription writes, and a body that stalls
+     the security handshake can hold the press longer than those two budgets.
+     Untested on hardware: no bench run has shown that a reconnect wakes a GR
+     IV, or how long the body needs.
 - Nikon
    - Nikon COOLPIX B600
    - Nikon Z6 III ([@herrfrei](https://github.com/herrfrei))
@@ -826,7 +837,11 @@ Mode setting does not trigger autofocus, and no separate half-press command has
 been verified. The BLE `OperationRequest` `{0x01, 0x01}` sequence is a capture
 request with autofocus, not a focus-only command. Location tagging enables the
 Camera Service GEO Tag characteristic and sends the shared 32-byte GPS
-Information packet with the WGS84 datum selector. See the [Ricoh BLE protocol
+Information packet with the WGS84 datum selector. A shutter press never writes
+to a body that reports `BLE_STARTUP`: the fresh `OperationMode` read decides,
+and a standby body gets one bounded reconnect wake attempt first, described in
+the [camera remote protocols](docs/protocols/camera-remotes.md#ricoh-standby-gate-and-wake)
+page. See the [Ricoh BLE protocol
 reference](https://github.com/dm-zharov/ricoh-gr-bluetooth-api) and the
 [camera protocol research](docs/camera-research/ricoh.md).
 

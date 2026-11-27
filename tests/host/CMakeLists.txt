@@ -699,7 +699,41 @@ target_include_directories(ricoh_sleep_gate_test BEFORE PRIVATE
                            ${HOST_PEER_DIR}
                            ${FURBLE_ROOT}/lib/furble
                            ${FURBLE_ROOT}/include)
+# The gate test's sleeping bodies never wake, so each press runs the wake
+# state machine to its deadline. Keep that in milliseconds here; firmware uses
+# the Ricoh.h defaults.
+target_compile_definitions(ricoh_sleep_gate_test PRIVATE
+                           FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS=400
+                           FURBLE_RICOH_WAKE_SETTLE_MS=20)
 target_compile_options(ricoh_sleep_gate_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
+                       -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
+
+# The wake test drives the production Ricoh shutter path against a virtual peer
+# that models a GR IV in BLE standby: link up, CameraPower ON, OperationMode
+# BLE_STARTUP, and a body that only leaves standby when the central drops and
+# re-establishes the link. It proves the wake state machine captures after a
+# confirmed fresh CAPTURE read, refuses inside its bounded wait when the body
+# will not wake, and never writes a capture into standby. The two budget
+# defines keep the bounded wait in milliseconds on the host; firmware uses the
+# Ricoh.h defaults.
+add_executable(ricoh_wake_test
+               ricoh_wake_test.cpp
+               ${HOST_PEER_DIR}/RicohVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/Ricoh.cpp
+               ${FURBLE_PROTOCOL_DIR}/AdvertisementProtocol.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(ricoh_wake_test PRIVATE furble_host_camera)
+target_include_directories(ricoh_wake_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(ricoh_wake_test PRIVATE
+                           FURBLE_RICOH_WAKE_PROBE_TIMEOUT_MS=400
+                           FURBLE_RICOH_WAKE_SETTLE_MS=20)
+target_compile_options(ricoh_wake_test PRIVATE
                        -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
                        -Wall -Wextra -Werror -Wno-vla-extension -Wno-format
                        -Wno-unused-parameter -Wno-unused-lambda-capture -Wno-sign-compare)
@@ -2601,6 +2635,7 @@ if(BUILD_TESTING)
   add_test(NAME fujifilm-device-name COMMAND fujifilm_device_name_test)
   add_test(NAME ricoh-focus COMMAND ricoh_focus_test)
   add_test(NAME ricoh-sleep-gate COMMAND ricoh_sleep_gate_test)
+  add_test(NAME ricoh-wake COMMAND ricoh_wake_test)
 
   add_executable(vendor_protocol_conformance_test
                  vendor_protocol_conformance_test.cpp

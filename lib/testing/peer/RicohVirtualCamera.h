@@ -2,6 +2,7 @@
 #define FURBLE_HOST_RICOH_VIRTUAL_CAMERA_H
 
 #include <array>
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -61,6 +62,14 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
     uint8_t camera_power = 0x01;
     uint8_t operation_mode = 0x00;
     bool operation_mode_read_fails = false;
+    // Sleeping-body model. A body that wakes on a fresh link leaves BLE
+    // standby once, after the central dropped and re-established the link,
+    // and reports CAPTURE from then on. wake_delay_ms is how long it takes
+    // after the new link is up before the first CAPTURE read. Off by default
+    // so every existing fixture keeps the configured OperationMode across a
+    // reconnect.
+    bool wake_on_reconnect = false;
+    uint32_t wake_delay_ms = 0;
     // GR III/IIIx manufacturer record: model code and four-byte serial. The
     // serial is emitted little-endian. Evidence: ricoh-handlers.md section 10.
     uint8_t model_code = 0x01;
@@ -197,6 +206,30 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   // schedules the drop itself and calls this. Returns false when no link is up.
   bool triggerStandbyDrop();
 
+  // Sleeping-body model. A GR IV in BLE standby keeps the link up, reports
+  // CameraPower ON, and reports OperationMode BLE_STARTUP. Only dropping and
+  // re-establishing the link is modelled as the wake trigger, because that is
+  // the sequence the plan records; a CameraPower write that wakes the body is
+  // deliberately not modelled, since no source verifies it.
+  void setSleepingBody(bool wake_on_reconnect, uint32_t wake_delay_ms = 0);
+
+  // True while OperationMode reads BLE_STARTUP, which is the standby state the
+  // capture gate must refuse in.
+  bool sleeping() const;
+
+  // Links this peer accepted, and the reconnects that number implies.
+  size_t linkSessions() const;
+  size_t reconnectCount() const;
+
+  // OperationMode reads the central performed, so a test can prove the wake
+  // polled instead of reading once.
+  size_t operationModeReadCount() const;
+
+  // Capture starts received while the body was still in BLE standby. A real GR
+  // IV cold boots and can wedge its firmware on one of these, so a regression
+  // that removes the gate shows up here instead of silently passing.
+  size_t captureRequestsWhileAsleep() const;
+
   bool acceptConnection(NimBLEClient &client, const NimBLEAddress &address) override;
   void disconnect(NimBLEClient &client, int reason) override;
   void disconnectComplete() override;
@@ -246,6 +279,7 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   static const NimBLEUUID &operationRequestCharacteristicUUID();
   static const NimBLEUUID &cameraServiceUUID();
   static const NimBLEUUID &powerCharacteristicUUID();
+  static const NimBLEUUID &operationModeCharacteristicUUID();
   static const NimBLEUUID &geotagEnableCharacteristicUUID();
   static const NimBLEUUID &gpsServiceUUID();
   static const NimBLEUUID &gpsInformationCharacteristicUUID();
@@ -290,6 +324,20 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   uint8_t m_LastOperationArg = 0;
   bool m_SelfTimerTriggered = false;
   std::string m_PairedDeviceName;
+  // Sleeping-body state. m_LinkSessions counts accepted links, so the second
+  // one is the reconnect the wake path performs. m_WakePending is set when a
+  // fresh link is up on a body that wakes on reconnect, and m_WakeAtMs is when
+  // it starts reporting CAPTURE.
+  //
+  // Atomic: acceptConnection() runs on the target task while a test helper
+  // thread polls reconnectCount() to decide when the probe has started, so a
+  // plain size_t would be a data race that ASan and UBSan cannot see and that
+  // the binaries in this file are not in the TSAN set to catch either.
+  std::atomic<size_t> m_LinkSessions {0};
+  size_t m_OperationModeReads = 0;
+  size_t m_CaptureRequestsWhileAsleep = 0;
+  bool m_WakePending = false;
+  uint32_t m_WakeAtMs = 0;
   // Fault state.
   bool m_Busy = false;
   bool m_RepairRequest = false;

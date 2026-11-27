@@ -397,9 +397,10 @@ std::vector<CompanionService::camera_snapshot_t> CompanionService::getCameraSnap
     snapshot.record.cam_type = static_cast<uint8_t>(camera->getType());
     snapshot.record.flags = flags;
     snapshot.record.progress = camera->getConnectProgress();
-    // Only Control's filtered sample is used. Camera::getRssi() takes the
-    // camera connect mutex, which a cold connect holds for the whole connect
-    // timeout, so it must never be called from the companion task.
+    // Only Control's filtered sample is used. Camera::getRssi() does a
+    // synchronous HCI round trip under the camera connect mutex that a cold
+    // connect or a Ricoh wake holds for its whole sequence, so it belongs to
+    // Control's sampler and must never be called from the companion task.
     snapshot.record.rssi = (connected && (rssi != 0)) ? rssi : CAMERA_RSSI_UNKNOWN;
     snapshot.record.state = state;
     snapshot.name = camera->getName();

@@ -549,6 +549,61 @@ class Camera: public NimBLEClientCallbacks {
   virtual void _disconnect(void) = 0;
 
   /**
+   * Re-establish the link in place, keeping this session's identity.
+   *
+   * Some bodies need a link drop and a fresh connection to leave a low-power
+   * state before a command is safe. This runs the same connect and discovery
+   * path as Camera::connect(), on the same client, so every vendor pointer is
+   * re-derived through the vendor _connect() after the reconnect instead of
+   * surviving it. The session flags are untouched: the user's selection and the
+   * Control target's ownership stay as they are, so a wake is not a connect
+   * cycle and publishes no connect state of its own.
+   *
+   * Connect progress does blip, and that is accepted rather than suppressed.
+   * The vendor _connect() this re-runs resets m_Progress to 0 on its way back
+   * up, and the companion and MQTT publishers send getConnectProgress()
+   * unconditionally, so a status reader sampling across the relink sees the
+   * reset to 0 and then the climb back to 100. The link really is down for the
+   * settle, so a reader that reports the camera disconnected there is already
+   * correct, and preserving the previous value would be a no-op: a completed
+   * _connect() ends at exactly 100.
+   *
+   * Call it from a vendor command path that holds no other Camera lock. It takes
+   * m_Mutex for the whole sequence, exactly as connect() does, which keeps the
+   * control task's teardown out of the client while it is in use. getRssi() and
+   * updateConnStats() try_lock rather than wait, so the sampler skips a slice
+   * instead of stalling Control behind the wake. It publishes m_CancelClient for
+   * the duration so abortBlockingConnect() can reach a reconnect blocked inside
+   * NimBLE.
+   *
+   * @param[in] timeout Connection timeout in milliseconds for the new link.
+   * @param[in] settleMs How long the link stays down before reconnecting. The
+   *            peer has to see a real disconnect before the new connection can
+   *            mean anything.
+   *
+   * @return true when the link and the vendor handshake are back up.
+   */
+  bool reconnectInPlace(uint32_t timeout, uint32_t settleMs);
+
+  /**
+   * Block this task for a bounded interval, in slices that poll the cancel
+   * token.
+   *
+   * Every wait on the connect path has to be abortable inside its own body
+   * (plan 170): Control::disconnect() cannot otherwise settle the target while
+   * the wait runs. The scheduler's clock is used where FreeRTOS is present, so
+   * the simulator's virtual time advances, and the wall clock otherwise. One
+   * implementation keeps the FreeRTOS include out of the vendor classes, where
+   * it collides with the host test shims.
+   *
+   * @param[in] milliseconds How long to block for.
+   * @param[in] sliceMs How often to poll the cancel token.
+   *
+   * @return false when the cancel token was set during the interval.
+   */
+  bool pollDelay(uint32_t milliseconds, uint32_t sliceMs);
+
+  /**
    * BLE security IO capability for this camera type.
    *
    * @return the IO capability to advertise during pairing.
