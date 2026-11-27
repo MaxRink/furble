@@ -1,10 +1,14 @@
 # Datasheet and document register
 
-Status: compiled from the seven lane reports. This file records every datasheet,
-application note, errata, board file, vendor document, library, and project
-document that a lane cited, with the part, the document, the revision, and the
-limit that mattered to the lane. Section 13 maps every board and part to its
-document status and names the artifact that closes each gap.
+Status: compiled from the seven lane reports, with a board-level document pass
+added on 2026-11-27. This file records every datasheet, application note,
+errata, board file, vendor document, library, and project document that a lane
+cited, with the part, the document, the revision, and the limit that mattered to
+the lane. Section 5.1 is the board-level drawing inventory: the schematic PDFs
+for every supported and planned board, read, counted and hashed. Section 13 maps
+every board and part to its document status and names the artifact that closes
+each gap, and [board-document-gaps.md](board-document-gaps.md) records which
+boards have no drawing and what stands in for one.
 
 Rules:
 
@@ -22,6 +26,14 @@ Rules:
   [`docs/components/`](../components/README.md). This file records the document
   inventory a power lane cited. That corpus records what the firmware depends on,
   with the code location and a verification state per fact.
+- A board-level row records the file that was actually read: page count from the
+  PDF structure, byte size, and SHA-256 over the served bytes, with the revision
+  and date from the drawing's own title block. Where a vendor publishes a
+  drawing with no title block, the row says so and attributes the revision to
+  the sheet caption or the file name rather than presenting a file name as a
+  document field.
+- Vendor example code and vendor statements are evidence of a kind, labelled as
+  such in 5.2. They are never counted as a schematic.
 
 ## 1. SoC, radio, and module datasheets
 
@@ -101,12 +113,177 @@ whole document.
 | M5Stack StickS3 low power | M5PM1 low-power page, https://docs.m5stack.com/en/arduino/m5sticks3/m5pm1, SHA-256 `f0a92685260dfc3af9dcdcb3ea334eaecf56d05a2623842d8a0315a7aec59524` | Web page, no revision | PM1 timer wake; I2C idle sleep; after an idle-sleep wake the first ESP32-S3 to M5PM1 communication only wakes the PMIC and fails, and the next transaction is the first valid one; BMI270 INT1 to M5PM1 GPIO4; PYG1_IRQ to ESP32-S3 GPIO13 | Opened for the vendor document pass, 2026-11-25 | GPS/IMU, SoC |
 | M5Stack M5PaperMono power levels | M5PM1 and M5IOE1 page, https://docs.m5stack.com/en/arduino/papermono/m5pm1_m5ioe1, SHA-256 `2bd391ac1a4b48444ae1f2945406ab36c354f1c056646c59c76993769ad40e4c` | Web page, no revision | L1 to L3B all source from L0 (SYS_VBUS) rather than from the preceding level, so the levels are independent, not a series; after M5PM1 power on, L1, L2 and L3A are enabled automatically and M5Unified enables L3B through the M5IOE1 | Opened for the vendor document pass, 2026-11-25. Not a StickS3 statement | Board |
 | M5Stack M5PM1 library | Function reference README, https://github.com/m5stack/M5PM1/blob/main/README_FUNCTION_EN.md | Library 1.0.6 | `gpioSetWakeEnable`, `gpioSetWakeEdge`, `irqSetGpioMask`, `irqGetGpioStatus`, `irqClearGpioAll` | Vendor code read | GPS/IMU, Board |
-| M5Stack StickC | Schematic rebuild pinmap, 20191118__StickC_A04_3110_Schematic_Rebuild_PinMap.pdf, https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/schematic/Core/M5StickC/20191118__StickC_A04_3110_Schematic_Rebuild_PinMap.pdf | 2019-11-18 | IR_LED on GPIO9; contains no resistor values | URL only; Board lane notes no schematic PDF or netlist is in the tree | Board, BLE |
+| M5Stack StickC | Schematic rebuild pinmap, 20191118__StickC_A04_3110_Schematic_Rebuild_PinMap.pdf, https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/schematic/Core/M5StickC/20191118__StickC_A04_3110_Schematic_Rebuild_PinMap.pdf | 2019-11-18 | IR_LED on GPIO9; contains no resistor values | Read and hashed on 2026-11-27, see 5.1. Still no full schematic, see 5.3 | Board, BLE |
 | M5Stack StickC Plus2 | Plus2 documentation | Web page, no revision | HOLD on GPIO4; backlight PWM on GPIO27; battery divider on GPIO38 with 2.0 ratio; LED and IR share GPIO19; no PMIC and no charging telemetry | Quoted by Board lane | Board |
 | M5Stack Core and Core2 | microSD documentation | Web page, no revision | No SD load switch; unmount stops transactions but does not remove power | Quoted by Board lane | Board |
 | M5Stack Core2 | Touch documentation and AXP192 vendor driver, https://github.com/m5stack/M5Core2/blob/master/src/AXP192.cpp | Repository copy | Touch controller left running for tap wake; DCDC3 2.4 to 3.3 V maps to brightness 0 to 100 | Vendor code read | Board, Display |
 | Waveshare ESP32-S3-ETH | Wiki, https://www.waveshare.com/wiki/ESP32-S3-ETH | Web page, no revision | W5500 on SPI; WS2812 on GPIO21; microSD in 1-line mode and unused by furble; PoE HAT; no battery or PMIC | Vendor document | Board, Wi-Fi |
-| Waveshare ESP32-S3-ETH | Schematic, https://files.waveshare.com/wiki/ESP32-S3-ETH/ESP32-S3-ETH-Schematic.pdf | Not stated | Board nets and resistor values; the PDF is referenced by URL only and is not in the tree | URL only | Board |
+| Waveshare ESP32-S3-ETH | Schematic, https://files.waveshare.com/wiki/ESP32-S3-ETH/ESP32-S3-ETH-Schematic.pdf | Not stated | Board nets and resistor values. Not opened for this pass and not in the tree | URL only, and out of the 2026-11-27 board-document pass, which covered the AMOLED boards | Board |
+
+### 5.1 Board-level schematic documents
+
+Read and hashed on 2026-11-27. Each row is a PDF that was downloaded that day,
+opened, and counted: the page count comes from the PDF structure, the byte size
+and SHA-256 from the bytes as served. A vendor that replaces a file in place
+changes the hash, so a row is a claim about a snapshot rather than about a URL
+that stays valid forever. Every row is cite only, see
+[licences](#515-licences-and-why-nothing-is-committed) below.
+
+What this pass found about the documents themselves:
+
+- The LilyGO carrier drawings for the T-Beam Supreme carry a real title block:
+  Revision V3.0, Date 5/13/2026, and a `File:` field naming the Altium sheet
+  (`motherboard-axp2101.SchDoc`, `motherboard-esp32s3.SchDoc`,
+  `motherboard-radio-gnss.SchDoc`). The two single-sheet core-board drawings
+  have no title block at all; their revision is a printed caption in the
+  drawing area.
+- The T-LoRa Pager and T-Watch Ultra title blocks print Rev V1.0 with
+  `Date: Friday, January 8, 2021` on all five sheets, and blank Title and
+  Document Number fields. The same date appears on two different products and
+  predates both, whose own file names say 25-06-13 and 25-07-24, so it is a
+  template default rather than the drawing date [inferred: no document states
+  this]. The file name is not a document field either, so the revision is V1.0
+  and the date is UNVERIFIED.
+- Waveshare, M5Stack and Heltec publish schematic PDFs with no title block: no
+  title, revision, date or document number on any sheet. For those twenty
+  files the revision column records the sheet caption where one exists
+  (Heltec V3.2) and the file name otherwise, and says which. A file name is
+  not a revision field; where the vendor reissues a drawing under the same
+  name, nothing in the file records the difference.
+
+#### 5.1.1 LilyGO
+
+| Board | Document | What the file is | Revision and date | Pages | Bytes | SHA-256 |
+| :--- | :--- | :--- | :--- | ---: | ---: | :--- |
+| LilyGO T-Beam Supreme, both trims | [T-Beam-S3-Core.pdf](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/schematic/T-Beam-S3-Supreme/T-Beam-S3-Core.pdf) | Schematic, 3 sheets: motherboard-axp2101, motherboard-esp32s3, motherboard-radio-gnss | Revision V3.0 and Date 5/13/2026 in all three title blocks, drawn by LilyGo | 3 | 273,619 | `f1ae1e2b7e06525c19b34f1e7bf0588f84cabe6125cc9504fbf33d7f4ae60e66` |
+| LilyGO T-Beam Supreme core board | [T-Beam-S3-Supreme-V3.0.pdf](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/schematic/T-Beam-S3-Supreme/T-Beam-S3-Supreme-V3.0.pdf) | Schematic, 1 sheet: PS, USB, CHG, PMU, MCU, IO, RTC, SD/IMU and module headers | Revision V3.0 printed as the sheet caption; no title block, no date | 1 | 380,728 | `f5c201ff8d2add86c65dfe0f41c288854ae4e397ebd7e84eda5a16b887cd143c` |
+| LilyGO T-Beam Supreme core board | [T-Beam-S3-Supreme-V3.1.pdf](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/schematic/T-Beam-S3-Supreme/T-Beam-S3-Supreme-V3.1.pdf) | Schematic, 1 sheet: same board, later revision | Revision V3.1 printed as the sheet caption; no title block, no date | 1 | 329,664 | `42d79201cc38ce1eea7cbc9f26035029fcb14c72a9a8e328ce1d96e4380e8ec2` |
+| LilyGO T-Deck | [schematic.pdf](https://github.com/Xinyuan-LilyGO/T-Deck/blob/HEAD/schematic/schematic.pdf) | Schematic, 1 sheet | Title, document number and revision fields empty; Date 2023/6/1 | 1 | 1,137,059 | `c3dcd1de8cc7966c69c5bff182deb41c776ee36d4c3a1e32afbc2a5164269ff4` |
+| LilyGO T-Deck Plus, MIA-M10Q GPS card | [T-Deck-GPS V1.0  24-03-29.pdf](https://github.com/Xinyuan-LilyGO/T-Deck/blob/HEAD/schematic/T-Deck-GPS%20V1.0%20%2024-03-29.pdf) | Schematic, 1 sheet: GNSS and GPS nets | No title block. Revision and date only in the file name, V1.0 and 24-03-29 | 1 | 387,015 | `94ba05c69f9fc28634a4dbe56d1bf22c6e0380800ceb0620af8d3448d61add18` |
+| LilyGO T-Deck Plus, L76K GPS card | [T-Deck-L76K V1.0  24-08-12.pdf](https://github.com/Xinyuan-LilyGO/T-Deck/blob/HEAD/schematic/T-Deck-L76K%20V1.0%20%2024-08-12.pdf) | Schematic, 1 sheet: GNSS and GPS nets | No title block. Revision and date only in the file name, V1.0 and 24-08-12 | 1 | 347,800 | `f3fdca3c64ccd8edfd9e29e2cf875e24b592e8407db1100c5f38fa811a81ecc2` |
+| LilyGO T-LoRa Pager | [T-Lora Pager V1.0 SCH 25-06-13.pdf](https://github.com/Xinyuan-LilyGO/LilyGoLib/blob/master/schematic/T-Lora%20Pager%20V1.0%20SCH%2025-06-13.pdf) | Schematic, 5 sheets | Rev V1.0 on all five title blocks, Date Friday, January 8, 2021, title and document number blank | 5 | 959,469 | `23ed5e6623aa29872cb7679b611681b6d65844032c82780e16e01a0284556bd3` |
+| LilyGO T-Watch Ultra | [T-Watch Ultra V1.0 SCH 25-07-24.pdf](https://github.com/Xinyuan-LilyGO/LilyGoLib/blob/master/schematic/T-Watch%20Ultra%20V1.0%20SCH%2025-07-24.pdf) | Schematic, 5 sheets | Rev V1.0 on all five title blocks, Date Friday, January 8, 2021, title and document number blank | 5 | 778,895 | `cae987e0d19f87890df668b3313df491907cb9f6e4f5905dc285942c6219ae51` |
+
+Notes. The T-Beam set is three files: the carrier board in three sheets (power,
+SoC, radio and GNSS) and the core board in two revisions. The carrier drawing
+names the L76K only, which is the whole of the M10S trim question in 5.3. The
+T-Deck set is the original board plus two GPS card variants, MIA-M10Q and L76K;
+plan 318 recorded the Plus as "L76K or MIA-M10Q" and both drawings exist. The
+T-LoRa Pager and T-Watch Ultra drawings come from the LilyGoLib repository, the
+only LilyGO schematic directory that sits under a licence file (MIT, section
+5.1.5).
+
+#### 5.1.2 Waveshare
+
+| Board | Document | What the file is | Revision and date | Pages | Bytes | SHA-256 |
+| :--- | :--- | :--- | :--- | ---: | ---: | :--- |
+| Waveshare ESP32-S3-Touch-AMOLED-1.75 | [ESP32-S3-Touch-AMOLED-1.75.pdf](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.75/ESP32-S3-Touch-AMOLED-1.75.pdf) | Schematic, 3 sheets: AXP2101, TCA9554, ESP32-S3, display, audio, GNSS block | No title block. PDF creation date 2025-07-28 | 3 | 2,193,937 | `26d33d14ae975f8d6817d103c41e704dc0682c8b28e61aed845dba933e9133e3` |
+| Waveshare ESP32-S3-Touch-AMOLED-1.8 | [ESP32-S3-Touch-AMOLED-1.8.pdf](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8.pdf) | Schematic, 1 sheet | No title block. PDF creation date 2024-11-20 | 1 | 1,089,850 | `1a26267083a4d83665a9f1c73cf845dee6dda4f96dd03ff7f94bf2e60fc3c8ef` |
+| Waveshare ESP32-S3-Touch-AMOLED-2.06 | [ESP32-S3-Touch-AMOLED-2.06.pdf](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-2.06/ESP32-S3-Touch-AMOLED-2.06.pdf) | Schematic, 3 sheets | No title block. PDF creation date 2025-07-22 | 3 | 1,347,665 | `6d531fb458863c666210c92294a07204d675bcb7997a54fc219d92fadbbacf9d` |
+
+Notes. All three are Altium exports with the text drawn as outlines, so a text
+extractor returns only page numbers. The 1.75 sheet set includes a GNSS block
+for the LC76G on the `-G` variant, which is the variant in the hardware
+catalog, so the drawing covers the GPS trim as well as the plain board. The
+1.8 file is a single sheet; the other two are three sheets.
+
+#### 5.1.3 M5Stack
+
+| Board | Document | What the file is | Revision and date | Pages | Bytes | SHA-256 |
+| :--- | :--- | :--- | :--- | ---: | ---: | :--- |
+| M5Stack CoreS3 | [Sch_M5_CoreS3_v1.0.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/490/Sch_M5_CoreS3_v1.0.pdf) | Schematic, 7 sheets: the AXP2101 AXP_PS page, SoC, USB, display, audio, connectors | No title block on any sheet. Version only in the file name, v1.0 | 7 | 1,537,792 | `58a15454eccb11d2668e1a9a3ad85943b9a58b104c5f1ed137b790192ec27c04` |
+| M5Stack Dial | [Sch_M5Dial.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/499/Sch_M5Dial.pdf) | Schematic, 2 sheets | No title block. No version in the file name | 2 | 669,195 | `66be81ef2255363bbac105bffb959c33daad6239a0caa6e17f68660d1f6cd99d` |
+| M5Stack Cardputer | [Sch_M5Cardputer.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/481/Sch_M5Cardputer.pdf) | Schematic, 2 sheets | No title block. No version in the file name | 2 | 717,743 | `6016c1fe6099b9e3f0d0c88f07a3fba1aa44a3da8a7a91dd7040ad0fffa2041e` |
+| M5Stack Cardputer base board | [Sch_M5cardputer_Base.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/481/Sch_M5cardputer_Base.pdf) | Schematic, 1 sheet: keyboard base | No title block. No version in the file name | 1 | 24,076 | `29542fe18b8687e4bd5fe7c533decd6a21e434cac8ac4b3f4cb1a6dd407be2cc` |
+| M5Stack Cardputer-Adv | [Sch_M5CardputerAdv_v1.0_2025_06_20_17_19_58.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1178/Sch_M5CardputerAdv_v1.0_2025_06_20_17_19_58.pdf) | Schematic, 4 sheets: power, keyboard TCA8418, SoC, connectors | No title block. Version and export stamp only in the file name, v1.0 and 2025-06-20 | 4 | 878,155 | `9553f5ee22b6e5f29a385388192e42c5ff76f16281b6f7ea9418f7b62a2d48b0` |
+| M5Stack StickS3 | [K150_Stick_S3_PRJ_V0.6_20251111_2025_11_17_16_10_24.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150_Stick_S3_PRJ_V0.6_20251111_2025_11_17_16_10_24.pdf) | Schematic, 4 sheets: M5PM1 rail tree and IO map, SoC, PMIC, audio | Sheet title block Date 11/11/2025 with an empty revision field. Version only in the file name, V0.6 | 4 | 1,192,324 | `e5272c97bbe52d6937bde89c9c85bfddb7d1d076145e4d2b960ff596c20d0226` |
+| M5Stack StickC | [20191118__StickC_A04_3110_Schematic_Rebuild_PinMap.pdf](https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/schematic/Core/M5StickC/20191118__StickC_A04_3110_Schematic_Rebuild_PinMap.pdf) | Block diagram and pin map, 1 sheet: AXP192, USB-UART, ESP32, LCD, IMU, RTC and HAT blocks with net names and no part values | Date 2019-11-18 in the file name. No title block | 1 | 241,675 | `695995060b3d1a2e6a18d0db64f370bc701066cfdc215b2839f96c3aba7f3d19` |
+| M5Stack StickC Plus | [k016-p-StickC-Plus-sche.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/669/k016-p-StickC-Plus-sche.pdf) | Schematic, 1 sheet | No title block. No version in the file name | 1 | 560,672 | `da0717dc357e0480f0eb4e174f2a93db6a3d00b2e0b70deed5f295a9757943cb` |
+| M5Stack StickC Plus2 | [Sch_M5StickC_Plus2_v0.5.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/512/Sch_M5StickC_Plus2_v0.5.pdf) | Schematic, 3 sheets | No title block. PDF creation date 2025-10-31 | 3 | 488,279 | `75017af5c47c7e56904469f032e7d71a63803651a6e8af070d427f125e88e6cd` |
+| M5Stack Core2 | [CORE2_V1.0_SCH.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/644/CORE2_V1.0_SCH.pdf) | Schematic, 1 sheet: the AXP192 revision | No title block. Version only in the file name, V1.0 | 1 | 292,499 | `4a59d16291c7de9d9deda31fe154c8b5ac3c8f92209f6f8206d72f97afeea94f` |
+| M5Stack Core2 v1.1 | [Sch_Core2_v1.1_2023-07-20.pdf](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/486/Sch_Core2_v1.1_2023-07-20.pdf) | Schematic, 5 sheets: the AXP2101 sits on sheet 4 | No title block. Version and date only in the file name, v1.1 and 2023-07-20 | 5 | 1,207,439 | `8d24bd11700bb5f0af8f2c8eaa609cb39653cea69d898fd9961a39ff257a099b` |
+
+Notes. None of the eleven has a title block. Three facts were read off the
+drawings for this pass and are recorded here because they change what the
+register says elsewhere:
+
+- Core2 v1.0 sheet 1 carries an AXP192, and Core2 v1.1 sheet 4 carries an
+  AXP2101. That settles the "AXP2101 revision change" from the drawing rather
+  than from a product page, and it means section 13.1's Core2 row can stop
+  calling the AXP2101 datasheet an open gap for the part on the board.
+- StickS3 sheet 1 is the M5PM1 rail tree: PM1_VIN, PM1_CHG, SYS, L0 shipping,
+  L1 standby, L2 deep sleep, L3A core active and L3B all active, with the IO map
+  for the ESP32-S3-PICO-1-N8R8 alongside. It is the document behind the product
+  page numbers in section 5.
+- Cardputer-Adv sheet 2 carries the TCA8418 keyboard scanner. Sheet 1 has a
+  charger and a boost converter, and no AXP part appears on any of the four
+  sheets. That absence is an OCR sweep of all four plus a visual read of sheet
+  1, not a pin-by-pin read of the set.
+
+#### 5.1.4 Heltec
+
+| Board | Document | What the file is | Revision and date | Pages | Bytes | SHA-256 |
+| :--- | :--- | :--- | :--- | ---: | ---: | :--- |
+| Heltec WiFi LoRa 32 V3 | [HTIT-WB32LA(F)_V3_Schematic_Diagram.pdf](https://resource.heltec.cn/download/WiFi_LoRa_32_V3/HTIT-WB32LA(F)_V3_Schematic_Diagram.pdf) | Schematic, 1 sheet | No title block. Version only in the file name, V3 | 1 | 3,773,066 | `a718d617969d4a48610ddea200f15ce16d53d6a8099a989d2ba5407ac8996e18` |
+| Heltec WiFi LoRa 32 V3 | [HTIT-WB32LA(F)_V3.1_Schematic_Diagram.pdf](https://resource.heltec.cn/download/WiFi_LoRa_32_V3/HTIT-WB32LA(F)_V3.1_Schematic_Diagram.pdf) | Schematic, 1 sheet | No title block. Version only in the file name, V3.1 | 1 | 191,469 | `b1c549559109beeb92a24bc044e27b327135c7e5618ed04daa99726109fb72f2` |
+| Heltec WiFi LoRa 32 V3 | [WiFi_LoRa_32_V3.2_Schematic_Diagram.pdf](https://resource.heltec.cn/download/WiFi_LoRa_32_V3/schematic/WiFi_LoRa_32_V3.2_Schematic_Diagram.pdf) | Schematic, 1 sheet, captioned HTIT-WB32LAF V3.2 Reference Design | Caption on the sheet gives V3.2. No title block and no date | 1 | 241,368 | `79317005400037929f85b0a600ad2159be5c0591cea95120eeed093dc629655a` |
+| Heltec WiFi LoRa 32 V4 | [WiFi_LoRa_32_V4.2.pdf](https://resource.heltec.cn/download/WiFi_LoRa_32_V4/Schematic/WiFi_LoRa_32_V4.2.pdf) | Schematic, 1 sheet | No title block. Version only in the file name, V4.2 | 1 | 275,027 | `397c5d470be4185ea84597f7fa604e940d90849bcfada22be5820031c3f5866b` |
+| Heltec WiFi LoRa 32 V4 | [HTIT-WB32LAF_V4.3.pdf](https://resource.heltec.cn/download/WiFi_LoRa_32_V4/Schematic/HTIT-WB32LAF_V4.3.pdf) | Schematic, 1 sheet | No title block. Version only in the file name, V4.3 | 1 | 279,891 | `b846f7bbdb156ad938e3df34b8803de63e8180b9895417d6206e2094f429a2e1` |
+| Heltec Wireless Tracker V2 | [HTIT-Tracker-FEM_V2.3.pdf](https://resource.heltec.cn/download/Wireless_Tracker_V2/Schematic/HTIT-Tracker-FEM_V2.3.pdf) | Schematic, 1 sheet: radio front end and control nets | No title block. Version only in the file name, V2.3 | 1 | 348,999 | `7108aca9787430c6d8c71e6257275c9ca07043fe4608d58774cdb10c6240213c` |
+
+Notes. Heltec publishes one drawing per hardware revision: three for the WiFi
+LoRa 32 V3 (V3, V3.1, V3.2), two for the V4 (V4.2, V4.3) and one for the
+Wireless Tracker V2 (FEM V2.3). The resource server lists its directories, which
+is how the full set was enumerated rather than guessed; the V3 and V4 pin-map
+PNGs sit beside them. Only the V3.2 sheet prints a caption of its own,
+`HTIT-WB32LAF V3.2 Reference Design`. The V4.3 and the Tracker FEM drawings
+carry no printed identity at all.
+
+#### 5.1.5 Licences and why nothing is committed
+
+No board-level PDF is committed by this change and `docs/` holds no `*.pdf`.
+The rule is [README.md](../components/README.md#committed-documents): a document is stored
+only when its licence plainly permits redistribution, the statement is recorded
+with its URL, and the copy is first party rather than a mirror.
+
+| Vendor | What the file or its repository says | Commit decision |
+| :--- | :--- | :--- |
+| LilyGO, T-Beam and T-Deck | The LilyGo-LoRa-Series and T-Deck repositories return 404 from the GitHub licence endpoint: no LICENSE file at all. The PDFs carry no copyright or licence line (zero matches for copyright, all rights reserved, confidential or do not distribute) | no, an absent licence is not a grant |
+| LilyGO, T-LoRa Pager and T-Watch Ultra | LilyGoLib's LICENSE is the MIT text, `Copyright (c) 2025 Xinyuan Electronics`, and its grant names "this software and associated documentation files". The two drawings are tracked files in that repository and carry no statement of their own | no in this change. The grant is the only one in the set that plausibly reaches a schematic, so it is recorded as the one candidate for later admission, which would need the MIT notice on the page and a note in the directory |
+| Waveshare | The wiki page for each board serves no licence or copyright line for the PDF, and the PDF itself has no statement | no, silence is not a grant |
+| M5Stack | The M5Stack documentation site footer says `Copyright (c)` and `All rights reserved.` The schematic PDFs carry no statement of their own | no |
+| Heltec | The documentation site footer says `Copyright 2022, shug.` The schematic PDFs carry no statement of their own | no |
+| X-Powers AXP2101 and the M5Stack M5PM1 manual | Quoted on [axp2101.md](../components/axp2101.md) and [m5pm1.md](../components/m5pm1.md); the AXP2101 datasheet carries the X-Powers all rights reserved notice | no, unchanged from those pages |
+
+### 5.2 Vendor code and vendor statements, used as board evidence
+
+These are not schematics. They are recorded because for two boards they are the
+only first-party statement about a net, and plan 318 established that the
+factory examples are usable evidence for rail and pin facts. Every row here is
+labelled by kind and must not be cited as a drawing.
+
+| Board | Artifact | Kind | Revision or date | Bytes | SHA-256 | What it settles |
+| :--- | :--- | :--- | :--- | ---: | :--- | :--- |
+| LilyGO T-Beam Supreme | [utilities.h](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/examples/Factory/utilities.h), factory example | vendor code | master as served 2026-11-27, 978 lines | 28,783 | `1f234017d45099f90e3a5cb7fb6ed16b78dfe11fa57f2b82a58f9d1b9411f733` | The `T_BEAM_S3_SUPREME` block sets `GPS_RX_PIN` 9, `GPS_TX_PIN` 8, `GPS_EN_PIN` 7, `GPS_PPS_PIN` 6 and `GPS_BAUD_RATE` 9600, and every one of those macros exists for both radio variants. It does not distinguish the GNSS module |
+| LilyGO T-Beam Supreme | [LoRaBoards.cpp](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/examples/Factory/LoRaBoards.cpp), factory example | vendor code | master as served 2026-11-27, 1,388 lines | 42,023 | `b5ab071a1b3946f435f8d324f317cc550e7ba48a398b047ddf099a341aac5174` | Under `T_BEAM_S3_SUPREME` it sets `XPOWERS_ALDO4` to 3300 mV and enables it under the comment `//gps`, and sets `XPOWERS_VBACKUP` to 3300 mV under `// GNSS RTC PowerVDD`. In `powerOff()` it disables ALDO4 as the GPS rail and VBACKUP as the backup rail, with the comment that turning the backup off saves about 100 uA. That names the two rails the carrier drawing calls `A_LDO4` and `VRTC` |
+| LilyGO T-Beam Supreme M10S | [Issue 225, comment by lewisxhe](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/issues/225) | vendor statement | 2025-03-04, issue closed as stale 2025-04-18 | not a file | not a file | "It is designed to be compatible, but the hardware designer did not write the M10 name on it. They are the same". This is the vendor's position that the L76K carrier drawing covers the M10S trim. It is a GitHub comment by a LilyGO maintainer, not a controlled document, and it says nothing about V_IO |
+| LilyGO T-Beam Supreme | [t_beam_supreme_hw.md](https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/docs/en/t_beam_supreme/t_beam_supreme_hw.md), product hardware page | vendor pin map | master as served 2026-11-27, 17,088 bytes | 17,088 | `5e6dd0ab2390cedc1db3360f7e42beef7f7ebdcbd7a4c274bf3f4820e8199967` | GNSS TX 8, RX 9, PPS 6 and wake-up 7, with wake-up marked L76K only; I2C 17 and 18; PMU I2C 42 and 41; PMU IRQ 40; AXP2101 at 0x34; PCF8563 at 0x51; three magnetometer variants at three addresses. It does not name V_IO or V_BCKP |
+
+### 5.3 Boards and trims with no drawing of their own
+
+Two boards have no drawing of their own, and the two chip reference designs
+are listed for completeness. The full reasoning is in
+[board-document-gaps.md](board-document-gaps.md):
+
+| Board or trim | Drawings | What stands in | State |
+| :--- | :--- | :--- | :--- |
+| LilyGO T-Beam Supreme, MAX-M10S trim | none that names the module | The L76K carrier drawing at V3.0, the vendor statement in issue 225 that both trims share it, the hardware pin map, and the factory example code for the rail voltages | V_IO and V_BCKP have named paths; both are UNVERIFIED on that assembly |
+| M5Stack StickC | none | The 2019 rebuild pin map, which carries net names and no part values. The FCC filing 2AN3WM5STICKC lists a Schematics exhibit of 537.1 KB and a Block Diagram of 91.8 KB, both marked metadata only by the mirror, with the FCC attachment endpoints answering 403 | UNVERIFIED, no file reachable |
+| M5Stack M5PM1 reference design | not needed | Every board furble fits it to publishes a schematic; the chip manual has no application circuit | closed |
+| X-Powers AXP2101 reference design | not needed | Datasheet revision 1.0 section 7.1, Figure 7-1, page 58 | closed |
+
+Every other board on the candidate and supported lists publishes a drawing, as
+listed in 5.1.
 
 ## 6. Code at pinned versions
 
@@ -383,11 +560,11 @@ was opened. Every `unknown` names the artifact that closes it.
 
 | Board | MCU and radio | PMIC, charger, gauge | Display and touch | IMU | Audio or other | Battery | FCC | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1, read 2026-11-26 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | 2AN3WM5STICKC, grant 2019-06-04 | documented, battery gap; board FCC ID found |
+| `m5stick-c` | ESP32 v5.3 | AXP192, no revision string | ST7735S v1.1, read 2026-11-26 | MPU6886 v1.1 | IR LED | 95 mAh, vendor page | 2AN3WM5STICKC, grant 2019-06-04, and its index page lists a Schematics exhibit of 537.1 KB marked metadata only | documented, battery gap; board FCC ID found, no board schematic, see 5.3 |
 | `m5stick-c-plus` | ESP32 v5.3 | Plus: AXP192. Plus2: no PMIC, external charger | ST7789V v1.3, read 2026-11-26 | MPU6886 v1.1 | BM8563 RTC cited, not opened (Plus2) | Plus 120 mAh, Plus2 200 mAh, vendor page | 2AN3WM5STICKCPLUS (product code M5STICKCPLUS, device name "M5StickC-Plus SE"), grant 2026-01-23 | documented, RTC and battery gaps; Plus board FCC ID found, no Plus2 ID found |
-| `m5stick-s3` | ESP32-S3 v2.2, PICO-1 N8R8 v1.2 | M5PM1 V1.9 | ST7789P3 v0.1 2022/03, 276 pages, sha256 26e62a24, read 2026-11-26 | BMI270 revision 1.6 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | 2AN3WM5STICKS3, K150 grant 12/16/2025, read from a page render (OCR-derived) | documented, audio and battery gaps; panel and FCC closed |
+| `m5stick-s3` | ESP32-S3 v2.2, PICO-1 N8R8 v1.2 | M5PM1 V1.9, and the rail tree is drawn on sheet 1 of the K150 schematic registered in 5.1 | ST7789P3 v0.1 2022/03, 276 pages, sha256 26e62a24, read 2026-11-26 | BMI270 revision 1.6 | ES8311 and AW8737, vendor page only | 250 mAh, vendor page | 2AN3WM5STICKS3, K150 grant 12/16/2025, read from a page render (OCR-derived); index lists a Schematics exhibit of 751.1 KB, metadata only | documented, audio and battery gaps; panel and FCC closed |
 | `m5stack-core` | ESP32 v5.3 | IP5306 V1.01 and register document V1.21 | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26 | Gray variant part not recorded | SD, speaker | 110 mAh at 3.7 V, vendor page (2020.3) | no board-level filing found; module grant only | documented, IMU, SD and battery gaps, no board FCC ID |
-| `m5stack-core2` | ESP32 v5.3 | AXP192, no revision string. Core2 v1.1 fits an AXP2101 under the same board ID, and the boot code gates the AXP192 ADC trim on the detected PMIC; no AXP2101 document is in the tree | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26, plus FT6336U, still not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 500 mAh at 3.7 V, vendor page (2023.10) | Core2 2AN3WM5STACK-CORE2, K010 grant 08/20/2020; Tough 2AN3W-M5STACK-TOUGH, K034 grant 04/19/2021 | documented for AXP192; AXP2101 datasheet is an open gap; FCC closed |
+| `m5stack-core2` | ESP32 v5.3 | AXP192 on the V1.0 drawing, no revision string. Core2 v1.1 draws an AXP2101 on sheet 4 of its own schematic, so the revision change is a drawing fact and not an inference from the product page; the boot code gates the AXP192 ADC trim on the detected PMIC. The AXP2101 datasheet is cited on [axp2101.md](../components/axp2101.md) | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26, plus FT6336U, still not opened | MPU6886 v1.1 | NS4168, BM8563, SD | 500 mAh at 3.7 V, vendor page (2023.10) | Core2 2AN3WM5STACK-CORE2, K010 grant 08/20/2020; Tough 2AN3W-M5STACK-TOUGH, K034 grant 04/19/2021 | documented on both revisions; the AXP2101 document gap is closed, its datasheet is cited on the component page; FCC closed |
 | `waveshare-s3-eth` | ESP32-S3 v2.2, W5500 Ver 1.1.0 | none | none | none | microSD, WS2812 | none | no board-level filing; the product page contains no occurrence of FCC, so it relies on the module grant 2AC7Z-ESPS3WROOM1 | documented; W5500 and module FCC closed, no board FCC ID |
 | `esp32-s3-headless` | ESP32-S3 v2.2 | board-specific, no PMIC document | none | none | none | board-specific | module grant 2AC7Z-ESPS3WROOM1 applies to the WROOM-1 module, not to a devkit assembly | documented for the SoC, board document missing |
 | `m5stack-core-usb-debug` | ESP32 v5.3 | IP5306 V1.01 | ILI9342C V101, 235 pages, complete, sha256 604a35c0, read 2026-11-26 | as Core | as Core | as Core | as Core, no board-level filing found | same gaps as Core |
@@ -415,7 +592,7 @@ arithmetic estimate on a nominal capacity, not a measured runtime.
 | FCC ID for the ESP32-S3-WROOM-1 module | 2AC7Z-ESPS3WROOM1, grant 01/21/2022, Nemko North America, single modular | Espressif certification PDF, https://documentation.espressif.com/ESP32-S3-WROOM-1%20FCC%20Certification.pdf, SHA-256 `edb08720467ab0b1bff5269dec375847836179f60c038a7f977e1127aeeb7908`, text layer, read 2026-11-25 |
 | FCC IDs for the assembled M5Stack boards | StickS3 2AN3WM5STICKS3 (K150, grant 12/16/2025); Core2 2AN3WM5STACK-CORE2 (K010, grant 08/20/2020); Tough 2AN3W-M5STACK-TOUGH (K034, grant 04/19/2021) | Vendor-hosted grants under https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/certification/, read 2026-11-25. The StickS3 grant has no text layer, so its ID was read from a 300 dpi page render and is OCR-derived; the other two were read from their text layers. No board-level filing was found for the Plus2 or the Core Basic. The StickC and the StickC Plus do have one: 2AN3WM5STICKC (grant 2019-06-04) and 2AN3WM5STICKCPLUS (grant 2026-01-23), both read from fccid.io, which mirrors the FCC database, on 2026-11-26. This row said none was found until the retrospective review checked the ID database rather than only the vendor-hosted certification files |
 | FCC ID for the assembled Waveshare board | none found; certified through the module grant | The ESP32-S3-ETH product page, https://docs.waveshare.com/ESP32-S3-ETH, SHA-256 `00fd70c1b2406485a4636b8f046084311544a166fffa1769783c8fafa034cf0d`, contains zero occurrences of FCC, so no board-level filing is claimed by the vendor. Silence on a product page is not evidence that no filing exists: the ID-database search endpoint returned HTTP 403 to the research agent, so this row is a not-found, not a negative |
-| FCC exhibit databases | search inaccessible, per-ID pages readable | The fccid.io and fcc.report search endpoints returned HTTP 403 to the research agent, so no claim is made about schematics or internal photos in any of these filings. A per-FCC-ID page is served, which is how 2AN3WM5STICKC and 2AN3WM5STICKCPLUS were read on 2026-11-26 |
+| FCC exhibit databases | search inaccessible, per-ID pages readable | The fccid.io and fcc.report search endpoints returned HTTP 403 to the research agent, and on 2026-11-27 `fcc.report` and the FCC OET search endpoint both returned HTTP 403 again. Per-ID pages are served, and they do list exhibits: 2AN3WM5STICKC a Block Diagram of 91.8 KB and a Schematics exhibit of 537.1 KB, 2AN3WM5STICKCPLUS two block diagrams (73 KB and 340.6 KB) and two Schematics exhibits (439.1 KB and 1.2 MB), 2AN3WM5STICKS3 a Block Diagram of 117.5 KB and a Schematics exhibit of 751.1 KB, and 2AN3WM5STACK-CORE2 a Block Diagram of 253.8 KB and a Schematics exhibit of 352.6 KB. Every one of those rows carries the mirror's metadata-only flag, so the index entry exists and the file is not served. No exhibit was opened, and no claim is made about what any of them contains |
 | FCC ID for the ESP32-WROOM-32 module | unknown | No Espressif or M5Stack grant for a WROOM-32 module on a supported board was located. Close from the module label or a vendor-hosted grant |
 | Vendor board manuals | vendor page | Product pages and wikis in sections 5 and 7. No PDF manual for the M5Stack boards is in the tree |
 | Vendor camera manuals | out of this register | They live in the private corpus `docs/research/model-manuals-*.md` |
@@ -435,6 +612,14 @@ arithmetic estimate on a nominal capacity, not a measured runtime.
   StickC and StickC Plus are closed. The Waveshare board is recorded as having
   no board-level filing found, which is a product-page negative: the ID-database
   search was blocked, so the row says unverified rather than none.
+- The board-level drawing gap is closed for every board except the M5StickC,
+  which has no vendor schematic and whose FCC Schematics exhibit is not
+  reachable. The T-Beam Supreme MAX-M10S trim has no drawing that names it; the
+  vendor states the L76K drawing covers it, and section 5.3 and
+  [board-document-gaps.md](board-document-gaps.md) record what that does and
+  does not settle. What a drawing shows is a document fact and not a
+  measurement: the V_IO and V_BCKP paths are named from the drawing and stay
+  UNVERIFIED on an M10S assembly.
 - No gap blocks a safe-now change. Every gap blocks only a number that the
   bench plan already marks as measurement-gated.
 - No errata or application note is invented to fill a row.

@@ -20,7 +20,8 @@ mixed with camera parity work.
 | File | Scope |
 | --- | --- |
 | `gps-profile.md` | Lowest-power GPS configuration, library audit, and the bench-gated remainder |
-| `datasheet-register.md` | Every cited document plus the per-board component and document coverage in section 13 |
+| `datasheet-register.md` | Every cited document plus the per-board component and document coverage in section 13, and the board-level drawing inventory in section 5.1 |
+| `board-document-gaps.md` | Which boards publish a schematic, what stands in when they do not, and which facts stay unverifiable |
 | `measurement-plan.md` | Bench plan and the blocked-versus-actionable register in section 1.1 |
 
 Chip-level register, address and timing detail is **not** here. It lives in

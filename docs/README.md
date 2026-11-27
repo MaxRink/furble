@@ -50,6 +50,7 @@ Start at the top level [README](../README.md) for the product overview, or
 | [State machines](diagrams/state-machines.md) | Connection, mode, capture and recovery states. |
 | [Pairing and security flows](diagrams/pairing-security-flows.md) | Advertisement, SMP, registration and recovery per family. |
 | [Power research](power/README.md) | Power lanes, the datasheet register and the bench plan. |
+| [Board-level document gaps](power/board-document-gaps.md) | Which supported and planned boards publish a schematic, what stands in when one does not, and what stays unproven. |
 
 ## Build, test and gates
 
