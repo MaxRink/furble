@@ -605,8 +605,13 @@ cannot fail a scenario, and the host `time_keeper_persistence_test` NVS commit
 counter is what holds that claim. And the marker gate is inside the simulator's
 own `Platform` double, so a scenario can show that the adopted source appears
 only with `platform.timed_wake`, not that production's
-`Platform::consumeTimedWake()` still checks it. The stale-record rejection is
-covered by the host `time_keeper_*` tests, which can drive every gate directly.
+`Platform::consumeTimedWake()` still checks it; production's check is covered on
+the host instead, by `boundary-platform-timed-wake`, which compiles the real
+`src/FurblePlatform.cpp` against an M5PM1 double that models WAKE_SRC 0x05 and the
+32-byte RTC buffer. The part itself is not modelled by either: that the M5PM1
+keeps its buffer across the shutdown it performs and sets WAKE_SRC bit 0 on a
+timer wake are device confirmations. The stale-record rejection is covered by the
+host `time_keeper_*` tests, which can drive every gate directly.
 
 #### Internal-heap pressure model
 

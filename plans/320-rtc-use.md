@@ -362,21 +362,39 @@ will otherwise assume the clock is corrected:
    writes no record at all, and an adopted value outside the epoch window or over
    the uncertainty ceiling is refused.
 
-Gates 1, 2, 4 and 5 are host-tested, in `time_keeper_policy_test` and
-`time_keeper_persistence_test`. Gate 3 is not: the marker check lives in
-`Platform::consumeTimedWake()`, which needs the M5PM1, so it is covered by
-argument and by the simulator scenario asserting the adopted source appears only
-after `platform.timed_wake`, not by a host test. The policy function it guards
-takes the marker decision as a precondition. The earlier text here said all five
-were host-tested; that was wrong for gate 3.
+Gates 1, 2, 4 and 5 are host-tested directly, in `time_keeper_policy_test` and
+`time_keeper_persistence_test`. Gate 3 is host-tested too, in
+`boundary-platform-timed-wake`, which compiles the production
+`src/FurblePlatform.cpp` against the M5PM1 double and drives the real
+`powerOffUntil()` with the real `consumeTimedWake()` across a simulated power
+cycle: the shutdown's marker and record are in the double's RTC buffer, the boot
+either adopts the record or clears it, and dropping the marker check from the
+production comparison fails the target. The gate needs the part, not a board.
+
+What that target cannot show is what only the device can: that a real M5PM1 keeps
+its 32-byte RTC buffer across the shutdown it performs (a battery pull loses it,
+which is the fail-closed direction), that a real timer wake sets WAKE_SRC bit 0,
+that the buffer survives the rail cut with no partial write, and how accurate the
+timer is, which is the C2 bench run. The double models the part's registers and
+the buffer's lifetime under a process that outlives the simulated power-off, so a
+device confirmation is still owed for those four.
+
+Two earlier versions of this paragraph were wrong in opposite directions: one said
+all five gates were host-tested, and the next said gate 3 was not host-testable at
+all. The first was false. The second was too pessimistic, and the method it
+doubted is the one now used: the production Platform is reachable with a double at
+the M5PM1 and nothing else.
 
 The buffer is cleared on every boot, not only on a confirmed timed wake, so the
-record cannot outlive the boot that should have consumed it. Two narrow paths are
-covered by that rule rather than by a test: `consumeTimedWake()` clears the
-buffer even when the record read fails, so an uninterpretable record cannot
-survive to be adopted against a later marker, and `powerOffUntil()` clears the
-record region when it cannot build a new prediction, so the marker it just wrote
-is never paired with an interval from an earlier shutdown.
+record cannot outlive the boot that should have consumed it. Three paths hold that
+rule, and `boundary-platform-timed-wake` asserts each: `consumeTimedWake()` clears
+the buffer even when the record read fails, so an uninterpretable record cannot
+survive to be adopted against a later marker; `powerOffUntil()` clears the record
+region when it cannot build a new prediction; and it clears the region again when
+the record write itself fails, so a marker is never paired with the interval of an
+earlier shutdown. The third is best effort by construction: a bus that refuses the
+record write usually refuses the clear too, and a marker with no record is then the
+fail-closed outcome, because the boot refuses it.
 
 A refused or missing record keeps the stored checkpoint clock with its one hour
 penalty, which is the behaviour every board had before this change, so the clock
@@ -389,8 +407,13 @@ further soft reset, and the confirmation that adoption costs no NVS write;
 `intervalometer-deep-sleep-clock-start.txt` with `-clock-resume.txt` cover the
 two-leg power cycle: the resumed leg reports `time.source timed_wake` with a
 three second uncertainty and runs its saved deadline instead of counting from
-boot. The stale-record gates are host-tested rather than scenario-tested,
-because a scenario clock strong enough to compare a fixture deadline against
-outranks the prediction and would not exercise it. The hardware gate stays
-open: C1's bench item (RTC retention through `esp_restart()`, a panic and a USB
-port-open reset) and C2's PM1 accuracy run both need the StickS3 on the bench.
+boot; `boundary-platform-timed-wake` drives the production
+`Platform::consumeTimedWake()` through gate 3 and the three buffer paths above,
+and each assertion was proved red first by reverting the line it guards (the
+marker comparison, the clear on a failed read, the clear with no prediction, and
+the clear on a failed record write). The stale-record gates are host-tested
+rather than scenario-tested, because a scenario clock strong enough to compare a
+fixture deadline against outranks the prediction and would not exercise it. The
+hardware gate stays open: C1's bench item (RTC retention through `esp_restart()`,
+a panic and a USB port-open reset) and C2's PM1 accuracy run both need the StickS3
+on the bench, and so do the four device confirmations named above.

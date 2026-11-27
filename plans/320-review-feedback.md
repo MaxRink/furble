@@ -61,7 +61,10 @@ now say so rather than leaving a reader to assume otherwise:
    before and after the adoption.
 2. **The marker gate.** The simulator drives its own `Platform` double, so the
    scenario proves the double's guard, not production's
-   `Platform::consumeTimedWake()`. That gate is not host-testable at all.
+   `Platform::consumeTimedWake()`. That gate was not host-tested in round 1. This
+   record first said it was not host-testable at all, which round 2 disproved:
+   the production method is reachable with a double at the M5PM1 and nothing
+   else, and `boundary-platform-timed-wake` now drives it. See round 2.
 
 ## Round 1 - findings and resolutions
 
@@ -70,10 +73,28 @@ now say so rather than leaving a reader to assume otherwise:
 | 1 | Review | **The stated uncertainty was too small, and the error compounds.** `README.md`, `docs/settings-and-controls.md` and the wiki mirror described the adopted clock as carrying "2 seconds plus 2 percent of the powered-off interval". The code adds that to the uncertainty the clock *already* carried, and because each sleep re-predicts from the previous prediction, a timelapse adds the same amount again on every cycle. A run started from an NVS-restored clock is nearly an hour out of the stated window on its first cycle, and a long run drifts by the per-cycle term. | Fixed in the three documents. They now state the full formula (the uncertainty at shutdown plus 2 s plus 2 percent), that it grows once per cycle, that the 2 percent is an estimate because the M5PM1 timer's accuracy is unpublished, and that a GPS, NTP or companion sample replaces it. | `README.md`; `docs/settings-and-controls.md`; `docs/wiki/Settings-Reference.md`; `src/FurbleTimeKeeperPolicy.cpp` `timedWakeUncertaintyMs()`; `plans/320-rtc-use.md` |
 | 2 | Review | **Nothing said what the accumulated error does to a shot or a timestamp**, which is the question a user would ask and the one the review was pointed at. The answer is not uniform: the intervalometer's *relative* timing is immune because the saved deadline and the adopted clock come from the same prediction chain, but an absolute timestamp carries the whole window. | Fixed in `plans/320-rtc-use.md`, which now derives both cases, and in `README.md` and the two settings documents. Also recorded there that `trustedWallClock()` has no uncertainty threshold, so the window is reported rather than enforced. | `src/FurbleUIIntervalometer.cpp` `startResume()` (`state.wake_time - now`), `saveResume()` (`now_s + next_ms / 1000`), `trustedWallClock()` |
 | 3 | Review | **`sourcePriority()` took its authority from the enum's position for anything not explicitly listed.** The default branch returned `static_cast<uint8_t>(source)`, so a source appended at 7 would have outranked GPS and NTP without anyone deciding it. The header states the opposite contract: a new source "takes its authority from sourcePriority() rather than from its position". | Fixed. `sourcePriority()` now lists every enumerator with no `default`, so appending a source is a `-Wswitch` build failure. Behaviour is unchanged for every existing value. Verified with a probe: adding `FUTURE = 7` fails the build with `error: enumeration value 'FUTURE' not handled in switch [-Werror,-Wswitch]` at `src/FurbleTimeKeeperPolicy.cpp:70`. | `src/FurbleTimeKeeperPolicy.cpp` `sourcePriority()`; `include/FurbleTimeKeeper.h` |
-| 4 | Review | **"Five gates, and each is host-tested" was false.** Gate 3, the board's wake marker, lives in `Platform::consumeTimedWake()`, which needs the M5PM1. No host test reaches it; `TimeKeeper::adoptTimedWake()` is called directly in `time_keeper_persistence_test`. | Fixed in `plans/320-rtc-use.md`, which now names which gates are host-tested (1, 2, 4, 5) and states that gate 3 is structural and scenario-visible only. `docs/sim.md` says the same from the simulator's side. | `src/FurblePlatform.cpp` `consumeTimedWake()`; `tests/host/time_keeper_persistence_test.cpp` |
+| 4 | Review | **"Five gates, and each is host-tested" was false.** Gate 3, the board's wake marker, lives in `Platform::consumeTimedWake()`, which needs the M5PM1. No host test reached it; `TimeKeeper::adoptTimedWake()` is called directly in `time_keeper_persistence_test`. | Corrected in `plans/320-rtc-use.md`, which named which gates were host-tested (1, 2, 4, 5) and stated that gate 3 was scenario-visible only, and in `docs/sim.md` from the simulator's side. Round 2 then gave gate 3 a host test, so the plan now lists all five as host-tested and names the four device confirmations that remain. | `src/FurblePlatform.cpp` `consumeTimedWake()`; `boundary-platform-timed-wake` in round 2 |
 | 5 | Review | **A record could outlive the boot that should have consumed it.** `consumeTimedWake()` returned before clearing the buffer when the record read failed, so an uninterpretable record survived; and `powerOffUntil()` wrote the marker without clearing the record region when it could not build a prediction, so a stale record from an earlier shutdown could pair with the new marker. Both contradict the "no later boot may pair one with the other's absence" comment above `TIMED_WAKE_CLEAR`. | Fixed in both directions: `consumeTimedWake()` clears the whole buffer on every boot and returns false afterwards if the read failed, and `powerOffUntil()` clears the record region when `prepareTimedWake()` produces nothing. The simulator double already removed its key unconditionally, so it matches. | `src/FurblePlatform.cpp` `powerOffUntil()`, `consumeTimedWake()`; `sim/FurblePlatformSim.cpp` |
 | 6 | Review | **The head first reviewed (`322859fe`) failed the repository's own clang-format gate.** Four files it changes did not match clang-format 21.1.2: `src/FurblePlatform.cpp`, `src/FurbleTimeKeeper.cpp`, `sim/FurblePlatformSim.cpp` and `sim/hardware_model.cpp`, while the pull request body claimed `pre_review.py --base origin/master: PASS, 13 gates`. | Already fixed upstream. The author force-pushed `ac604abf`, which is the same content reformatted: the diff over those source files is whitespace and line-wrap only. This review re-checked the replacement head and it passes, so no change was carried for it. Recorded because the claim was wrong at the head that was reviewed. | `git diff 322859fe ac604abf -- src/ sim/`; `tools/check_format.py --base origin/master` on the merged tree |
 | 7 | Review | **The simulator's own limits were not stated**, so a green e2e run could be read as covering the no-flash-write property and the marker gate, which it cannot. | Fixed in `docs/sim.md`: the storage choice is named as the reason the wear property is out of scope there, and the host commit counter is named as what holds it. | `docs/sim.md`; `sim/FurblePlatformSim.cpp` `TIMED_WAKE_RECORD_KEY` |
+
+## Round 2 - the rebase and the gate that had no test
+
+This round began after master moved four times, and it carries the one claim the
+review left open: gate 3 had no test at any level.
+
+| # | Item | Finding | Resolution | Evidence |
+| ---: | :--- | :--- | :--- | :--- |
+| 1 | Rebase | Master reached `55987a32`, which rewrote `plans/README.md` and moved seven duplicate plan numbers to 377 to 383. The branch was `CONFLICTING`, so it had no CI at all. | Rebased onto `55987a32`. `plans/README.md` keeps both sides: master's renumbering section and its rows, and this branch's `320-review-feedback` row. Git's rename detection carried the branch's citation edits from `332-review-feedback.md` and `332-vendor-document-verification.md` into `380-review-feedback.md` and `378-vendor-document-verification.md`. No review claim was lost: every one of the 246 lines the round 1 commit added is present at the rebased head, checked line by line, with the same check run against the pre-review commit `8dbf5c3f` to prove it reports the 246 absences it should. | `git diff 55987a32 HEAD`; the line-presence check described in the resolution. |
+| 2 | Review, open from round 1 | **Gate 3 had no test.** `TimeKeeper::adoptTimedWake()` has exactly one caller, `Platform::consumeTimedWake()`, and the review stopped at "needs the M5PM1". The gate needs the part, not a board: the production `src/FurblePlatform.cpp` compiles against a register-bus double, which is what `boundary-platform-rail` already did for the rail path. | Added `boundary-platform-timed-wake` (`tests/host/boundaries/platform_timed_wake_test.cpp`, `add_test(NAME boundary-platform-timed-wake ...)`). It drives the real `powerOffUntil()` and the real `consumeTimedWake()` across a simulated power cycle: a confirmed wake adopts the record byte for byte, a timer wake without the marker adopts nothing, a marker without a timer wake adopts nothing, and each of those clears the buffer. The M5PM1 double now models WAKE_SRC 0x05 read-to-clear and the 32-byte RTC buffer as storage, with offset-scoped read and write failures. | Red first, four mutations, each failing only its own assertions: dropping the marker comparison fails 2, returning before the clear on a failed read fails 1, removing the no-prediction clear fails 1, removing the failed-write clear fails 3. |
+| 3 | Review, found in round 2 | **The round 1 fix left one path where a record outlives its boot.** `powerOffUntil()` cleared the region when no prediction existed, but a *failed record write* after the marker landed left the earlier shutdown's record in place. A probe reproduced it: an earlier 600 s shutdown, then a 60 s shutdown whose record write fails, leaves `marker=1 region600=1 region60=0`, so the next confirmed boot would adopt the 600 s interval as if this shutdown had armed it. | Fixed. The failure branch now clears the record region, so the marker is left with no record, which the boot refuses outright. Best effort by construction: a bus that refuses the write usually refuses the clear, and a marker with no record is the fail-closed outcome either way. | New case in `boundary-platform-timed-wake`; reverting the clear fails "the earlier 600 s record is gone rather than left behind the new marker", "the region is cleared, so the boot has a marker with no record to read" and "the clock is never handed the interval of the earlier shutdown". |
+
+The four device confirmations this round cannot close, now named in
+[320-rtc-use.md](320-rtc-use.md): that a real M5PM1 keeps the 32-byte RTC buffer
+across the shutdown it performs, that a timer wake sets WAKE_SRC bit 0, that the
+buffer survives the rail cut with no partial write, and the timer's accuracy,
+which is C2. The double models the part's registers and a buffer whose lifetime
+matches a powered PM1, not a real rail cut.
 
 ## Findings judged false or already correct
 
@@ -104,6 +125,8 @@ Nothing in this record narrows a hardware gate. The bench run that would replace
 
 ## Verification
 
+Round 1:
+
 - `time_keeper_policy_test` and `time_keeper_persistence_test`: pass.
 - `tools/run_sanitized_host_tests.sh -R '^(time-keeper)'`: 2/2 pass under ASan,
   UBSan and LeakSanitizer.
@@ -114,3 +137,12 @@ Nothing in this record narrows a hardware gate. The bench run that would replace
   merged tree.
 - `python3 tools/pre_review.py --base origin/master`.
 - `sh sim/scripts/check-doc-tokens.sh`.
+
+Round 2, on the rebased tree:
+
+- `boundary-platform-timed-wake`: pass, and four mutations of the production
+  lines it guards each fail it, one assertion set per line.
+- The full host suite and `tools/run_sanitized_host_tests.sh` on the new target,
+  as recorded in the pull request body.
+- `python3 tools/check_doc_citations.py --root .`, the deep-sleep scenarios and
+  `python3 tools/pre_review.py --base origin/master`, likewise.
