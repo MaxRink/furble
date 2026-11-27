@@ -436,7 +436,13 @@ extern "C" esp_err_t esp_mqtt_client_start(esp_mqtt_client_handle_t client) {
   // Model the esp-mqtt client task before the transport starts, the same point
   // where the ESP-IDF component allocates it. With the board's heap abort
   // policy a failure aborts here, exactly as xTaskCreate does on hardware.
-  if (Furble::Sim::heapActive() && !Furble::Sim::heapReserve(client->task_stack_bytes)) {
+  // The exact-size injection probe runs first, so a scenario can fail the
+  // client task of a retry rather than the first start.
+  const bool injected =
+      Furble::Sim::heapActive()
+      && Furble::Sim::heapShouldFailAllocation(client->task_stack_bytes, "mqtt_client");
+  if (Furble::Sim::heapActive()
+      && (injected || !Furble::Sim::heapReserve(client->task_stack_bytes))) {
     Furble::Sim::heapNoteAllocationFailure(client->task_stack_bytes, "mqtt_client");
     return ESP_ERR_NO_MEM;
   }

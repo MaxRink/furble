@@ -225,6 +225,42 @@
       "status": "modeled",
       "known_failing_seeds": [],
       "source": "hardware incident"
+    },
+    {
+      "id": "camera-connect-target-alloc",
+      "scenario": "sim/fixtures/hardware/panic-camera-connect-alloc.txt",
+      "assertions": [
+        "SIM PANIC: allocation failure in task FauxNY-40",
+        "crash.task = FauxNY-40"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json",
+      "runner": "sim/scripts/run-panic-fixtures.sh"
+    },
+    {
+      "id": "mqtt-reconnect-client-alloc",
+      "scenario": "sim/fixtures/hardware/panic-mqtt-reconnect-alloc.txt",
+      "assertions": [
+        "SIM PANIC: allocation failure in task mqtt_client",
+        "crash.task = mqtt_client"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json",
+      "runner": "sim/scripts/run-panic-fixtures.sh"
+    },
+    {
+      "id": "psram-exhausted-task-alloc",
+      "scenario": "sim/fixtures/hardware/panic-psram-exhausted-task-alloc.txt",
+      "assertions": [
+        "SIM PANIC: allocation failure in task control",
+        "crash.task = control"
+      ],
+      "status": "modeled",
+      "known_failing_seeds": [],
+      "source": "sim/coverage/crashes.json",
+      "runner": "sim/scripts/run-panic-fixtures.sh"
     }
   ]
 }

@@ -302,6 +302,138 @@ void testBaselineAndEmptyCaps(void) {
   checkSize(furble_sim_heap_minimum(0), 1060000, "an empty caps set must sum both pool watermarks");
 }
 
+/*
+ * Failure injection reaches both allocator entry points and honours the owner,
+ * the exact size and the n-th occurrence. The board abort policy is compiled
+ * out of this target, so a failed request returns NULL and the next one can be
+ * observed instead of ending the process.
+ */
+void testFailureInjection(void) {
+  using namespace Furble::Sim;
+
+  heapSet(60000, 30000);
+  heapSetPsram("octal", 1000000, 500000);
+
+  // Exact size: the rule fails the 256-byte request, then the next one works.
+  heapSetAllocFailureOnce(256, "heap_caps");
+  void *failed = heap_caps_malloc(256, CAPS_INTERNAL);
+  check(failed == nullptr, "an exact-size rule must fail the matching heap_caps_malloc");
+  void *kept = heap_caps_malloc(256, CAPS_INTERNAL);
+  check(kept != nullptr, "a one-shot rule must leave the next request alone");
+  heap_caps_free(kept);
+
+  // A size that does not match never consumes the rule, and the owner filter
+  // is independent of it.
+  heapSetAllocFailureOnce(1024, "heap_caps");
+  kept = heap_caps_malloc(256, CAPS_INTERNAL);
+  check(kept != nullptr, "a rule for another size must not fail this request");
+  heap_caps_free(kept);
+  check(heap_caps_malloc(1024, CAPS_INTERNAL) == nullptr,
+        "the size rule must still fail its own request after a mismatch");
+  heapSetAllocFailureOnce(256, "other_owner");
+  kept = heap_caps_malloc(256, CAPS_INTERNAL);
+  check(kept != nullptr, "a rule for another owner must not fail this caller");
+  heap_caps_free(kept);
+  check(heapAllocTagged(256, "other_owner", false) == 0,
+        "an owner-scoped rule must fail a tagged allocation of that owner");
+
+  // Two consecutive failures, then success: the count form.
+  heapSetAllocFailure(512, "heap_caps", 2);
+  check(heap_caps_malloc(512, CAPS_INTERNAL) == nullptr, "the first counted failure");
+  check(heap_caps_malloc(512, CAPS_INTERNAL) == nullptr, "the second counted failure");
+  kept = heap_caps_malloc(512, CAPS_INTERNAL);
+  check(kept != nullptr, "the counted rule must be spent after its count");
+  heap_caps_free(kept);
+
+  // The n-th form leaves the first matching request alone. This is the shape
+  // an MQTT reconnect or a second handshake needs.
+  heapSetAllocFailureAfter(768, "heap_caps", 1, 1);
+  kept = heap_caps_malloc(768, CAPS_INTERNAL);
+  check(kept != nullptr, "the skipped occurrence must be served");
+  heap_caps_free(kept);
+  check(heap_caps_malloc(768, CAPS_INTERNAL) == nullptr,
+        "the occurrence named by the rule must fail");
+}
+
+/*
+ * PSRAM exhaustion while the internal pool is healthy. A SPIRAM-only request
+ * cannot fall back, so it fails, and the failure must not be paid out of
+ * internal RAM: that fallback is what hides a PSRAM leak on hardware.
+ */
+void testPsramExhaustion(void) {
+  using namespace Furble::Sim;
+
+  heapSet(60000, 30000);
+  heapSetPsram("octal", 4096, 2048);
+  // Earlier cases left their own charges in the ledger; only the delta is this
+  // case's business.
+  const size_t countedInternalBefore = heapCountedBytes(false);
+  const size_t countedExternalBefore = heapCountedBytes(true);
+
+  size_t charged = 0;
+  bool external = false;
+  check(!heapCountedAllocCaps(8192, CAPS_EXTERNAL, "probe", &charged, &external),
+        "a request larger than the PSRAM pool must fail with internal RAM healthy");
+  check(!external, "a failed PSRAM request reports no external charge");
+  checkSize(heapFree(), 60000, "a failed PSRAM request must not consume internal RAM");
+  checkSize(heapPsramFree(), 4096, "a failed PSRAM request must not consume PSRAM");
+  checkSize(heapCountedBytes(false), countedInternalBefore,
+            "a failed PSRAM request must not be counted internal");
+  checkSize(heapCountedBytes(true), countedExternalBefore,
+            "a failed PSRAM request must not be counted external");
+
+  // A default request still succeeds, because internal RAM serves it first.
+  check(heapCountedAllocCaps(4096, MALLOC_CAP_DEFAULT, "probe", &charged, &external),
+        "a default request must still succeed while PSRAM is full");
+  check(!external, "the default request must stay in internal RAM");
+  checkSize(heapPsramFree(), 4096, "the default request must not touch the full PSRAM pool");
+
+  // The query surface agrees: PSRAM is small, internal RAM is not.
+  checkSize(furble_sim_heap_free(CAPS_EXTERNAL), 4096, "the PSRAM free size is the seeded pool");
+  checkSize(furble_sim_heap_largest(CAPS_EXTERNAL), 2048,
+            "the PSRAM largest block is the seeded figure");
+  checkSize(furble_sim_heap_free(CAPS_INTERNAL), 60000 - charged,
+            "only the served default request left the internal pool");
+}
+
+/*
+ * Fragmentation: a pool with plenty of free bytes but a much smaller largest
+ * block refuses a request that a free-size-only model would accept.
+ */
+void testFragmentation(void) {
+  using namespace Furble::Sim;
+
+  heapSet(60000, 2048);
+
+  size_t charged = 0;
+  bool external = false;
+  check(!heapCountedAllocCaps(4096, CAPS_INTERNAL, "probe", &charged, &external),
+        "a block larger than the largest free block must fail although 60000 is free");
+  checkSize(heapFree(), 60000, "the refused block must not change the free figure");
+  checkSize(furble_sim_heap_largest(CAPS_INTERNAL), 2048,
+            "the largest block stays the seeded figure");
+
+  check(heapCountedAllocCaps(1024, CAPS_INTERNAL, "probe", &charged, &external),
+        "a block that fits the largest free block must succeed");
+  checkSize(heapFree(), 60000 - charged, "the served block comes off the free figure");
+  // The largest block shrinks with the request and never exceeds the free
+  // figure, which is the one fragmentation rule the model carries.
+  checkSize(furble_sim_heap_largest(CAPS_INTERNAL), 2048 - charged,
+            "the served block comes off the largest figure too");
+
+  // A multi_heap_info_t read of the same pool reports the same fragmentation.
+  multi_heap_info_t info = {};
+  heap_caps_get_info(&info, CAPS_INTERNAL);
+  checkSize(info.total_free_bytes, 60000 - charged, "the info total free matches the seed");
+  checkSize(info.largest_free_block, 2048 - charged, "the info largest block matches the seed");
+  check(info.largest_free_block < info.total_free_bytes,
+        "the info read must show the fragmentation, not a flat pool");
+
+  // The shim refuses the fragmented request before it charges anything.
+  check(!furble_sim_heap_fits(4096, CAPS_INTERNAL),
+        "heap_caps_malloc_prefer must skip a pool whose largest block cannot hold the request");
+}
+
 }  // namespace
 
 int main(void) {
@@ -311,6 +443,9 @@ int main(void) {
   testPreferOrder();
   testOverReportedCaps();
   testBaselineAndEmptyCaps();
+  testFailureInjection();
+  testPsramExhaustion();
+  testFragmentation();
 
   if (g_Failures != 0) {
     std::cerr << "sim heap caps: " << g_Failures << " FAILED\n";

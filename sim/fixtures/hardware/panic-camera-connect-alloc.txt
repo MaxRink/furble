@@ -1,0 +1,27 @@
+# A camera connect whose target task cannot be allocated. Expected: SIM PANIC,
+# exit 3.
+#
+# Control::addActive() admits the whole target to the memory governor and then
+# creates the per-camera task. Every furble sdkconfig sets
+# CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS, so a failed xTaskCreate aborts the
+# device and the firmware's `ret != pdPASS` branch is unreachable on hardware.
+# This fixture is the connect-time counterpart of the boot-time task fixtures:
+# the failure lands inside a live connect, after the WebUI shed and before the
+# camera is a target.
+#
+# The seeded FauxNY takes the first esp_random() value, so its name is stable
+# across runs and the abort line can be asserted exactly.
+#
+# sim/scripts/run-panic-fixtures.sh runs this and checks the panic record.
+seed fauxny true
+seed saved_camera true
+seed heap_internal_free 60000
+seed heap_internal_largest 50000
+seed task_create_fail FauxNY-40
+wait 1500
+assert heap.counting yes
+home
+wait 300
+action connect
+wait 3000
+exit

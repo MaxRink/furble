@@ -175,8 +175,26 @@ struct pending_failure_t {
 };
 thread_local pending_failure_t t_Pending;
 
-[[noreturn]] void abortOnAllocationFailure(const pending_failure_t &failure) {
+/*
+ * The one exit path of a modelled heap abort: stderr gets the SIM PANIC marker
+ * for the failure kind, the registered recorder writes the panic crash record
+ * with the hardware-shaped line, and the process leaves with SIM_PANIC_EXIT.
+ */
+[[noreturn]] void panicExit(const char *task, const char *kind, const char *line) {
   // The abort path allocates; it must not count against the exhausted pool.
+  const Furble::Sim::HostAllocScope scope;
+  std::fprintf(stderr, "SIM PANIC: %s in task %s aborts the device\n", kind,
+               (task == nullptr || task[0] == '\0') ? "unknown" : task);
+  const Furble::Sim::panic_recorder_t recorder = s_PanicRecorder.load();
+  if (recorder != nullptr) {
+    recorder(ESP_RST_PANIC, task, line);
+  }
+  std::fflush(stdout);
+  std::fflush(stderr);
+  std::_Exit(Furble::Sim::SIM_PANIC_EXIT);
+}
+
+[[noreturn]] void abortOnAllocationFailure(const pending_failure_t &failure) {
   const Furble::Sim::HostAllocScope scope;
   // heap_caps.c calls the registered hook first, then esp_system_abort().
   const esp_alloc_failed_hook_t hook = s_FailedAllocHook.load();
@@ -187,15 +205,7 @@ thread_local pending_failure_t t_Pending;
   std::snprintf(line, sizeof(line), "Mem alloc fail. size 0x%04x caps 0x%08x",
                 static_cast<unsigned>(failure.bytes), static_cast<unsigned>(failure.caps));
   std::fprintf(stderr, "abort() was called: %s\n", line);
-  std::fprintf(stderr, "SIM PANIC: allocation failure in task %s aborts the device\n",
-               failure.task.c_str());
-  const Furble::Sim::panic_recorder_t recorder = s_PanicRecorder.load();
-  if (recorder != nullptr) {
-    recorder(ESP_RST_PANIC, failure.task.c_str(), line);
-  }
-  std::fflush(stdout);
-  std::fflush(stderr);
-  std::_Exit(Furble::Sim::SIM_PANIC_EXIT);
+  panicExit(failure.task.c_str(), "allocation failure", line);
 }
 
 /*
@@ -228,6 +238,9 @@ struct fail_rule_t {
   size_t bytes = 0;
   std::string owner;
   uint32_t count = 0;
+  // Matching allocations that pass before the rule starts failing, so a
+  // retry, a reconnect or a second handshake can be the one that fails.
+  uint32_t skip = 0;
 };
 
 struct timeline_sample_t {
@@ -364,6 +377,10 @@ bool failRuleMatchesLocked(const char *owner, size_t bytes) {
       continue;
     }
     if (!rule.owner.empty() && (owner == nullptr || rule.owner != owner)) {
+      continue;
+    }
+    if (rule.skip > 0) {
+      rule.skip--;
       continue;
     }
     rule.count--;
@@ -730,6 +747,16 @@ void heapNoteAllocationFailure(size_t bytes, const char *task) {
   noteFailureLocked(bytes, task);
 }
 
+void heapNoteDoubleFree(const char *task) {
+  constexpr const char *LINE = "Heap block freed twice";
+  const char *name = (task == nullptr || task[0] == '\0') ? "unknown" : task;
+  // The caller holds no heap lock: a double free is detected in the device
+  // allocation registry, which is a different mutex. Log first, then exit, so
+  // a scenario sees the same two lines an allocation abort prints.
+  ESP_LOGE(LOG_TAG, "%s", LINE);
+  panicExit(name, "heap block freed twice", LINE);
+}
+
 bool heapTaskCreate(const char *name,
                     size_t stackBytes,
                     size_t *chargedBytes,
@@ -907,8 +934,12 @@ void heapFreeTagged(uint64_t id) {
 }
 
 void heapSetAllocFailure(size_t bytes, const char *owner, uint32_t count) {
+  heapSetAllocFailureAfter(bytes, owner, 0, count);
+}
+
+void heapSetAllocFailureAfter(size_t bytes, const char *owner, uint32_t skip, uint32_t count) {
   const model_lock_t lock;
-  state().failRules.push_back({bytes, owner == nullptr ? "" : owner, count});
+  state().failRules.push_back({bytes, owner == nullptr ? "" : owner, count, skip});
 }
 
 void heapSetAllocFailureOnce(size_t bytes, const char *owner) {

@@ -110,9 +110,16 @@ also refuses a dirty worktree.
 
 The committed artifact in `sim/coverage/fuzz_results.json` passes: 11 targets,
 145 seed runs, 124,148 iterations and zero failures. The committed manifests
-list 6,912 permutations and 13 memory profile scenarios, and
+list 206 modeled hardware entries, 23 crash entries, 6,912 permutations and 13
+memory profile scenarios, and
 `sh sim/scripts/run-boundary-conformance.sh` runs the 29 linked boundary ctest
-cases. The
+cases. `sh sim/scripts/run-panic-fixtures.sh` runs the seven allocation-abort
+fixtures: a failed `heap_caps_malloc`, a failed icon malloc without PSRAM, a
+PSRAM task stack on a board without PSRAM, an exhausted internal pool during a
+camera connect, a task stack on a present but too small PSRAM pool, a failed
+MQTT owner task and a failed MQTT client task on the retry. `sim-heap-caps-shim`
+covers the abort the host fixture cannot express, a block freed twice, in its
+forked-child harness. The
 memory dumps are ignored generated evidence, so run
 `python3 sim/scripts/run-memory-profile.py` before the final readiness check.
 No fuzz seed is open. Hardware validation is deferred; #407 has not been

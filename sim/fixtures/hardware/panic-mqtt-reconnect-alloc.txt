@@ -1,0 +1,24 @@
+# The MQTT client task of the retry, not of the first start. Expected: SIM PANIC,
+# exit 3.
+#
+# The owner retires the client between attempts, so every retry allocates the
+# client task again. `alloc_fail mqtt_client:3072:2` leaves the first matching
+# start alone and fails the second, which is the reconnect after a refused
+# connection. Every furble sdkconfig aborts on a failed allocation, so this
+# retry aborts the device instead of logging the `ESP_ERR_NO_MEM` fallback the
+# production code still carries for a host that cannot abort.
+#
+# Requires the native MQTT simulator build: FURBLE_SIM_MQTT=1. The broker is a
+# closed local port, so the first attempt is refused and the retry runs off its
+# virtual-clock deadline.
+#
+# sim/scripts/run-panic-fixtures.sh runs this and checks the panic record.
+seed wifi_connected true
+seed alloc_fail mqtt_client:3072:2
+wait 100
+assert mqtt.task created
+assert-eventually 30000 mqtt.connect_failures 1
+wait 10000
+wait 1000
+wait 1000
+exit

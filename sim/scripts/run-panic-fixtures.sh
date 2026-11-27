@@ -105,8 +105,14 @@ run_fixture "$BIN" sim/fixtures/hardware/panic-icon-no-psram.txt \
   "Mem alloc fail. size 0x3003 caps 0x00001800" icon_decode icon_decode
 run_fixture "$BIN" sim/fixtures/hardware/panic-psram-task-no-psram.txt \
   "Mem alloc fail. size 0x2000 caps 0x00000404" control control
+run_fixture "$BIN" sim/fixtures/hardware/panic-camera-connect-alloc.txt \
+  "Mem alloc fail. size 0x1000 caps 0x00000804" FauxNY-40 FauxNY-40
+run_fixture "$BIN" sim/fixtures/hardware/panic-psram-exhausted-task-alloc.txt \
+  "Mem alloc fail. size 0x2000 caps 0x00000404" control control
 run_fixture "$MQTT_BIN" sim/fixtures/hardware/panic-mqtt-task-alloc-fail.txt \
   "Mem alloc fail. size 0x2800 caps 0x00000804" mqtt mqtt
+run_fixture "$MQTT_BIN" sim/fixtures/hardware/panic-mqtt-reconnect-alloc.txt \
+  "Mem alloc fail. size 0x0c00 caps 0x00000804" mqtt_client mqtt_client
 
 # Structured evidence markers consumed by tools/check_sim_coverage.py. Each
 # token is checked against the captured run output. A crash record keeps 15
@@ -124,11 +130,19 @@ assert_token "abort() was called: Mem alloc fail. size 0x3003 caps 0x00001800"
 assert_token "SIM PANIC: allocation failure in task icon_decode"
 assert_token "abort() was called: Mem alloc fail. size 0x2000 caps 0x00000404"
 assert_token "SIM PANIC: allocation failure in task control"
+assert_token "abort() was called: Mem alloc fail. size 0x1000 caps 0x00000804"
+assert_token "SIM PANIC: allocation failure in task FauxNY-40"
+assert_token "abort() was called: Mem alloc fail. size 0x2000 caps 0x00000404"
+assert_token "SIM PANIC: allocation failure in task control"
 assert_token "SIM PANIC: allocation failure in task mqtt aborts"
+assert_token "abort() was called: Mem alloc fail. size 0x0c00 caps 0x00000804"
+assert_token "SIM PANIC: allocation failure in task mqtt_client"
 assert_token "crash.task = webui_superviso"
 assert_token "crash.task = icon_decode"
 assert_token "crash.task = control"
+assert_token "crash.task = FauxNY-40"
 assert_token "crash.task = mqtt"
+assert_token "crash.task = mqtt_client"
 
 if [ "$status" -eq 0 ]; then
   echo "Allocation abort gate passed."

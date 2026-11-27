@@ -266,7 +266,11 @@ void checkRealloc(void) {
 enum class AbortCase {
   CallocExhausted,
   CallocInjected,
+  CallocOverflow,
   ReallocExhausted,
+  PreferExhausted,
+  MallocInjected,
+  DoubleFree,
 };
 
 const char *abortCaseName(AbortCase which) {
@@ -275,8 +279,16 @@ const char *abortCaseName(AbortCase which) {
       return "calloc-exhausted";
     case AbortCase::CallocInjected:
       return "calloc-injected";
+    case AbortCase::CallocOverflow:
+      return "calloc-overflow";
     case AbortCase::ReallocExhausted:
       return "realloc-exhausted";
+    case AbortCase::PreferExhausted:
+      return "prefer-exhausted";
+    case AbortCase::MallocInjected:
+      return "malloc-injected";
+    case AbortCase::DoubleFree:
+      return "double-free";
   }
   return "unknown";
 }
@@ -294,7 +306,11 @@ void runAbortCase(AbortCase which) {
     Furble::Sim::heapSetPsram("octal", 1024 * 1024, 512 * 1024);
     Furble::Sim::heapSetAllocFailureOnce(256, "heap_caps");
     (void)heap_caps_calloc(64, 4, CAPS_PSRAM);
-  } else {
+  } else if (which == AbortCase::CallocOverflow) {
+    // A count that overflows size_t is rejected before any pool is touched,
+    // and the hook is handed the wrapped total as the device hands it.
+    (void)heap_caps_calloc(SIZE_MAX / 2, 4, CAPS_PSRAM);
+  } else if (which == AbortCase::ReallocExhausted) {
     // Growing past the modelled pool fails, and the old block stays valid.
     Furble::Sim::heapSetPsram("octal", 8192, 4096);
     void *block = heap_caps_malloc(32, CAPS_PSRAM);
@@ -302,11 +318,42 @@ void runAbortCase(AbortCase which) {
       _exit(91);
     }
     (void)heap_caps_realloc(block, 8192, CAPS_PSRAM);
+  } else if (which == AbortCase::PreferExhausted) {
+    // The display buffer path asks for PSRAM and then the default set. Both
+    // pools are too small, so the last set's failure aborts the run.
+    Furble::Sim::heapSet(64, 64);
+    Furble::Sim::heapSetPsram("absent", 0, 0);
+    (void)heap_caps_malloc_prefer(4096, 2, CAPS_PSRAM, MALLOC_CAP_DEFAULT);
+  } else if (which == AbortCase::MallocInjected) {
+    // The plain malloc/new path takes the same probe. The owner is the device
+    // task, so the rule names the task the request came from.
+    Furble::Sim::heapSetAllocFailureOnce(128, "heap-caps-test");
+    (void)furble_sim_fw_malloc(128);
+  } else {
+    // A block this registry released is freed again. multi_heap_free aborts
+    // on an already-freed block, so the model must too, instead of handing the
+    // pointer to the host allocator.
+    void *block = furble_sim_fw_malloc(64);
+    if (block == nullptr) {
+      _exit(93);
+    }
+    furble_sim_fw_free(block);
+    furble_sim_fw_free(block);
   }
   _exit(92);
 }
 
-void checkAbortCase(AbortCase which, const char *expectedTask, const char *expectedSize) {
+struct panic_expectation_t {
+  const char *task = nullptr;
+  // Substring of the line the panic record kept.
+  const char *line = nullptr;
+  // Substring of the recorded allocation size, or null when the failure is not
+  // an allocation.
+  const char *size = nullptr;
+  const char *caps = nullptr;
+};
+
+void checkAbortCase(AbortCase which, const panic_expectation_t &expectation) {
   int fds[2] = {-1, -1};
   if (pipe(fds) != 0) {
     std::cerr << "  FAIL: " << abortCaseName(which) << " could not create a pipe\n";
@@ -357,15 +404,21 @@ void checkAbortCase(AbortCase which, const char *expectedTask, const char *expec
     g_Failures++;
     return;
   }
-  check(std::strstr(record, "line=Mem alloc fail.") != nullptr,
-        "the abort writes the hardware-shaped failure line to the panic record");
-  check(std::strstr(record, expectedSize) != nullptr,
-        "the panic record carries the requested block size");
-  check(std::strstr(record, "caps 0x00000404") != nullptr,
-        "the panic record carries the SPIRAM capability pair");
-  if (std::strstr(record, expectedTask) == nullptr) {
-    std::cerr << "  FAIL: " << abortCaseName(which) << " did not name task " << expectedTask << ": "
-              << record;
+  if (expectation.line != nullptr) {
+    check(std::strstr(record, expectation.line) != nullptr,
+          "the abort writes the modelled failure line to the panic record");
+  }
+  if (expectation.size != nullptr) {
+    check(std::strstr(record, expectation.size) != nullptr,
+          "the panic record carries the requested block size");
+  }
+  if (expectation.caps != nullptr) {
+    check(std::strstr(record, expectation.caps) != nullptr,
+          "the panic record carries the requested capability pair");
+  }
+  if (expectation.task != nullptr && std::strstr(record, expectation.task) == nullptr) {
+    std::cerr << "  FAIL: " << abortCaseName(which) << " did not name task " << expectation.task
+              << ": " << record;
     g_Failures++;
   }
 }
@@ -392,9 +445,34 @@ int main(void) {
 
   // Under the board policy the failing calls abort. The window (64 * 4 = 256)
   // is the requested block; the fault probe reports the same total.
-  checkAbortCase(AbortCase::CallocExhausted, "task=heap-caps-test", "size 0x0100");
-  checkAbortCase(AbortCase::CallocInjected, "task=heap_caps", "size 0x0100");
-  checkAbortCase(AbortCase::ReallocExhausted, "task=heap-caps-test", "size 0x2000");
+  checkAbortCase(AbortCase::CallocExhausted,
+                 {"task=heap-caps-test", "line=Mem alloc fail.", "size 0x0100",
+                  "caps 0x00000404"});
+  checkAbortCase(AbortCase::CallocInjected,
+                 {"task=heap_caps", "line=Mem alloc fail.", "size 0x0100", "caps 0x00000404"});
+  checkAbortCase(AbortCase::ReallocExhausted,
+                 {"task=heap-caps-test", "line=Mem alloc fail.", "size 0x2000",
+                  "caps 0x00000404"});
+  // A count that overflows the block size aborts before any pool is charged,
+  // and the hook sees the wrapped total the device reports: the 32-bit
+  // truncation of (SIZE_MAX / 2) * 4.
+  checkAbortCase(AbortCase::CallocOverflow,
+                 {"task=heap_caps_calloc", "line=Mem alloc fail.", "size 0xfffffffc",
+                  "caps 0x00000404"});
+  // The display buffer's prefer list fails on its last set, which is the
+  // variadic path no host test reached before.
+  checkAbortCase(AbortCase::PreferExhausted,
+                 {"task=heap_caps_malloc_prefer", "line=Mem alloc fail.", "size 0x1000",
+                  "caps 0x00001000"});
+  // The plain malloc/new path aborts through the same probe, and reports the
+  // MALLOC_CAP_DEFAULT pair a firmware `new` prints on the device.
+  checkAbortCase(AbortCase::MallocInjected,
+                 {"task=heap-caps-test", "line=Mem alloc fail.", "size 0x0080",
+                  "caps 0x00001000"});
+  // A block freed twice aborts like multi_heap_free does, and the record names
+  // the modelled line instead of an allocation size.
+  checkAbortCase(AbortCase::DoubleFree,
+                 {"task=heap-caps-test", "line=Heap block freed twice"});
 
   if (g_Failures != 0) {
     std::cerr << "FAIL: " << g_Failures << " heap_caps shim check(s)\n";
