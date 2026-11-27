@@ -29,7 +29,8 @@ assert hw.motion_wake direct
 assert hw.motion_wake_pin 35
 assert ui.motion_wake yes
 
-# Timed wake: still no self-wake path, even with a calendar RTC fitted.
+# Timed wake: the BM8563 alarm is the wake path on this row, and the AXP192 power
+# key is what the INT reaches.
 assert hw.timed_wake rtc-alarm
 assert platform.timed_wake yes
 
@@ -40,6 +41,8 @@ assert hw.rtc_irq_armed no
 
 # IR and LED are separate pins.
 assert hw.ir_pin 9
+assert hw.ir_mark_low yes
+assert hw.ir_mark_level low
 assert hw.led_pin 10
 assert hw.led_active_low yes
 assert hw.led_shared_with_ir no

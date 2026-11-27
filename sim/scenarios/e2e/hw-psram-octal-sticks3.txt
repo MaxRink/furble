@@ -28,6 +28,11 @@ assert hw.gauge voltage_charge
 assert hw.profile sticks3
 assert hw.mcu esp32s3
 assert hw.flash_kb 8192
+# M5Unified sets M5PM1 GPIO3 low during M5::begin(), so the Port A rail is off
+# until the rail manager asks for it. The StickC pair is the opposite case; see
+# hw-stickc-gps-rail-boot.txt.
+assert hw.rail_boot off
+assert platform.rail off
 assert hw.display 135x240
 assert hw.touch no
 assert hw.ir yes

@@ -10,14 +10,17 @@
 # must be promoted to an assert in the same change.
 #
 # The frame window is the 190 ms Nikon train; the modelled board facts are in
-# sim/hardware_model.cpp. The mark level is the production encoder's level 1
-# for a mark (tests/host/boundaries/ir_driver_test.cpp pins that register
-# train), so a per-board inversion would fail the mark assert here.
+# sim/hardware_model.cpp. `hw.ir_mark_level` is the level the emitter pin holds
+# during a mark, from the row's `irMarkLow`: the Plus2 drives the emitter from
+# the anode side and holds it high, while the StickC and Plus invert the output
+# and hold it low.
 #
 # Teeth: remove the shared-pin check from the model and led_conflicts fails;
-# move the LED to its own pin and the conflict count drops to zero; swap the
-# mark level and ir_mark_level fails. hw-stickc-capabilities.txt is the
-# separate-pin twin: the same two actions there must not conflict.
+# move the LED to its own pin and the conflict count drops to zero; flip this
+# row's `irMarkLow` and the mark-level assert below fails on its own, because
+# this scenario pins the level without the boolean beside it.
+# hw-stickc-capabilities.txt is the separate-pin twin: the same two actions
+# there must not conflict.
 seed hw_profile stickc-plus2
 wait 300
 

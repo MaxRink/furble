@@ -241,7 +241,6 @@ bool hwRtcRead(uint64_t &epoch_us, bool &volt_low);
 /** Record a calendar write, as M5.Rtc.setDateTime() would. */
 void hwRtcWrite(uint64_t epoch_us);
 /** True when the modelled profile wakes through the RTC alarm. */
-bool hwRtcTimedAlarmBoard(void);
 /** The chip kept counting through a simulated power-off. Persists the
  *  reading so the next process boots from the same chip state. */
 void hwRtcPowerOff(uint32_t seconds);
@@ -332,11 +331,9 @@ void hwMarkPlatformReady(void);
 
 /** IR and feedback LED pin model, including the Plus2 shared G19. */
 void hwIrFrame(void);
-bool hwIrBusy(void);
 void hwLightPulse(void);
 
 /** True when the modelled board's Port A 5 V rail is on at boot. */
-bool hwRailBootOn(void);
 
 /** Platform/P MIC state changed by production calls. */
 void hwSetWatchdogEnabled(bool enabled);

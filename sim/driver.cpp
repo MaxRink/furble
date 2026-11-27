@@ -2528,9 +2528,12 @@ std::string queryValueUnscoped(const std::string &key) {
   }
 
   if (key == "platform.rail") {
-    // The Port A 5 V rail as the fake receiver sees it. Board state, not a
-    // firmware claim: the StickC and Plus inherit EXTEN on from M5GFX.
-    return furble_sim_uart_rail_on() ? "on" : "off";
+    // The modelled Port A 5 V rail, which is what Platform::getRail() answers:
+    // the board row sets the level at boot (M5GFX leaves EXTEN on for the StickC
+    // and Plus, the StickS3 starts off) and the firmware's own acquire and
+    // release move it from there. The fake receiver keeps answering after a cut,
+    // so its own flag is not this answer.
+    return hwRailOn() ? "on" : "off";
   }
 
   if (key == "platform.wake_marker") {

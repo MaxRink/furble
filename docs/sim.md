@@ -1366,9 +1366,13 @@ The other namespaces are:
 - The board-row facts the panel build cannot carry: `hw.battery_mah`,
   `hw.motion_wake` (`direct`, `pmic-gpio` or `none`),
   `hw.motion_wake_pin`, `hw.timed_wake` (`pmic-timer`, `rtc-alarm` or `none`),
-  `hw.rtc_backed`, `hw.rtc_irq_armed`, `hw.ir_pin`, `hw.ir_mark_level`,
+  `hw.rtc_backed`, `hw.rtc_irq_armed`, `hw.ir_pin`, `hw.ir_mark_low`,
   `hw.led_pin`, `hw.led_active_low`, `hw.led_shared_with_ir`, `hw.button_a`,
   `hw.button_b`, `hw.button_pwr`, `hw.button_pwr_source` and `hw.rail_boot`.
+  `hw.ir_mark_level` is the same `irMarkLow` column in pin terms, reported as
+  the level the emitter pin holds during a mark: `low` on the StickC and Plus,
+  which drive the cathode from the pin, and `high` on the Plus2. The encoded
+  mark is always a mark; the inversion is `src/FurbleIR.cpp`'s `invert_out`.
 - `hw.part_psram` is the fitted PSRAM. `hw.build_flash_kb`,
   `hw.build_flash_mode` and `hw.build_psram` are the firmware image. The two
   disagree on the Plus2: the part has 8 MB QIO flash and 2 MB quad PSRAM
@@ -1656,9 +1660,13 @@ names lose characters, which must be 0. A page with no spin row reports 0 and
   power-on, otherwise `no`. It follows the board row, not the build: the Plus2
   `RTC_ALARM` row reports `yes` on any panel, and `hw_profile sticks3` reports
   `no` outside the M5PM1 image.
-- `platform.rail`: `on` or `off` for the modeled Port A 5 V rail as the fake
-  receiver sees it. The StickC and StickC Plus boot with it on, because M5GFX
-  enables AXP192 EXTEN during `M5.begin()`; the StickS3 boots with it off.
+- `platform.rail`: `on` or `off` for the modeled Port A 5 V rail, the same
+  answer `Platform::getRail()` gives. The board row seeds the boot level: the
+  StickC and StickC Plus start on, because M5GFX enables AXP192 EXTEN during
+  `M5.begin()`, and the StickS3 starts off because M5Unified drives M5PM1 GPIO3
+  low. The firmware's own acquire and release move it from there. The fake
+  receiver keeps answering after a cut so GPS fixtures stay hot, so its own flag
+  is not this answer.
 
 GPS simulator queries also include `gps.sats_in_view`, `gps.sats_used`,
 `gps.sats_fix` and `gps.sats_capture`; the `gps-satellite-page` end-to-end

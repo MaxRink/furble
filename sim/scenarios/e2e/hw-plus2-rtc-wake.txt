@@ -4,7 +4,7 @@
 # `Platform::powerOffUntil()` for Board::TimedWake::RTC_ALARM. Both sides select
 # the countdown registers through include/FurbleRtcCountdown.h, so these
 # requests pin the same arithmetic the firmware verifies with
-# verifyPlus2Timer(): one-second resolution below 270 s, minute resolution at or
+# verifyBm8563Timer(): one-second resolution below 270 s, minute resolution at or
 # above it, an 8-bit clamp, and a 60 s early-wake window. The driver's selection
 # rules are in M5Unified src/utility/rtc/PCF8563_Class.cpp setTimerIRQ(); the
 # BM8563 datasheet itself is cited, not opened, in docs/power/datasheet-register.md.

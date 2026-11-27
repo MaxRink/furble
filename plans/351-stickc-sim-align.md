@@ -46,16 +46,17 @@ does not exist, and scenarios that cannot fail when a firmware constant drifts.
 | BtnA/BtnB/power per board | M5Unified `src/M5Unified.cpp` `_update()` board switch, pinned 0.2.x copy |
 | Port A 5 V (AXP192 EXTEN) is already on after `M5.begin()` on StickC and Plus | M5GFX `src/M5GFX.cpp` `Light_M5StickC::init()`, register 0x12 = 0x4D |
 | StickS3 Port A rail starts off | M5Unified `_setup_pinmap()` sets M5PM1 GPIO3 output low |
-| Plus2 part: 8 MB QIO flash, 2 MB quad PSRAM; shared image 4 MB DIO, PSRAM off | M5StickC Plus2 product page; `sdkconfig.m5stick-c` (`FLASHSIZE="4MB"`, `FLASHMODE="dio"`, `CONFIG_SPIRAM is not set`). Every committed sdkconfig is DIO, including the S3 and Core2 |
+| Plus2 part: 8 MB QIO flash, 2 MB quad PSRAM; shared image 4 MB DIO, PSRAM off | M5StickC Plus2 product page; `sdkconfig.m5stick-c` (`FLASHSIZE="4MB"`, `CONFIG_ESPTOOLPY_FLASHMODE="dio"`, `CONFIG_SPIRAM` not set). Every committed sdkconfig leaves the image at `dio`; five of them (`m5stick-s3`, `esp32-s3-headless`, `waveshare-s3-eth`, `lilygo-tdeck`, `lilygo-twatch-ultra`) also select `CONFIG_ESPTOOLPY_FLASHMODE_QIO=y` under `CONFIG_ESPTOOLPY_FLASH_MODE_AUTO_DETECT=y`, so the bootloader may bring the part up quad while the image's own mode stays `dio`. The build rows record the image, which is what `hw.build_flash_mode` reports |
 
 Unverified and marked as such in code: the MPU6886 wake-on-motion threshold LSB
 (4 mg), the BM8563 register semantics beyond the M5Unified driver, the emitter
 polarity of every StickC-family IR LED, and the LED polarity plan 23 already
-flags as "not documented per board". The Plus2 RTC backing status is a firmware
-row (`rtcBatteryBacked = false`) with no datasheet confirmation in the tree, so
-the model follows the row and the question is recorded below. The Tough row sets
-`feedbackSound`, which no vendor page in the tree confirms for a board M5Unified
-gives no internal speaker; that row is the second open question below.
+flags as "not documented per board". The Plus2 row claims RTC backing
+(`rtcBatteryBacked = true`, set with the BM8563 INT wake path by #505, plan 350)
+with no datasheet confirmation in the tree, so the model follows the row and the
+bench question is recorded below. The Tough row sets `feedbackSound`, which
+M5Unified's own `board_M5Tough` speaker setup and
+`tests/host/board_profile_test.cpp` both agree with, so that one is not open.
 
 ## Design
 
@@ -84,7 +85,9 @@ where it can drift.
   seeds the rail level from the board fact.
 - New query keys: `hw.audio` (now row-driven), `hw.battery_mah`,
   `hw.motion_wake`, `hw.motion_wake_pin`, `hw.timed_wake`, `hw.rtc_backed`,
-  `hw.rtc_irq_armed`, `hw.ir_pin`, `hw.ir_mark_level`, `hw.led_pin`,
+  `hw.rtc_irq_armed`, `hw.ir_pin`, `hw.ir_mark_low` and `hw.ir_mark_level` (the
+  same column in pin terms: the level the emitter pin holds during a mark),
+  `hw.led_pin`,
   `hw.led_active_low`, `hw.led_shared_with_ir`, `hw.button_a`, `hw.button_b`,
   `hw.button_pwr`, `hw.button_pwr_source`, `hw.rail_boot`,
   `hw.build_flash_kb`, `hw.build_flash_mode`, `hw.build_psram`,
@@ -126,10 +129,10 @@ reintroducing a competing implementation:
 | 6. `hw.rtc` static flag | Done. `hw.rtc_backed` and `hw.rtc_irq_armed` are row-driven, and `hw.rtc` keeps its existing "calendar device present" meaning on top of the #507 model. | `hw-stickc-capabilities.txt`, `hw-profile-stickc-plus.txt` |
 | 7. 4 mg per LSB constant | Not this plan. Plan 332 (#504) owns it; see the section above. | `tests/host/imu_motion_encoding_test.cpp`, `imu-motion-encoding` |
 | Second pass 1. Timed wake for every `RTC_ALARM` row | Done, same work as item 3. | `hw-plus2-rtc-wake.txt` |
-| Second pass 2. IR and LED polarity, shared G19 | Modeled. Per-board pins, active-low LED, the firmware's mark level, and a conflict counter for a light pulse inside a frame. The missing production guard is tracked by `xassert`, not fixed here. | `hw-plus2-shared-led-ir.txt`, `hw-stickc-capabilities.txt` |
+| Second pass 2. IR and LED polarity, shared G19 | Modeled. Per-board pins, active-low LED, the emitter-pin level during a mark from the row's `irMarkLow`, and a conflict counter for a light pulse inside a frame. The missing production guard is tracked by `xassert`, not fixed here. | `hw-plus2-shared-led-ir.txt`, `hw-stickc-capabilities.txt` |
 | Second pass 3. StickC buttons | Done. Physical pins are `hw.button_*`; `docs/sim.md` no longer presents the host pin convention as board wiring. | `hw-stickc-capabilities.txt`, docs/sim.md |
 | Second pass 4. Plus2 part versus image | Done. `hw.flash_kb` 8192 and `hw.part_psram quad` for the part; `hw.build_flash_kb 4096`, `hw.build_flash_mode dio`, `hw.build_psram absent` and `hw.psram absent` for the image, and the heap model seeds from the image. | `hw-stickc-plus2-capabilities.txt`, `hw-pmic-plus2-no-pmic.txt` |
-| Second pass 5. Rail level at boot | Done. `hw.rail_boot` per board, `platform.rail` and `rail.state` report the shared output, and the board row decides whether the firmware sees it on. The fake receiver itself stays powered at boot so the u-blox fixture's hot start survives: a real receiver on the StickS3 sees Port A off until `GPS::setRailPower(true)` runs, which is the driver's own duty cycle. | `hw-stickc-gps-rail-boot.txt` |
+| Second pass 5. Rail level at boot | Done. `hw.rail_boot` is per board, the row seeds the modelled rail at boot, and `platform.rail` and `rail.state` report that rail, the same answer `Platform::getRail()` gives. The StickC pair starts on and the StickS3 starts off; the firmware's own acquire and release move it from there. The fake receiver keeps answering after a cut so the u-blox fixture stays hot, which is a fixture limit and not the reported level. | `hw-stickc-gps-rail-boot.txt`, `hw-psram-octal-sticks3.txt` |
 
 ## Scenarios added
 
@@ -139,7 +142,7 @@ reintroducing a competing implementation:
 | `hw-stickc-plus-capabilities.txt` | Audio is `no` (the Plus has a buzzer), capacity is not 120 mAh, or any wake, RTC, pin or flash fact drifts. |
 | `hw-stickc-plus2-capabilities.txt` | Motion wake is claimed as direct, capacity is not 200 mAh, timed wake is missing, the RTC is claimed as backed, G19 is not modeled as shared, the power key is not GPIO35, the part is reported as 4 MB without PSRAM, or the HOLD latch is not asserted before the platform is ready. |
 | `hw-plus2-rtc-wake.txt` | The mode switch moves off 270 s, the 255 clamp disappears, a late round-up is accepted, the 60 s early-window edge moves, or a rejected request leaves a countdown armed. |
-| `hw-plus2-shared-led-ir.txt` | The shared pin stops being reported, a light pulse inside a frame stops counting a conflict, the pulse outside the frame starts counting one, or the mark level changes. |
+| `hw-plus2-shared-led-ir.txt` | The shared pin stops being reported, a light pulse inside a frame stops counting a conflict, the pulse outside the frame starts counting one, or the row's `irMarkLow` flips. |
 | `hw-stickc-gps-rail-boot.txt` | The rail does not start on for the StickC, or the GPS rail-cycle path stops cutting and restoring it. |
 
 Each scenario is registered in `sim/scenarios/manifest.json` (suite `e2e`,
@@ -147,26 +150,37 @@ board `m5stick-c`) and its facts in `sim/coverage/hardware_quirks.json`.
 
 ## Deviations
 
-- The first pass asked to "assert rtc_backed true for the three StickC
-  variants". The firmware row is `rtcBatteryBacked = false` for the Plus2, so
-  the model and both Plus2 scenarios assert `no`. Asserting `yes` would fail
-  against the firmware's own table and would have made the scenario meaningless.
-  Reason: the Plus2 has no PMIC keeping the RTC rail up, and no document in the
-  tree states otherwise (`docs/power/datasheet-register.md` records the BM8563 as
-  "cited, not opened"). This is the one place where the pass-1 instruction and
-  the verified row disagree, and the row wins.
-- The same rule settles the Tough's sound feedback the other way. The branch
-  changed `hw-profile-tough.txt` to assert `hw.audio no`, and the recovery keeps
-  `yes`: `Profile::feedbackSound` is set on the Tough row, `board-row-tough.txt`
-  asserts it, and the model now reads that row, so a `no` here would test the
-  scenario against itself. `M5Unified` gives the board no internal speaker, so
-  the row may be wrong, but that is a `src/FurbleBoard.cpp` change with its own
-  evidence, and it is listed under "Still needs hardware".
+- The branch asserted `rtc_backed no` for the Plus2, on the premise that its row
+  is `rtcBatteryBacked = false`. That premise is stale: #505 (plan 350) set the
+  Plus2 row to `true` when the BM8563 INT was wired to the AXP192 power key, and
+  both Plus2 scenarios now assert `yes`
+  (`hw-stickc-plus2-capabilities.txt`, `hw-pmic-plus2-no-pmic.txt`). The model
+  follows the row, as it does everywhere else. The bench question is whether the
+  claim holds across a real cut, and it is under "Still needs hardware".
+- The Tough's sound feedback is the same rule with the opposite history. The
+  branch flipped `hw-profile-tough.txt` to `hw.audio no` on the premise that the
+  board has no speaker. The premise is wrong: M5Unified's `board_M5Tough`
+  speaker setup configures the Core2 codec path with a higher magnification for
+  the waterproof case, and `tests/host/board_profile_test.cpp` asserts the row's
+  `feedbackSound` against "the NS4168 1 W speaker". The recovery keeps
+  `hw.audio yes` and the scenario says why.
 - The shared-pin guard for the Plus2 LED is **not** added to production.
   `Feedback` has no way to ask the IR driver whether a frame is in flight, and
   adding one is a product change. The scenario records the hazard with a plain
   assert and the wanted state with `xassert ir.led_conflicts 0`, so the fix
   lands knowingly and the xassert is promoted in the same change.
+
+## What the twin asserts are worth
+
+For every column the model now reads from `Board::profileFor()`, a `board-row-*`
+scenario's `hw.` assert and its `board.` twin read the same row, so they agree by
+construction: `audio`, `rtc_backed`, `timed_wake`, `motion_wake`,
+`led_active_low`, `ir_mark_low` and the IR, LED, GPS and button pins are all in
+that set. Those twins are drift detectors for the model, not independent
+evidence, and the plan does not claim otherwise. Where the two sides really are
+different sources the twin is worth more, and those stay: `board.rtc_on_bus`
+against the modelled `hw.rtc` capability, the caps rows against the profile, and
+the Plus2 flash part against its image.
 
 ## Still needs hardware
 
@@ -175,16 +189,16 @@ board `m5stick-c`) and its facts in `sim/coverage/hardware_quirks.json`.
   cell fitted. The model follows the M5Unified driver and the tree marks the
   datasheet as not opened.
 - Emitter polarity on the StickC family, and the LED active-low assumption plan
-  23 already flags. A bench check settles whether mark level 1 is correct and
-  whether G19 needs inverting.
+  23 already flags. The model reports the row: `hw.ir_mark_level` is the level
+  the emitter pin holds during a mark, so the StickC and Plus read `low` and the
+  Plus2 `high`. A bench check settles whether each row's `irMarkLow` is right,
+  which is the same question as whether G19 needs inverting.
 - MPU6886 wake-on-motion threshold LSB. The 4 mg per count figure has no
   datasheet section in the tree; a bench measurement of the first acceleration
   that asserts INT closes it. Plan 332 carries the question.
-- Plus2 RTC backing across a real power cut, which decides whether the
-  `rtcBatteryBacked` row should be `true`.
-- Tough sound feedback: whether the board has an audible part the firmware can
-  drive. Until a measurement or a vendor page settles it, the row stays as it is
-  and the model reports it.
+- Plus2 RTC backing across a real power cut. The row claims it (`true`, #505)
+  and the model reports the row; nothing in the tree measures the cell or the
+  rail through an actual cut.
 - Plus2 held power with the HOLD latch released, and the wake from an RTC alarm:
   the simulator models the ordering and the countdown, not the electrical hold.
 - Port A rail level at boot on the Core2 and Tough, which the model reports as
@@ -237,6 +251,25 @@ here: `hw-plus2-shared-led-ir` and `hw-stickc-capabilities` use `ir-frame` and
 wired to the model, so their assertions on `ir.frames`, `ir.busy` and
 `ir.led_conflicts` had nothing to read. The other five are not recoverable from
 the patch, and this tree fails none of them.
+
+### Review round 1
+
+The PR 555 review found six defects and they are fixed in this revision: the
+duplicate `hw.led_active_low` handler and its dead caps copy are gone with the
+`ledActiveLow` and `irMarkLow` columns; `hw.ir_mark_level` reports the row
+instead of a constant; the board row now seeds the modelled rail and
+`platform.rail` reads it; and this plan, the Tough comment and the PR body say
+what the tree actually holds.
+
+Each of the four row reads was probed by flipping one row column, rebuilding and
+running the scenario that pins it, so the asserts are known to be able to fail:
+
+```text
+flip StickC ledActiveLow -> ASSERT FAILED: hw.led_active_low expected 'yes' got 'no'
+flip StickC irMarkLow    -> ASSERT FAILED: hw.ir_mark_low expected 'yes' got 'no'
+flip Plus2 irMarkLow     -> ASSERT FAILED: hw.ir_mark_level expected 'high' got 'low'
+flip StickC railBoot     -> ASSERT FAILED: hw.rail_boot expected 'on' got 'off'
+```
 
 Evidence lines from the run:
 

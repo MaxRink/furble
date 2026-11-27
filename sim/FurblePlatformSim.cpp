@@ -383,7 +383,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
   // RTC, clear the old flag, program the countdown, apply the late/early rule,
   // then sleep the panel and drop the GPIO HOLD latch. The countdown arithmetic
   // and the acceptance rule come from FurbleRtcCountdown.h, which production
-  // verifyPlus2Timer() and its guard also use.
+  // verifyBm8563Timer() and its guard also use.
   if (Sim::hwBoardProfile().timedWake == Board::TimedWake::RTC_ALARM) {
     if (!Sim::hwRtcEnabled()) {
       ESP_LOGW("platform", "StickC Plus2 RTC is unavailable, staying awake");

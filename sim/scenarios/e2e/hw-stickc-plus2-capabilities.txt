@@ -44,9 +44,9 @@ assert ui.motion_backend mpu6886-wom
 assert hw.timed_wake rtc-alarm
 assert platform.timed_wake yes
 
-# RTC: present but not battery backed in the firmware row (no PMIC keeps the RTC
-# rail up), so time is not claimed across a power cut. UNVERIFIED against the
-# BM8563 datasheet; see plans/implemented/139-persistent-time.md.
+# RTC: the BM8563 sits on the AXP192 rail and the row claims the backing, which
+# is what the alarm wake path relies on (#505, plan 350). UNVERIFIED against the
+# BM8563 datasheet through a real cut; see plans/implemented/139-persistent-time.md.
 assert hw.rtc yes
 assert hw.rtc_backed yes
 assert hw.rtc_irq_armed no

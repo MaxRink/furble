@@ -14,7 +14,10 @@
 # Teeth, each one line: flip hw.audio back to a table copy and the audio assert
 # fails; return true from armMotionWake for every build and motion_wake fails on
 # the Plus2 twin; hard-code the 250 mAh StickS3 capacity and battery_mah fails;
-# drop the profile-driven rtc_backed and the backup assert fails.
+# drop the profile-driven rtc_backed and the backup assert fails; set this row's
+# irMarkLow to false and the IR block below fails on hw.ir_mark_low. The level
+# assert beside it is pinned on its own by hw-plus2-shared-led-ir.txt, so a
+# flipped polarity is caught there even with the boolean asserted first here.
 seed hw_profile stickc
 seed imu true
 seed imu_chip mpu6886
@@ -43,8 +46,10 @@ assert hw.rtc_irq_armed no
 assert rtc.enabled yes
 
 # IR and LED are separate pins on this board, so a blink cannot key the emitter.
+# The emitter is driven from the pin's cathode side, so a mark pulls the pin low.
 assert hw.ir_pin 9
-assert hw.ir_mark_level high
+assert hw.ir_mark_low yes
+assert hw.ir_mark_level low
 assert hw.led_pin 10
 assert hw.led_active_low yes
 assert hw.led_shared_with_ir no

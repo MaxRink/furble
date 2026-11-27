@@ -106,8 +106,6 @@ struct board_caps_t {
   // own capabilities, so `board-row-*` can pin each pair to one literal.
   bool rtcOnBus;
   bool canPowerOff;
-  bool ledActiveLow;
-  bool irMarkLow;
   const char *gpsPinSource;  // "board-support", "profile" or "none"
   int8_t gpsRxPin;           // PROFILE source, -1 when none
   int8_t gpsTxPin;           // PROFILE source, -1 when none
@@ -146,8 +144,6 @@ const board_caps_t TDECK = {.mcu = "esp32s3",
                             .poe = false,
                             .rtcOnBus = false,
                             .canPowerOff = false,
-                            .ledActiveLow = false,
-                            .irMarkLow = false,
                             .gpsPinSource = "profile",
                             .gpsRxPin = 44,
                             .gpsTxPin = 43,
@@ -180,8 +176,6 @@ const board_caps_t TWATCH_ULTRA = {.mcu = "esp32s3",
                                    .poe = false,
                                    .rtcOnBus = false,
                                    .canPowerOff = false,
-                                   .ledActiveLow = false,
-                                   .irMarkLow = false,
                                    .gpsPinSource = "profile",
                                    .gpsRxPin = 44,
                                    .gpsTxPin = 43,
@@ -197,11 +191,15 @@ const board_caps_t TWATCH_ULTRA = {.mcu = "esp32s3",
  *   Button pins                      M5Unified M5Unified.cpp _update()
  *                                    (pinned 0.2.x copy under .pio/libdeps)
  *   Flash, PSRAM and mode            the part, plus the build facts from each
- *                                    committed sdkconfig. Every supported image
- *                                    is DIO today; the Plus2 part is 8 MB QIO
- *                                    with 2 MB of quad PSRAM while the shared
- *                                    image is 4 MB DIO without PSRAM, so the
- *                                    two are recorded separately below.
+ *                                    committed sdkconfig. Every image leaves
+ *                                    CONFIG_ESPTOOLPY_FLASHMODE at "dio"; five
+ *                                    of the sdkconfigs also select QIO under
+ *                                    FLASH_MODE_AUTO_DETECT, so the bootloader
+ *                                    may bring the part up quad while the image
+ *                                    stays dio. The Plus2 part is 8 MB QIO with
+ *                                    2 MB of quad PSRAM while the shared image is
+ *                                    4 MB without PSRAM, so the two are recorded
+ *                                    separately below.
  *   Rail level at boot               M5GFX Light_M5StickC::init() writes AXP192
  *                                    register 0x12 = 0x4D, which enables EXTEN,
  *                                    the Port A 5 V rail, before furble runs.
@@ -244,8 +242,6 @@ const board_caps_t STICKC = {.mcu = "esp32",
                              .poe = false,
                              .rtcOnBus = true,
                              .canPowerOff = true,
-                             .ledActiveLow = true,
-                             .irMarkLow = true,
                              .gpsPinSource = "board-support",
                              .gpsRxPin = -1,
                              .gpsTxPin = -1,
@@ -275,8 +271,6 @@ const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .poe = false,
                                   .rtcOnBus = true,
                                   .canPowerOff = true,
-                                  .ledActiveLow = true,
-                                  .irMarkLow = true,
                                   .gpsPinSource = "board-support",
                                   .gpsRxPin = -1,
                                   .gpsTxPin = -1,
@@ -306,8 +300,6 @@ const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
                                    .poe = false,
                                    .rtcOnBus = true,
                                    .canPowerOff = true,
-                                   .ledActiveLow = false,
-                                   .irMarkLow = false,
                                    .gpsPinSource = "board-support",
                                    .gpsRxPin = -1,
                                    .gpsTxPin = -1,
@@ -337,8 +329,6 @@ const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .poe = false,
                               .rtcOnBus = false,
                               .canPowerOff = true,
-                              .ledActiveLow = false,
-                              .irMarkLow = false,
                               .gpsPinSource = "board-support",
                               .gpsRxPin = -1,
                               .gpsTxPin = -1,
@@ -366,8 +356,6 @@ const board_caps_t CORE = {.mcu = "esp32",
                            .poe = false,
                            .rtcOnBus = false,
                            .canPowerOff = false,
-                           .ledActiveLow = false,
-                           .irMarkLow = false,
                            .gpsPinSource = "none",
                            .gpsRxPin = -1,
                            .gpsTxPin = -1,
@@ -398,8 +386,6 @@ const board_caps_t CORE_16MB = {.mcu = "esp32",
                                 .poe = false,
                                 .rtcOnBus = false,
                                 .canPowerOff = false,
-                                .ledActiveLow = false,
-                                .irMarkLow = false,
                                 .gpsPinSource = "none",
                                 .gpsRxPin = -1,
                                 .gpsTxPin = -1,
@@ -427,8 +413,6 @@ const board_caps_t CORE2 = {.mcu = "esp32",
                             .poe = false,
                             .rtcOnBus = true,
                             .canPowerOff = true,
-                            .ledActiveLow = false,
-                            .irMarkLow = false,
                             .gpsPinSource = "board-support",
                             .gpsRxPin = -1,
                             .gpsTxPin = -1,
@@ -456,8 +440,6 @@ const board_caps_t TOUGH = {.mcu = "esp32",
                             .poe = false,
                             .rtcOnBus = true,
                             .canPowerOff = true,
-                            .ledActiveLow = false,
-                            .irMarkLow = false,
                             .gpsPinSource = "board-support",
                             .gpsRxPin = -1,
                             .gpsTxPin = -1,
@@ -485,8 +467,6 @@ const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .poe = false,
                                .rtcOnBus = false,
                                .canPowerOff = true,
-                               .ledActiveLow = true,
-                               .irMarkLow = false,
                                .gpsPinSource = "none",
                                .gpsRxPin = -1,
                                .gpsTxPin = -1,
@@ -514,8 +494,6 @@ const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .poe = false,
                                 .rtcOnBus = false,
                                 .canPowerOff = false,
-                                .ledActiveLow = false,
-                                .irMarkLow = false,
                                 .gpsPinSource = "none",
                                 .gpsRxPin = -1,
                                 .gpsTxPin = -1,
@@ -1072,6 +1050,11 @@ const board_extra_t &extraForProfile(const std::string &profile) {
     return TWATCH_ULTRA_EXTRA;
   }
   return UNKNOWN_EXTRA;
+}
+
+/** True when the cited board fact says the Port A rail is up after M5.begin(). */
+bool railBootOnFor(const std::string &profile) {
+  return std::string(extraForProfile(profile).railBoot) == "on";
 }
 
 /** The board row a profile models, for facts `Board::Profile` owns. */
@@ -1697,6 +1680,9 @@ void resetDerivedLocked(hardware_state_t &hw) {
   hw.peripheral.irBusyUntilMs = 0;
   hw.peripheral.ledPulses = 0;
   hw.peripheral.ledConflicts = 0;
+  // M5GFX leaves the AXP192 rail on before furble runs, and the M5PM1 boards
+  // start with it off. Nothing is holding it yet, so the row decides.
+  hw.rail.on = railBootOnFor(hw.profile);
 }
 
 /**
@@ -1740,8 +1726,12 @@ const Board::Profile &hwBoardProfile(void) {
 
 bool hwRtcEnabled(void) {
   const std::lock_guard<std::mutex> lock(state().mutex);
-  // M5Unified's M5.Rtc.isEnabled() is false when it did not detect a device on
-  // the internal I2C bus, so a board with no calendar RTC never reports one.
+  // Whether the modelled board carries a calendar chip: the caps row decides,
+  // which is the question the RTC_ALARM wake path asks. It is deliberately not
+  // `M5.Rtc.isEnabled()`, which is the profile's `rtcOnBus` column and can
+  // differ from the caps row (the T-Watch Ultra has a PCF85063A that this port
+  // does not drive). It is also not the runtime chip the `rtc.*` model installs;
+  // that state is `hwRtcPresent()`.
   return state().caps.rtc;
 }
 
@@ -1848,19 +1838,9 @@ void hwIrFrame(void) {
   hw.peripheral.irBusyUntilMs = clockMillis() + 190;
 }
 
-bool hwIrBusy(void) {
-  const std::lock_guard<std::mutex> lock(state().mutex);
-  return clockMillis() < state().peripheral.irBusyUntilMs;
-}
-
 void hwLightPulse(void) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   lightPulseLocked(state());
-}
-
-bool hwRailBootOn(void) {
-  const std::lock_guard<std::mutex> lock(state().mutex);
-  return std::string(extraForProfile(state().profile).railBoot) == "on";
 }
 
 const char *hwMcu(void) {
@@ -2184,11 +2164,6 @@ void hwRtcWrite(uint64_t epoch_us) {
   persistRtcSidecar(rtc);
 }
 
-bool hwRtcTimedAlarmBoard(void) {
-  const std::lock_guard<std::mutex> lock(state().mutex);
-  return rowFor(state().profile).timedWake == Board::TimedWake::RTC_ALARM;
-}
-
 void hwRtcPowerOff(uint32_t seconds) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   rtc_state_t &rtc = state().rtc;
@@ -2298,6 +2273,10 @@ void hwStart(void) {
   hw.pmic.pwrCfg = PWR_CFG_RESET;
   applyRailFromPwrCfgLocked(hw);
   hw.pmic.pwrCfgSnapshot = hw.pmic.pwrCfg;
+  // The byte above is the M5PM1's own reset value. The rail the board presents
+  // at boot is the row's fact: M5GFX has already enabled EXTEN on the StickC and
+  // Plus, and the StickS3 starts with it off.
+  hw.rail.on = railBootOnFor(hw.profile);
 
   // The RTC capability is a board-level fact, so check the pair at boot as well
   // as when a profile is selected.
@@ -2729,19 +2708,6 @@ bool hwAction(const std::string &name) {
     hw.ble.auth = "ok";
     return true;
   }
-  if (name == "ir-frame") {
-    // Lowest-level IR injection: the pin-level frame the shim's fire() reports.
-    // It records the frame window so a light pulse on a shared pin can be
-    // checked without the RMT peripheral the host does not have.
-    hw.peripheral.irFrames++;
-    hw.peripheral.irBusyUntilMs = clockMillis() + 190;
-    return true;
-  }
-  if (name == "feedback-light") {
-    // Lowest-level feedback-LED injection: one pulse on the board's LED pin.
-    lightPulseLocked(hw);
-    return true;
-  }
   if (name == "audio-overcurrent") {
     hw.peripheral.audio = "overcurrent";
     hw.peripheral.audioOvercurrents++;
@@ -3070,10 +3036,11 @@ std::string hwQuery(const std::string &key) {
       return pin < 0 ? "none" : std::to_string(pin);
     }
     if (sub == "ir_mark_level") {
-      // The level the IR encoder writes for a mark. Production writes 1 in
-      // src/FurbleIR.cpp; the board's driven stage decides whether that is the
-      // lit level, and the row's `irMarkLow` column carries that inversion.
-      return "high";
+      // The level the emitter pin holds during a mark. The encoded mark is
+      // always a mark; `irMarkLow` is the cathode-driven boards inverting the
+      // output (src/FurbleIR.cpp sets `invert_out`), so the pin goes low there
+      // and stays high on the Plus2. A constant here would pass on every row.
+      return rowFor(hw.profile).irMarkLow ? "low" : "high";
     }
     if (sub == "led_pin") {
       const int8_t pin = rowFor(hw.profile).ledPin;
@@ -3081,6 +3048,9 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "led_active_low") {
       return rowFor(hw.profile).ledActiveLow ? "yes" : "no";
+    }
+    if (sub == "ir_mark_low") {
+      return rowFor(hw.profile).irMarkLow ? "yes" : "no";
     }
     if (sub == "led_shared_with_ir") {
       const auto &row = rowFor(hw.profile);
@@ -3111,12 +3081,7 @@ std::string hwQuery(const std::string &key) {
     if (sub == "rtc_on_bus") {
       return hw.caps.rtcOnBus ? "yes" : "no";
     }
-    if (sub == "led_active_low") {
-      return hw.caps.ledActiveLow ? "yes" : "no";
-    }
-    if (sub == "ir_mark_low") {
-      return hw.caps.irMarkLow ? "yes" : "no";
-    }
+
     if (sub == "gps_pin_source") {
       return hw.caps.gpsPinSource == nullptr ? "none" : hw.caps.gpsPinSource;
     }
