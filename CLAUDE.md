@@ -96,6 +96,12 @@ CLAUDE.md whose directory it touches.
 - CI validation workflows use path filters rather than pull request base-branch
   filters, so stacked PRs run without retargeting. Safe validation workflows
   also expose `workflow_dispatch`; use the Actions tab to select a branch.
+  Every pull request workflow groups runs on
+  `${{ github.workflow }}-${{ github.ref }}` and sets `cancel-in-progress` to
+  `${{ github.event_name == 'pull_request' }}`, so a newer head stops the
+  superseded run while push to master, release tags and dispatch finish. The ref
+  of a stacked PR is its own merge ref, so a stack and its base never share a
+  group. See [plans/392-ci-concurrency.md](plans/392-ci-concurrency.md).
 - The simulator power gate compares each report against its baseline with the
   two-sided `tools/power-model/compare.py --threshold` policy. The default 10%
   value is compatibility policy, not calibrated hardware noise. It also fails

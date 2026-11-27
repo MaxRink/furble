@@ -374,6 +374,13 @@ workflow, choose **Run workflow**, and select the branch. Android dispatches
 run unit tests and an APK build by default; enable `run_emulator` when the
 slower emulator smoke test is needed. CI checks this trigger policy with
 `python3 tools/check_ci_workflows.py`.
+Every pull request workflow groups its runs on
+`${{ github.workflow }}-${{ github.ref }}` and cancels in progress only for
+`pull_request`, so a newer head stops the run it supersedes. Push to master,
+release tags and manual dispatch are never cancelled, and the ref of a stacked
+pull request is its own merge ref, so a stack and its base never cancel each
+other. The evidence and the exact expressions are in
+[plans/392-ci-concurrency.md](plans/392-ci-concurrency.md).
 Node.js is also required for the installer event-flow regression in
 `tests/test_check_ci_workflows.py`; the standard GitHub-hosted Ubuntu runner
 provides it.

@@ -24,6 +24,13 @@ on:
 permissions:
   contents: read
 
+# A newer run for the same ref supersedes the previous one, so a stale pull
+# request run stops instead of queueing. Push to master and manual dispatch
+# keep cancel-in-progress false, so an in-flight run is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     name: Android debug build and tests
