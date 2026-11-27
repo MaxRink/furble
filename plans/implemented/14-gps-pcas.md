@@ -108,7 +108,7 @@ Raw NMEA and satellite page goes under Settings -> Diagnostics, created by PR05.
 - No acknowledgement. The receiver does not reliably answer `$PCAS` commands.
   Verification is observational: watch the sentence mix and the arrival period
   on the raw NMEA page.
-- Re-apply on change. `reloadSetting` (`src/FurbleGPS.cpp:2644-2660`) already runs
+- Re-apply on change. `reloadSetting` (`src/FurbleGPS.cpp:2647-2663`) already runs
   on every settings change through the UI callbacks. Route the new settings
   through the same call so the receiver is reconfigured immediately.
 - Power on ordering. `enable()` calls `M5.Power.setExtOutput(true, m5::ext_PA)`
@@ -117,7 +117,7 @@ Raw NMEA and satellite page goes under Settings -> Diagnostics, created by PR05.
   Do not block the UI task; this runs in the GPS task
   (`src/FurbleGPS.cpp:73-109`).
 - Raw NMEA debug page. Add a small fixed ring buffer of the last 8 sentences,
-  filled from `serviceSerial` (`src/FurbleGPS.cpp:3329-3368`) only while the page
+  filled from `serviceSerial` (`src/FurbleGPS.cpp:3334-3373`) only while the page
   is open. Show it with satellite count, HDOP, fix age and the TinyGPS++
   counters `charsProcessed()`, `passedChecksum()` and `failedChecksum()`. Those
   counters are what PR15 needs to tune its sleep window.

@@ -291,7 +291,7 @@ Measured with `python3 tools/check_size_budget.py --env m5stick-c
 
 | Env | Flash | Static DRAM | IRAM |
 | :--- | :--- | :--- | :--- |
-| `m5stack-core-debug` | 1,740,112 of 1,740,800 | 56,348 of 57,344 | 119,036 of 119,808 |
+| `m5stack-core-debug` | 1,740,768 of 1,740,800 | 56,284 of 57,344 | 119,036 of 119,808 |
 | `m5stick-c` | 1,525,056 of 1,740,800 | 55,172 of 55,296 | 114,024 of 114,688 |
 | `m5stick-c-plus` | 1,574,816 of 1,740,800 | 55,148 of 55,296 | 114,024 of 114,688 |
 | `m5stick-s3` | 1,884,352 of 3,145,728 | 47,608 of 48,128 | 114,944 of 115,712 |
@@ -340,10 +340,14 @@ a second OTA target. So the backend is a build capability:
   a refused cut, the detection shortcut that reads the answered dialect and the
   `resetText()`/`freeTextState()` calls are all gated, so a text-off build keeps
   master's UBX and NMEA paths and nothing else. With them in, the build was 928
-  bytes over its slot even though the seam was out; with them gated it measures
-  1,740,112 of 1,740,800 by `check_size_budget.py`, 688 bytes of headroom, and
-  pio reports 1,739,605. Master at `d31b8f95` measures 1,740,016, so the whole
-  feature costs 96 bytes in this profile.
+  bytes over its slot even though the seam was out. With them gated, and with
+  the capability also covering `binary_command_t`'s text fields, the header's
+  text declarations and members, the console's backend line and usage verb, and
+  `FurbleGPSText.cpp`'s stubs, the profile measures 1,740,768 of 1,740,800 by
+  `check_size_budget.py` (pio 1,740,273) against master's 1,740,656 at
+  `8da99ca5`: 32 bytes of headroom and 112 bytes of net cost. That is thin by
+  design, because master itself has 144 bytes left in this slot; the profile is
+  a developer-only verbose-console build with the fixed two-OTA partition.
 - A Core debug build therefore keeps the NMEA receiver, the CASIC `$PCAS` path
   and the u-blox backend, and does not configure a Quectel or Unicore part. That
   is a real loss on that profile and it is recorded here rather than hidden; the

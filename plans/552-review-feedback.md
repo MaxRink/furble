@@ -204,7 +204,13 @@ Both findings are fixed at the source, with no suppression:
   member back to a `std::unique_ptr` whose scope end destroys it. There is no
   raw owner assignment and no `delete` expression left, and the type is not
   marked or suppressed.
-- The Core debug slot was still 928 bytes over with only the seam compiled out,
+- The Core debug slot at the final rebase measured 1,740,768 of 1,740,800 by
+  `check_size_budget.py` (pio 1,740,273), against master's 1,740,656 at
+  `8da99ca5`, so 32 bytes of headroom and 112 bytes of net cost. The capability
+  now also covers `binary_command_t`'s text fields, the header's text
+  declarations and members, the console backend line and usage verb, and the
+  `FurbleGPSText.cpp` stubs; before that it was 928 bytes over.
+- The earlier pass was still 928 bytes over with only the seam compiled out,
   because the save queue, the standby dispatch, the rail restart, the detection
   shortcut and the refusal display still compiled and ran with the backend off.
   They all follow `FURBLE_GPS_TEXT` now. On the rebased head pio reports

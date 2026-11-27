@@ -1422,7 +1422,9 @@ int gpsStatus(void) {
   printf("receiver: %s\n", GPS::receiverStateName(gps.getReceiverState()));
   // The identification result, on the command every backend shares, so a text
   // part reports where the u-blox one already did.
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   printf("backend: %s\n", GPS::backendName(gps.getBackend()));
+#endif
   printf("detected_baud: %lu\n", static_cast<unsigned long>(gps.getDetectedBaud()));
   printf("fix: %s\n", boolStr(status.fix));
   printf("satellites: %lu\n", static_cast<unsigned long>(status.satellites));
@@ -1942,8 +1944,12 @@ int cmdGPS(int argc, char **argv) {
   }
 
   return fail(
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
       "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx, text or "
       "power");
+#else
+      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power");
+#endif
 }
 
 void cmdPowerStats(void) {

@@ -122,7 +122,7 @@ when GPS is disabled, following the existing hide logic at
 
 ### Failure behaviour
 
-- No fix already fails safe. `GPS::update` (`src/FurbleGPS.cpp:2816-3087`) checks
+- No fix already fails safe. `GPS::update` (`src/FurbleGPS.cpp:2819-3090`) checks
   age and validity, clears `m_HasFix`, updates the status icon and simply does
   not call `Control::updateGPS`. Nothing downstream breaks.
 - Dropped bytes appear as TinyGPS++ checksum failures, not as wrong coordinates,

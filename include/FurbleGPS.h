@@ -34,10 +34,12 @@ using lv_obj_t = _lv_obj_t;
 #include "protocol/GpsCasic.h"
 #include "protocol/GpsDemux.h"
 #include "protocol/GpsNavx.h"
+#include "protocol/GpsUbx.h"
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
 #include "protocol/GpsQuectel.h"
 #include "protocol/GpsText.h"
-#include "protocol/GpsUbx.h"
 #include "protocol/GpsUnicore.h"
+#endif
 
 namespace Furble {
 class GPS {
@@ -155,6 +157,7 @@ class GPS {
    * command ended, so a receiver that refused a setting is told apart from one
    * that never answered.
    */
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   struct text_status_t {
     bool have_version;
     std::string model;     /**< PQTMVERNO version string, or PDTINFO pdtName */
@@ -185,6 +188,7 @@ class GPS {
     /** GpsText::Verdict of the last finished command. */
     uint8_t last_verdict;
   };
+#endif
 
   /** Per satellite diagnostics parsed from GSV and GSA. */
   typedef struct {
@@ -536,7 +540,9 @@ class GPS {
   ubx_status_t getUbxStatus(void) const;
 
   /** A coherent copy of the vendor text receiver state. */
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   text_status_t getTextStatus(void) const;
+#endif
 
   /** Poll one NAV-SAT on a UBX receiver; the answer lands in getUbxStatus(). */
   void pollUbxSatellites(void);
@@ -846,9 +852,13 @@ class GPS {
   /** Free it, after the save path has run. disable() calls this once. */
   void freeTextState(void);
   /** The allocated state. Only call while it is known to be up. */
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   text_state_t &text(void) { return *m_TextState; }
+#endif
   /** Which vendor answered the identification probes, if any. */
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   GpsText::Dialect textIdentity(void) const;
+#endif
 
   /* UBX backend, src/FurbleGPSUbx.cpp. */
   void startDetect(uint32_t now);
@@ -1190,8 +1200,11 @@ class GPS {
   // Vendor text backend. m_TextIdentity is written on the GPS task and by
   // enable() and disable() with the task parked; everything under m_TextMutex
   // is read by the console through getTextStatus().
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   std::atomic<uint8_t> m_TextIdentity {static_cast<uint8_t>(GpsText::Dialect::NONE)};
   mutable std::mutex m_TextMutex;
+#endif
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   /**
    * The vendor text backend's fixed state, allocated on the heap.
    *
@@ -1213,7 +1226,10 @@ class GPS {
     /** PAIR003 powered the GNSS off and no rail cut followed. */
     bool stopped = false;
   };
+#endif
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   text_state_t *m_TextState = nullptr;
+#endif
 
   // MON-HW interference snapshot, hardware-tuning-pending
   std::atomic<bool> m_MonHwPending = false;
