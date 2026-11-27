@@ -43,7 +43,7 @@ facts the hardware traps depend on.
   clock sources.
 - `src/FurbleIR.cpp:226` to `:296`: RMT channel, carrier and transmit.
 - `src/FurbleEthernet.cpp:131` to `:165`: SPI pins, clock and DMA.
-- `src/FurbleConsole.cpp:93` and `:3687`: the console UART, which is the USB
+- `src/FurbleConsole.cpp:97` and `:3687`: the console UART, which is the USB
   Serial/JTAG port on this part.
 - `src/FurbleUI.cpp:508` to `:511`: the APB lock for the backlight.
 

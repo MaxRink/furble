@@ -118,7 +118,7 @@ Callers, all checked:
 - `Platform::powerOffUntil()` forwards a `seconds == 0` request to `powerOff()`
   and propagates false. Its timed path already fails closed for a row with
   `TimedWake::NONE` (`Timed wake is unsupported on this board`,
-  `src/FurblePlatform.cpp:833`), so the Waveshare row cannot reach a timed
+  `src/FurblePlatform.cpp:834`), so the Waveshare row cannot reach a timed
   sleep either.
 - `UI::processAutoOff()` and `UI::processLowBattery()` both return early when
   the row's `canPowerOff` is false, so the timer cannot reach a refusal on the

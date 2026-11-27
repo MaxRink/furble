@@ -57,7 +57,7 @@ Out of scope:
   See Menu placement.
 - `include/FurblePlatform.h:16-41`, add read only accessors for uptime and the
   current `esp_pm` configuration so the UI does not include `esp_pm.h` directly.
-  `Platform::tick()` at `src/FurblePlatform.cpp:61-63` already returns
+  `Platform::tick()` at `src/FurblePlatform.cpp:51-53` already returns
   milliseconds since boot.
 - `src/FurblePlatform.cpp:75-82`, `setSleep`. Add a getter that returns the last
   applied configuration, or call `esp_pm_get_configuration()` on demand.

@@ -80,8 +80,8 @@ Reading notes from the comment block above the table:
   `src/FurbleIMUMotionMPU6886.cpp:54-57`).
 - StickS3: the BMI270 INT1 goes to M5PM1 GPIO 4, and the PMIC drives its own IRQ
   into SoC GPIO 13 (`src/FurbleBoard.cpp:25-27`). The firmware arms GPIO 4 as a
-  wake source before light sleep (`src/FurblePlatform.cpp:666`) and clears it
-  afterwards (`src/FurblePlatform.cpp:741`).
+  wake source before light sleep (`src/FurblePlatform.cpp:677`) and clears it
+  afterwards (`src/FurblePlatform.cpp:752`).
 
 ## I2C devices
 
@@ -92,7 +92,7 @@ Reading notes from the comment block above the table:
 | BMI270 IMU | 0x68 | M5Unified internal bus | `src/FurbleIMUMotionBMI270.cpp:24` |
 | MPU6886 IMU | 0x68 | M5Unified internal bus | `src/FurbleIMUMotionMPU6886.cpp:18` |
 | BM8563 RTC | 0x51 | M5Unified internal bus, 400 kHz | `src/FurblePlatform.cpp:42-46` |
-| M5PM1 PMIC | vendor library | M5Unified internal bus | `src/FurblePlatform.cpp:125` |
+| M5PM1 PMIC | vendor library | M5Unified internal bus | `src/FurblePlatform.cpp:136` |
 | AXP2101 PMIC | 0x34 | `lib/hal` `RegisterBus`, future boards only | `lib/hal/AXP2101.h:30` |
 | BQ27220 gauge | 0x55 | `lib/hal` `RegisterBus`, future boards only | `lib/hal/BQ27220.h:30` |
 | XL9555 expander | 0x20 to 0x27 | `lib/hal` `RegisterBus`, future boards only | `lib/hal/XL9555.h:27` |
@@ -205,10 +205,10 @@ The values are 48 on StickC and StickC Plus and 32 everywhere else
 
 The console reads the USB-Serial/JTAG peripheral on boards that make it primary,
 and UART0 on the ESP32 boards behind the USB-UART bridge
-(`src/FurbleConsole.cpp:3679-3700`). The ESP32 path takes an
+(`src/FurbleConsole.cpp:3681-3702`). The ESP32 path takes an
 `ESP_PM_APB_FREQ_MAX` lock for the console's lifetime, which is why no power
 measurement may be taken from a build that contains it
-(`src/FurbleConsole.cpp:3686-3697`).
+(`src/FurbleConsole.cpp:3688-3699`).
 
 ## Board peripherals
 
@@ -270,8 +270,8 @@ output the board lacks is skipped rather than logged as a failure
 
 | Item | Value | Citation |
 | :--- | :--- | :--- |
-| S3 native USB | USB-Serial/JTAG, and the console reads it through its own driver | `src/FurbleConsole.cpp:3678-3684` |
-| ESP32 boards | UART0 behind a USB-UART bridge, read through the same driver the IDF REPL installs | `src/FurbleConsole.cpp:3685-3698` |
+| S3 native USB | USB-Serial/JTAG, and the console reads it through its own driver | `src/FurbleConsole.cpp:3680-3686` |
+| ESP32 boards | UART0 behind a USB-UART bridge, read through the same driver the IDF REPL installs | `src/FurbleConsole.cpp:3687-3700` |
 | Console capability | `FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE` | `include/FurbleBoardCaps.h:40,42` |
 | VBUS sense | the Waveshare board has none, so it never infers external power | `include/FurbleBoardCaps.h:54,56` |
 | Reset on port open | the S3 resets on each host port open, which the flash helper uses as the safe state transition | `CLAUDE.md`, hardware traps |

@@ -432,7 +432,7 @@ check.
   `ESP_PM_APB_FREQ_MAX` (`components/esp_driver_rmt/src/rmt_common.c:230`).
   `src/FurbleIR.cpp` never sets `with_dma`, and furble raises the PM CPU
   maximum itself, 160 MHz by default
-  (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:94`), where APB is
+  (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:95`), where APB is
   80 MHz. The sdkconfig boot default is not what pins it. Setting `with_dma` on
   the S3 would swap that lock for `ESP_PM_NO_LIGHT_SLEEP` and let the 38 kHz
   carrier drift. When touching power management, audit every peripheral clock

@@ -35,7 +35,7 @@ tables. Those tables were not read here.
 | 8 | RMT keeps its own APB power lock, so it is DFS safe without an extra lock | Root `CLAUDE.md`, hardware traps. Not a data sheet statement | `src/FurbleIR.cpp:261` to `:292` | UNVERIFIED |
 | 9 | The backlight PWM is clocked from APB, so APB must be pinned while the display is on | Root `CLAUDE.md`, hardware traps. The TRM clock tree was not read | `src/FurbleUI.cpp:508` to `:511`, `:1879` (claim from the trap note, TRM not read) | UNVERIFIED |
 | 10 | One RMT memory block is 64 symbols on this SoC | ESP32-TRM RMT chapter. Not read | `src/FurbleIR.cpp:233` to `:235` | UNVERIFIED |
-| 11 | The 45 kOhm internal pull-up gives about 73 uA per asserted active-low line at 3.3 V | ESP32-DS DC characteristics, via `docs/power/datasheet-register.md` section 1 | `src/FurblePlatform.cpp:492` to `:501` | CITED |
+| 11 | The 45 kOhm internal pull-up gives about 73 uA per asserted active-low line at 3.3 V | ESP32-DS DC characteristics, via `docs/power/datasheet-register.md` section 1 | `src/FurblePlatform.cpp:493` to `:501` | CITED |
 
 ## Where the code implements it
 
@@ -45,7 +45,7 @@ tables. Those tables were not read here.
   carrier, transmit and the bounded wait.
 - `src/FurbleEthernet.cpp:131` to `:165`: the SPI pin map at 20 MHz, then
   `spi_bus_initialize` with DMA.
-- `src/FurblePlatform.cpp:492` to `:576`: the GPIO interrupt and wake path.
+- `src/FurblePlatform.cpp:493` to `:576`: the GPIO interrupt and wake path.
 - `src/FurbleUI.cpp:508` to `:511` and `:1879`: the APB lock around the backlight.
 
 ## Citation gaps

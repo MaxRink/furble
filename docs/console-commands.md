@@ -431,7 +431,7 @@ One provisioning line must fit the console line limit. The console runs at most
 buffer with `strlcpy()`. A longer line is refused with
 `error: line longer than 255 bytes, command not run` and is never handed to the
 command, so an oversized blob cannot be clipped into a shorter bundle that
-still applies (`src/FurbleConsole.cpp:3791-3792`). With the 17-character
+still applies (`src/FurbleConsole.cpp:3793-3794`). With the 17-character
 `provision base64:` prefix that leaves about 178 blob bytes per line.
 
 The [web installer](https://maxrink.github.io/furble/) sends this command over

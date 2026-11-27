@@ -252,7 +252,7 @@ medium, low.
   diagnostics timer with the reconnect box.
 - B9. PM1 watchdog is fed only from the UI task, and legitimate long UI
   blocking exists. HIGH leverage, CONFIRMED structure. watchdogFeed runs
-  from UI::task only (src/FurblePlatform.cpp:351-358, 10 s timeout).
+  from UI::task only (src/FurblePlatform.cpp:352-359, 10 s timeout).
   setConnSaver does up to 2 s of HCI per camera on the LVGL task
   (src/FurbleControl.cpp:640-645), up to ~18 s worst case at 9 targets.
   Every UI-blocking defect above becomes a hard reset. Fix: move

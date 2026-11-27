@@ -208,7 +208,7 @@ minute of track while keeping the flush rate low. Make the cadence a constant in
 `FurbleGPX.cpp` so it is easy to tune after measuring.
 
 Close the file properly on the power off path so the normal case is clean.
-`Platform::powerOff()` at `src/FurblePlatform.cpp:84-90` is the single exit point
+`Platform::powerOff()` at `src/FurblePlatform.cpp:85-91` is the single exit point
 and is where the unmount belongs.
 
 ### Settings export and import

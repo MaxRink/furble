@@ -130,11 +130,11 @@ The ESP32-S3 has GPIO 0 to 21 and 26 to 48; 22 to 25 do not exist (E1).
 
 | Id | Collision | Evidence | Consequence |
 | :--- | :--- | :--- | :--- |
-| C1 | M5GFX autodetect runs before any furble code chooses a board, and on the S3 it drives the M5Dial probe pins 4, 5, 6, 7 and 8, including `_pin_reset(GPIO_NUM_8, use_reset)` | [library: G1 `M5GFX.cpp`, the `board_M5Dial` probe] and `src/FurblePlatform.cpp:118` | The probe toggles this board's four QSPI data lines and the I2S input. Same failure class as the W5500 pins 9 to 14 in plan 42, and the reason that image pins `M5GFX_BOARD`. This board must not let autodetect run. |
+| C1 | M5GFX autodetect runs before any furble code chooses a board, and on the S3 it drives the M5Dial probe pins 4, 5, 6, 7 and 8, including `_pin_reset(GPIO_NUM_8, use_reset)` | [library: G1 `M5GFX.cpp`, the `board_M5Dial` probe] and `src/FurblePlatform.cpp:119` | The probe toggles this board's four QSPI data lines and the I2S input. Same failure class as the W5500 pins 9 to 14 in plan 42, and the reason that image pins `M5GFX_BOARD`. This board must not let autodetect run. |
 | C2 | `FurbleSD` mounts only through `M5.getPin(sd_spi_cs)` on the panel's `lgfx::bus_spi` | `src/FurbleSD.cpp:755` and `:986` | Returns a negative CS and refuses. The board's slot is a 1 bit SDMMC host with the card enable on expander output 7, so sharing the QSPI bus is wrong even if a CS existed. |
 | C3 | `M5.getPin(port_a_pin1)` and `port_a_pin2` give the GPS UART pins | `src/FurbleGPS.cpp:167-169` | -1 on a board M5Unified does not know, so no GPS. Plan 336 (PR 510) adds `gpsPinSource`, `gpsRxPin` and `gpsTxPin` to the row for exactly this. |
 | C4 | The per-row pins are inferred from the board macro in practice, and the StickC, Plus, Plus2 and StickS3 rows already use 9, 10, 19 and 46 for IR and LED, and 35 and 13 for motion wake | `src/FurbleBoard.cpp:66-105` | Any new row must set `irPin` and `ledPin` explicitly. A copied row drives the speaker amplifier or the codec clock. |
-| C5 | M5Unified's power class switches Port A on known boards only | `src/FurblePlatform.cpp:118`, [repo] `include/FurblePowerBackend.h:46-48` | `Rail::GPS` has no meaning here, and the `gpsRail` column would be false because `M5.Power` does nothing, not because the board has no switchable rail. |
+| C5 | M5Unified's power class switches Port A on known boards only | `src/FurblePlatform.cpp:119`, [repo] `include/FurblePowerBackend.h:46-48` | `Rail::GPS` has no meaning here, and the `gpsRail` column would be false because `M5.Power` does nothing, not because the board has no switchable rail. |
 
 ## Rails
 

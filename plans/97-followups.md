@@ -182,7 +182,7 @@ remediation batches. The batch is named in each GATED-ON tag.
   every tick replaces a new command, which keeps the request from being
   dropped when the command queue is full.
   Watchdog feeder decision: the PM1 feed stays on the UI task
-  (`src/FurblePlatform.cpp:341-348`). Moving the fan-out removes the only
+  (`src/FurblePlatform.cpp:352-359`). Moving the fan-out removes the only
   multi-second UI-task block this item named, so a second feeder would hide
   the next such block rather than prevent it. PM1 liveness as its own item
   stays in batch 7, unchanged.
@@ -300,7 +300,7 @@ remediation batches. The batch is named in each GATED-ON tag.
 - PM1 watchdog liveness. High leverage, structural. The watchdog is fed only
   from UI::task, so any long UI block becomes a hard reset. Consider a small
   dedicated feeder that feeds only while a UI heartbeat advances. Source: plan
-  96 B9, `src/FurblePlatform.cpp:351-358`. READY-NOW. Fork-only mechanism, see
+  96 B9, `src/FurblePlatform.cpp:352-359`. READY-NOW. Fork-only mechanism, see
   the upstream section.
 
 ## Group 2: deferred features
