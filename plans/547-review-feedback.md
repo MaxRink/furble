@@ -207,13 +207,21 @@ releases, not the last 4,096 addresses.
 reuse the same address, `free` again, push the second release off the front with
 4,095 other releases from a different size class, then free the address a third
 time. With the stamp comparison reverted the case fails exactly as your scaled
-replay predicted:
+replay predicted, in the plain build and under ASan:
 
 ```text
 SIM PANIC: heap block freed twice in task heap-caps-test aborts the device
   FAIL: freed-window-duplicate did not exit normally
 FAIL: 1 heap_caps shim check(s)
+
+==89079==ERROR: AddressSanitizer: attempting double-free on 0x606000000380 in thread T0:
+SUMMARY: AddressSanitizer: double-free heap_count.cpp:223 in (anonymous namespace)::releaseAllocation(void*)
 ```
+
+The reuse in that case is modelled with `heapSimulateReleaseAfterReuse()`, a
+documented seam in `sim/heap_count.h`, because the first version made the second
+release a real allocation and ASan's quarantine never returns the address. See
+the sanitizer section below.
 
 With the fix in place the suite passes and the abort is the modelled one:
 
@@ -297,3 +305,51 @@ exit 0, 16 assertions
 
 `memory-counted-camera-connect`, `memory-webui-fail-closed` and
 `main-menu-gap-pages` still exit 0 with no assertion failure and no panic.
+
+## Follow-up: the sanitized `sim-heap-caps-shim` failure
+
+State: fixed. CI's "ASan and UBSan host tests" failed on `sim-heap-caps-shim`
+while the plain target passed. Reproduced with the sanitizer runner, not the
+plain binary:
+
+```text
+$ sh tools/run_sanitized_host_tests.sh -R '^sim-heap-caps-shim$'
+    Start 31: sim-heap-caps-shim
+1/1 Test #31: sim-heap-caps-shim ...............***Failed    0.24 sec
+  FAIL: freed-window-duplicate exited 95, expected the panic status 3
+FAIL: sanitized host tests failed
+```
+
+There is no ASan or UBSan diagnostic in that report. The failure is my own
+`_exit(95)` guard: the case reallocated the block it had just released to produce
+the duplicate order entry, and AddressSanitizer quarantines a released block, so
+the allocator never returns the same address and the guard fires. The model
+bookkeeping is clean under the sanitizer; the *test* depended on allocator
+behaviour, which is a defect in the test.
+
+The case now models the reuse with `heapSimulateReleaseAfterReuse()` in
+`sim/heap_count.h` instead of a second allocation. The seam records the second
+release and leaves the first one's order entry stale, which is the state the
+window must survive; it frees nothing and the simulator never calls it. No
+sanitizer option was weakened, no case was skipped, and the check still fails when
+the stamp comparison is reverted:
+
+```text
+# stamp comparison reverted, sanitized build
+1/1 Test #31: sim-heap-caps-shim ...............***Failed    0.51 sec
+==89079==ERROR: AddressSanitizer: attempting double-free on 0x606000000380 in thread T0:
+SUMMARY: AddressSanitizer: double-free heap_count.cpp:223 in (anonymous namespace)::releaseAllocation(void*)
+  FAIL: freed-window-duplicate did not exit normally
+```
+
+With the fix, the three heap-related host targets pass under the sanitizer with
+no diagnostic:
+
+```text
+$ sh tools/run_sanitized_host_tests.sh -R '^(sim-heap-caps|sim-heap-caps-shim|sim-webui-memory-model)$'
+1/3 Test #12: sim-webui-memory-model ...........   Passed    0.17 sec
+2/3 Test #13: sim-heap-caps ....................   Passed    0.17 sec
+3/3 Test #31: sim-heap-caps-shim ...............   Passed    0.25 sec
+100% tests passed out of 3
+sanitized host tests: PASS
+```

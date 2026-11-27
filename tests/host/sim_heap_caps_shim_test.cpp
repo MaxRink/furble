@@ -350,9 +350,10 @@ void runAbortCase(AbortCase which) {
      * and the double free below then reached the host allocator instead of
      * aborting.
      *
-     * The churn uses a different size class so the host allocator does not
-     * hand the first block back on every iteration, which would re-enter the
-     * same path and hide the defect.
+     * The reuse is modelled with heapSimulateReleaseAfterReuse() rather than a
+     * second allocation. A sanitizer quarantines a released block, so the
+     * allocator does not hand the address back and the duplicate order entry
+     * this case is about cannot be produced there.
      */
     constexpr size_t BLOCK = 64;
     constexpr size_t CHURN_BLOCK = BLOCK + 64;
@@ -362,13 +363,7 @@ void runAbortCase(AbortCase which) {
       _exit(94);
     }
     furble_sim_fw_free(first);
-    void *reused = furble_sim_fw_malloc(BLOCK);
-    if (reused != first) {
-      // The window invariant needs the address back. Fail loudly rather than
-      // pass on a host allocator that did not reuse the block.
-      _exit(95);
-    }
-    furble_sim_fw_free(reused);
+    Furble::Sim::heapSimulateReleaseAfterReuse(first);
     for (size_t index = 0; index < CHURN_RELEASES; index++) {
       void *churn = furble_sim_fw_malloc(CHURN_BLOCK);
       if (churn == nullptr) {

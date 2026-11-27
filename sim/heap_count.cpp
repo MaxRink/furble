@@ -273,6 +273,16 @@ void heapMarkDeviceThread(const char *name) {
   t_DeviceTask = name == nullptr ? "unknown" : name;
 }
 
+void heapSimulateReleaseAfterReuse(void *pointer) {
+  if (pointer == nullptr) {
+    return;
+  }
+  registry_t &counts = registry();
+  const std::lock_guard<std::mutex> lock(counts.mutex);
+  markAllocatedLocked(counts, pointer);
+  markFreedLocked(counts, pointer);
+}
+
 DeviceAllocScope::DeviceAllocScope() : m_SavedDepth(t_HostDepth) {
   t_HostDepth = 0;
 }

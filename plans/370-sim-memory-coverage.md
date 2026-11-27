@@ -142,6 +142,12 @@ Tests and evidence:
   address, reuses it, releases it again, pushes the second release through the
   window and then frees it a third time, which must abort rather than reach the
   host allocator.
+- `sim/heap_count.h` gains `heapSimulateReleaseAfterReuse()`, the seam that case
+  needs to be allocator independent. A sanitizer quarantines a released block, so
+  the allocator never returns the address and the duplicate order entry cannot be
+  produced with real calls; the seam records the second release and leaves the
+  first one's order entry stale, which is the state the window must survive. It
+  frees nothing and the simulator never calls it.
 - `sim/scenarios/e2e/memory-fragmented-largest-only.txt`: 60,000 free with a
   3,000-byte largest block closes the WebUI supervisor gate and enters RED.
 - `sim/fixtures/hardware/panic-camera-connect-alloc.txt`,
@@ -241,12 +247,32 @@ assert ok: platform.watchdog = armed
 The stamped release window is load-bearing. Reverting only the stamp comparison
 in `markFreedLocked` (`counts.freed.erase(oldest.first)` for the stamp check), so
 the stale order entry a reuse leaves behind erases the live one, fails the new
-case instead of aborting on the modelled line:
+case instead of aborting on the modelled line, in the plain build and under
+ASan/UBSan alike:
 
 ```text
+$ ./sim_heap_caps_shim_test
 SIM PANIC: heap block freed twice in task heap-caps-test aborts the device
   FAIL: freed-window-duplicate did not exit normally
 FAIL: 1 heap_caps shim check(s)
+
+$ sh tools/run_sanitized_host_tests.sh -R '^sim-heap-caps-shim$'
+1/1 Test #31: sim-heap-caps-shim ...............***Failed    0.51 sec
+==89079==ERROR: AddressSanitizer: attempting double-free on 0x606000000380 in thread T0:
+SUMMARY: AddressSanitizer: double-free heap_count.cpp:223 in (anonymous namespace)::releaseAllocation(void*)
+  FAIL: freed-window-duplicate did not exit normally
+FAIL: sanitized host tests failed
+```
+
+With the stamp check in place the same case passes and the sanitized run reports
+nothing:
+
+```text
+$ sh tools/run_sanitized_host_tests.sh -R '^(sim-heap-caps|sim-heap-caps-shim|sim-webui-memory-model)$'
+1/3 Test #12: sim-webui-memory-model ...........   Passed    0.17 sec
+2/3 Test #13: sim-heap-caps ....................   Passed    0.17 sec
+3/3 Test #31: sim-heap-caps-shim ...............   Passed    0.25 sec
+sanitized host tests: PASS
 ```
 
 The heap escape gate is load-bearing too. A probe `return malloc(64);` added to
