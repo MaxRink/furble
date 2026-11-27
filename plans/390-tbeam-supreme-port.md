@@ -19,7 +19,7 @@ port-cost ranking that put this board first, numbered 364 before the plan
 renumbering), [366](366-gps-receiver-selection.md) (the receiver decision, its
 lever ordering and the UNVERIFIED backup domain),
 [376](376-board-level-documents.md) (the board-level drawings and what they do
-and do not settle about V_IO and V_BCKP), [336](336-gps-pin-seam.md) (the GPS
+and do not settle about V_IO and V_BCKP), [336](implemented/336-gps-pin-seam.md) (the GPS
 pin seam this port uses), [321](implemented/321-ublox-m10-driver.md) (the UBX
 backend the MAX-M10S trim needs).
 
