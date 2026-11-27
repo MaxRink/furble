@@ -4990,6 +4990,17 @@
       "transport": "mqtt"
     },
     {
+      "path": "sim/scenarios/e2e/memory-fragmented-largest-only.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/memory-counted-camera-connect.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

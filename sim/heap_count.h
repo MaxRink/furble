@@ -50,6 +50,22 @@ __attribute__((weak)) void heapMarkDeviceThread(const char *) {}
 #endif
 
 /**
+ * Model the release history of one address that was released, handed out again
+ * and released once more, for the double-free release window.
+ *
+ * A host test cannot produce that with real calls under a sanitizer: the
+ * quarantine means the allocator never returns the released address, so the
+ * duplicate order entry cannot arise and the window's eviction is never asked
+ * to tell a stale entry from a live one. This records the second release and
+ * leaves the first one's order entry stale, which is exactly the state the
+ * window must survive. It frees nothing and touches no memory the caller owns.
+ */
+void heapSimulateReleaseAfterReuse(void *pointer);
+#if !defined(FURBLE_SIM_HEAP_COUNT_IMPL)
+__attribute__((weak)) void heapSimulateReleaseAfterReuse(void *) {}
+#endif
+
+/**
  * Re-enter device counting inside a host scope, for a harness step that calls
  * straight into a firmware handler.
  */

@@ -152,6 +152,14 @@ void heapFreeTagged(uint64_t id);
  * wildcard. Used by exact-size allocation fault scenarios. */
 void heapSetAllocFailure(size_t bytes, const char *owner, uint32_t count);
 
+/**
+ * Fail `count` allocations of this size and owner after the first `skip` that
+ * match. This is the n-th allocation form: skip 1 leaves the first matching
+ * allocation alone and fails the second, which is how a reconnect, a retry or
+ * a second handshake is given a failure that the first attempt never saw.
+ */
+void heapSetAllocFailureAfter(size_t bytes, const char *owner, uint32_t skip, uint32_t count);
+
 /** Allocations that must fail exactly once, then succeed on the retry. */
 void heapSetAllocFailureOnce(size_t bytes, const char *owner);
 
@@ -183,6 +191,15 @@ bool heapTaskCreateMustFail(const char *name);
 
 /** Record and log one allocation failure in the ESP-IDF heap shape. */
 void heapNoteAllocationFailure(size_t bytes, const char *task);
+
+/**
+ * Abort on a block freed twice, the way multi_heap_free does once the head
+ * canary of an already-freed block no longer matches. Prints the modelled line,
+ * writes a panic crash record and exits with SIM_PANIC_EXIT. It does not touch
+ * the failed-allocation hook: the crash record's alloc_size fields describe a
+ * failed allocation, and a double free is not one.
+ */
+[[noreturn]] void heapNoteDoubleFree(const char *task);
 
 /**
  * Model one xTaskCreate allocation. Returns false after logging the failure

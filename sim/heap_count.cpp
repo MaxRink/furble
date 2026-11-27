@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <new>
 #include <unordered_map>
@@ -63,9 +64,44 @@ using table_t = std::unordered_map<void *,
                                    std::equal_to<void *>,
                                    MallocAllocator<std::pair<void *const, counted_t>>>;
 
+/*
+ * Recently released device blocks, so a second free of the same address is
+ * recognised instead of reaching the host allocator, which would abort with
+ * "double free detected" or, worse, free a live host block silently. An
+ * address leaves this map the moment any allocation hands it out again, which
+ * is the tcache key the host allocator itself uses, so a reused address is
+ * never reported.
+ *
+ * Bounded by releases, not by addresses: `freedOrder` holds the last
+ * FREED_HISTORY_BLOCKS releases as (pointer, release sequence) pairs, and an
+ * entry is only erased from `freed` when the sequence it carries is still the
+ * address's own. Without that stamp a free, reuse and second free of one
+ * address leaves two entries in the order, and popping the stale one erases
+ * the live entry with its most recent release only a few allocations back.
+ *
+ * A long run releases far more blocks than this, and an evicted address that
+ * has since been reused is not evidence of anything. A double free is normally
+ * separated by few allocations, so the release window is the bound that
+ * matters; a double free held apart by more than FREED_HISTORY_BLOCKS other
+ * releases is the same false negative the host allocator has.
+ */
+constexpr size_t FREED_HISTORY_BLOCKS = 4096;
+
+// Address to the sequence number of its most recent release.
+using freed_map_t = std::unordered_map<void *,
+                                       uint64_t,
+                                       std::hash<void *>,
+                                       std::equal_to<void *>,
+                                       MallocAllocator<std::pair<void *const, uint64_t>>>;
+using freed_release_t = std::pair<void *, uint64_t>;
+using freed_order_t = std::deque<freed_release_t, MallocAllocator<freed_release_t>>;
+
 struct registry_t {
   std::mutex mutex;
   table_t table;
+  freed_map_t freed;
+  freed_order_t freedOrder;
+  uint64_t freedSequence = 0;
   std::atomic<size_t> live {0};
 };
 
@@ -78,6 +114,27 @@ registry_t &registry(void) {
   return *instance;
 }
 
+// Caller holds the registry mutex. The order keeps its stale entry; eviction
+// compares the sequence before it touches `freed`.
+void markAllocatedLocked(registry_t &counts, void *pointer) {
+  counts.freed.erase(pointer);
+}
+
+// Caller holds the registry mutex.
+void markFreedLocked(registry_t &counts, void *pointer) {
+  const uint64_t sequence = ++counts.freedSequence;
+  counts.freed[pointer] = sequence;
+  counts.freedOrder.emplace_back(pointer, sequence);
+  while (counts.freedOrder.size() > FREED_HISTORY_BLOCKS) {
+    const freed_release_t oldest = counts.freedOrder.front();
+    counts.freedOrder.pop_front();
+    const auto tracked = counts.freed.find(oldest.first);
+    if ((tracked != counts.freed.end()) && (tracked->second == oldest.second)) {
+      counts.freed.erase(tracked);
+    }
+  }
+}
+
 size_t usableSize(void *pointer) {
 #if defined(__APPLE__)
   return malloc_size(pointer);
@@ -87,7 +144,15 @@ size_t usableSize(void *pointer) {
 }
 
 void *countAllocation(void *pointer, size_t size, uint32_t caps = 0) {
-  if (pointer == nullptr || !t_DeviceThread || t_HostDepth != 0) {
+  if (pointer == nullptr) {
+    return pointer;
+  }
+  {
+    registry_t &counts = registry();
+    const std::lock_guard<std::mutex> lock(counts.mutex);
+    markAllocatedLocked(counts, pointer);
+  }
+  if (!t_DeviceThread || t_HostDepth != 0) {
     return pointer;
   }
   size_t charged = 0;
@@ -124,26 +189,38 @@ void releaseAllocation(void *pointer) {
     return;
   }
   registry_t &counts = registry();
-  if (counts.live.load() != 0) {
-    counted_t counted;
-    bool found = false;
-    {
-      const std::lock_guard<std::mutex> lock(counts.mutex);
-      const auto entry = counts.table.find(pointer);
-      if (entry != counts.table.end()) {
-        counted = entry->second;
-        counts.table.erase(entry);
-        counts.live.fetch_sub(1);
-        found = true;
+  counted_t counted;
+  bool found = false;
+  bool doubleFree = false;
+  {
+    const std::lock_guard<std::mutex> lock(counts.mutex);
+    const auto entry = counts.table.find(pointer);
+    if (entry != counts.table.end()) {
+      counted = entry->second;
+      counts.table.erase(entry);
+      counts.live.fetch_sub(1);
+      found = true;
+      markFreedLocked(counts, pointer);
+    } else {
+      // Not a live device block. An address this registry released earlier is
+      // a double free, which multi_heap_free aborts on once the freed block's
+      // head canary no longer matches; anything else is a host block.
+      const auto released = counts.freed.find(pointer);
+      doubleFree = released != counts.freed.end();
+      if (doubleFree) {
+        counts.freed.erase(released);
       }
     }
-    if (found) {
-      const Furble::Sim::HostAllocScope scope;
-      if (!counted.baseline) {
-        Furble::Sim::heapCountedFree(counted.charged, counted.external);
-      } else if (Furble::Sim::heapCountingFast()) {
-        Furble::Sim::heapRefundBaseline(counted.charged, counted.external);
-      }
+  }
+  if (doubleFree) {
+    Furble::Sim::heapNoteDoubleFree(t_DeviceTask);
+  }
+  if (found) {
+    const Furble::Sim::HostAllocScope scope;
+    if (!counted.baseline) {
+      Furble::Sim::heapCountedFree(counted.charged, counted.external);
+    } else if (Furble::Sim::heapCountingFast()) {
+      Furble::Sim::heapRefundBaseline(counted.charged, counted.external);
     }
   }
   std::free(pointer);
@@ -152,6 +229,16 @@ void releaseAllocation(void *pointer) {
 void *allocate(size_t size, size_t alignment) {
   if (size == 0) {
     size = 1;
+  }
+  // Exact-size and owner-specific failure injection reaches the plain
+  // malloc/new path here, the same probe heap_caps_malloc uses. It runs only
+  // for an allocation that would otherwise be charged: a device thread outside
+  // a host scope. The model's own bookkeeping allocates under a host scope and
+  // while it holds the heap mutex, so probing there would re-enter that mutex.
+  if (t_DeviceThread && (t_HostDepth == 0)
+      && Furble::Sim::heapShouldFailAllocation(size, t_DeviceTask)) {
+    furble_sim_heap_alloc_failed(size, 0x1000, t_DeviceTask);
+    return nullptr;
   }
   void *pointer = nullptr;
   if (alignment <= alignof(std::max_align_t)) {
@@ -164,6 +251,8 @@ void *allocate(size_t size, size_t alignment) {
     furble_sim_heap_alloc_failed(size, 0x1000, t_DeviceTask);
     return nullptr;
   }
+  // Any allocation of this address invalidates an earlier release of it, so the
+  // registry records it before the caller can free anything.
   return countAllocation(pointer, size);
 }
 
@@ -182,6 +271,16 @@ namespace Furble::Sim {
 void heapMarkDeviceThread(const char *name) {
   t_DeviceThread = true;
   t_DeviceTask = name == nullptr ? "unknown" : name;
+}
+
+void heapSimulateReleaseAfterReuse(void *pointer) {
+  if (pointer == nullptr) {
+    return;
+  }
+  registry_t &counts = registry();
+  const std::lock_guard<std::mutex> lock(counts.mutex);
+  markAllocatedLocked(counts, pointer);
+  markFreedLocked(counts, pointer);
 }
 
 DeviceAllocScope::DeviceAllocScope() : m_SavedDepth(t_HostDepth) {

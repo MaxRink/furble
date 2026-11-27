@@ -1,0 +1,44 @@
+# Fragmentation, not exhaustion: 60,000 internal bytes free and a 3,000-byte
+# largest block.
+#
+# The host heap is not fragmented by a scenario, so the only way a scenario sees
+# a fragmented device pool is the seeded pair. Free clears every floor the WebUI
+# supervisor has (5,120) while the largest block does not (4,608), so a
+# free-size-only model would open the gate and the device would fail the
+# allocation instead. The same pair is RED for the memory pressure governor on
+# its own: 60,000 free is healthy, 3,000 largest is below the 6,144 RED floor.
+#
+# The supervisor gate log names both figures for exactly this reason; this
+# scenario pins the largest-block half of it.
+seed heap_internal_free 60000
+seed heap_internal_largest 3000
+seed web_ui true
+seed webui_password true
+seed wifi_connected true
+wait 100
+
+assert heap.active yes
+assert heap.free 60000
+assert heap.largest 3000
+assert webui.supervisor blocked
+# The supervisor gate refuses first, so the HTTPS server is never attempted.
+assert webui.server off
+assert webui.gate supervisor_memory
+assert webui.fail_closed yes
+assert heap.alloc_failures 0
+print webui.gate_message
+
+# Three one-second readings of a collapsed largest block enter RED, which is
+# what sheds the WebUI and pauses MQTT before either allocates. Nothing was
+# allocated, so the pool is unchanged.
+wait 5000
+assert heap.pressure red
+assert heap.free 60000
+assert heap.largest 3000
+assert webui.supervisor blocked
+assert heap.alloc_failures 0
+assert heap.last_failed_task none
+assert ui.page main
+assert platform.watchdog armed
+
+exit

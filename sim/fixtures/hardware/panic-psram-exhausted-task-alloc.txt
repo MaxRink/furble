@@ -1,0 +1,25 @@
+# A task stack on a PSRAM pool that is present but too small. Expected:
+# SIM PANIC, exit 3.
+#
+# `psram_mode octal` alone seeds the whole 8 MiB module, so the pool is always
+# large enough; `psram_free` and `psram_largest` trim it to a ready pool that
+# cannot serve the 8 KiB Control stack. The internal pair stays at
+# 60,000 / 50,000, which is the point: `task_stack_region psram` pins the stack
+# to the external pool, it cannot fall back to internal RAM, and heapTaskCreate
+# aborts like the heap_caps_malloc it models.
+#
+# The first task created after the seed is the Control task at 8 KiB, so this is
+# the same victim as panic-psram-task-no-psram.txt for the opposite reason:
+# there the pool is absent (a configuration fault), here it is present, ready
+# and too small (exhaustion). The internal pool is healthy in both.
+#
+# sim/scripts/run-panic-fixtures.sh runs this and checks the panic record.
+seed hw_profile sticks3
+seed psram_mode octal
+seed psram_free 4096
+seed psram_largest 1024
+seed heap_internal_free 60000
+seed heap_internal_largest 50000
+seed task_stack_region psram
+wait 100
+exit

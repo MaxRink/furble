@@ -605,6 +605,15 @@ deferred attempt and the esp-mqtt client task is never allocated, so
 PSRAM, and the 5,120-byte saved camera snapshot is charged on connect.
 `task_create_fail` takes a FreeRTOS task name or `all` and fails that task's
 `xTaskCreate` with the hardware-shaped `Mem alloc fail` line.
+`alloc_fail` takes `<owner|any>:<bytes|any>[:<nth>]` and fails the exact request
+the owner and size name, which is the only way to reach an allocation the pool
+maths cannot fail: the MQTT start gate's floors are stricter than the client
+task it admits, so no seeded pool can fail that allocation. The optional `nth`
+is 1-based and leaves the earlier matching allocations alone, so the retry, the
+reconnect or the second handshake can be the attempt that fails;
+`panic-mqtt-reconnect-alloc.txt` uses `alloc_fail mqtt_client:3072:2` for
+exactly that. Owner `any` matches every caller and size `any` matches every
+request, and a malformed value fails at scenario load.
 
 Every furble sdkconfig sets `CONFIG_HEAP_ABORT_WHEN_ALLOCATION_FAILS`, so a
 failed allocation aborts the device; the firmware's NULL and `pdPASS` fallback
@@ -716,6 +725,14 @@ not select, and `pmic.light_load_source` reports whether the window came from
 the register byte or from a seed.
 
 `psram_mode` is `absent`, `quad`, `octal` or `init_fail`.
+`psram_free` and `psram_largest` take byte counts and trim a `quad` or `octal`
+pool to a ready but nearly full one: `psram_mode` alone always seeds the whole
+8 MiB module, so without them no scenario reaches a PSRAM allocation that fails
+while the internal pool is healthy. They require an explicit `psram_mode quad`
+or `psram_mode octal`, because a pool a profile seeded is re-seeded from the
+profile at boot and would silently undo the trim. A malformed value,
+`psram_mode` from another source, `psram_largest` above `psram_free` and
+`psram_free` above the modelled 8 MiB module all fail at scenario load.
 `pmic_variant` is `m5pm1`, `axp192`, `axp2101`, `ip5306` or `none`.
 `battery_gauge` is `none`, `voltage`, `voltage_current`, `voltage_charge` or
 `four_level`. `battery_state` is `present`, `absent`, `charging`, `full` or

@@ -529,7 +529,12 @@ reads `mqtt.retry_delay`.
   per target against 4,896 on the S3, because `sizeof(Control::Target)` is
   larger on a 64-bit host. `task_create_fail <name|all>` fails a task's `xTaskCreate`
   with the hardware-shaped `Mem alloc fail` line, which aborts the run with
-  status 3 like the device. `heap.free`, `heap.largest`,
+  status 3 like the device. `alloc_fail <owner|any>:<bytes|any>[:<nth>]` fails
+  the exact request the owner and size name on either allocator entry point,
+  and `psram_free`/`psram_largest` trim a `quad` or `octal` pool to a ready but
+  nearly full one; both reject a malformed value at scenario load. A block
+  freed twice aborts with `SIM PANIC: heap block freed twice` instead of
+  reaching the host allocator. `heap.free`, `heap.largest`,
   `heap.minimum`, `heap.counting`, `heap.counted_internal`,
   `heap.counted_external`, `heap.counted_tasks`, `heap.alloc_failures`, `heap.last_failed_task`,
   `webui.supervisor`, `webui.server`, `webui.gate`, `webui.attempts`,

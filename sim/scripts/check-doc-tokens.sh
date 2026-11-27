@@ -206,9 +206,13 @@ def seed_contract(seed_text):
         literal = match.group(2)
         if match.group(1) != "!=" or not (literal.startswith('"') and literal.endswith('"')):
             raise ValueError("unrecognized validateSeed value comparison")
+    # The recognized value validators. A seed whose value is not a single
+    # number or literal still has to be checked by one of these, so the
+    # inventory knows every seed rejects a malformed value at parse time:
+    # parseAllocFailSeed() owns the compound `<owner>:<bytes>[:<nth>]` form.
     for call in re.finditer(r'(?<![\w:])([A-Za-z_]\w*)\s*\([^)]*\bvalue\b', body):
         if call.group(1) not in {"if", "parseUnsigned", "batteryVoltage", "parseSigned",
-                                 "booleanSeedValue", "bleTopologyIsValid"}:
+                                 "booleanSeedValue", "bleTopologyIsValid", "parseAllocFailSeed"}:
             raise ValueError(f"unrecognized validateSeed value call: {call.group(1)}")
     for call in re.finditer(r'(?<![\w:])([A-Za-z_]\w*)\s*\([^)]*\bname\b', body):
         if call.group(1) not in {"find", "if"}:

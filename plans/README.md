@@ -355,6 +355,8 @@ the bench work.
 | [355-review-feedback.md](355-review-feedback.md) | Review-feedback record for PR 517: the CMake build and three stock scenarios, the `nm -m` binding, and the reverted link order that returns exit 134 |
 | [343-apple-ui-snapshot.md](343-apple-ui-snapshot.md) | First Apple UI snapshot: the shipped Status section body compared to a committed 1x baseline in the existing `swift test` target |
 | [343-review-feedback.md](343-review-feedback.md) | Review-feedback record for PR 480: baseline provenance on the `macos-15` image, the comparison the CI job reports, and the List row-flattening test |
+| [370-sim-memory-coverage.md](370-sim-memory-coverage.md) | Simulator memory-management coverage audit: every heap API the firmware calls and where the model charges it, the plain `new`/`malloc` path taking the exact-size failure probe, a block freed twice aborting instead of reaching the host allocator, a release window stamped per release rather than per address, a ready but nearly full PSRAM pool and a fragmented largest block reachable from seeds, the n-th allocation failure form, and the gate that fails a bare `malloc` in the firmware |
+| [547-review-feedback.md](547-review-feedback.md) | Review-feedback record for PR 547: the withdrawn link-time claim and the heap escape gate that replaces it, the stamped release window with the allocator-independent regression after AddressSanitizer quarantined the reused address, the unit-only plain `new` row, the compiled-out heap-trace site, and the `psram_free` ceiling |
 
 ## Optimization program
 

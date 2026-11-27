@@ -25,8 +25,11 @@ owner, 3 KiB plain worker, a 9,392-byte MQTT event queue in PSRAM, a
 - free, largest, minimum free and minimum largest;
 - allocation count, failure count and last failed owner;
 - owner-tagged allocations and scenario-end leak detection;
-- exact-size and owner-specific failure injection;
-- PSRAM mode, init failure and task stack placement;
+- exact-size, owner-scoped and n-th failure injection on both allocator entry
+  points, the `heap_caps_*` shim and the replaced `operator new` family;
+- double-free detection: a block the registry released is not handed to the
+  host allocator a second time, it aborts the run;
+- PSRAM mode, init failure, a trimmed external pool and task stack placement;
 - a flash-cache safety check that fails closed when a PSRAM task stack is live
   during a flash write;
 - a sampled timeline in virtual milliseconds.
@@ -34,7 +37,11 @@ owner, 3 KiB plain worker, a 9,392-byte MQTT event queue in PSRAM, a
 `heap.*` queries expose the pool. `mem.*` queries expose the static map, owner
 totals, leaks, timeline count and watermarks.
 
-`sim/shim/esp_heap_caps.h` is the firmware-facing surface. `heap_caps_malloc`,
+`sim/shim/esp_heap_caps.h` is the firmware-facing surface. It includes the C
+library headers, so a bare `malloc` in the firmware would compile, link and run
+on the host heap with no model charge; `tools/check_sim_heap_escape.py` fails
+such a call in `src/`, `lib/` or `include/` and `tools/pre_review.py` runs it as
+the simulator heap escape gate. `heap_caps_malloc`,
 `heap_caps_malloc_prefer`, `heap_caps_calloc` and `heap_caps_realloc` charge the
 pool their caps name, filter caps the same way, and abort through the same
 policy. `heap_caps_realloc` has no in-place growth here: it charges the new
@@ -106,7 +113,14 @@ builds rewrote unless all six release files change together.
 Seeds:
 
 - `heap_internal_free`, `heap_internal_largest`
+- `alloc_fail <owner|any>:<bytes|any>[:<nth>]`: fail the exact request the owner
+  and size name, leaving the earlier matching allocations alone when `nth` is
+  set. It is the only way to fail an allocation the pool maths cannot, such as
+  the MQTT client task a start gate stricter than the block always admits.
 - `psram_mode absent|quad|octal|init_fail`
+- `psram_free`, `psram_largest`: trim an explicitly seeded `quad` or `octal`
+  pool to a ready but nearly full one, so external exhaustion with a healthy
+  internal pool is reachable
 - `task_stack_region internal|psram`
 - `mqtt_owner_stack`, `mqtt_worker_stack`, `mqtt_buffer`
 - `mqtt_tls`, `mqtt_ha`, `mqtt_expect_overflow`
@@ -139,3 +153,17 @@ SDL scenarios. The linked host-boundary suite compiles those production paths
 unchanged against peripheral doubles, so the manifest marks those entries
 modeled. Physical wiring, analog audio, the SD controller and a real mbedTLS
 handshake remain hardware validation items.
+
+The double-free detector keeps the last 4,096 released addresses, so a second
+free separated by more than that many allocations, with the address reused in
+between, is the same false negative the host allocator has. A double free is not
+a failed allocation: its panic record carries the modelled line and leaves
+`alloc_size`, `alloc_caps` and `alloc_task` at zero.
+
+`esp_get_free_heap_size()` and `esp_get_minimum_free_heap_size()` answer
+`MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT` here, while the pinned IDF answers
+`MALLOC_CAP_DEFAULT`, which on a PSRAM board includes the external pool. The two
+firmware consumers render the About and Device info heap rows and print the
+console `heap` and `heap_min` lines; no gate reads them. Closing the difference
+moves the 135x240 About row, so it is tracked rather than asserted;
+`plans/370-sim-memory-coverage.md` records it.

@@ -346,11 +346,83 @@ std::vector<std::string> scriptWords(const std::string &line) {
   return result;
 }
 
+// A failure-injection seed for either modelled allocator entry point:
+//
+//   alloc_fail <owner|any>:<bytes|any>[:<nth>]
+//
+// owner is the device task name or model tag the request must come from, bytes
+// is the exact request size, and nth is the 1-based occurrence to fail, so the
+// retry, reconnect or second handshake can be the attempt that fails while the
+// first one is left alone. Both wildcards apply independently.
+struct alloc_fail_seed_t {
+  std::string owner;
+  size_t bytes = 0;
+  uint32_t nth = 1;
+};
+
+[[noreturn]] void rejectAllocFail(const std::string &value, const char *reason) {
+  std::cerr << "Invalid alloc_fail: " << value << " (" << reason << ")\n";
+  std::exit(2);
+}
+
+uint32_t allocFailNumber(const std::string &value, const std::string &whole, const char *field) {
+  try {
+    if (value.empty() || value[0] == '+' || value[0] == '-') {
+      throw std::invalid_argument("signed or empty");
+    }
+    size_t parsed = 0;
+    const unsigned long number = std::stoul(value, &parsed, 10);
+    if (parsed != value.size()) {
+      throw std::invalid_argument("trailing characters");
+    }
+    if (number > std::numeric_limits<uint32_t>::max()) {
+      throw std::out_of_range("uint32 range");
+    }
+    return static_cast<uint32_t>(number);
+  } catch (const std::exception &) {
+    rejectAllocFail(whole, field);
+  }
+}
+
+alloc_fail_seed_t parseAllocFailSeed(const std::string &value) {
+  std::vector<std::string> parts;
+  std::string current;
+  for (const char character : value) {
+    if (character == ':') {
+      parts.push_back(current);
+      current.clear();
+    } else {
+      current.push_back(character);
+    }
+  }
+  parts.push_back(current);
+  if ((parts.size() < 2) || (parts.size() > 3)) {
+    rejectAllocFail(value, "expected owner:bytes[:nth]");
+  }
+  if (parts[0].empty()) {
+    rejectAllocFail(value, "empty owner");
+  }
+  alloc_fail_seed_t seed;
+  seed.owner = (parts[0] == "any") ? std::string() : parts[0];
+  if (parts[1].empty()) {
+    rejectAllocFail(value, "empty size");
+  }
+  seed.bytes = (parts[1] == "any") ? 0 : allocFailNumber(parts[1], value, "bytes");
+  if (parts.size() == 3) {
+    seed.nth = allocFailNumber(parts[2], value, "nth");
+    if (seed.nth == 0) {
+      rejectAllocFail(value, "nth is 1-based");
+    }
+  }
+  return seed;
+}
+
 void validateSeed(const std::string &name, const std::string &value) {
   if (name == "clock_ms" || name == "liveness_grace_ms" || name == "heap_internal_free"
       || name == "heap_internal_largest" || name == "mqtt_owner_stack"
       || name == "mqtt_worker_stack" || name == "mqtt_buffer" || name == "mqtt_discovery_payload"
-      || name == "main_stack" || name == "main_high_water") {
+      || name == "main_stack" || name == "main_high_water" || name == "psram_free"
+      || name == "psram_largest") {
     parseUnsigned(value);
     return;
   }
@@ -429,6 +501,11 @@ void validateSeed(const std::string &name, const std::string &value) {
 
   if (name == "ip5306_load_ma" || name == "ip5306_light_load_ms") {
     parseUnsigned(value);
+    return;
+  }
+
+  if (name == "alloc_fail") {
+    (void)parseAllocFailSeed(value);
     return;
   }
 
@@ -2680,6 +2757,15 @@ void applyScenarioSettings(void) {
   if (taskCreateFail != scenarioSettings.end()) {
     heapSetTaskCreateFail(taskCreateFail->second);
   }
+  // Exact-size allocation failure for either modelled allocator entry point.
+  // Applied here, after the pool seeds and the profile, so a rule cannot be
+  // consumed by a boot allocation that precedes the scenario's own pressure.
+  const auto allocFail = scenarioSettings.find("alloc_fail");
+  if (allocFail != scenarioSettings.end()) {
+    const alloc_fail_seed_t rule = parseAllocFailSeed(allocFail->second);
+    heapSetAllocFailureAfter(rule.bytes, rule.owner.empty() ? nullptr : rule.owner.c_str(),
+                             rule.nth - 1, 1);
+  }
   if (scenarioSettingIsTrue("companion_enabled")) {
     hwAction("companion-boot");
   }
@@ -2702,6 +2788,45 @@ void applyScenarioSettings(void) {
   const auto sysCtl2Seed = scenarioSettings.find("ip5306_sys_ctl2");
   if (sysCtl2Seed != scenarioSettings.end()) {
     hwSetIp5306SysCtl2(static_cast<uint8_t>(parseUnsigned(sysCtl2Seed->second)));
+  }
+  // A ready but nearly full external pool. `psram_mode` alone only offers the
+  // full 8 MiB module, so without these seeds no scenario can reach a PSRAM
+  // allocation that fails while the internal pool is healthy.
+  const auto psramFreeSeed = scenarioSettings.find("psram_free");
+  const auto psramLargestSeed = scenarioSettings.find("psram_largest");
+  if (psramFreeSeed != scenarioSettings.end() || psramLargestSeed != scenarioSettings.end()) {
+    // The trim has to outlive boot: a pool a profile seeded is re-seeded from
+    // the profile unless psram_mode pinned it explicitly, which would silently
+    // undo the trim. Requiring the seed keeps the pair deterministic.
+    const std::string mode = heapPsramMode();
+    if ((psramMode == scenarioSettings.end()) || (mode != "quad" && mode != "octal")) {
+      std::cerr << "psram_free and psram_largest require psram_mode quad or psram_mode octal, not "
+                << (psramMode == scenarioSettings.end() ? std::string("a profile") : mode) << '\n';
+      requestExit(2);
+      return;
+    }
+    const size_t freeBytes = (psramFreeSeed != scenarioSettings.end())
+                                 ? parseUnsigned(psramFreeSeed->second)
+                                 : heapPsramFree();
+    const size_t largestBytes = (psramLargestSeed != scenarioSettings.end())
+                                    ? parseUnsigned(psramLargestSeed->second)
+                                    : freeBytes;
+    // The modelled part carries an 8 MiB module (hwSetPsramMode). A larger
+    // seed would model hardware nobody builds, so it is a load error.
+    constexpr size_t PSRAM_MODULE_BYTES = 8u * 1024u * 1024u;
+    if (freeBytes > PSRAM_MODULE_BYTES) {
+      std::cerr << "Invalid psram_free: " << freeBytes << " exceeds the modelled "
+                << PSRAM_MODULE_BYTES << "-byte PSRAM module\n";
+      requestExit(2);
+      return;
+    }
+    if (largestBytes > freeBytes) {
+      std::cerr << "Invalid psram_largest: " << largestBytes << " exceeds psram_free " << freeBytes
+                << '\n';
+      requestExit(2);
+      return;
+    }
+    heapSetPsram(mode, freeBytes, largestBytes);
   }
   const auto pmicVariant = scenarioSettings.find("pmic_variant");
   if (pmicVariant != scenarioSettings.end()) {
