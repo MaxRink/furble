@@ -39,7 +39,7 @@ void check(bool condition, const char *what) {
 // M5GFX endTransaction() result carries.
 class FakeBus {
  public:
-  FakeBus(std::initializer_list<int> devices) : m_Devices(devices) {}
+  FakeBus(std::initializer_list<int> devices) : m_Devices(devices.begin(), devices.end()) {}
 
   bool probe(uint8_t address) {
     m_Probes.push_back(address);
@@ -54,7 +54,10 @@ class FakeBus {
   const std::vector<uint8_t> &probes(void) const { return m_Probes; }
 
  private:
-  std::initializer_list<int> m_Devices;
+  // Copied, not referenced: the initializer_list temporary dies at the end of
+  // the constructor call, and holding it is a use-after-scope the sanitized
+  // host build catches (display-probe aborted under ASan).
+  std::vector<int> m_Devices;
   std::vector<uint8_t> m_Probes;
 };
 

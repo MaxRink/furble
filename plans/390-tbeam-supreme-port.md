@@ -299,7 +299,7 @@ Recorded on this branch, macOS host, no device attached:
   SUCCESS. `-e lilygo-tbeam-supreme-debug` also builds, with the console and
   the debug fragments.
 - `python3 tools/check_size_budget.py --env lilygo-tbeam-supreme`: PASS, flash
-  1,819,664 of 3,145,728 bytes, DRAM 47,308 of 48,128, IRAM 110,848 of 111,616.
+  1,819,952 of 3,145,728 bytes, DRAM 47,316 of 48,128, IRAM 110,848 of 111,616.
   The `-debug` env records flash 2,215,360, DRAM 52,404 and IRAM 129,792
   against the same slot, rebuilt on this head rather than carried over from the
   pre-rebase tree.
@@ -309,7 +309,7 @@ Recorded on this branch, macOS host, no device attached:
 - `python3 tools/derive_sim_heap.py --env lilygo-tbeam-supreme` records the
   boot heap in `sim/coverage/board_heap.json`: 47,312 static DRAM, 284,208 bytes
   at app start, 86,944 attributable and 197,264 derived free.
-- Host suite: `ctest` 228 of 228 pass, including `board-profile`,
+- Host suite: `ctest` 231 of 231 pass, including `board-profile`,
   `board-profile-tbeam` and the new `display-probe`.
 - The 1-bit model is measured, not assumed: a splash capture from the T-Beam
   build is 128x64 and contains exactly two colours, black and white. Before the
@@ -318,7 +318,7 @@ Recorded on this branch, macOS host, no device attached:
 - The two simulator scenarios named above pass on a build made with
   `FURBLE_SIM_FURBLE_BOARD=FURBLE_LILYGO_TBEAM_SUPREME`, run through
   `sim/scripts/run-e2e.sh` with `FURBLE_SIM_BOARD_ID=lilygo-tbeam-supreme`.
-- The same suite on the M5StickS3 binary: 274 of 274 scenarios pass on the
+- The same suite on the M5StickS3 binary: 277 of 277 scenarios pass on the
   rebased tree, so the display seam changed no M5 board's behaviour.
 - `python3 tools/pre_review.py --base origin/master`: 13 of 13 gates.
   `sh sim/scripts/check-doc-tokens.sh` and

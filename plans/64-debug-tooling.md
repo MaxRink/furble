@@ -173,7 +173,7 @@ lock.no_light_sleep.owner.gps: 17
 ...
 ```
 
-Then calls `Platform::dumpPMLocks()` (`src/FurblePlatform.cpp:533-539`), the
+Then calls `Platform::dumpPMLocks()` (`src/FurblePlatform.cpp:803-809`), the
 existing `esp_pm_dump_locks(stdout)` wrapper wired to the plan 05 button. With
 `CONFIG_PM_PROFILING=y` that same call grows `Total_count`, `Time(us)` and
 `Time(%)` per lock, plus the mode stats table: time and percentage per DFS
