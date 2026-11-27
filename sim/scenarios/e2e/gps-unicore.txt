@@ -1,6 +1,6 @@
 # A Unicore UC6580 on the port. $PDTINFO identifies it, and the Unicore backend
 # configures it with $CFGMSG per sentence, $CFGNAV for the fix rate and $CFGSYS
-# for the constellation, each answered by a bare $OK. Plan 367.
+# for the constellation, each answered by a bare $OK. Plan 388.
 seed gps true
 seed gps_model unicore
 seed gps_nmea true

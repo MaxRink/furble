@@ -29,7 +29,7 @@
  *      applicable (UC 3.2, page 26).
  *
  * The full command tables and the document identities are in
- * plans/367-gnss-vendor-text-drivers.md and docs/protocols/gnss-quectel-pair.md
+ * plans/388-gnss-vendor-text.md and docs/protocols/gnss-quectel-pair.md
  * and docs/protocols/gnss-unicore-cfg.md.
  */
 

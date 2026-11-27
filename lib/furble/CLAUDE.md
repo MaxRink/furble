@@ -248,7 +248,7 @@ protocol core.
   for the user. Every command in `GpsQuectel.h` and `GpsUnicore.h` cites its
   document, section and page, and both planners turn the GPS settings into a
   command queue the way `Ubx::plan()` does. `gps-text` and `gps-text-sim` cover
-  them; the documents and the UNVERIFIED list are in plans/367.
+  them; the documents and the UNVERIFIED list are in plans/388.
 - `GpsUbx` (`Furble::Ubx`) is the u-blox codec: framing, Fletcher checksum,
   `scan()`, the resynchronising `Stream`, every message furble uses, `Detect`,
   `CapsProbe`, the tick-wrap-safe `Settle` gate and `plan()`, which turns the

@@ -10,7 +10,7 @@ shared seam in `lib/furble/protocol/GpsText.{h,cpp}`, the driver is
 | Primary source | Unicore "UFirebird II Series Protocol Specification", UC-04-FB2 EN R1.5, November 2025. Cited as UC |
 | Applicable parts | UC6580, UM670A, UM680A, UM681A (UC 3.2 page 26) |
 | Codec | `lib/furble/protocol/GpsUnicore.h:17-28` |
-| Plan | [367](../../plans/367-gnss-vendor-text-drivers.md) |
+| Plan | [388](../../plans/388-gnss-vendor-text.md) |
 
 ## Frame layout
 
@@ -40,7 +40,7 @@ decimal or hexadecimal with a leading `h` or `H` (UC 1.3 pages 3 and 4).
 
 **Neither `$OK` nor `$FAIL` names the command it answers.** That is why the seam
 allows exactly one command in flight on a Unicore receiver and why a timed-out
-acknowledgement is a real, if narrow, ambiguity (plan 367 section 12.12). A
+acknowledgement is a real, if narrow, ambiguity (plan 388 section 12.12). A
 command that carries data repeats its own name instead, such as `$PDTINFO` and
 `$CFGSYS`.
 

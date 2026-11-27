@@ -1,7 +1,7 @@
 # The Quectel standby policy. PAIR650 takes 0 or 10 s to two years, so furble's
 # 10 s duty interval is the shortest one this part accepts. The receiver enters
 # backup mode, stops printing epochs, wakes on its own timer and produces a
-# fresh fix. Plan 367.
+# fresh fix. Plan 388.
 seed gps true
 seed gps_model quectel
 seed gps_power 1

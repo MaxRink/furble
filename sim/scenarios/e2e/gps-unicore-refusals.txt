@@ -2,7 +2,7 @@
 # command and no dynamic platform model, so a standby policy or a platform
 # setting leaves the receiver alone. A flashless product refuses CFGSAVE, and a
 # part that answers nothing never identifies at all and keeps the NMEA backend.
-# Plan 367.
+# Plan 388.
 seed gps true
 seed gps_model unicore
 seed gps_power 1

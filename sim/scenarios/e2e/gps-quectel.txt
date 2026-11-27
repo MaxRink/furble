@@ -2,7 +2,7 @@
 # identification probes in one window, the receiver answers $PQTMVERNO, and the
 # Quectel backend takes over: PAIR062 sets the sentence set, PAIR050 the fix
 # rate, PAIR080 the navigation mode, PAIR410 SBAS and PAIR066 the
-# constellation, each acknowledged by $PAIR001,<id>,0. Plan 367.
+# constellation, each acknowledged by $PAIR001,<id>,0. Plan 388.
 seed gps true
 seed gps_model quectel
 seed gps_nmea true

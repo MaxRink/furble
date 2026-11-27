@@ -10,7 +10,7 @@ the simulator receiver is `sim/vendor_gnss.cpp`.
 | Primary source | Quectel "LC26G (AB)&LC76G&LC86G Series GNSS Protocol Specification", V1.1, 2022-12-20. Cited as Q76 |
 | Second source | Quectel "LC29H Series&LC79H (AL) GNSS Protocol Specification", V1.2, 2023-06-20. Cited as Q29 |
 | Codec | `lib/furble/protocol/GpsQuectel.h:20-31` |
-| Plan | [367](../../plans/367-gnss-vendor-text-drivers.md) |
+| Plan | [388](../../plans/388-gnss-vendor-text.md) |
 
 Where the two documents disagree about which variant supports a command, the
 driver obeys the narrower one and reports the refusal.

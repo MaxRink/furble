@@ -1,7 +1,7 @@
 // Host unit test for the vendor GNSS text command seam and the two dialects
 // behind it: GpsText (framing, checksum, reply parsing, ack matching, timeout
 // and retry), GpsQuectel ($PAIR and $PQTM) and GpsUnicore ($CFG). Pure code with
-// no UART, so this pins the protocol half of plan 367 on its own.
+// no UART, so this pins the protocol half of plan 388 on its own.
 //
 // Coverage:
 //   a. frame           the '$' body '*' XX CR LF form and the documented examples
@@ -300,7 +300,7 @@ bool testSession() {
   return g_Failures == before;
 }
 
-// f. Quectel::plan. Every value here comes from the command table of plan 367.
+// f. Quectel::plan. Every value here comes from the command table of plan 388.
 bool testQuectelPlan() {
   std::cout << "test: the Quectel planner\n";
   const int before = g_Failures;

@@ -1,17 +1,18 @@
-# 367 - Vendor text GNSS drivers: Quectel $PAIR/$PQTM and Unicore $CFG
+# 388 - Vendor text GNSS drivers: Quectel $PAIR/$PQTM and Unicore $CFG
 
 Status: implemented. This plan lands the vendor text command seam
 (`lib/furble/protocol/GpsText.{h,cpp}`), the two dialects behind it
 (`GpsQuectel`, `GpsUnicore`), the `src/FurbleGPSText.cpp` backend of the GPS
-driver, a virtual receiver per vendor in the simulator, host coverage, six
+driver, a virtual receiver per vendor in the simulator, host coverage, seven
 simulator scenarios and the documentation.
 
 Sources were read on 2026-11-27. Facts about this checkout were read at master
 `b509486b`.
 
-Numbering: 346, 347, 363, 364, 365 and 366 are taken on master, and 365 was
-claimed on `fix/core-sim-align` (PR 513) before it merged. 367 was free across
-every local and remote branch on 2026-11-27.
+Numbering: the arbiter for plan numbers assigned 388 to this plan. 376 is taken
+by the board-level documents PR, 377 to 384 by the plan renumbering PR, so the
+free range starts above those. This plan was written as 367 and renamed to 388
+before merge.
 
 Tags on every claim:
 
@@ -390,7 +391,7 @@ Repository citations, not URLs:
 
 Landed in this PR: the seam, the two dialects, the driver backend, the
 demultiplexer piece, detection, configuration, standby, save, restart, the
-console surface, the two virtual receivers, two host suites, six scenarios and
+console surface, the two virtual receivers, two host suites, seven scenarios and
 the documentation listed in section 11.
 
 Gates run before the PR: the host suite, the four GPS suites, the GPS fuzz

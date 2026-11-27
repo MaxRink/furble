@@ -1,7 +1,7 @@
 /*
  * The vendor text backends of the GPS driver: Quectel $PAIR and $PQTM, Unicore
  * $CFG. The protocol itself is the pure code in lib/furble/protocol/GpsText,
- * GpsQuectel and GpsUnicore; plans/367-gnss-vendor-text-drivers.md cites the
+ * GpsQuectel and GpsUnicore; plans/388-gnss-vendor-text.md cites the
  * Quectel and Unicore documents for every command, and
  * docs/protocols/gnss-quectel-pair.md and docs/protocols/gnss-unicore-cfg.md
  * hold the tables.

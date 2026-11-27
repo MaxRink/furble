@@ -14,7 +14,7 @@
  * u-blox M10. That keeps both models free of the simulator scheduler, so the
  * host suite drives the same state machines the scenarios drive.
  *
- * Modelled from the documents cited in plans/367-gnss-vendor-text-drivers.md:
+ * Modelled from the documents cited in plans/388-gnss-vendor-text.md:
  * Quectel "LC26G (AB)&LC76G&LC86G Series GNSS Protocol Specification" V1.1
  * (Q76) and "LC29H Series&LC79H (AL) GNSS Protocol Specification" V1.2 (Q29),
  * and Unicore "UFirebird II Series Protocol Specification" UC-04-FB2 EN R1.5

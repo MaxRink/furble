@@ -248,7 +248,7 @@ and "processing" behaviour, both planners and the demultiplexer's vendor
 pieces. `gps-text-sim` drives the same seam end to end against
 `sim/vendor_gnss.cpp`, so a model that stops answering like the documented part
 fails there rather than only in a scenario. Both take their facts from
-plans/367, which cites the Quectel and Unicore documents by section and page.
+plans/388, which cites the Quectel and Unicore documents by section and page.
 `gps-text` also pins that the `GpsText` constellation and power-save values
 equal the `Ubx` ones, because they are one stored setting. `console-commands`
 covers `gps text` and the `backend:` line the `gps` summary prints.

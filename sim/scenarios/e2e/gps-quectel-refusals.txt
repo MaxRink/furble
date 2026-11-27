@@ -5,7 +5,7 @@
 # LC76G (PA) and (PB) do not support PAIR050 (Q76 2.3.9 note 2, page 38), so the
 # fix rate stays at the receiver's 1 Hz. The 5 s duty interval is below PAIR650's
 # 10 s minimum (Q76 2.3.46 page 69), so no backup command goes out at all and
-# the receiver keeps printing. Plan 367.
+# the receiver keeps printing. Plan 388.
 seed gps true
 seed gps_model quectel
 seed gps_quectel_no_fix_rate true
