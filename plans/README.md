@@ -213,6 +213,7 @@ whose title carries it, and plan 331 is archived there with it.
 | [473-review-feedback.md](473-review-feedback.md) | Review-feedback record for the #473 hardware-trap corrections and the per-panel display dwell rule |
 | [350-stickc-family-fixes.md](350-stickc-family-fixes.md) | StickC family fixes: shared LED/IR pin ownership, LED and IR polarity, Plus2 RTC backing, AXP192 ADC mask reason, GPIO35 third source, StickC Plus timed wake, GPS rail already on |
 | [350-review-feedback.md](350-review-feedback.md) | Review-feedback record for PR #505: the arbiter build gate, the unrecorded-level fallback, the boot-time EXTEN writes, and the polarity and RTC questions this review closed |
+| [371-fork-network-sweep.md](371-fork-network-sweep.md) | Fork network sweep: 41 forks classified, the 123 commits absent by SHA, the two new ones worth taking, the web installer chip family defect, and the items cleared so nobody re-ports them |
 
 ## Next hardware
 
