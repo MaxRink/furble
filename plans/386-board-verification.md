@@ -1,4 +1,4 @@
-# 367 - Board implementation verification against the vendor documents
+# 386 - Board implementation verification against the vendor documents
 
 Status: implemented on `board-verification-pass`, not merged. Every fact below
 is recorded in [docs/components/board-verification.md](../docs/components/board-verification.md)

@@ -15,7 +15,7 @@
 # own hold on top of whichever holder is already there.
 #
 # What this scenario does not assert is the PWR_CFG byte at boot. The model
-# starts it at the documented reset value 0x17 (plans/367 finding 8), and the
+# starts it at the documented reset value 0x17 (plans/386 finding 8), and the
 # GPS enable then moves it inside the first millisecond, so the byte a scenario
 # can observe is the post-enable one. `hw-pmic-pwr-cfg-lost-update` owns the byte
 # assertions, including the reset value on the way to 0x1F.

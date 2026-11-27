@@ -9,7 +9,7 @@
 #
 # rtc_on_bus is yes and led_active_low is no, corrected in this branch: the Tough
 # pin map lists a BM8563 at 0x51 on G21/G22, and the row drives no LED pad
-# (ledPin -1), so the polarity column is inert (plans/367).
+# (ledPin -1), so the polarity column is inert (plans/386).
 seed hw_profile tough
 wait 100
 

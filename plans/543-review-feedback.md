@@ -16,7 +16,7 @@ Request changes. Posted as a review comment because the authenticated account is
 
 | ID | Review finding | State | Change and evidence |
 | :--- | :--- | :--- | :--- |
-| F1 | The replacement assertion cannot fail (blocker 1) | Fixed | The rule is now a production function, `Board::clearsStaleRtcAlarm()` in `include/FurbleBoard.h`, called by `src/FurblePlatform.cpp:176`. `tests/host/board_profile_test.cpp` pins its answer per row as a literal in `BOOT_CLEAR`. Mutation proof: replacing the body with `return row.rtcOnBus;` fails `StickC+`, `StickC+2` and `Tough`; restored, `board-profile: PASS`. The comment, `src/CLAUDE.md` and `plans/367` now name the predicate |
+| F1 | The replacement assertion cannot fail (blocker 1) | Fixed | The rule is now a production function, `Board::clearsStaleRtcAlarm()` in `include/FurbleBoard.h`, called by `src/FurblePlatform.cpp:176`. `tests/host/board_profile_test.cpp` pins its answer per row as a literal in `BOOT_CLEAR`. Mutation proof: replacing the body with `return row.rtcOnBus;` fails `StickC+`, `StickC+2` and `Tough`; restored, `board-profile: PASS`. The comment, `src/CLAUDE.md` and `plans/386` now name the predicate |
 | F2 | Six certified scenarios fail on the PR head (blocker 2) | Fixed | `sim/hardware_model.cpp` rows corrected at STICKC, STICKC_PLUS, CORE, CORE_16MB, CORE2 and TOUGH, and the eight literals in `board-row-{stickc,stickc-plus,sticks3,core,core2,tough}.txt`. `sh sim/scripts/run-e2e.sh` on the M5StickS3 binary passes every certified scenario, including all seven `board-row-*` rows |
 | F3 | The Plus2 IR polarity was promoted to VERIFIED (blocker 3) | Fixed | Row 9 of `docs/components/board-verification.md` is `VERIFIED (pin), UNVERIFIED (polarity)` and cites `plans/350:196`. The polarity is now U13 with the scope on G19 as the settling measurement |
 | F4 | U6 is contradicted by its own page (blocker 4) | Fixed | The M5StickS3 page states `Display: Model ST7789P3, Resolution 135x240` and carries an ST7789P3 pin table. Row 5 is VERIFIED and U6 is closed |
@@ -56,7 +56,7 @@ const bool bootClearsRtcIrq = p.rtcOnBus && (p.timedWake != TimedWake::RTC_ALARM
 check(!(bootClearsRtcIrq && (p.timedWake == TimedWake::RTC_ALARM)), ...);
 ```
 
-`bootClearsRtcIrq` is true only when `timedWake != RTC_ALARM`, so the second conjunct is always false and the check is always true. Truth table over all four combinations: `False/False -> true`, `False/True -> true`, `True/False -> true`, `True/True -> true`. The old assertion (`check(!p.rtcOnBus || p.timedWake == RTC_ALARM)`) could fail and did guard something. The new one asserts nothing, while the comment at :210-216, `src/CLAUDE.md:71-80` and plans/367 (Test evidence) all say the test asserts the boot rule. It does not.
+`bootClearsRtcIrq` is true only when `timedWake != RTC_ALARM`, so the second conjunct is always false and the check is always true. Truth table over all four combinations: `False/False -> true`, `False/True -> true`, `True/False -> true`, `True/True -> true`. The old assertion (`check(!p.rtcOnBus || p.timedWake == RTC_ALARM)`) could fail and did guard something. The new one asserts nothing, while the comment at :210-216, `src/CLAUDE.md:71-80` and plans/386 (Test evidence) all say the test asserts the boot rule. It does not.
 
 The table pins at :209 and :222 still hold the values, so a wrong profile value is caught. It is specifically the claimed boot-rule check that is vacuous. Make it falsifiable: assert a cross-column rule that a row with `rtcOnBus` true has a modelled chip, exercise the `Platform` guard through a seam, or check the guard site itself. Do not describe it as asserting the boot rule until it can fail.
 
@@ -78,7 +78,7 @@ Failing lines: `board-row-stickc.txt:69`, `board-row-stickc-plus.txt:50`, `board
 
 The scenario header at `board-row-stickc.txt:5-8` says both sides are pinned to the same literal exactly so a row that drifts fails. The PR moved one side only. The model side is now stale too: `sim/hardware_model.cpp:139`, `:141` (STICKC), `:173` (STICKC_PLUS), `:244` (STICKS3), `:276` (CORE), `:311` (CORE_16MB), `:341`, `:343` (CORE2), `:373`, `:375` (TOUGH). The comment at `:97-99` says those fields mirror `src/FurbleBoard.cpp`. Fix the model rows, then the scenario literals.
 
-`check_sim_scenarios.py` passes because it only validates the manifest. The PR body and plans/367 read as if the sim gate is green; on the certified suite it is not.
+`check_sim_scenarios.py` passes because it only validates the manifest. The PR body and plans/386 read as if the sim gate is green; on the certified suite it is not.
 
 ## 3. The Plus2 IR polarity was promoted from an unconfirmed inference to VERIFIED (docs/components/board-verification.md:129)
 

@@ -1250,7 +1250,7 @@ bool Platform::switchRailLocked(bool on) {
   // external power on a low battery with no ACIN. There is no second writer of
   // that byte, so nothing to serialize here and no PWR_CFG interlock to apply.
   // The vendor pinmap lists 5V GROVE as an AXP192 output on the StickC and Plus,
-  // so EXTEN does reach the Grove 5 V pin (plans/364, plans/367).
+  // so EXTEN does reach the Grove 5 V pin (plans/364, plans/386).
   M5.Power.setExtOutput(on, m5::ext_PA);
   if (M5.Power.getExtOutput() != on) {
     M5.Power.setExtOutput(on, m5::ext_PA);

@@ -6,7 +6,7 @@
 #
 # rtc_on_bus is yes and led_active_low is no, corrected in this branch: the Core2
 # pin map lists a BM8563 at 0x51 on G21/G22, and the green power indicator is not
-# software driven, so the row drives no LED pad (plans/367).
+# software driven, so the row drives no LED pad (plans/386).
 seed hw_profile core2
 wait 100
 

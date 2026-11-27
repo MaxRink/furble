@@ -6,7 +6,7 @@
 #
 # rtc_on_bus is yes, corrected in this branch: the M5StickC Plus pin map lists a
 # BM8563 at 0x51 on the internal I2C bus and M5Unified keeps its PCF8563
-# instance when those writes answer (plans/367).
+# instance when those writes answer (plans/386).
 seed hw_profile stickc-plus
 wait 100
 

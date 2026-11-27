@@ -10,7 +10,7 @@
 # See board-row-stickc.txt for the two-sided assertion contract.
 #
 # led_active_low is no, corrected in this branch: the row drives no LED pad
-# (ledPin -1) and the Basic has no software-driven indicator (plans/367).
+# (ledPin -1) and the Basic has no software-driven indicator (plans/386).
 seed hw_profile core-4mb
 wait 100
 

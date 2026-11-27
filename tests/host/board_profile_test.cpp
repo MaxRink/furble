@@ -11,7 +11,7 @@
 //   Platform::getInstance()        RTC IRQ clear at boot, gated on the
 //                                  reachable RTC chip: a BM8563 answers at
 //                                  0x51 on the StickC, Plus, Plus2, Core2 and
-//                                  Tough and on no other row (plan 367)
+//                                  Tough and on no other row (plan 386)
 //   pinForBoard()                  IR pin
 //   isCoreBoard()                  SD slot
 //   boardName()                    boot screen name
@@ -43,7 +43,7 @@
 // new: the StickC and Plus emitter cathodes are on the pin while the Plus2
 // drives an NPN base, so both rows differ between those families.
 //
-// Plan 367 corrects two more columns against the vendor pinmaps and pages:
+// Plan 386 corrects two more columns against the vendor pinmaps and pages:
 //
 //   rtcOnBus    true on the StickC, the StickC Plus, the Core2 and the Tough.
 //               Each page pinmap lists a BM8563 at 0x51 on the internal I2C bus

@@ -15,7 +15,7 @@
 # BM8563 at 0x51 on the internal I2C bus (G21/G22) and M5Unified keeps its
 # PCF8563 instance when those writes answer, so a calendar write reaches a chip.
 # led_active_low stays yes here: this board's LED pad is G10 and it is driven
-# (plans/367).
+# (plans/386).
 seed hw_profile stickc
 wait 100
 

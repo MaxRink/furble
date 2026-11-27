@@ -6,7 +6,7 @@
 #
 # led_active_low is no, corrected in this branch: the StickS3 status LED is the
 # M5PM1 PWR_CFG bit 4 level rather than a GPIO, and the row drives no LED pad
-# (plans/367).
+# (plans/386).
 seed hw_profile sticks3
 wait 100
 

@@ -280,7 +280,7 @@ row, which the board-profile test pins deliberately.
 
 The catalog carries T-Beam Supreme, T-Deck Plus and Pro, T-Watch Ultra and S3
 Plus, T-LoRa Pager, T-Echo Plus and T-Display P4 as port candidates
-([../hardware-catalog.md](../hardware-catalog.md), plans/318 and plans/364). No
+([../hardware-catalog.md](../hardware-catalog.md), plans/318 and plans/383). No
 `Board::Profile` row, no `platformio.ini` environment and no per-board branch in
 `src/FurblePlatform.cpp` exists for any of them on master, so every fact in this
 section is a requirement for a port and not a verified behaviour.

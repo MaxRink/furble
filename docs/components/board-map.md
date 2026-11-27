@@ -51,7 +51,7 @@ board furble cannot identify, and the Waveshare ESP32-S3-ETH is the row for
 
 The per-board facts behind these columns, with a document or a source file for
 each one, are in [board-verification.md](board-verification.md). The columns that
-changed in plan 367 are `rtcOnBus`, which was false on four boards whose vendor
+changed in plan 386 are `rtcOnBus`, which was false on four boards whose vendor
 pinmap lists a BM8563 at 0x51, and `ledActiveLow`, which was true on four rows
 that drive no LED pad at all.
 
@@ -288,6 +288,6 @@ slot (`docs/power/board-power.md:283`).
 | ID | Missing | Document and section needed | State |
 | :--- | :--- | :--- | :--- |
 | C-31a | The microSD electrical limits and the SDSPI timing table | SD Physical Layer Simplified Specification, bus timing chapter | open, the firmware fixes 10 MHz with no cited limit |
-| C-31b | The speaker amplifier part and its gain on the Core | The Basic pinmap puts the speaker on G25 as `DAC/SPK`, and M5Unified drives G25 with `use_dac = true`, so there is no I2S amplifier on that board. Which part buffers the DAC output is still not in the tree | open, narrowed by plan 367 |
+| C-31b | The speaker amplifier part and its gain on the Core | The Basic pinmap puts the speaker on G25 as `DAC/SPK`, and M5Unified drives G25 with `use_dac = true`, so there is no I2S amplifier on that board. Which part buffers the DAC output is still not in the tree | open, narrowed by plan 386 |
 | C-31c | The WS2812 timing | WS2812B datasheet, timing table | open, M5Unified drives it |
 | C-31d | The USB CDC and JTAG electrical detail | ESP32-S3 Technical Reference Manual v1.8 section 33.4, page 1253 gives the PLL plus APB_CLK dependency and the 40 MHz APB floor, so the clock half of this row is closed | open for the electrical detail only |
