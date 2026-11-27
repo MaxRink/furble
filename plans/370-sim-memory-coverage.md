@@ -131,8 +131,9 @@ Tests and evidence:
 
 ## Evidence
 
-Focused host tests (`cmake --build /tmp/furble-mem-host --target sim_heap_caps_test
-sim_heap_caps_shim_test sim_webui_memory_model_test memory_pressure_test`):
+Focused host tests (`cmake -S tests/host -B <build>` then `cmake --build <build>
+--target sim_heap_caps_test sim_heap_caps_shim_test sim_webui_memory_model_test
+memory_pressure_test`):
 
 ```text
 === sim_heap_caps_test ===
