@@ -102,7 +102,7 @@ class CiaptInstallTest(unittest.TestCase):
     self.assertIn("--no-install-recommends", calls[1])
     self.assertIn("clang", calls[1])
     self.assertIn("libsdl2-dev", calls[1])
-    self.assertIn("packages.microsoft.com", result.stdout + result.stderr)
+    self.assertIn("packages.microsoft.com", result.stderr)
 
   def test_archive_only_runner_is_left_alone(self):
     kept = self.add_source("ubuntu.sources", UBUNTU_SOURCES)
@@ -112,7 +112,7 @@ class CiaptInstallTest(unittest.TestCase):
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertTrue(kept.exists())
     self.assertEqual(kept.read_text(encoding="utf-8"), UBUNTU_SOURCES)
-    self.assertIn("disabled 0 unrelated source(s)", result.stdout)
+    self.assertIn("disabled 0 unrelated source(s)", result.stderr)
 
   def test_legacy_sources_list_keeps_the_archive_and_drops_the_ppa(self):
     sources_list = self.root / "etc" / "apt" / "sources.list"
@@ -134,6 +134,57 @@ class CiaptInstallTest(unittest.TestCase):
         rewritten,
     )
     self.assertIn("# See http://help.ubuntu.com/community/UpgradeNotes", rewritten)
+
+  def test_mirror_file_indirection_is_read(self):
+    # This is the shape on the GitHub runner image, and the reason the first
+    # version of this helper failed its own archive check there: the host in
+    # ubuntu.sources is the literal string "mirror+file".
+    (self.root / "etc" / "apt" / "apt-mirrors.txt").write_text(
+        "# mirrors to try\nhttp://azure.archive.ubuntu.com/ubuntu/\n"
+        "http://archive.ubuntu.com/ubuntu/\n",
+        encoding="utf-8",
+    )
+    kept = self.add_source(
+        "ubuntu.sources",
+        "Types: deb\n"
+        "URIs: mirror+file:/etc/apt/apt-mirrors.txt\n"
+        "Suites: resolute resolute-updates\n"
+        "Components: main universe\n",
+    )
+
+    result = self.run_install("clang", "libsdl2-dev")
+
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertTrue(kept.exists())
+    self.assertNotIn("mirror+file", result.stderr.replace(
+        "URIs: mirror+file", ""), result.stderr)
+    self.assertIn("disabled 0 unrelated source(s)", result.stderr)
+
+  def test_unreadable_mirror_indirection_is_left_enabled(self):
+    kept = self.add_source(
+        "ubuntu.sources",
+        "Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors-absent.txt\n"
+        "Suites: resolute\nComponents: main\n",
+    )
+
+    result = self.run_install("clang")
+
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertTrue(kept.exists(),
+                    "a source the helper cannot read must not be disabled")
+    self.assertIn("cannot resolve the mirror list", result.stderr)
+
+  def test_remote_mirror_list_is_left_enabled(self):
+    kept = self.add_source(
+        "mirrors.sources",
+        "Types: deb\nURIs: mirror+https://example.test/mirrors.txt\n"
+        "Suites: resolute\nComponents: main\n",
+    )
+
+    result = self.run_install("clang")
+
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertTrue(kept.exists())
 
   def test_runner_with_no_archive_source_fails_before_any_update(self):
     self.add_source("microsoft-prod.list", MICROSOFT_LIST)

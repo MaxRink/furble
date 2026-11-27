@@ -53,28 +53,56 @@ cover.
 What the helper does, in order:
 
 1. Reads every enabled source entry in `/etc/apt/sources.list` and
-   `/etc/apt/sources.list.d/*.{list,sources}` (`tools/ci-apt-install.sh:154`).
+   `/etc/apt/sources.list.d/*.{list,sources}` (`tools/ci-apt-install.sh:195`).
 2. Treats a source as Ubuntu archive when every URI in it has a host under
    `ubuntu.com`. This covers `archive.`, `security.`, `ports.` and the cloud
    mirrors such as `azure.archive.ubuntu.com`. Everything else is third party
    for this purpose: `packages.microsoft.com`, `dl.google.com`,
    `apt.postgresql.org`, `cli.github.com` and Canonical-hosted PPAs on
-   `ppa.launchpadcontent.net` (`tools/ci-apt-install.sh:129`).
+   `ppa.launchpadcontent.net` (`tools/ci-apt-install.sh:136`).
 3. Comments out the offending entries of one-line files, so an archive entry
-   that shares the file survives (`tools/ci-apt-install.sh:187`). A deb822
+   that shares the file survives (`tools/ci-apt-install.sh:228`). A deb822
    `.sources` file has the offending file moved out of the apt configuration
    rather than edited, because its stanzas cannot be dropped entry by entry.
 4. Fails when no archive source is left, instead of continuing to an install
-   that cannot be satisfied (`tools/ci-apt-install.sh:295`).
+   that cannot be satisfied (`tools/ci-apt-install.sh:353`).
 5. Runs `apt-get update` with no suppression and `Acquire::Retries=3`
-   (`tools/ci-apt-install.sh:304`).
+   (`tools/ci-apt-install.sh:362`).
 6. Runs `apt-get install --no-install-recommends -y` with no suppression.
 7. Asks `dpkg-query` whether every named package reports `install ok installed`
-   and fails the step when one does not (`tools/ci-apt-install.sh:314`).
+   and fails the step when one does not (`tools/ci-apt-install.sh:372`).
 
 The allowlist can be widened with `CI_APT_ARCHIVE_HOSTS`, which is additive
 only. Widening it re-enables a fetch that is allowed to fail the step, so the
 escape hatch cannot turn into a bypass.
+
+## What the first real run found
+
+The first push of this branch ran the real image, and its own archive check
+failed the "Simulator power regression" job with:
+
+```
+ci-apt-install: dropped third-party source packages.microsoft.com in /etc/apt/sources.list.d/microsoft-prod.list
+ci-apt-install: FAIL: no Ubuntu archive source is enabled under /etc/apt; refusing to install against an empty package index (set CI_APT_ARCHIVE_HOSTS if the archive moved)
+ci-apt-install: disabled ubuntu.sources: third-party host(s) mirror+file mirror+file
+```
+
+The Microsoft list was dropped as intended. The second line is the guard doing
+its job: `ubuntu.sources` on this image does not name a hostname, it carries
+`URIs: mirror+file:/etc/apt/apt-mirrors.txt`, so the host a naive reader sees
+is the literal string `mirror+file` and the archive looked third party.
+
+Two things changed because of it, and both are tested now:
+
+- `expand_uri` (`tools/ci-apt-install.sh:153`) reads the `mirror+file:` list and
+  classifies the hosts it names. A `mirror+` indirection this script cannot
+  read, such as a remote list, leaves the source enabled with a warning instead
+  of dropping a source the job may need.
+- Every diagnostic goes to stderr. The failure line appeared above the line
+  that explained it, because the two streams are captured separately.
+
+Without the archive check the run would have gone on to `apt-get install` with
+no index at all, which is the silent-looking failure this plan refuses.
 
 ## Per-workflow table
 
@@ -97,6 +125,9 @@ prints) inside the same step, after the helper returns.
 
 The helper is also added to the `pull_request` and `push` path filters of all
 five workflows, so a change to it re-runs the jobs that depend on it.
+`tests/test_sim_ci_contract.py` asserts that the two `sim-e2e.yml` path lists
+are exact and identical, so its expected list gained the same entry in this
+change.
 
 The firmware jobs (`host_camera`, `python-tools` and the PlatformIO matrix in
 `.github/workflows/main.yml`, plus `.github/workflows/reproducible.yml`) have
@@ -126,7 +157,7 @@ Three, at different levels:
 1. `apt-get install` itself, with no `|| true` above it. A package that is not
    in the archive makes apt exit 100 and the helper re-exits non-zero.
 2. `dpkg-query` after the install, which fails the step even if apt exits 0
-   without the package being configured (`tools/ci-apt-install.sh:314`).
+   without the package being configured (`tools/ci-apt-install.sh:372`).
 3. `tests/test_ci_apt_install.py` pins both, plus the broken-archive case, so
    a future edit to the helper that starts suppressing failures fails the test
    job instead of quietly weakening every workflow:
@@ -135,6 +166,11 @@ Three, at different levels:
    - `test_broken_archive_fails_the_step`
    - `test_runner_with_no_archive_source_fails_before_any_update`
    - `test_no_apt_line_suppresses_its_exit_status`
+
+   Three more pin the indirection the real image uses:
+   `test_mirror_file_indirection_is_read`,
+   `test_unreadable_mirror_indirection_is_left_enabled` and
+   `test_remote_mirror_list_is_left_enabled`.
 
 The behaviour change is exactly this: a third-party source can no longer fail
 a step, and a package the step names still does.
@@ -170,7 +206,7 @@ documented setup steps are described here instead.
 | Gate | Result |
 | --- | --- |
 | `python3 tools/check_ci_workflows.py` | pass, 13 workflows |
-| `python3 -m unittest tests.test_ci_apt_install` | pass, 14 tests |
+| `python3 -m unittest tests.test_ci_apt_install` | pass, 17 tests |
 | `python3 -m unittest tests.test_check_ci_workflows` | pass, 34 tests |
 | `python3 tools/check_doc_citations.py` | pass |
 | `shellcheck -s sh -S style tools/ci-apt-install.sh` | pass, no findings |

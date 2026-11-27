@@ -83,8 +83,15 @@ die() {
   exit 1
 }
 
+# Diagnostics go to stderr, all of them, so a failing run reads in the order it
+# happened. The first real run mixed stdout and stderr and printed the failure
+# above the line that explained it.
 info() {
-  printf '%s: %s\n' "$PROG" "$*"
+  printf '%s: %s\n' "$PROG" "$*" >&2
+}
+
+warn() {
+  printf '%s: warning: %s\n' "$PROG" "$*" >&2
 }
 
 [ "$#" -gt 0 ] || die "no packages named (usage: sh tools/ci-apt-install.sh <package> ...)"
@@ -136,6 +143,40 @@ is_archive_host() {
     }
     exit 1
   }'
+}
+
+# `mirror+file:PATH` names a file whose lines are the real mirror URIs. Ubuntu
+# cloud images use it instead of a hostname, so ubuntu.sources carries
+# `URIs: mirror+file:/etc/apt/apt-mirrors.txt` and the host a naive reader sees
+# is the literal string "mirror+file". Print the URIs an entry really fetches
+# from, or nothing at all when the indirection cannot be read.
+expand_uri() {
+  entry=$1
+  case $entry in
+    mirror+file:*)
+      list=${entry#mirror+file:}
+      list=${list#//}
+      case $list in
+        /*) list=$ROOT$list ;;
+      esac
+      [ -f "$list" ] || return 0
+      while IFS= read -r line; do
+        line=${line%%#*}
+        case $line in
+          *://*) printf '%s\n' "${line%:[0-9]*}" ;;
+        esac
+      done <"$list"
+      ;;
+    mirror+*)
+      # A remote mirror list. Fetching it is the failure mode this script
+      # exists to avoid, and guessing the host would drop a source the job
+      # may need.
+      return 0
+      ;;
+    *)
+      printf '%s\n' "$entry"
+      ;;
+  esac
 }
 
 uri_host() {
@@ -249,14 +290,31 @@ while IFS= read -r source_file; do
 
   outside=""
   archive_entries=0
+  opaque=0
   for uri in $uris; do
-    host=$(uri_host "$uri")
-    if is_archive_host "$host"; then
-      archive_entries=$((archive_entries + 1))
-    else
-      outside="$outside $host"
+    resolved=$(expand_uri "$uri")
+    if [ -z "$resolved" ]; then
+      opaque=1
+      continue
     fi
+    for one in $resolved; do
+      host=$(uri_host "$one")
+      if is_archive_host "$host"; then
+        archive_entries=$((archive_entries + 1))
+      else
+        outside="$outside $host"
+      fi
+    done
   done
+
+  if [ "$opaque" -eq 1 ]; then
+    # A source this script cannot see through is left exactly as it is. If it
+    # is broken, apt-get update names it and the step fails honestly, which is
+    # better than disabling something the job may need.
+    warn "cannot resolve the mirror list in $(basename "$source_file"); leaving it enabled"
+    kept_archive=1
+    continue
+  fi
 
   if [ -z "$outside" ]; then
     kept_archive=1
