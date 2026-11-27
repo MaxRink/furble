@@ -126,11 +126,12 @@ unknown id produces `SETTING_UNKNOWN_ID`
 `WIFI_PSK` (wire id 53) and `MQTT_PASS` (wire id 59) are write-only over this
 link. A get or a list answers the word `set` or `unset` in the setting's own
 `SETTING_STRING` type, the same answer the console prints, instead of the stored
-credential (`src/FurbleCompanionService.cpp:139-155`). A client needs no new wire
-type to render it, and it has nothing secret to echo back into an editor. Writes
-are unchanged, so a client that holds the companion password can still set both,
-and `COMPANION_PASSWORD` keeps its existing shape: it never appears in a list and
-a get is rejected.
+credential (`src/FurbleCompanionService.cpp:900-915`, both arms call
+`secretIndicator()` at `src/FurbleCompanionService.cpp:109`). A client needs no
+new wire type to render it, and it has nothing secret to echo back into an
+editor. Writes are unchanged, so a client that holds the companion password can
+still set both, and `COMPANION_PASSWORD` keeps its existing shape: it never
+appears in a list and a get is rejected.
 
 Command responses and list records are indicated, and unsolicited state events
 are notified. That split is deliberate and is the same one settings versus status
