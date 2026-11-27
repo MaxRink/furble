@@ -252,10 +252,12 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   // A snapshot, not a view: the peer write handler appends to the log from the
   // Control task while a test walks it, so a reference could be read after a
   // reallocation. ASan reported that as a heap-use-after-free once. The copy
-  // holds Host::peerWriteJournalMutex(), the same mutex write() appends under,
-  // because a snapshot taken without it can still run against a reallocating
-  // vector: ASan and UBSan reported the torn vector as a null reference binding
-  // in the copy, and fujifilm-journal-race is the probe that proves the lock.
+  // holds m_JournalMutex, the mutex write() appends under, because a snapshot
+  // taken without it can still run against a reallocating vector: ASan and
+  // UBSan reported the torn vector as a null reference binding in the copy, and
+  // fujifilm-journal-race is the probe that proves the lock. It is the peer's
+  // own mutex rather than Host::peerWriteJournalMutex(), which sim/BleSim.cpp
+  // holds around this accessor and which cannot be taken twice.
   std::vector<Write> writes() const;
   std::vector<Notification> notifications() const;
   std::vector<uint8_t> lastGeotag() const;
@@ -513,6 +515,11 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   bool m_GeotagRequested = false;
   std::string m_Identifier;
   bool m_IdentifierTerminated = false;
+  // Serializes the write journal only: the append in write(), the snapshot in
+  // writes() and the clear in clearEvents(). A per-peer mutex rather than
+  // Host::peerWriteJournalMutex() so the simulator's ble.peer queries, which
+  // already hold that one, cannot try to take it twice on one thread.
+  mutable std::mutex m_JournalMutex;
   std::vector<Write> m_Writes;
   std::vector<Notification> m_Notifications;
   std::vector<uint8_t> m_LastGeotag;

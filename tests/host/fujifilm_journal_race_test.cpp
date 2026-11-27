@@ -36,6 +36,7 @@
 
 #include "FujifilmVirtualCamera.h"
 #include "NimBLEDevice.h"
+#include "WriteJournal.h"
 
 const char *LOG_TAG = "furble-fujifilm-journal";
 
@@ -114,6 +115,22 @@ int main(void) {
   if (peer.shutterAccepted() != static_cast<size_t>(WRITE_COUNT + 1)) {
     std::cerr << "  FAIL: the peer did not interpret every shutter write\n";
     return 1;
+  }
+
+  // The simulator's ble.peer queries hold Host::peerWriteJournalMutex() around
+  // this accessor, because the other peer families return a view and need the
+  // caller's lock. A peer that reached for that same non-recursive mutex inside
+  // writes() therefore hung the UI task there, which the simulator watchdog
+  // reported as exit 3. Lock it around the call here so the calling convention
+  // is covered: a nested lock of a non-recursive mutex never returns, and the
+  // ctest timeout turns that into a failure rather than a hang.
+  {
+    const std::lock_guard<std::mutex> journal(Furble::Host::peerWriteJournalMutex());
+    if (peer.writes().size() != 1) {
+      std::cerr << "  FAIL: the simulator's lock ordering did not reach the snapshot\n";
+      return 1;
+    }
+    peer.clearEvents();
   }
 
   std::cout << "fujifilm-journal-race: PASS\n";

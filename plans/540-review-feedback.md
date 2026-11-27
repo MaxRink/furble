@@ -196,14 +196,32 @@ the append and the snapshot from overlapping; only the append side took it.
 ThreadSanitizer on the same scenario reports the pair directly: the append in
 `write()` against the copy in `writes()`, 29 reports in total.
 
-Fixed by taking the journal mutex in `writes()` and in `clearEvents()`, which
-also mutates the vector. The new probe `fujifilm-journal-race` runs the overlap
-on purpose, one thread appending shutter writes through the peer and one taking
-snapshots and clearing: ThreadSanitizer reports one race against the unfixed
-accessor and none with the lock, and `run_tsan_race.sh` fails closed on either.
-It has no plain twin because no other sanitizer can see the overlap, and it
-joins the ThreadSanitizer exclusion list in `tools/run_sanitized_host_tests.sh`
-for the same reason as the other three probes.
+Fixed with a mutex owned by the peer, `m_JournalMutex`, which serialises exactly
+three things: the append in `write()`, the snapshot in `writes()` and the clear
+in `clearEvents()`. The append takes it in a scope of its own rather than for the
+whole handler, so the lock is never held across anything that can yield on the
+simulator's scheduler.
+
+The first attempt took `Host::peerWriteJournalMutex()` in the accessor instead,
+and the simulator hung: `sim/BleSim.cpp` already holds that process-wide mutex
+around `peer->writes()`, because the other peer families return a view and need
+the caller's lock, so the accessor tried to take one non-recursive mutex twice.
+The `Simulator end-to-end` job on that head failed the `peer-fuji-basic-write`
+scenario with `SIM WATCHDOG: failing the run` and exit 3, which is the watchdog
+reporting the wedged UI task. The per-peer mutex removes the nested acquisition
+and keeps the calling convention intact; the probe now also locks
+`Host::peerWriteJournalMutex()` around the accessor, so a regression to the
+process-wide mutex hangs the probe instead of the simulator, and its ctest
+timeout reports it.
+
+The new probe `fujifilm-journal-race` runs the overlap on purpose, one thread
+appending shutter writes through the peer and one taking snapshots and
+clearing. Two mutations pin it: dropping the snapshot lock makes
+ThreadSanitizer report four races and `run_tsan_race.sh` fail closed, and
+reaching for the process-wide mutex inside the accessor hangs the probe. It has
+no plain twin because no other sanitizer can see the overlap, and it joins the
+ThreadSanitizer exclusion list in `tools/run_sanitized_host_tests.sh` for the
+same reason as the other three probes.
 
 Two siblings are recorded gaps, not fixed here. `notifications()` has the same
 shape, but its writer holds the subscription delivery lock rather than the
@@ -236,3 +254,32 @@ Rebasing does not address it either. `18bbcb5a..baa4ac23` is PRs 536 and 539, an
 it changes `docs/hardware-catalog.md` and four files under `plans/`. No scenario,
 harness, manifest or gate moved, so the failure is not in a scenario master
 changed.
+
+So this one is a flake, and the shape says load: two nominal identical runs of
+one binary diverged, which no code change on this branch can cause. The same
+step passed on master at `18bbcb5a`, and on this machine the whole no-touch fuzz
+suite, eight seeds plus the seed 31337 replay, passes: `All fuzz seeds behaved as
+expected (8 runs)` and `PASS determinism replay seed 31337`.
+
+The first attempt at the sanitizer fix then turned this job red for a real
+reason that belongs in this record. `sim/BleSim.cpp` holds
+`Host::peerWriteJournalMutex()` around `peer->writes()`, because the other peer
+families return a view and need the caller's lock. That attempt took the same
+mutex inside the accessor, so the UI task wedged on a non-recursive mutex:
+`peer-fuji-basic-write` finished with `SIM WATCHDOG: failing the run` and exit 3
+(job `140271049726`). The per-peer mutex described above removes the nesting,
+`furble-sim --script sim/scenarios/e2e/peer-fuji-basic-write.txt` exits 0, and
+the same binary hangs when the accessor is put back on the process-wide mutex.
+
+### Results
+
+| Check | Result |
+| :--- | :--- |
+| `ctest` on the plain host build | `100% tests passed out of 224` |
+| `control_e2e_test multi-connect-fujifilm`, 40 consecutive runs | 40 of 40 pass |
+| `fujifilm-journal-race` under `run_tsan_race.sh` | 0 race reports, `fujifilm-journal-race: PASS` |
+| the same probe with the snapshot lock removed | 4 race reports, the wrapper fails closed |
+| the same probe with the process-wide mutex in the accessor | hangs, reported by the ctest timeout |
+| `furble-sim --script sim/scenarios/e2e/peer-fuji-basic-write.txt` | exit 0, and hangs with the process-wide mutex in the accessor |
+| `sh sim/scripts/run-fuzz.sh` with `FURBLE_SIM_NO_TOUCH=1`, 600 steps | all eight seeds and the seed 31337 determinism replay pass |
+| ASan and UBSan host tests at `086fb5ab` | green, job `140271049681` |
