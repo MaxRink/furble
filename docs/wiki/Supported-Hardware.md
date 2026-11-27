@@ -35,7 +35,7 @@ switches. No enable pin is driven: GPIO7 is the L76K's WAKE_UP and pin 5 of the
 MAX-M10S is EXTINT, so a shared image leaves it alone. The microSD slot, the
 SX1262 and the QMI8658 are not used, the RTC part is not read (the wiki calls it
 a PCF85063ATL, the schematic a PCF8563), and the board row keeps the
-conservative RTC and GPS-backup answers until the bench items in plan 367
+conservative RTC and GPS-backup answers until the bench items in plan 390
 close. Every claim above is from the LilyGO wiki page or the vendor factory
 code, not from a device run.
 

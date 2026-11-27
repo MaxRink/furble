@@ -61,6 +61,13 @@
 // An SD card slot. The StickC family has none.
 #if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) || \
     defined(FURBLE_LILYGO_TBEAM_SUPREME)
+// An SD card slot. The StickC family has none. The T-Beam Supreme has one, but
+// it sits on its own SPI bus (SCK 36, MISO 37, MOSI 35, CS 47) rather than the
+// display bus FurbleSD mounts through, and this image does not drive it yet:
+// the row reports no slot and the SD stack is compiled out. See
+// plans/390-tbeam-supreme-port.md.
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) \
+    || defined(FURBLE_LILYGO_TBEAM_SUPREME)
 #define FURBLE_HAS_SD 0
 #else
 #define FURBLE_HAS_SD 1

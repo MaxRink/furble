@@ -173,7 +173,7 @@ namespace {
  * first, the cold-boot 250 ms power cycle of ALDO1, ALDO2 and BLDO1, then
  * ALDO1, ALDO2, BLDO1 and BLDO2 at 3300 mV, DCDC3 and DCDC5 at 3300 mV with
  * DCDC4 at its own maximum, and DCDC2, DLDO1, DLDO2 and the VBACKUP charger
- * off. Two deviations, both recorded in plans/367-tbeam-supreme-port.md:
+ * off. Two deviations, both recorded in plans/390-tbeam-supreme-port.md:
  * ALDO3 (the SX1262) is left off because furble does not drive the radio and
  * the factory's sleep sequence is a bench item, and the M.2 DCDC3/4/5 group is
  * left off because nothing on furble's side uses the socket and DCDC4's

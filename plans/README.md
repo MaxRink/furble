@@ -288,6 +288,7 @@ reading: it ranks the levers, compares seven receivers, and defers to 318 for
 the bench work. Plan 367 is the family decision and the first two LilyGO
 implementations, which build on the seams plans 365 (T-Beam Supreme) introduces.
 the bench work. Plan 367 is the T-Beam Supreme port itself, written against 318
+the bench work. Plan 390 is the T-Beam Supreme port itself, written against 318
 and 366 and implemented on this branch.
 
 | Doc | Content |

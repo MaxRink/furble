@@ -2117,6 +2117,17 @@ void UI::initInputDevices(void) {
   lv_indev_set_read_cb(m_ButtonR, navRightRead);
   s_LilyGoInputReady = LilyGo::Buttons::getInstance().begin();
   s_LilyGoInputRetry = 0;
+#if FURBLE_HAS_AXP2101_HAL
+  // The T-Beam Supreme has two controls: BOOT on GPIO0 and the AXP2101 power
+  // key. Platform::update() feeds BOOT into M5.BtnA and the PMIC key into
+  // M5.BtnPWR plus getPWRClickCount(). M5Unified cannot describe the board, so
+  // this arm cannot be a M5.getBoard() case; a three-key tier for a 128x64
+  // panel is the remaining UI item in plans/390-tbeam-supreme-port.md, and
+  // until it lands the third input reports a permanent release rather than
+  // borrowing another pin.
+  lv_indev_set_read_cb(m_ButtonL, buttonARead);
+  lv_indev_set_read_cb(m_ButtonO, buttonPEKRead);
+  lv_indev_set_read_cb(m_ButtonR, buttonAbsentRead);
 #else
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:

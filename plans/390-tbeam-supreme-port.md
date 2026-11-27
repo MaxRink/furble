@@ -1,4 +1,4 @@
-# 367 - LilyGO T-Beam Supreme port
+# 390 - LilyGO T-Beam Supreme port
 
 Status: port in this PR. The firmware environment builds, the board row is
 host-tested, and the simulator runs the new panel class. No device has run this
@@ -6,10 +6,11 @@ image and no measurement backs a single number in it. The GPS path is the
 best-supported part of the port; the receiver is chosen at runtime, so both
 T-Beam trims share one image.
 
-The plan is numbered 367 because 365 is claimed twice on master
-(`365-core-sim-align.md` and `365-review-feedback.md`, both from PR 513) and
-366 is the receiver decision this port answers to. It was written as 365 against
-master `79df13a7` and renumbered on the rebase onto `baa4ac23`.
+The plan is numbered 390 because 365 and 367 were both claimed twice on master
+(`365-core-sim-align.md` and `365-review-feedback.md`, both from PR 513), 366 is
+the receiver decision this port answers to, and 367 was claimed by the plan
+renumbering itself. It was written as 365 against master `79df13a7`, renumbered
+to 367 on the rebase onto `baa4ac23`, and to 390 by the arbiter's renumbering.
 
 Related: [318](318-next-board-battery-gps.md) (the board decision and the
 32.768 kHz finding), [322](implemented/322-hardware-abstraction.md) (the

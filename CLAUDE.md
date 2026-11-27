@@ -20,7 +20,7 @@ CLAUDE.md whose directory it touches.
   display-less StampS3 only to take the no-probe return, answers the board row
   from `Board::compiledProfile()`, drives the AXP2101 through `lib/hal` over
   `HalBus`, the OLED through M5GFX's `Panel_SH110x`, and draws through the
-  `Furble::Display` seam. See `plans/367-tbeam-supreme-port.md`.
+  `Furble::Display` seam. See `plans/390-tbeam-supreme-port.md`.
 - The three 4 MB debug envs use size-optimized debug flags (`-Os -g2 -ggdb2`)
   to keep dual-OTA slots while retaining debug symbols, the assert() check and
   abort, the full `ESP_LOG_VERBOSE` log maximum and the `sdkconfig.debug`

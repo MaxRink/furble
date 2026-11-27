@@ -55,7 +55,7 @@ SX1262 radio is left unpowered rather than slept, the QMI8658 IMU has no
 backend, the RTC part is not read because the vendor wiki and the schematic
 disagree on it (PCF85063ATL against PCF8563), and the row keeps the
 conservative RTC-backing and GPS-backup answers. Every one of those is a bench
-item in [plan 367](../plans/367-tbeam-supreme-port.md), not a measured result.
+item in [plan 390](../plans/390-tbeam-supreme-port.md), not a measured result.
 
 The Waveshare ESP32-S3-ETH is a mains or PoE node rather than a handheld. Its
 board row reports no battery and no PMIC, so `status` shows battery level and
