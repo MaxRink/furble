@@ -551,7 +551,7 @@ The coordinator assigns `P-xxx` identifiers when these rows are merged into
 - **Change:** floor the adaptive TX range one step higher, or suspend step-down,
   while the station is connected.
 - **Current behavior:** the adaptive policy steps through P3, P6 and P9 on RSSI
-  hysteresis (`src/FurbleControl.cpp:34-37`, `Control::sampleAdaptivePower`).
+  hysteresis (`src/FurbleControl.cpp:35-45`, `Control::sampleAdaptivePower`).
   Camera-side RSSI is measured on the camera's transmissions, so it does not see
   Wi-Fi bursts on the shared front end. The floor is implemented: while the
   station reports connected, the policy will not step below P6, and a link that
