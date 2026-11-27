@@ -291,6 +291,39 @@ MQTT &MQTT::getInstance(void) {
   return *instance;
 }
 
+MQTT::~MQTT() {
+  if (m_HoldTimer != nullptr) {
+    esp_timer_stop(m_HoldTimer);
+    esp_timer_delete(m_HoldTimer);
+    m_HoldTimer = nullptr;
+  }
+  if (m_IntervalTimer != nullptr) {
+    esp_timer_stop(m_IntervalTimer);
+    esp_timer_delete(m_IntervalTimer);
+    m_IntervalTimer = nullptr;
+  }
+  if (m_EventQueue != nullptr) {
+#if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
+    && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+    if (m_EventQueueWithCaps) {
+      vQueueDeleteWithCaps(m_EventQueue);
+    } else
+#endif
+    {
+      vQueueDelete(m_EventQueue);
+    }
+    m_EventQueue = nullptr;
+  }
+  if (m_Incoming != nullptr) {
+    heap_caps_free(m_Incoming);
+    m_Incoming = nullptr;
+    m_Received = nullptr;
+  }
+  // The client itself belongs to esp-mqtt and is destroyed by stopClient().
+  // The process is exiting here and a host double may already have recycled
+  // the handle, so the destructor does not touch it.
+}
+
 void MQTT::init(void) {
   // Create the OTA status record here, before the owner gate measures free
   // bytes. The record moved from .bss to the heap, so this keeps the gate's
@@ -887,6 +920,7 @@ bool MQTT::startClient(void) {
   if ((m_EventQueue == nullptr) && inPsram(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)) {
     m_EventQueue = xQueueCreateWithCaps(EVENT_QUEUE_LENGTH, sizeof(queued_event_t),
                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    m_EventQueueWithCaps = m_EventQueue != nullptr;
   }
 #endif
   if (m_EventQueue == nullptr) {
@@ -917,7 +951,8 @@ bool MQTT::startClient(void) {
     if (copies == nullptr) {
       return false;
     }
-    // Placement new into the heap_caps block above, which is never freed.
+    // Placement new into the heap_caps block above. It is retained for the
+    // process lifetime and released by the destructor.
     auto *events = static_cast<queued_event_t *>(copies);
     // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
     m_Received = new (events + 1) queued_event_t();

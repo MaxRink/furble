@@ -55,6 +55,16 @@ class MQTT {
  public:
   static MQTT &getInstance(void);
 
+  /**
+   * Release the retained event queue and copies block.
+   *
+   * Runtime teardown keeps them alive so a stopped client can still deliver a
+   * late callback. At destruction no callback can arrive, so the retained
+   * blocks are released. Without this, moving the singleton to the heap turns
+   * them into a host leak-check finding.
+   */
+  ~MQTT();
+
   MQTT(MQTT const &) = delete;
   MQTT(MQTT &&) = delete;
   MQTT &operator=(MQTT const &) = delete;
@@ -280,6 +290,10 @@ class MQTT {
   mutable std::mutex m_LifecycleMutex;
   TaskHandle_t m_Task = nullptr;
   QueueHandle_t m_EventQueue = nullptr;
+#if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
+    && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+  bool m_EventQueueWithCaps = false;
+#endif
   // eventHandler builds each event here, not on the 3 KiB esp-mqtt client
   // stack. Allocated with the queue and never freed, because a stopped client
   // may still deliver a late callback; the mutex covers overlapping clients.

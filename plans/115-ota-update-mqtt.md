@@ -238,7 +238,9 @@ Deviations from the plan text:
   heap allocated: the MQTT singleton (952 bytes) at `MQTT::init()`, which is
   before the owner gate and therefore leaves that gate's free-byte measurement
   unchanged, and the status store (188 bytes) at console start and in
-  `MQTT::init()`. Static DRAM falls to 55,256 on that env, so the recorded
+  `MQTT::init()`. `MQTT::~MQTT()` releases the event queue, the event copies
+  block and the two timers, so a host leak check sees no retained allocation
+  after the singleton is destroyed. Static DRAM falls to 55,256 on that env, so the recorded
   56,320-byte budget is unchanged and the image keeps 1,064 bytes of headroom.
   The release profile falls to 46,136 at its 48,128-byte budget. The saving
   applies to every MQTT profile and to every console build, not only to the
