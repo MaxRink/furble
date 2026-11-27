@@ -136,7 +136,7 @@ const board_caps_t STICKC = {.mcu = "esp32",
                              .timedWake = "none",
                              .vbus = true,
                              .poe = false,
-                             .rtcOnBus = false,
+                             .rtcOnBus = true,
                              .canPowerOff = true,
                              .ledActiveLow = true,
                              .irMarkLow = true,
@@ -170,7 +170,7 @@ const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .timedWake = "rtc-alarm",
                                   .vbus = true,
                                   .poe = false,
-                                  .rtcOnBus = false,
+                                  .rtcOnBus = true,
                                   .canPowerOff = true,
                                   .ledActiveLow = true,
                                   .irMarkLow = true,
@@ -241,7 +241,7 @@ const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .poe = false,
                               .rtcOnBus = false,
                               .canPowerOff = true,
-                              .ledActiveLow = true,
+                              .ledActiveLow = false,
                               .irMarkLow = false,
                               .gpsPinSource = "board-support",
                               .gpsRxPin = -1,
@@ -273,7 +273,7 @@ const board_caps_t CORE = {.mcu = "esp32",
                            .poe = false,
                            .rtcOnBus = false,
                            .canPowerOff = false,
-                           .ledActiveLow = true,
+                           .ledActiveLow = false,
                            .irMarkLow = false,
                            .gpsPinSource = "none",
                            .gpsRxPin = -1,
@@ -308,7 +308,7 @@ const board_caps_t CORE_16MB = {.mcu = "esp32",
                                 .poe = false,
                                 .rtcOnBus = false,
                                 .canPowerOff = false,
-                                .ledActiveLow = true,
+                                .ledActiveLow = false,
                                 .irMarkLow = false,
                                 .gpsPinSource = "none",
                                 .gpsRxPin = -1,
@@ -338,9 +338,9 @@ const board_caps_t CORE2 = {.mcu = "esp32",
                             .timedWake = "none",
                             .vbus = true,
                             .poe = false,
-                            .rtcOnBus = false,
+                            .rtcOnBus = true,
                             .canPowerOff = true,
-                            .ledActiveLow = true,
+                            .ledActiveLow = false,
                             .irMarkLow = false,
                             .gpsPinSource = "board-support",
                             .gpsRxPin = -1,
@@ -370,9 +370,9 @@ const board_caps_t TOUGH = {.mcu = "esp32",
                             .timedWake = "rtc-alarm",
                             .vbus = true,
                             .poe = false,
-                            .rtcOnBus = false,
+                            .rtcOnBus = true,
                             .canPowerOff = true,
-                            .ledActiveLow = true,
+                            .ledActiveLow = false,
                             .irMarkLow = false,
                             .gpsPinSource = "board-support",
                             .gpsRxPin = -1,
@@ -483,17 +483,17 @@ struct pmic_state_t {
   bool powerLatch = true;
   uint32_t brownouts = 0;
   // M5PM1 v1.0.6 register 0x06. One byte, so every field in it shares a
-  // read-modify-write hazard with the others. 0x1F is the post-init
-  // PWR_CFG_BOOT: the manual's reset value is 0x17 with the 5 V boost off, and
-  // M5Unified's output_power default sets the boost bit. hwStart() applies
-  // both steps; the constants below carry the citations.
-  uint8_t pwrCfg = 0x1F;
+  // read-modify-write hazard with the others. The boot value is the manual's
+  // reset byte 0x17 with the 5 V boost off, because the StickS3 firmware passes
+  // output_power = false; hwStart() applies it and the constants below carry
+  // the citations.
+  uint8_t pwrCfg = 0x17;
   uint32_t pwrCfgLostUpdates = 0;
   bool pwrCfgStale = false;
-  // The post-init copy a stale write carries. Only the seed that asks for a
-  // stale write and the boot path fill it, so a later rail change cannot make
-  // the write fresh by accident.
-  uint8_t pwrCfgSnapshot = 0x1F;
+  // The copy a stale write carries: the byte as of the last rail enable, not the
+  // boot byte, because a read only goes stale if something read it while the
+  // port was powered. Only the seed that asks for a stale write consumes it.
+  uint8_t pwrCfgSnapshot = 0x17;
   bool displayOff = false;
   bool statusLedSaved = false;
   bool statusLedLevel = false;
@@ -553,7 +553,9 @@ struct rail_state_t {
   // `seed gps_rail_refused` model.
   bool fixed = false;
   bool refused = false;
-  bool gpsWants = true;
+  // No holder at boot: the firmware's railAcquire is what starts one, so a
+  // scenario that seeds the GPS setting off sees an unowned port.
+  bool gpsWants = false;
   bool irWants = false;
   bool irInFlight = false;
   uint32_t refusals = 0;
@@ -881,13 +883,15 @@ constexpr uint8_t PWR_CFG_LED_CTRL = 1U << 4;
 // boost off. Charge, both regulated rails and the status LED are on.
 constexpr uint8_t PWR_CFG_RESET =
     PWR_CFG_CHG_EN | PWR_CFG_DCDC_EN | PWR_CFG_LDO_EN | PWR_CFG_LED_CTRL;
-// The board does not stay at the reset value: M5Unified's config_t
+// The board stays at the reset value at boot. M5Unified's own config_t
 // output_power defaults to true (M5Unified.hpp) and M5Unified::_begin() calls
-// Power.setExtOutput(cfg.output_power), which sets BOOST_EN (M5Unified.cpp).
-// PWR_CFG_BOOT is that post-init byte, not the register default.
-constexpr uint8_t PWR_CFG_BOOT = PWR_CFG_RESET | PWR_CFG_BOOST_EN;
+// Power.setExtOutput(cfg.output_power), which would set BOOST_EN, but the
+// StickS3 firmware overrides it: Platform::init() passes output_power = false
+// so the rail manager is the only thing that powers the port
+// (src/FurblePlatform.cpp, FURBLE_HAS_M5PM1 branch, plans/364). The modelled
+// boot byte is therefore the documented reset value, and BOOST_EN moves only
+// when a holder asks for it.
 static_assert(PWR_CFG_RESET == 0x17, "M5PM1-UM section 2 register (7) reset value");
-static_assert(PWR_CFG_BOOT == 0x1F, "post-init PWR_CFG with the 5 V boost on");
 
 /** The rail follows the one output bit, so a lost update moves it. */
 void applyRailFromPwrCfgLocked(hardware_state_t &hw) {
@@ -918,16 +922,15 @@ uint8_t pwrCfgWriteMaskedLocked(hardware_state_t &hw, uint8_t mask, uint8_t valu
 }
 
 /**
- * Model the output_power step M5Unified performs after the PMIC resets.
+ * Record the PWR_CFG byte a reader would have latched before a rail change.
  *
- * The M5PM1-UM reset value has BOOST_EN off. M5Unified's config_t
- * `output_power` defaults to true and `M5Unified::_begin()` calls
- * `Power.setExtOutput(cfg.output_power)`, which sets the bit on the StickS3
- * M5PM1 path. Keeping the two steps separate is what makes the model's
- * starting byte the documented one and the firmware's rail enable explicit.
+ * A stale read only exists if something read the byte while the output was on,
+ * so the snapshot moves when the rail manager switches the port on: that is the
+ * byte a panel-off path would still be holding after the rail moves again. A
+ * boot-time snapshot would model a read the firmware never makes.
  */
-void applyBootOutputPowerLocked(hardware_state_t &hw) {
-  (void)pwrCfgWriteMaskedLocked(hw, PWR_CFG_BOOST_EN, PWR_CFG_BOOST_EN, false);
+void latchPwrCfgSnapshotLocked(hardware_state_t &hw) {
+  hw.pmic.pwrCfgSnapshot = hw.pmic.pwrCfg;
 }
 
 /** True when the model's PMIC is the one that owns PWR_CFG on this board. */
@@ -1013,7 +1016,13 @@ bool setRailLocked(hardware_state_t &hw, Furble::Sim::rail_holder_t holder, bool
     return hw.rail.on;
   }
 
+  const bool boostedBefore = (hw.pmic.pwrCfg & PWR_CFG_BOOST_EN) != 0;
   pwrCfgWriteMaskedLocked(hw, PWR_CFG_BOOST_EN, needed ? PWR_CFG_BOOST_EN : 0, false);
+  if (!boostedBefore && hw.rail.on) {
+    // A reader that latched the byte here holds the powered value, which is what
+    // a panel-off path that read PWR_CFG before another writer moved it has.
+    latchPwrCfgSnapshotLocked(hw);
+  }
   // A request the board cannot honour is a refusal, whichever direction it
   // asked for, and the caller sees it in the read-back.
   if (hw.rail.on != wanted) {
@@ -1795,13 +1804,12 @@ void hwStart(void) {
   hw.power.state = power_state_t::ON;
   hw.usb.mode = usb_mode_t::APP;
 
-  // Two steps, not one constant: the PMIC resets PWR_CFG to the documented
-  // 0x17 with the 5 V boost off, then M5Unified's output_power default sets
-  // BOOST_EN during M5.begin(). The stale snapshot a scenario asked for is
-  // taken after both, before any scenario step can move the rail.
+  // The PMIC resets PWR_CFG to the documented 0x17 with the 5 V boost off, and
+  // the StickS3 firmware keeps it there by passing output_power = false, so the
+  // port is unpowered until a holder asks. The stale-read snapshot starts at the
+  // same byte and moves when the rail manager switches the port on.
   hw.pmic.pwrCfg = PWR_CFG_RESET;
   applyRailFromPwrCfgLocked(hw);
-  applyBootOutputPowerLocked(hw);
   hw.pmic.pwrCfgSnapshot = hw.pmic.pwrCfg;
 
   // The RTC capability is a board-level fact, so check the pair at boot as well
@@ -3133,11 +3141,10 @@ void hwNoteWatchdogCycle(void) {
   hw.power.state = power_state_t::ON;
   hw.resetReason = ESP_RST_POWERON;
   hw.resetReasonName = "pmic_watchdog";
-  // A power cycle returns PWR_CFG to the documented reset value, then the SoC
-  // boots and M5Unified's output_power default enables the 5 V boost again.
+  // A power cycle returns PWR_CFG to the documented reset value with the 5 V
+  // boost off, which is the state the firmware leaves it in at boot.
   hw.pmic.pwrCfg = PWR_CFG_RESET;
   applyRailFromPwrCfgLocked(hw);
-  applyBootOutputPowerLocked(hw);
   hw.pmic.pwrCfgSnapshot = hw.pmic.pwrCfg;
   ESP_LOGW(LOG_TAG, "PMIC watchdog expired; system power cycle %u",
            static_cast<unsigned>(hw.pmic.watchdogCycles));

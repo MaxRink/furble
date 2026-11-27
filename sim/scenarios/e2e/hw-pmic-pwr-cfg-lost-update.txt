@@ -4,13 +4,13 @@
 # carries every other bit it read. A rail change between that read and that write
 # is lost, and the shared byte is what makes the loss representable at all.
 #
-# Post-init value 31 = 0x1F: charge, DCDC, LDO, EXT 5 V and the status LED on.
-# The M5PM1-UM register default is 0x17 with the 5 V boost off
-# (docs/components/m5pm1.md); M5Unified's output_power config defaults to true,
-# so M5.begin() sets the boost bit and the model applies that step at boot.
-# Cut value 23 = 0x17: the same byte with the EXT 5 V bit cleared.
-# Panel-off value 15 = 0x0F: the LED cleared by a write built from the post-init
-# byte, which puts the EXT 5 V bit back.
+# Boot value 23 = 0x17: the M5PM1-UM reset byte with the 5 V boost off
+# (docs/components/m5pm1.md), which the firmware keeps by passing
+# output_power = false. Value 31 = 0x1F after the GPS holder powers the port:
+# charge, DCDC, LDO, EXT 5 V and the status LED on. Cut value 23 = 0x17: the
+# same byte with the EXT 5 V bit cleared.
+# Panel-off value 15 = 0x0F: the LED cleared by a write built from the byte a
+# reader latched while the port was powered, which puts the EXT 5 V bit back.
 #
 # Teeth: model panel-off as its own flag instead of a bit in this byte and
 # pmic.pwr_cfg_lost stays 0 with the rail still off, so the asserts after the

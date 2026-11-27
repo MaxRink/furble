@@ -8,6 +8,9 @@
 # IP5306 status byte while voltage and current stay unknown.
 #
 # See board-row-stickc.txt for the two-sided assertion contract.
+#
+# led_active_low is no, corrected in this branch: the row drives no LED pad
+# (ledPin -1) and the Basic has no software-driven indicator (plans/386).
 seed hw_profile core-4mb
 wait 100
 
@@ -67,8 +70,8 @@ assert power.rail.ext5v n/a
 assert board.power_off_path yes
 assert hw.rtc_on_bus no
 assert board.rtc_on_bus no
-assert hw.led_active_low yes
-assert board.led_active_low yes
+assert hw.led_active_low no
+assert board.led_active_low no
 assert hw.ir_mark_low no
 assert board.ir_mark_low no
 assert hw.gps_pin_source none

@@ -6,6 +6,10 @@
 # is recorded for the Tough, so neither side claims a battery-backed RTC.
 #
 # See board-row-stickc.txt for the assertion contract.
+#
+# rtc_on_bus is yes and led_active_low is no, corrected in this branch: the Tough
+# pin map lists a BM8563 at 0x51 on G21/G22, and the row drives no LED pad
+# (ledPin -1), so the polarity column is inert (plans/386).
 seed hw_profile tough
 wait 100
 
@@ -49,10 +53,10 @@ assert power.rail.ext5v off
 # The remaining row columns, each pinned on both sides.
 # The model twin of the row's power-off path is power.can_off, above.
 assert board.power_off_path yes
-assert hw.rtc_on_bus no
-assert board.rtc_on_bus no
-assert hw.led_active_low yes
-assert board.led_active_low yes
+assert hw.rtc_on_bus yes
+assert board.rtc_on_bus yes
+assert hw.led_active_low no
+assert board.led_active_low no
 assert hw.ir_mark_low no
 assert board.ir_mark_low no
 assert hw.gps_pin_source board-support

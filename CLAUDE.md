@@ -445,9 +445,11 @@ check.
   pages 100 and 101), and the ILI9341 copy carries the same pair. ST7789V
   sections 9.1.11 and 9.1.12 and ST7796S V1.0 sections 9.2.12 and 9.2.13 need
   120 ms from Sleep Out to the next Sleep In only, plus 5 ms after SLPIN and
-  after SLPOUT before any other command. ILI9342C is the panel on
-  `m5stack-core`, `m5stack-core2` and `m5stack-core-usb-debug`, so the reverse
-  wait is required on three of the six display boards and the code keeps it.
+  after SLPOUT before any other command. ILI9342C is the panel on three of
+  the seven board rows: the Core (whose image is also `m5stack-core-usb-debug`),
+  the Core2 and the Tough, which the Core2 image also serves. M5GFX 0.2.27 maps
+  all three rows to `Panel_ILI9342`, so the reverse wait is required on them and
+  the code keeps it.
   M5GFX 0.2.27 sends the bare command and no delay
   (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`,
   `src/lgfx/v1/LGFXBase.hpp:1436-1437`), so both 120 ms waits are furble's:
@@ -488,10 +490,14 @@ check.
   pattern; wait the settle on the feedback timer, never delay the caller's task
   and never rewrite the stored volume. Only a positive VBUS reading counts as
   mains power (plans/363).
-- M5Unified instantiates an RTC only when its PCF8563 probe at 0x51 is
-  acknowledged, so `M5.Rtc.isEnabled()` is false on every board except the
-  Plus2 and the AXP192's internal RTC is unreachable. Guard RTC writes with
-  `Board::profile().rtcOnBus`, not with the timed-wake kind.
+- M5Unified instantiates an RTC only when its writes to the PCF8563 family at
+  0x51 are acknowledged. A BM8563 answers on the StickC, the StickC Plus, the
+  StickC Plus2, the Core2 and the Tough, so `M5.Rtc.isEnabled()` is true on
+  those five rows, and the AXP192's internal RTC is never reachable. Guard RTC
+  writes with `Board::profile().rtcOnBus`, not with the timed-wake kind, and do
+  not assume the flag tracks the timed wake: the boot IRQ clear is
+  `rtcOnBus && timedWake != RTC_ALARM`, which is live on the StickC, Core2 and
+  Tough.
 - S3 native USB Serial/JTAG resets the chip on each host port open: the host
   sets RTS 1 with DTR 0 (ESP32-S3 TRM v1.8, Table 33.3-2 p. 1248), and SRST
   resets the digital system but not the USB Serial/JTAG controller, so the port

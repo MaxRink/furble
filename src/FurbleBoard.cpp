@@ -28,19 +28,29 @@ namespace {
 // EXT_5V rail: M5Unified 0.2.20 Power_Class::setExtOutput() switches the external
 // 5 V output: AXP192 EXTEN on the StickC and StickC Plus, the M5PM1 on the
 // StickS3, and AXP192 GPIO0 enabling the SY7088 boost on the Core2 and Tough.
-// It does nothing on the Plus2, the Core or any other board furble supports. On
-// the StickC and Plus the rail is already on before the GPS driver runs, by two
+// A Core2 v1.1 that carries the AXP2101 reaches Axp2101.setBLDO2() from the same
+// call, not LDOIO0. It does nothing on the Plus2, the Core or any other board
+// furble supports. On the StickC and Plus the rail is already on before the GPS
+// driver runs, by two writes during M5.begin(): M5Unified calls
+// Power.setExtOutput(cfg.output_power) with the default output_power = true
+// (M5Unified.cpp), which reaches Axp192.setEXTEN(true) for that board pair, and
+// M5GFX 0.2.27 Light_M5StickC::init() writes AXP192 0x12 = 0x4D. Bit 6 of that
+// register is EXTEN (M5Unified AXP192_Class::setEXTEN()).
 //
 // The rail column is named for the port, not for one client: on the StickS3
-// the same switch feeds the Grove 5 V output and the infrared circuit, and the
-// rail manager shares it between holders (include/FurbleRail.h).
-// writes during M5.begin(): M5Unified calls Power.setExtOutput(cfg.output_power)
-// with the default output_power = true (M5Unified.cpp), which reaches
-// Axp192.setEXTEN(true) for that board pair, and M5GFX 0.2.27
-// Light_M5StickC::init() writes AXP192 0x12 = 0x4D. Bit 6 of that register is
-// EXTEN (M5Unified AXP192_Class::setEXTEN()). The EXTEN-to-Grove-5V routing
-// itself is UNVERIFIED: the schematics were not available in this pass
-// (plan 350).
+// the same switch feeds the Grove 5 V output, the HAT EXT_5V pin, and the
+// infrared transmitter and receiver, and the rail manager shares it between
+// holders (include/FurbleRail.h). The M5StickS3 vendor page states that
+// EXT_5V_EN feeds those three outputs. It also claims M5Unified leaves the port
+// disabled at init, which the pinned 0.2.20 does not: output_power defaults to
+// true and _begin() sets the bit, so Platform::init()'s output_power = false is
+// load bearing, not belt and braces.
+//
+// The EXTEN-to-Grove-5V routing is documented by the vendor pinmap: the
+// M5StickC and M5StickC Plus AXP192 output tables both list a 5V GROVE output
+// beside the LCD, backlight and MCU rails. That EXTEN is bit 6 of register 0x12
+// comes from the AXP192 register description and M5Unified, not from a
+// schematic in this tree.
 //
 // On the Core2 and Tough that boost is one BUS_5V net: the Tough schematic ties
 // the SY7088 U8 output to Grove Port A pin 2 (J4) and to the M-Bus 5 V pin
@@ -83,8 +93,17 @@ namespace {
 // the StickC and Plus status LED with invert = true on G10 and the Plus2 LED
 // with invert = false on G19. The Plus2 drives an NPN stage from GPIO19 for
 // both the red LED and the emitter, so it is active high and its RMT image is
-// not inverted. The StickS3 emitter wiring was not available in this pass, so
-// its row keeps the previous non-inverted image and is UNVERIFIED.
+// not inverted. The M5StickS3 pinmap places IR_TX on GPIO46 and IR_RX on GPIO42,
+// which the irPin column matches. Which way the StickS3 emitter conducts is not
+// in that pinmap, so its row keeps the previous non-inverted image and stays
+// UNVERIFIED.
+//
+// The two polarity columns describe a driven pad. A row with ledPin -1 has no
+// LED pad, so its ledActiveLow value is inert and every such row now says false:
+// the Core, Core2 and Tough have no LED at all (the Core2's green power
+// indicator is not software driven), and the StickS3 status LED is the M5PM1
+// PWR_CFG LED_CTRL level, not a GPIO. The unknown-board row keeps the previous
+// true because nothing is known about a board furble cannot identify.
 //
 // Shared image: the Core2 image also serves the M5Tough, which has the same SD
 // slot and the same NS4168 speaker path, so both rows declare them. Only the
@@ -99,12 +118,14 @@ namespace {
 // switchable EXT_5V rail, LED active low, IR mark low, GPS pin source, GPS RX
 // pin, GPS TX pin.
 //
-// RTC on the bus: only the Plus2 has a chip M5Unified can drive, its BM8563 at
-// 0x51. M5Unified 0.2.x falls back to PCF8563_Class for every board and keeps
-// the instance only when those register writes are acknowledged, so the AXP192
-// internal RTC on the StickC family, the Core2 and the Tough is not reachable
-// and the StickS3 has no RTC at all. The column is separate from the backed
-// one: it says a write reaches a chip, not that the chip keeps time.
+// RTC on the bus: the part is a BM8563 at 0x51 on the internal I2C bus. The
+// vendor pinmap lists one on the StickC, the StickC Plus, the StickC Plus2, the
+// Core2 and the Tough, and lists none on the Basic, the StickS3 or the Waveshare
+// ESP32-S3-ETH. M5Unified 0.2.x falls back to PCF8563_Class for every board and
+// keeps the instance only when its writes at 0x00 and 0x0E are acknowledged, so
+// M5.Rtc.isEnabled() is true on exactly those five rows. The AXP192's own RTC
+// is not on that bus and is not reachable. The column is separate from the
+// backed one: it says a write reaches a chip, not that the chip keeps time.
 //
 // A row with a GPS UART leaves the pins to M5Unified: its pin table describes
 // Port A per SoC target and reports -1 for a board it does not know. A board
@@ -114,16 +135,12 @@ namespace {
 // internal I2C bus, and the Waveshare ESP32-S3-ETH, where it is the W5500 SPI
 // clock. See plans/336-gps-pin-seam.md.
 //
-// The rail column is named for the port, not for one client: on the StickS3
-// the same switch feeds the Grove 5 V output and the infrared circuit, and the
-// rail manager shares it between holders (include/FurbleRail.h).
-//
 // clang-format off
-constexpr Profile STICKC        = {"StickC", {true,  true,  true,  true}, 95, true, false, 9,
+constexpr Profile STICKC        = {"StickC", {true,  true,  true,  true}, 95, true, true, 9,
     MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false,
     true, false, 10, true, true, true,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
-constexpr Profile STICKC_PLUS   = {"StickC+", {true,  true,  true,  true}, 120, true, false, 9,
+constexpr Profile STICKC_PLUS   = {"StickC+", {true,  true,  true,  true}, 120, true, true, 9,
     MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48,
     true, true, false, 10, true, true, true,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
@@ -133,19 +150,19 @@ constexpr Profile STICKC_PLUS2  = {"StickC+2", {true,  true,  false, false}, 200
     GpsPinSource::BOARD_SUPPORT, -1, -1};
 constexpr Profile STICKS3       = {"StickS3", {true,  true,  false, true}, 250, false, false, 46,
     MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true,
-    32, true, false, false, -1, true, true, false,
+    32, true, false, false, -1, true, false, false,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
 constexpr Profile CORE          = {"Core", {true,  false, false, true}, 110, false, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true,
-    false, false, -1, false, true, false,
+    false, false, -1, false, false, false,
     GpsPinSource::NONE, -1, -1};
-constexpr Profile CORE2         = {"Core2", {true,  true,  true,  true}, 500, true, false, -1,
+constexpr Profile CORE2         = {"Core2", {true,  true,  true,  true}, 500, true, true, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true,
-    false, true, -1, true, true, false,
+    false, true, -1, true, false, false,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
-constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, true, false, -1,
+constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, true, true, -1,
     MotionWake::NONE, -1, TimedWake::RTC_ALARM, -1, true, true, true, true, false, 32, true,
-    false, false, -1, true, true, false,
+    false, false, -1, true, false, false,
     GpsPinSource::BOARD_SUPPORT, -1, -1};
 // The Waveshare ESP32-S3-ETH is a mains or PoE node. It has no PMIC, no
 // battery and no switchable rail, so there is nothing for a software power off

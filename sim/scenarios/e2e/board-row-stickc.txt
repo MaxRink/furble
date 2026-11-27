@@ -10,6 +10,12 @@
 #
 # Evidence: docs/power/board-power.md section 2 (AXP192, BM8563 kept on the
 # board PMU, buzzer but no speaker path, no SD slot, EXTEN Grove 5 V).
+#
+# rtc_on_bus is yes, corrected in this branch: the M5StickC pin map lists a
+# BM8563 at 0x51 on the internal I2C bus (G21/G22) and M5Unified keeps its
+# PCF8563 instance when those writes answer, so a calendar write reaches a chip.
+# led_active_low stays yes here: this board's LED pad is G10 and it is driven
+# (plans/386).
 seed hw_profile stickc
 wait 100
 
@@ -65,8 +71,8 @@ assert power.rail.ext5v n/a
 # The remaining row columns, each pinned on both sides.
 # The model twin of the row's power-off path is power.can_off, above.
 assert board.power_off_path yes
-assert hw.rtc_on_bus no
-assert board.rtc_on_bus no
+assert hw.rtc_on_bus yes
+assert board.rtc_on_bus yes
 assert hw.led_active_low yes
 assert board.led_active_low yes
 assert hw.ir_mark_low yes

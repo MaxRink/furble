@@ -3,6 +3,10 @@
 # See board-row-stickc.txt for the two-sided assertion contract. The Plus adds
 # the buzzer the firmware drives for feedback sound; the RTC and the AXP192
 # rails are the same as the StickC.
+#
+# rtc_on_bus is yes, corrected in this branch: the M5StickC Plus pin map lists a
+# BM8563 at 0x51 on the internal I2C bus and M5Unified keeps its PCF8563
+# instance when those writes answer (plans/386).
 seed hw_profile stickc-plus
 wait 100
 
@@ -46,8 +50,8 @@ assert power.rail.ext5v n/a
 # The remaining row columns, each pinned on both sides.
 # The model twin of the row's power-off path is power.can_off, above.
 assert board.power_off_path yes
-assert hw.rtc_on_bus no
-assert board.rtc_on_bus no
+assert hw.rtc_on_bus yes
+assert board.rtc_on_bus yes
 assert hw.led_active_low yes
 assert board.led_active_low yes
 assert hw.ir_mark_low yes

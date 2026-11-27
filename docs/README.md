@@ -14,6 +14,7 @@ Start at the top level [README](../README.md) for the product overview, or
 | [Supported hardware](supported-hardware.md) | Which boards, cameras and GNSS units furble supports, and what is untested. |
 | [Component reference](components/README.md) | One page per part, with its support status, bus, address, registers, timing, error handling, and what only a datasheet can close. |
 | [Board map](components/board-map.md) | Every pin, I2C address, bus setting, display policy and peripheral constant per board. |
+| [Board verification](components/board-verification.md) | One row per board fact with the document, page and code line that settles it, and the measurement each open fact still needs. |
 | [Hardware catalog](hardware-catalog.md) | Buying guide and porting candidates. Not a support claim. |
 
 ## Protocols
