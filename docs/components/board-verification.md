@@ -68,14 +68,14 @@ Component pages supply the chip-level facts and their own documents:
 
 ## M5StickC
 
-Row `src/FurbleBoard.cpp:132`.
+Row `src/FurbleBoard.cpp:139`.
 
 | # | Fact | Value | Evidence | State |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Battery capacity | 95 mAh | M5C "Battery 95mAh@3.7V", and the version-change table records 80 to 95 mAh in 2020.3 | VERIFIED |
 | 2 | Charging path and current | AXP192 on VBUS. No charge-current value is set by furble; M5Unified's AXP192 init table selects one | M5C "when VBUS is powered, the built-in battery is charged through the AXP192 PMU". The exact current is UNVERIFIED: the AXP192 register document in the tree has no revision string ([axp192.md](axp192.md)) | CITED |
 | 3 | Power-off mechanism and `powerOffPath` | AXP192 shutdown through `M5.Power.powerOff()`, which cuts the rail and does not return. `powerOffPath` true | UNI `Power_Class::_powerOff()` AXP192 branch; `src/FurblePlatform.cpp:557` | VERIFIED |
-| 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | BM8563 at 0x51, no backup cell, `rtcOnBus` true, `timedWake` NONE | M5C pin map `AXP192 & RTC (BM8563)` on G21/G22 with IRQ on G35; [bm8563.md](bm8563.md) 0x51. No cell is shown on that page | VERIFIED |
+| 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | BM8563 at 0x51. Shipped `rtcOnBus` true and `rtcBatteryBacked` true: the main cell keeps the part counting across an AXP192 cut, so no coin cell is needed. `timedWake` NONE | M5C pin map `AXP192 & RTC (BM8563)` on G21/G22 with IRQ on G35; [bm8563.md](bm8563.md) 0x51; the backing is the row's own definition of the column, and the page shows no separate cell | VERIFIED (chip and pins), REPORTED (retention across a full cell removal) |
 | 5 | Display controller and sleep-timing class | ST7735SV, one-direction 120 ms class | M5C "0.96 inch 80 x 160 ST7735SV"; GFX `Panel_M5StickC : Panel_ST7735S`; [st7735.md](st7735.md) row 3 is UNVERIFIED for the dwell, so the firmware applies the wider both-direction rule | VERIFIED (part), UNVERIFIED (ST7735 dwell) |
 | 6 | Touch controller and address | none | M5C pin map lists no touch controller | VERIFIED |
 | 7 | IMU part and wake threshold resolution | MPU6886 at 0x68 (SH200Q before 2019.8). Wake-on-motion count size UNVERIFIED | M5C `MEMS MPU6886` and version table "2019.8 SH200Q changed to MPU6886"; [mpu6886.md](mpu6886.md) C-26a: the datasheet states no mg per LSB | VERIFIED (part), UNVERIFIED (4 mg per count) |
@@ -91,14 +91,14 @@ Row `src/FurbleBoard.cpp:132`.
 
 ## M5StickC Plus
 
-Row `src/FurbleBoard.cpp:136`.
+Row `src/FurbleBoard.cpp:143`.
 
 | # | Fact | Value | Evidence | State |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Battery capacity | 120 mAh | M5CP "Battery 120mAh@3.7V" | VERIFIED |
 | 2 | Charging path and current | AXP192 on VBUS, same as the StickC | M5CP "When powered by VBUS, the AXP192 power management will charge the internal battery" | VERIFIED (path), UNVERIFIED (current) |
 | 3 | Power-off mechanism and `powerOffPath` | AXP192 cut plus the BM8563 alarm as wake. `powerOffPath` true | UNI `_powerOff()`; `src/FurblePlatform.cpp:557` | VERIFIED |
-| 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | BM8563 at 0x51, no cell, `rtcOnBus` true, `timedWake` RTC_ALARM | M5CP pin map `RTC BM8563`; the BM8563 INT to AXP192 power key through R401 and C401 is a vendor statement this pass did not open. That coupling is the mechanism the timed wake needs | VERIFIED (chip), UNVERIFIED (INT coupling) |
+| 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | BM8563 at 0x51, `timedWake` RTC_ALARM. The part sits on the same G21/G22 bus as the IMU and the PMU, which the page shows, and the chip row is in its specification table | M5CP specification table `RTC: BM8563` and the `6-Axis IMU (MPU6886) & Power Management Chip (AXP192)` table for the bus. The BM8563 INT to AXP192 power key through R401 and C401 is a vendor statement this pass did not open | VERIFIED (chip), UNVERIFIED (INT coupling) |
 | 5 | Display controller and sleep-timing class | ST7789v2, one-direction 120 ms class | M5CP "1.14 inch 135 x 240 ST7789v2"; GFX `Panel_M5StickCPlus : Panel_ST7789`; [st7789.md](st7789.md) row 3 | VERIFIED |
 | 6 | Touch controller and address | none | M5CP pin map lists none | VERIFIED |
 | 7 | IMU part and wake threshold resolution | MPU6886 at 0x68, count size UNVERIFIED | M5CP `MEMS MPU6886`; [mpu6886.md](mpu6886.md) C-26a | VERIFIED (part), UNVERIFIED (count) |
@@ -114,19 +114,19 @@ Row `src/FurbleBoard.cpp:136`.
 
 ## M5StickC Plus2
 
-Row `src/FurbleBoard.cpp:140`.
+Row `src/FurbleBoard.cpp:147`.
 
 | # | Fact | Value | Evidence | State |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Battery capacity | 200 mAh | M5CP2 "Battery 200mAh@3.7V" | VERIFIED |
 | 2 | Charging path and current | no PMIC. An external charger, battery voltage on the ADC divider at G38. No charge status, so `battery.charging` is false | M5CP2 version change 2023.12 "Removed AXP192 power management chip"; pin map `Battery Voltage Detect: G38`; UNI `_pmic = pmic_adc`, `_batAdcPin = 38`, `_adc_ratio = 2.0f` | VERIFIED |
-| 3 | Power-off mechanism and `powerOffPath` | the regulator enable is the `HOLD` pin G4, driven low to cut. `powerOffPath` true, `powerHoldPin` 4 | M5CP2 "set HOLD (GPIO4) to 0 during program execution to cut off power"; `src/FurblePlatform.cpp:820` to `:824` | VERIFIED |
+| 3 | Power-off mechanism and `powerOffPath` | the regulator enable is the `HOLD` pin G4, held high at boot and driven low to cut. `powerOffPath` true, `powerHoldPin` 4 | M5CP2 "set HOLD (GPIO4) to 0 during program execution to cut off power"; the boot hold is `src/FurblePlatform.cpp:164-170` and the timed-wake release `src/FurblePlatform.cpp:1019-1024` | VERIFIED |
 | 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | BM8563 at 0x51, kept alive across a HOLD cut, `rtcOnBus` true, `timedWake` RTC_ALARM | M5CP2 `RTC BM8563` on G21/G22 and "wake the device via an IRQ signal triggered by the RTC timer" | VERIFIED |
 | 5 | Display controller and sleep-timing class | ST7789v2, one-direction class | M5CP2 "ST7789v2"; GFX maps the board to `Panel_ST7789`; [st7789.md](st7789.md) row 3 | VERIFIED |
 | 6 | Touch controller and address | none | M5CP2 pin map lists none | VERIFIED |
 | 7 | IMU part and wake threshold resolution | MPU6886 at 0x68, count size UNVERIFIED | M5CP2 `IMU MPU6886`; [mpu6886.md](mpu6886.md) C-26a | VERIFIED (part), UNVERIFIED (count) |
 | 8 | SD slot wiring and card detect | none | M5CP2 pin map lists none | VERIFIED |
-| 9 | IR emitter and polarity | G19, shared with the red LED, NPN stage so active high | M5CP2 `IR Emitter & Red LED: pin G19`, and the table row `M5STICKC PLUS2: IR G19, LED G19` | VERIFIED |
+| 9 | IR emitter and polarity | G19, shared with the red LED. The emitter is active high in the firmware, which is an inference from the NPN stage plans/350 records and not a vendor statement | M5CP2 `IR Emitter & Red LED: pin G19` and the table row `M5STICKC PLUS2: IR G19, LED G19`. plans/350 records the NPN stage as unconfirmed against a vendor PDF in this tree, so the polarity is U13 and `irMarkLow` decides the RMT inversion | VERIFIED (pin), UNVERIFIED (polarity) |
 | 10 | LED pin and polarity | G19, active high, shared with the emitter | M5CP2 `Red LED x 1 (Shared control pin G19 with IR emitter tube)`; UNI Light_PWM `invert = false`, `pin_bl = StickCPlus2_LED_PIN` (GPIO 19) | VERIFIED |
 | 11 | Speaker amplifier and enable pin | buzzer on G2, no amplifier | M5CP2 `Buzzer: Buzzer Pin G2`; UNI `spk_cfg.buzzer = true`, `pin_data_out = GPIO_NUM_2` | VERIFIED |
 | 12 | GPS pin source and pins | `BOARD_SUPPORT`, G33 and G32 | UNI ESP32 `board_unknown` EX row; M5CP2 `PORT.CUSTOM G32 G33` | VERIFIED |
@@ -137,7 +137,7 @@ Row `src/FurbleBoard.cpp:140`.
 
 ## M5StickS3
 
-Row `src/FurbleBoard.cpp:144`. This is the only image with an M5PM1.
+Row `src/FurbleBoard.cpp:151`. This is the only image with an M5PM1.
 
 | # | Fact | Value | Evidence | State |
 | :--- | :--- | :--- | :--- | :--- |
@@ -145,7 +145,7 @@ Row `src/FurbleBoard.cpp:144`. This is the only image with an M5PM1.
 | 2 | Charging path and current | M5PM1 charger, charge status on PM1 GPIO0 as `PYG0_CHG_STAT`, active low. No current register | M5S3 M5PM1 pin table `Battery Charge: PYG0_CHG_STAT`; UNI sets `M5pm1.setGPIOFunction(gpio0, gpio)` and `input`; `src/FurblePlatform.cpp:1385` reads it | VERIFIED |
 | 3 | Power-off mechanism and `powerOffPath` | `M5PM1.shutdown()` cuts the rail. `powerOffPath` true | `src/FurblePlatform.cpp` M5PM1 shutdown path; [m5pm1.md](m5pm1.md) | VERIFIED |
 | 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | no RTC chip, so `rtcOnBus` and `rtcBatteryBacked` false. `timedWake` PMIC_TIMER with the RTC RAM marker | M5S3 pin map lists no RTC part; UNI RTC fallback probe fails without a chip; `src/FurblePlatform.cpp` timer and marker | VERIFIED |
-| 5 | Display controller and sleep-timing class | ST7789 family, one-direction class. The exact part is not on the vendor page text this pass read | GFX `new Panel_ST7789()` in the `board_M5StickS3` branch; [docs/power/board-power.md](../power/board-power.md) records ST7789P3 as REPORTED | VERIFIED (driver family), UNVERIFIED (part) |
+| 5 | Display controller and sleep-timing class | ST7789P3, one-direction class | M5S3 specification table `Display: Model ST7789P3, Resolution 135x240`, and its ST7789P3 pin table; GFX drives it with `Panel_ST7789`; [st7789.md](st7789.md) row 3 | VERIFIED |
 | 6 | Touch controller and address | none | M5S3 lists no touch panel | VERIFIED |
 | 7 | IMU part and wake threshold resolution | BMI270 at 0x68, 1000 mg over 2048 counts, so 0.4883 mg per count | M5S3 `IMU BMI270`; [bmi270.md](bmi270.md) and `include/FurbleIMUMotionScale.h` | VERIFIED |
 | 8 | SD slot wiring and card detect | none | M5S3 pin map lists none | VERIFIED |
@@ -160,7 +160,7 @@ Row `src/FurbleBoard.cpp:144`. This is the only image with an M5PM1.
 
 ## M5Stack Basic (Core)
 
-Row `src/FurbleBoard.cpp:148`.
+Row `src/FurbleBoard.cpp:155`.
 
 | # | Fact | Value | Evidence | State |
 | :--- | :--- | :--- | :--- | :--- |
@@ -183,7 +183,7 @@ Row `src/FurbleBoard.cpp:148`.
 
 ## M5Stack Core2
 
-Row `src/FurbleBoard.cpp:152`.
+Row `src/FurbleBoard.cpp:159`.
 
 | # | Fact | Value | Evidence | State |
 | :--- | :--- | :--- | :--- | :--- |
@@ -206,11 +206,11 @@ Row `src/FurbleBoard.cpp:152`.
 
 ## M5Tough
 
-Row `src/FurbleBoard.cpp:156`.
+Row `src/FurbleBoard.cpp:163`.
 
 | # | Fact | Value | Evidence | State |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | Battery capacity | 390 mAh | The M5Tough README, recorded in plans/354. The product page specification table this pass read does not carry a capacity | REPORTED |
+| 1 | Battery capacity | 390 mAh | M5Tough README, <https://github.com/m5stack/M5Tough>: "The battery capacity has been upgraded to 390mAh". The product page specification table does not carry a capacity | VERIFIED |
 | 2 | Charging path and current | AXP192 | M5T `AXP192 power management chip` | VERIFIED (path), UNVERIFIED (current) |
 | 3 | Power-off mechanism and `powerOffPath` | AXP192 cut. `powerOffPath` true | UNI `_powerOff()` | VERIFIED |
 | 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | BM8563 at 0x51, BT1 backup cell, `rtcOnBus` true, `timedWake` RTC_ALARM | M5T `BM8563-RTC clock, supports RTC timer wake-up` and pin map `BM8563 (0x51)`; the BT1 cell and the INT to the AXP192 PWR net are from the Tough schematic, plans/354 | VERIFIED (chip and wake claim), REPORTED (cell) |
@@ -229,7 +229,7 @@ Row `src/FurbleBoard.cpp:156`.
 
 ## Waveshare ESP32-S3-ETH
 
-Row `src/FurbleBoard.cpp:170`. The image pins `board_M5StampS3`, and this row is
+Row `src/FurbleBoard.cpp:177`. The image pins `board_M5StampS3`, and this row is
 what that identity maps to.
 
 | # | Fact | Value | Evidence | State |
@@ -302,14 +302,13 @@ decide.
 | # | Open fact | Boards | What would settle it |
 | :--- | :--- | :--- | :--- |
 | U1 | The MPU6886 wake-on-motion count size, assumed 4 mg | StickC, Plus, Plus2, Core, Core2, Tough | A tilt or shaker rig that holds a known acceleration and reads back which `ACCEL_WOM_*_THR` count first asserts the interrupt, or a TDK application note that states the scale. [mpu6886.md](mpu6886.md) C-26a |
-| U2 | The AXP192 charge current furble actually runs at | StickC, Plus, Core2, Tough | Read registers 0x33 and 0x34 on each board with the charger active, against an AXP192 register document that has a revision string |
+| U2 | The AXP192 charge current furble actually runs at on the Core2 and the Tough | Core2, Tough | M5Unified's AXP192 init writes `0x33 = 0b11000000`, commented "Charge 4.2V, 100mA" (`Power_Class.cpp:695`), which settles the StickC and Plus rows. The Core2 page states 0.219 A while `setChargeCurrent(390)` selects 360 mA, so the Core2 needs a current measurement with the charger active, and the Tough has no vendor figure at all |
 | U3 | The Core2 RTC backup cell by revision | Core2 | A BM8563 voltage-low read after a full power cycle, or a visual check for BT1 |
 | U4 | The StickC IR emitter polarity from a StickC-specific schematic | StickC | A scope on G9 with a frame in flight, or the StickC schematic PDF |
 | U5 | The StickS3 IR emitter polarity | StickS3 | A scope on G46, or the StickS3 schematic PDF |
-| U6 | The StickS3 panel part | StickS3 | The panel marking, or the StickS3 schematic. The vendor page text read this pass does not name it |
-| U7 | The Tough battery capacity from a document this pass could open | Tough | The M5Tough README (390 mAh) or a battery label |
 | U8 | The Waveshare TF slot wiring | Waveshare | A continuity check from the TF pads to the header, or the Waveshare pin table as text |
 | U9 | The Core speaker buffer part | Core | The Basic schematic |
 | U10 | The StickC Plus BM8563 INT coupling to the AXP192 power key | StickC Plus | The StickC Plus schematic, or a wake test from a full power-off |
 | U11 | The StickS3 speaker amplifier settle time, stated as about 1 s before the first tone | StickS3 | A recording or a scope on PYG3_SPK_Pulse from `M5.Speaker.begin()` to the first audible tone. `CLAUDE.md` states the 1 s figure and no document in the tree states it |
 | U12 | `pmicClickStreak` on the Core2 | Core2 | A bench test of whether a PEK click during a touch wake produces a `M5.BtnPWR` click |
+| U13 | The Plus2 IR emitter polarity | StickC Plus2 | A scope on G19 with a frame in flight, or a Plus2 schematic that shows the transistor stage. `irMarkLow` decides the RMT inversion, so a scope is the only settling evidence |

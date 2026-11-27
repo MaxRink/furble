@@ -160,6 +160,32 @@ struct Expected {
 // REG_READ0 bit 3, and the Tough row declares the SD slot and the NS4168
 // speaker path it shares with the Core2. Both are pinned with their evidence in
 // plans/363-core-sim-align.md and docs/power/board-power.md section 2.
+// The boot rule per row, as a literal. Board::clearsStaleRtcAlarm() is the
+// predicate Platform::getInstance() calls before M5.Rtc.disableIRQ(). The
+// values are not derived from the table below by repeating its logic, which is
+// the point: dropping the timed-wake term makes the Plus, the Plus2 and the
+// Tough expect false and get true, and dropping the chip term makes the StickS3,
+// the Core, the Waveshare and the unknown row expect false and get true.
+struct BootClear {
+  m5::board_t board;
+  bool clear;
+};
+
+// clang-format off
+const BootClear BOOT_CLEAR[] = {
+    {m5::board_t::board_M5StickC, true},      // reachable chip, no alarm wake
+    {m5::board_t::board_M5StickCPlus, false}, // the alarm flag is the wake evidence
+    {m5::board_t::board_M5StickCPlus2, false},
+    {m5::board_t::board_M5StickS3, false},   // no chip on the bus
+    {m5::board_t::board_M5Stack, false},     // no chip on the bus
+    {m5::board_t::board_M5StackCore2, true}, // reachable chip, no alarm wake
+    {m5::board_t::board_M5Tough, false},     // the alarm flag is the wake evidence
+    {m5::board_t::board_M5StampS3, false},   // no chip on the bus
+    {m5::board_t::board_unknown, false},     // no chip on the bus
+    {m5::board_t::board_M5StackCoreS3, false}, // falls to the unknown row
+};
+// clang-format on
+
 // clang-format off
 const Expected EXPECTED[] = {
     {m5::board_t::board_M5StickC, "StickC", true, true, true, true, 95, true, true, 9, MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false, true, false, 10, true, true, true,
@@ -197,6 +223,12 @@ const Expected EXPECTED[] = {
 }  // namespace
 
 int main() {
+  for (const auto &e : BOOT_CLEAR) {
+    const Profile &p = Furble::Board::profileFor(e.board);
+    check(Furble::Board::clearsStaleRtcAlarm(p) == e.clear,
+          std::string(p.name) + " boot RTC IRQ clear");
+  }
+
   for (const auto &e : EXPECTED) {
     const Profile &p = Furble::Board::profileFor(e.board);
     const std::string n = e.name;
@@ -207,16 +239,9 @@ int main() {
     check(p.batteryCapacityMah == e.capacity, n + " capacity");
     check(p.rtcBatteryBacked == e.rtcBacked, n + " rtc backing");
     check(p.rtcOnBus == e.rtcBus, n + " rtc on the bus");
-    // Platform::getInstance() boots with `rtcOnBus && timedWake != RTC_ALARM`:
-    // a reachable RTC that is not the timed-wake source gets its stale alarm
-    // flag cleared. That guard is live on the StickC, the Core2 and the Tough,
-    // and excluded on the Plus2 and the Plus, whose alarm flag the timed-wake
-    // consumer needs. There is no hardware implication between the two columns,
-    // so this asserts the boot rule itself rather than an implication that
-    // would force a wrong hardware value into a row.
-    const bool bootClearsRtcIrq = p.rtcOnBus && (p.timedWake != TimedWake::RTC_ALARM);
-    check(!(bootClearsRtcIrq && (p.timedWake == TimedWake::RTC_ALARM)),
-          n + " the boot RTC IRQ clear never runs on an RTC-alarm row");
+    // The boot rule itself is pinned as a literal per row below. It is a
+    // production function, Board::clearsStaleRtcAlarm(), so the check fails if
+    // either term is dropped.
     check(p.irPin == e.irPin, n + " ir pin");
     check(p.motionWake == e.motion && p.motionWakePin == e.motionPin, n + " motion wake");
     check(p.timedWake == e.timed, n + " timed wake");

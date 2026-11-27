@@ -363,7 +363,9 @@ settings-touching rebase.
   I2C bus: a BM8563 at 0x51 on the StickC, the StickC Plus, the StickC Plus2,
   the Core2 and the Tough, and on no other row. It is not the same fact as
   `rtcBatteryBacked` or as the `TimedWake` kind, so gate RTC writes on it and
-  never derive it from a timed wake (plan 367).
+  never derive it from a timed wake. The boot IRQ clear is
+  `clearsStaleRtcAlarm(row)`, the one place the two columns meet, and
+  `board-profile` pins its answer per row (plan 367).
 - `Board::gpsPins()` is the only GPS UART pin source. `BOARD_SUPPORT` reads
   M5Unified's Port A table in `src/FurbleBoard.cpp`; a board M5Unified cannot
   describe sets `GpsPinSource::PROFILE` and carries `gpsRxPin`/`gpsTxPin` in its

@@ -29,7 +29,7 @@ verification table in
 | `timedWake` | NONE | RTC_ALARM | RTC_ALARM | PMIC_TIMER | NONE | NONE | RTC_ALARM | NONE | NONE |
 | `powerHoldPin` | -1 | -1 | 4 | -1 | -1 | -1 | -1 | -1 | -1 |
 | `pmicClickStreak` | yes | yes | no | no | no | no | yes | no | no |
-| `sdSlot` | no | no | no | no | yes | yes | yes | no | yes |
+| `sdSlot` | no | no | no | no | yes | yes | yes | no | no |
 | `canPowerOff` | yes | yes | yes | yes | no | yes | yes | no | yes |
 | `powerOffPath` | yes | yes | yes | yes | yes | yes | yes | no | yes |
 | `modemSleep` | no | no | no | yes | no | no | no | no | no |
@@ -80,8 +80,8 @@ Reading notes from the comment block above the table:
   `src/FurbleIMUMotionMPU6886.cpp:54-57`).
 - StickS3: the BMI270 INT1 goes to M5PM1 GPIO 4, and the PMIC drives its own IRQ
   into SoC GPIO 13 (`src/FurbleBoard.cpp:25-27`). The firmware arms GPIO 4 as a
-  wake source before light sleep (`src/FurblePlatform.cpp:526-536`) and clears
-  it afterwards (`src/FurblePlatform.cpp:573-597`).
+  wake source before light sleep (`src/FurblePlatform.cpp:666`) and clears it
+  afterwards (`src/FurblePlatform.cpp:741`).
 
 ## I2C devices
 
@@ -262,7 +262,7 @@ The protocol timings are in [the IR remote page](../protocols/ir-remote.md).
 
 Which outputs a board has is the `feedbackSound`, `feedbackLight` and
 `feedbackVibration` fields of the board profile
-(`include/FurbleBoard.h:77-79`, `src/FurbleBoard.cpp:137-172`). A request for an
+(`include/FurbleBoard.h:79-81`, `src/FurbleBoard.cpp:139-177`). A request for an
 output the board lacks is skipped rather than logged as a failure
 (`src/FurbleFeedback.cpp:85-87`).
 

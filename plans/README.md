@@ -282,6 +282,7 @@ the bench work.
 | [376-board-level-documents.md](376-board-level-documents.md) | Board-level document hunt: 28 schematics read and hashed, the boards that publish none, the T-Beam MAX-M10S V_IO path read from the shared drawing and the factory code, and what stays unverified |
 | [541-review-feedback.md](541-review-feedback.md) | Review-feedback record for the board-level document branch, PR #541: the V_BCKP branch misread and the eight HTML citation URLs |
 | [367-board-verification.md](367-board-verification.md) | Per-board verification of every `Board::Profile` row and the per-board `Platform` branches against the vendor pages and pin maps: the corrected `rtcOnBus` and `ledActiveLow` columns, the stale profile table, the Core2 rail register, the display-sleep count, the EXT_5V boot-byte simulator deviation, and the twelve facts no document in the tree settles |
+| [543-review-feedback.md](543-review-feedback.md) | Review-feedback record for the board verification pass: five blockers and ten smaller findings, each fixed on the branch, with the assertion mutation proof and the corrected simulator boot byte |
 
 ## Bug analyses
 

@@ -3,6 +3,10 @@
 # The M5PM1 keeps a wake timer, not a calendar RTC, and the product selector
 # lists none (plans/implemented/139-persistent-time.md), so neither side claims
 # a battery-backed RTC. See board-row-stickc.txt for the assertion contract.
+#
+# led_active_low is no, corrected in this branch: the StickS3 status LED is the
+# M5PM1 PWR_CFG bit 4 level rather than a GPIO, and the row drives no LED pad
+# (plans/367).
 seed hw_profile sticks3
 wait 100
 
@@ -53,8 +57,8 @@ assert power.rail.ext5v n/a
 assert board.power_off_path yes
 assert hw.rtc_on_bus no
 assert board.rtc_on_bus no
-assert hw.led_active_low yes
-assert board.led_active_low yes
+assert hw.led_active_low no
+assert board.led_active_low no
 assert hw.ir_mark_low no
 assert board.ir_mark_low no
 assert hw.gps_pin_source board-support

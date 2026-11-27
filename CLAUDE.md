@@ -435,10 +435,11 @@ check.
   pages 100 and 101), and the ILI9341 copy carries the same pair. ST7789V
   sections 9.1.11 and 9.1.12 and ST7796S V1.0 sections 9.2.12 and 9.2.13 need
   120 ms from Sleep Out to the next Sleep In only, plus 5 ms after SLPIN and
-  after SLPOUT before any other command. ILI9342C is the panel on
-  `m5stack-core`, `m5stack-core2`, `m5stack-core-usb-debug` and `M5Tough`
-  (`Panel_ILI9342` for all four in M5GFX 0.2.27), so the reverse wait is
-  required on four of the seven display boards and the code keeps it.
+  after SLPOUT before any other command. ILI9342C is the panel on three of
+  the seven board rows: the Core (whose image is also `m5stack-core-usb-debug`),
+  the Core2 and the Tough, which the Core2 image also serves. M5GFX 0.2.27 maps
+  all three rows to `Panel_ILI9342`, so the reverse wait is required on them and
+  the code keeps it.
   M5GFX 0.2.27 sends the bare command and no delay
   (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`,
   `src/lgfx/v1/LGFXBase.hpp:1436-1437`), so both 120 ms waits are furble's:

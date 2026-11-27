@@ -133,35 +133,34 @@ Fix: the table is regenerated from the shipped values with all nine columns, the
 touch addresses are added to the I2C table, and the page points at the new
 per-board verification table for the evidence of each cell.
 
-### 8. The simulator boots the StickS3 port powered, and the firmware does not
+### 8. The simulator booted the StickS3 port powered, and the firmware does not
 
-The simulator already models the rail fact a document decides: on the StickS3 the
-EXT_5V port feeds the Grove 5 V output, the HAT 5 V pin and the IR transmitter and
-receiver, so an IR transfer holds the port and a GPS cut is refused while it is in
-flight (`sim/scenarios/e2e/ext5v-rail-holders.txt`,
+The simulator models the rail fact a document decides: on the StickS3 the EXT_5V
+port feeds the Grove 5 V output, the HAT 5 V pin and the IR transmitter and
+receiver, so an IR transfer holds the port and a GPS cut is refused while it is
+in flight (`sim/scenarios/e2e/ext5v-rail-holders.txt`,
 `sim/scenarios/e2e/hw-ir-rail-cut-in-flight.txt`).
 
-What it does not model is furble's own boot step. `Platform::init()` passes
+What it got wrong is furble's own boot step. `Platform::init()` passes
 `output_power = false` on this board so M5Unified does not commit the port, which
 leaves M5PM1 `PWR_CFG` at its documented reset byte 0x17 with the 5 V boost off.
-`sim/hardware_model.cpp` applies the reset byte and then M5Unified's
-`output_power` default, which sets bit 3, so the modelled port is powered from the
-first instruction. That is a deviation: the firmware and the vendor page both say
-the port starts unpowered.
+The model applied the reset byte and then M5Unified's own `output_power` default,
+which set bit 3, so the modelled port was powered from the first instruction and
+a GPS holder was on it before any firmware call. The first cut of this pass
+pinned that with a certified scenario, which the review rejected and rightly: a
+certified scenario must not require a wrong state.
 
-The deviation is not a one-line fix. `hw-pmic-pwr-cfg-lost-update` depends on the
-boot byte and on the byte after the GPS cut differing, which is the only way its
-stale write can lose an update at all; starting at 0x17 removes the difference
-and the scenario loses its subject. Correcting the model therefore means moving
-the stale-write snapshot to a seeded read taken after the rail changes, and
-re-running the full simulator suite. That is its own PR, not a side effect of a
-verification pass.
-
-Fix in this pass: the deviation is pinned instead of hidden.
-`sim/scenarios/e2e/ext5v-rail-boot.txt` asserts the modelled byte (0x1F), the
-powered port, and the transfer contract around it, and its header states why the
-byte is what it is and what a corrected model must change. A reader of the suite
-now sees the disagreement, and any change to it fails a scenario.
+Fix: `sim/hardware_model.cpp` starts the byte at `PWR_CFG_RESET`, drops the
+unconditional boost step, and moves the stale-read snapshot to the moment the
+rail manager switches the port on, because a read only goes stale if something
+read the byte while the port was powered. `hw.rail.gpsWants` also starts false.
+`hw-pmic-pwr-cfg-lost-update` asserts the byte through that sequence (0x1F after
+the receiver's enable, 0x17 after the cut, 0x0F after the stale LED write) and
+keeps its lost-update demonstration. `ext5v-rail-boot` asserts the state the
+firmware actually produces at boot, a receiver-held port, and the IR hold on top
+of it. The GPS-disabled corner is not certified: the model reports a holder with
+an unpowered port there, which is recorded in
+[543-review-feedback.md](543-review-feedback.md) as its own defect.
 
 ## Judged already correct
 
@@ -171,7 +170,7 @@ fact number in the per-board table.
 | Fact | Rows | Evidence |
 | :--- | :--- | :--- |
 | Battery capacities 95, 120, 200, 250, 110, 500 | StickC, Plus, Plus2, StickS3, Core, Core2 | The product pages state each figure, and each page's version table records the revision that changed it |
-| Tough 390 mAh | Tough | Recorded from the M5Tough README in plans/354; this pass could not reopen that document, so it stays REPORTED |
+| Tough 390 mAh | Tough | The M5Tough README, <https://github.com/m5stack/M5Tough>: "The battery capacity has been upgraded to 390mAh" |
 | Plus2 `battery` caps `{level, voltage, false, false}` | Plus2 | The board has no PMIC and reads only the G38 divider, so there is no current or charge status |
 | StickS3 `battery` caps `{level, voltage, false, true}` | StickS3 | The M5PM1 reports voltage and the charge state on `PYG0_CHG_STAT` and has no current register |
 | Core `battery` caps `{level, false, false, true}` | Core | The IP5306's I2C interface exposes a four-level gauge and the `REG_READ0` 0x70 bit 3 charge flag that M5Unified reads (`docs/components/ip5306.md` row 4), and the part has no current register |
@@ -198,7 +197,7 @@ fact number in the per-board table.
 
 ## What stays UNVERIFIED
 
-The per-board table lists twelve open facts with the measurement each needs. The
+The per-board table lists eleven open facts with the measurement each needs. The
 four that are most likely to be wrong rather than merely unknown:
 
 - The MPU6886 wake-on-motion count size, assumed 4 mg. Six rows depend on it. The
@@ -213,16 +212,26 @@ four that are most likely to be wrong rather than merely unknown:
 
 | Command | Result |
 | :--- | :--- |
-| `board-profile` | PASS, with the corrected `rtcOnBus` and `ledActiveLow` values and the boot-rule assertion |
+| `board-profile` | PASS, with the corrected `rtcOnBus` and `ledActiveLow` values and the per-row boot-rule literal |
+| Mutation proof for the boot rule | Dropping the timed-wake term from `Board::clearsStaleRtcAlarm()` fails `StickC+`, `StickC+2` and `Tough`; restored, PASS |
 | Host suite: `cmake --build` then `ctest -j 4` | PASS, 221 of 221 |
 | `clang-format 21.1.2 --dry-run --Werror` on the changed C and C++ files | clean |
-| `python3 tools/check_doc_citations.py` | PASS, 0 errors of 3,109 citations in 176 files |
+| `python3 tools/check_doc_citations.py` | PASS, 0 errors |
 | `python3 tools/pre_review.py --base origin/master` | PASS, 13 gates |
 | `sh sim/scripts/check-doc-tokens.sh` | PASS |
 | `python3 tools/check_sim_scenarios.py` | PASS with the new scenario |
 | `python3 tools/check_sim_coverage.py` | PASS, 206 modeled hardware entries of 206 |
-| `sim/scenarios/e2e/ext5v-rail-boot.txt` under the `sim-e2e` capability env | PASS, 13 assertions |
-| `ext5v-rail-holders`, `ext5v-rail-interlock`, `hw-ir-rail-cut-in-flight`, `hw-pmic-pwr-cfg-lost-update` under the same env | PASS |
+| `sh sim/scripts/run-e2e.sh` on the M5StickS3 binary | PASS, every certified e2e scenario, including the seven `board-row-*` rows and `ext5v-rail-boot` |
 
 Hardware was not attached. Every electrical fact in this pass is a document or a
 library reading, and the UNVERIFIED rows say so.
+
+## Follow-up: review feedback
+
+The independent review of PR 543 requested changes and is recorded in
+[543-review-feedback.md](543-review-feedback.md), with each finding marked fixed
+or answered there. It corrected one promoted state on the Plus2 IR polarity, one
+on the StickS3 panel that the page does name, the boot-rule assertion that could
+not fail, six certified scenarios that pinned the moved rows, the simulator boot
+byte, and ten smaller defects. The UNVERIFIED count is eleven after it closed U6
+and U7 and added U13.

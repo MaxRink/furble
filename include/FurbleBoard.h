@@ -59,9 +59,11 @@ struct Profile {
   // alive. The chip's voltage-low flag stays the guard for a calendar that did
   // stop, and it is read on a backed row only.
   bool rtcBatteryBacked;
-  // M5Unified can reach an RTC chip on the internal I2C bus. This is not the
-  // timed-wake column: the Plus2 is the only row with a chip M5Unified drives,
-  // so a write to its calendar is the only one that reaches hardware.
+  // M5Unified can reach an RTC chip on the internal I2C bus: a BM8563 at 0x51
+  // answers on the StickC, the StickC Plus, the StickC Plus2, the Core2 and the
+  // Tough, and on no other row. This is not the timed-wake column, so a write
+  // reaches hardware on every one of those and only the Plus2 and the Tough
+  // also wake on the alarm.
   bool rtcOnBus;
   int8_t irPin;  // -1 when the board has no IR emitter
   MotionWake motionWake;
@@ -100,6 +102,19 @@ struct Profile {
 
 /** The row for a board model. Unknown boards get a no-hardware row. */
 const Profile &profileFor(m5::board_t board);
+
+/**
+ * True when the boot path may clear a stale RTC alarm flag on this row.
+ *
+ * The clear exists for a chip a write can reach whose alarm is not the timed
+ * wake source. A row that wakes on its RTC alarm keeps the flag for
+ * consumeTimedWake(), so both columns are required. This is the whole rule:
+ * Platform::getInstance() calls it and tests/host/board_profile_test.cpp pins a
+ * literal per row, so dropping either term fails a test.
+ */
+constexpr bool clearsStaleRtcAlarm(const Profile &row) {
+  return row.rtcOnBus && (row.timedWake != TimedWake::RTC_ALARM);
+}
 
 /** The row for the running board. Valid after Platform::init(). */
 const Profile &profile(void);

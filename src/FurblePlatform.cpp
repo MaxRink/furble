@@ -173,7 +173,7 @@ Platform &Platform::getInstance(void) {
     // if a future M5Unified stops gating on its probe result, an unneeded
     // NACKing transaction in the boot window. The Plus2 keeps its BM8563 alarm
     // flag for consumeTimedWake(), so it is excluded by the second test.
-    if (board.rtcOnBus && (board.timedWake != Board::TimedWake::RTC_ALARM)) {
+    if (Board::clearsStaleRtcAlarm(board)) {
       M5.Rtc.disableIRQ();
     }
     BootTimeline::mark(BootTimeline::DISPLAY_READY);

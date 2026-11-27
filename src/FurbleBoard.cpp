@@ -41,9 +41,10 @@ namespace {
 // the same switch feeds the Grove 5 V output, the HAT EXT_5V pin, and the
 // infrared transmitter and receiver, and the rail manager shares it between
 // holders (include/FurbleRail.h). The M5StickS3 vendor page states that
-// EXT_5V_EN feeds those three outputs and that M5Unified leaves the port
-// disabled at init, which is why Platform::init() passes output_power = false
-// there.
+// EXT_5V_EN feeds those three outputs. It also claims M5Unified leaves the port
+// disabled at init, which the pinned 0.2.20 does not: output_power defaults to
+// true and _begin() sets the bit, so Platform::init()'s output_power = false is
+// load bearing, not belt and braces.
 //
 // The EXTEN-to-Grove-5V routing is documented by the vendor pinmap: the
 // M5StickC and M5StickC Plus AXP192 output tables both list a 5V GROVE output
