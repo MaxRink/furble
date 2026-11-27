@@ -120,7 +120,7 @@ can tell them apart:
    the ATT layer it returns false and the attempt fails.
 2. One step returns false quickly, `_connect()` returns false, `Camera::connect`
    tears the link down (`lib/furble/Camera.cpp:53-54`), `connectAll` counts a
-   failure and returns `STATE_CONNECT` (`src/FurbleControl.cpp:452-455`), and
+   failure and returns `STATE_CONNECT` (`src/FurbleControl.cpp:503-506`), and
    the control task retries. With reconnect enabled
    (`Settings::RECONNECT`, `src/FurbleUI.cpp:1438`) it retries forever, so the
    UI shows `connecting` indefinitely; each retry hits the same stale-session

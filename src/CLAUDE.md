@@ -22,6 +22,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   command, such as reaping the drain after a cancel, must wake it: the
   interactive disconnect posts one no-op `CMD_ERROR`, or every cancel holds
   the connect gate for up to a tick (plan 317).
+  A per-target queue of 8 bounds every camera command except a shutter or focus
+  release, which takes the oldest waiting command's slot instead of being
+  dropped. The press it ends was already delivered and no vendor driver times
+  the hold out, so the release is the one command a full queue must not lose
+  (plan 374). Both sides stay non-blocking and the queue never grows. A queued
+  `CMD_DISCONNECT` refuses every later command, so a release cannot evict it.
 - The simulator UI loop calls its post-`lv_task_handler` hook only after the
   real production UI handler returns. Keep this hook observational: it may
   advance simulator settle bookkeeping, but must not move restart ownership or

@@ -455,6 +455,10 @@ The record layout, the tag numbers, the size limits and every error code are in
 - `focus press` half-presses focus and `focus release` ends. Ricoh cameras do
   not support this action over BLE, so both commands are no-ops. Their shutter
   command uses `OperationRequest {0x01, 0x01}` for capture with autofocus.
+- A full per-camera command queue never drops a release. It displaces the oldest
+  waiting command instead, because a lost release leaves the camera holding the
+  shutter. A press displaced that way fires nothing, and the release behind it
+  is harmless.
 
 These enqueue camera commands directly. They bypass the button-mode dispatch and
 the shutter-lock state, so use them to trigger the camera, not to test the

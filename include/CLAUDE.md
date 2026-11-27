@@ -22,6 +22,16 @@ Public headers for the app layer in src/, one header per module
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
+- `Control::Target::sendCommand()` bounds every command by the per-target
+  queue, one of 8, except a shutter or focus release, which takes the oldest
+  waiting command's slot rather than being dropped. The press a release ends
+  has already been delivered and no vendor driver times that hold out, so the
+  loss leaves the shutter held (plan 374). Both sends stay non-blocking and the
+  queue never grows, and an evicted request is answered by the release behind
+  it with an up the camera ignores. `CMD_DISCONNECT` sets
+  `Target::m_DisconnectPending` before it drains and every later command is
+  refused, so the eviction can never take the one command the queue must not
+  lose and `disconnect()` never waits out its cap on a lost teardown.
 - `Control::m_Targets` is owned by `m_Mutex`, and every reader takes it. The
   1 Hz GPS service is a fourth owner of that vector. It runs on the UI loop,
   never on `GPS::task()`: the LVGL `gps_service_timer` in display builds and
