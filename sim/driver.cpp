@@ -657,9 +657,11 @@ void validateSeed(const std::string &name, const std::string &value) {
     }
     return;
   } else if (name == "gps_model") {
-    // The receiver on the port: the historic CASIC unit, a virtual u-blox
-    // MAX-M10S or MIA-M10Q, or a receiver that answers no binary protocol.
-    if (value != "casic" && value != "m10" && value != "m10-mia" && value != "nmea") {
+    // The receiver on the port: the historic CASIC unit, a virtual L1-only
+    // u-blox MAX-M10S or MIA-M10Q, a virtual dual-band NEO-F10N, or a receiver
+    // that answers no binary protocol.
+    if (value != "casic" && value != "m10" && value != "m10-mia" && value != "f10"
+        && value != "nmea") {
       std::cerr << "Invalid gps_model: " << value << '\n';
       std::exit(2);
     }
@@ -1889,6 +1891,26 @@ std::string queryValueUnscoped(const std::string &key) {
       }
       if (field == "verified") {
         return std::to_string(ubx.config_verified);
+      }
+      // The signal band capability: which bands the receiver implements, how
+      // furble learned it, and whether the configuration wrote them.
+      if (field == "bands") {
+        return std::to_string(ubx.bands);
+      }
+      if (field == "band_probed") {
+        return ubx.bands_probed ? "1" : "0";
+      }
+      if (field == "family") {
+        return std::to_string(ubx.family);
+      }
+      if (field == "psm_supported") {
+        return ubx.psm_supported ? "1" : "0";
+      }
+      if (field == "l5_written") {
+        return ubx.l5_written ? "1" : "0";
+      }
+      if (field == "l5_refused") {
+        return ubx.l5_refused ? "1" : "0";
       }
       if (field == "sos_restore") {
         return std::to_string(ubx.sos_restore);

@@ -1,0 +1,33 @@
+# The L1-only side of the same question: the M10 firmware has no L5 signal key
+# at all (u-blox M10 SPG 5.10 interface description UBX-21035062 R03, 4.9.21
+# page 152, Table 42). The capability probe is answered with UBX-ACK-NAK, which
+# is how a firmware reports a key it does not know (3.10.4 page 53), and furble
+# stays on L1.
+#
+# The count is the assertion that matters: one NAK, the probe's. If the signal
+# batch had carried an L5 key, that batch would have been refused in full and
+# the closing read-back would not have matched.
+seed gps true
+seed gps_model m10
+seed gps_m10_hot true
+seed gps_gnss 9
+wait 8000
+assert gps.backend ubx
+assert gps.ubx.module MAX-M10S
+assert gps.ubx.family 1
+assert gps.ubx.bands 1
+assert gps.ubx.band_probed 1
+assert gps.ubx.psm_supported 1
+assert-eventually 3000 gps.ubx.verified 1
+assert m10.naks 1
+assert gps.ubx.l5_written 0
+assert gps.ubx.l5_refused 0
+# The L1 signals are written as they always were.
+assert m10.ram.1031001f 1
+assert m10.ram.10310001 1
+assert m10.ram.10310021 1
+assert m10.ram.10310007 1
+assert m10.ram.10310024 1
+assert m10.ram.10310020 1
+assert-eventually 5000 gps.source uart
+exit

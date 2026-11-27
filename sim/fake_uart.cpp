@@ -153,9 +153,10 @@ uint32_t monHwPolls = 0;
 bool monHwShort = false;
 
 // Which receiver is on the port. "casic" is the historic AT6668 model and the
-// default, so every scenario written before the M10 model is unchanged. "m10"
-// and "m10-mia" are the virtual u-blox M10 (MAX-M10S, MIA-M10Q), and "nmea" is
-// a receiver that outputs NMEA and answers nothing binary at all.
+// default, so every scenario written before the u-blox model is unchanged.
+// "m10" and "m10-mia" are the virtual L1-only u-blox M10 (MAX-M10S, MIA-M10Q),
+// "f10" is the virtual L1/L5 F10 (NEO-F10N), and "nmea" is a receiver that
+// outputs NMEA and answers nothing binary at all.
 std::string receiverModel = "casic";
 Furble::Sim::VirtualM10 m10;
 Furble::Sim::VirtualM10::Options m10Options;
@@ -163,7 +164,7 @@ bool railOn = true;
 bool m10Silent = false;
 
 bool isM10Locked(void) {
-  return receiverModel == "m10" || receiverModel == "m10-mia";
+  return receiverModel == "m10" || receiverModel == "m10-mia" || receiverModel == "f10";
 }
 
 /** Rebuild the advancing fix burst at base 12:35:19 plus fixSecond. */
@@ -801,7 +802,16 @@ void furble_sim_uart_set_model(const char *model,
     m10Options.hot = hot;
     m10Options.unknownKey = unknownKey;
     m10Options.unresolved = unresolved;
-    m10Options.module = (receiverModel == "m10-mia") ? "MIA-M10Q" : "MAX-M10S";
+    const bool dual = receiverModel == "f10";
+    m10Options.module =
+        dual ? "NEO-F10N" : ((receiverModel == "m10-mia") ? "MIA-M10Q" : "MAX-M10S");
+    // The dual-band firmware implements the four L5 keys, has no CFG-PM group
+    // and no GLONASS key (F10 IFD UBX-23002975 R02, 4.9.20 pages 158 and 159;
+    // NEO-F10N integration manual UBXDOC-963802114-12193 R04, migration table
+    // page 72). The probe is what discovers the difference.
+    m10Options.bands = dual
+                           ? static_cast<uint8_t>(Furble::Ubx::BAND_L1 | Furble::Ubx::BAND_L5)
+                           : Furble::Ubx::BAND_L1;
     m10.reset(m10Options, Furble::Sim::clockMillis());
     if (!railOn) {
       m10.setPower(false, Furble::Sim::clockMillis());

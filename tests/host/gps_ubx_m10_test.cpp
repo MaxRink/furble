@@ -330,6 +330,154 @@ void testEpoch() {
   check(polled.value(Ubx::Key::MSGOUT_NAV_SAT_UART1) == 0, "the poll left the rate alone");
 }
 
+/** A virtual NEO-F10N: the dual-band firmware with no power save and no GLONASS. */
+void resetDual(VirtualM10 &m10, uint32_t now) {
+  VirtualM10::Options options;
+  options.module = "NEO-F10N";
+  options.bands = static_cast<uint8_t>(Ubx::BAND_L1 | Ubx::BAND_L5);
+  m10.reset(options, now);
+}
+
+/**
+ * The two variants of the virtual receiver.
+ *
+ * What this fixes, from the documents: the L1 firmware has no L5 signal key, so
+ * a request for one is refused (M10 IFD UBX-21035062 R03, 4.9.21 page 152,
+ * Table 42, and 3.10.5 for the refusal); the dual-band firmware has all four
+ * (F10 IFD UBX-23002975 R02, 4.9.20 pages 158 and 159, Table 46) and refuses a
+ * plan that splits the bands of one constellation (NEO-F10N integration manual
+ * UBXDOC-963802114-12193 R04, 2.1.3 page 10); and it has neither a CFG-PM key
+ * nor a GLONASS key (same interface description 4.9, and the module manual's
+ * migration table, page 72).
+ */
+void testDualBandVariant() {
+  // MON-VER tells the two apart: protocol 34.10 against 40.00.
+  VirtualM10 l1;
+  l1.reset({}, 0);
+  auto reply = frames(send(l1, Ubx::pollMonVer(), 10));
+  Ubx::MonVer ver;
+  check(reply.size() == 1 && Ubx::parseMonVer(reply[0].data() + 6, reply[0].size() - 8, ver)
+            && ver.field("PROTVER") == "34.10" && ver.field("MOD") == "MAX-M10S",
+        "the L1 variant reports protocol 34.10");
+  VirtualM10 dual;
+  resetDual(dual, 0);
+  reply = frames(send(dual, Ubx::pollMonVer(), 10));
+  check(reply.size() == 1 && Ubx::parseMonVer(reply[0].data() + 6, reply[0].size() - 8, ver)
+            && ver.field("PROTVER") == "40.00" && ver.field("MOD") == "NEO-F10N",
+        "the dual-band variant reports protocol 40.00");
+  check(Ubx::capsFromVersion(ver).dualBand(), "MON-VER names the dual-band family");
+
+  // The capability probe: the L1 variant refuses the four L5 keys, the
+  // dual-band variant answers with one item each.
+  std::vector<uint32_t> keys;
+  for (const uint32_t key : Ubx::l5Keys()) {
+    keys.push_back(key);
+  }
+  const auto poll = Ubx::valGet(Ubx::GET_DEFAULT, keys);
+  check(acked(send(l1, poll, 20), false), "the L1 variant refuses the L5 capability poll");
+  const auto answer = frames(send(dual, poll, 20));
+  Ubx::ValGet get = {};
+  check(!answer.empty() && Ubx::parseValGet(answer[0].data() + 6, answer[0].size() - 8, get)
+            && get.items.size() == 4 && get.layer == Ubx::GET_DEFAULT,
+        "the dual-band variant answers the L5 capability poll");
+
+  // Each L5 key alone: refused on L1, accepted on the dual-band part.
+  const uint32_t l5[] = {Ubx::Key::SIGNAL_GPS_L5, Ubx::Key::SIGNAL_GAL_E5A,
+                         Ubx::Key::SIGNAL_BDS_B2A, Ubx::Key::SIGNAL_QZSS_L5};
+  for (const uint32_t key : l5) {
+    VirtualM10 fresh;
+    fresh.reset({}, 0);
+    check(acked(send(fresh, Ubx::valSet(Ubx::LAYER_RAM, {{key, 1}}), 10), false),
+          "an L1 receiver refuses an L5 signal key");
+    VirtualM10 freshDual;
+    resetDual(freshDual, 0);
+    check(acked(send(freshDual, Ubx::valSet(Ubx::LAYER_RAM, {{key, 1}}), 10), true),
+          "a dual-band receiver accepts an L5 signal key");
+    check(freshDual.value(key) == 1, "the dual-band receiver defaults the L5 key on");
+  }
+
+  // The documented exclusions, enforced as refusals: a plan that splits one
+  // constellation's bands, B1I on a receiver that has no B1I, a GLONASS write
+  // and any power save write.
+  VirtualM10 plan;
+  resetDual(plan, 0);
+  check(acked(send(plan,
+                   Ubx::valSet(Ubx::LAYER_RAM,
+                               {
+                                   {Ubx::Key::SIGNAL_GPS_L1CA, 1},
+                                   {Ubx::Key::SIGNAL_GPS_L5,   0}
+  }),
+                   10),
+              false),
+        "splitting the two GPS bands is refused");
+  check(acked(send(plan, Ubx::valSet(Ubx::LAYER_RAM, {{Ubx::Key::SIGNAL_BDS_B1, 1}}), 20), false),
+        "BeiDou B1I is refused on a dual-band receiver");
+  check(acked(send(plan, Ubx::valSet(Ubx::LAYER_RAM, {{Ubx::Key::SIGNAL_GLO_ENA, 1}}), 30), false),
+        "GLONASS is refused on a dual-band receiver");
+  check(acked(send(plan, Ubx::valSet(Ubx::LAYER_RAM, {{Ubx::Key::PM_OPERATEMODE, 2}}), 40), false),
+        "power save is refused on a dual-band receiver");
+  // The BandExclusion rule is not what refused those: the keys do not exist.
+  check(!plan.hasBbr(Ubx::Key::SIGNAL_GLO_ENA), "the refused writes stored nothing");
+
+  // A whole dual-band signal batch, as the driver builds it, is accepted and
+  // reads back as written.
+  const std::vector<Ubx::KeyValue> batch = {
+      {Ubx::Key::SIGNAL_GPS_ENA,    1},
+      {Ubx::Key::SIGNAL_GPS_L1CA,   1},
+      {Ubx::Key::SIGNAL_GPS_L5,     1},
+      {Ubx::Key::SIGNAL_GAL_ENA,    1},
+      {Ubx::Key::SIGNAL_GAL_E1,     1},
+      {Ubx::Key::SIGNAL_GAL_E5A,    1},
+      {Ubx::Key::SIGNAL_BDS_ENA,    1},
+      {Ubx::Key::SIGNAL_BDS_B1C,    1},
+      {Ubx::Key::SIGNAL_BDS_B2A,    1},
+      {Ubx::Key::SIGNAL_QZSS_ENA,   1},
+      {Ubx::Key::SIGNAL_QZSS_L1CA,  1},
+      {Ubx::Key::SIGNAL_QZSS_L5,    1},
+      {Ubx::Key::SIGNAL_QZSS_L1S,   1},
+      {Ubx::Key::SIGNAL_SBAS_ENA,   1},
+      {Ubx::Key::SIGNAL_SBAS_L1CA,  1},
+  };
+  check(acked(send(plan, Ubx::valSet(Ubx::LAYER_RAM | Ubx::LAYER_BBR, batch), 50), true),
+        "a dual-band signal batch is accepted");
+  const auto readBack = frames(send(plan, Ubx::valGet(Ubx::GET_RAM, keys), 60));
+  check(!readBack.empty() && Ubx::parseValGet(readBack[0].data() + 6, readBack[0].size() - 8, get)
+            && get.items.size() == 4,
+        "the L5 keys read back");
+
+  // The published ceilings the model reports for each variant.
+  check(l1.maxRateHz() == 3, "the L1 module default set publishes 3 Hz");
+  check(plan.maxRateHz() == 10, "the dual-band default set publishes 10 Hz");
+  VirtualM10 single;
+  resetDual(single, 0);
+  send(single,
+       Ubx::valSet(Ubx::LAYER_RAM,
+                   {
+                       {Ubx::Key::SIGNAL_GAL_ENA,  0},
+                       {Ubx::Key::SIGNAL_BDS_ENA,  0},
+                       {Ubx::Key::SIGNAL_QZSS_ENA, 0},
+                       {Ubx::Key::SIGNAL_SBAS_ENA, 0}
+  }),
+       70);
+  check(single.maxRateHz() == 20, "one dual-band constellation publishes 20 Hz");
+
+  // What the band costs: the dual-band part tracks at 21 mA where the L1 part
+  // tracks at 9.5 mA, and neither figure is an L1-only measurement of the same
+  // part, which the module cannot do (NEO-F10N data sheet UBX-23002117 R05,
+  // section 1.3 page 4 and Table 15 page 12; MAX-M10S data sheet UBX-20035208
+  // R08, Table 15 page 13).
+  VirtualM10 l1Power;
+  l1Power.reset({}, 0);
+  VirtualM10 dualPower;
+  resetDual(dualPower, 0);
+  l1Power.epoch(30000, 2026, 9, 6, 0);
+  dualPower.epoch(30000, 2026, 9, 6, 0);
+  check(l1Power.averageMicroamps(120000) == 9500, "the L1 part tracks at 9.5 mA");
+  check(dualPower.averageMicroamps(120000) == 21000, "the dual-band part tracks at 21 mA");
+  check(!l1Power.fixed(26999) && l1Power.fixed(27000), "the L1 cold start is 27 s");
+  check(!dualPower.fixed(27999) && dualPower.fixed(28000), "the dual-band cold start is 28 s");
+}
+
 void testB1cConfigOrder() {
   // A power save mode an earlier session stored in BBR is active when this
   // session starts. The receiver rejects a signal configuration that includes
@@ -337,7 +485,7 @@ void testB1cConfigOrder() {
   // model enforces, so the order of the two writes decides whether the
   // constellation change lands at all.
   constexpr uint8_t LAYERS = Ubx::LAYER_RAM | Ubx::LAYER_BBR;
-  Ubx::Request request = {200, 3, 0x0f, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, true};
+  Ubx::Request request = {200, 3, 0x0f, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, true, Ubx::CAPS_M10};
   const Ubx::Plan plan = Ubx::plan(request);
   const std::vector<Ubx::KeyValue> psm_on = {
       {Ubx::Key::PM_OPERATEMODE, 2}
@@ -376,6 +524,7 @@ int main() {
   testValidity();
   testStartsAndPower();
   testEpoch();
+  testDualBandVariant();
   testB1cConfigOrder();
   if (g_Failures != 0) {
     std::cout << "gps ubx m10 model: FAIL (" << g_Failures << " of " << g_Checks << " checks)\n";

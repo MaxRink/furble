@@ -1647,6 +1647,26 @@ const char *gpsSosRestoreName(uint8_t value) {
   }
 }
 
+/** Signal bands a UBX receiver implements, for the receiver report. */
+const char *gpsBandName(uint8_t bands) {
+  if ((bands & Ubx::BAND_L5) != 0) {
+    return "L1 and L5";
+  }
+  return (bands & Ubx::BAND_L1) != 0 ? "L1" : "unknown";
+}
+
+/** Firmware family furble named from MON-VER. */
+const char *gpsFamilyName(uint8_t family) {
+  switch (family) {
+    case Ubx::FAMILY_M10:
+      return "M10 (SPG 5.10, L1 only)";
+    case Ubx::FAMILY_F10:
+      return "F10 (SPG 6.00, L1 and L5)";
+    default:
+      return "unidentified";
+  }
+}
+
 const char *gpsPsmName(uint8_t psm) {
   switch (psm) {
     case Ubx::PSM_CYCLIC:
@@ -1681,6 +1701,12 @@ int gpsUbx(void) {
   printf("firmware: %s\n", ubx.firmware.empty() ? ubx.software.c_str() : ubx.firmware.c_str());
   printf("protocol: %s\n", ubx.protocol.empty() ? "unknown" : ubx.protocol.c_str());
   printf("hardware: %s\n", ubx.hardware.c_str());
+  // The bands are a receiver capability, so they are reported before the
+  // configuration that follows from them.
+  printf("family: %s\n", gpsFamilyName(ubx.family));
+  printf("bands: %s (%s)\n", gpsBandName(ubx.bands),
+         ubx.bands_probed ? "asked the receiver" : "MON-VER only, no L5 key written");
+  printf("power_save_supported: %s\n", boolStr(ubx.psm_supported));
   if (ubx.have_pvt) {
     printf("pvt_fix: %u\n", static_cast<unsigned>(ubx.pvt.fixType));
     printf("pvt_sats: %u\n", static_cast<unsigned>(ubx.pvt.numSV));
@@ -1699,10 +1725,16 @@ int gpsUbx(void) {
   if (ubx.configured) {
     printf("gnss: 0x%02x%s\n", ubx.gnss, ubx.gnss_refused ? " (refused, receiver default)" : "");
     printf("rate_ms: %u%s\n", static_cast<unsigned>(ubx.rate_ms),
-           ubx.rate_clamped ? " (clamped to the constellation limit)" : "");
-    printf("power_save: %s%s\n", gpsPsmName(ubx.psm),
-           ubx.psm_refused ? " (refused with BeiDou B1C)" : "");
+           ubx.rate_clamped ? " (clamped to the receiver limit)" : "");
+    printf("power_save: %s%s%s\n", gpsPsmName(ubx.psm),
+           ubx.psm_refused ? " (refused with BeiDou B1C)" : "",
+           ubx.psm_unsupported ? " (not implemented on this receiver)" : "");
     printf("assistnow_autonomous: %s\n", boolStr(ubx.ana));
+    printf("l5_signals: %s%s\n", ubx.l5_written ? "written" : "not written",
+           ubx.l5_refused ? " (refused by the receiver, stayed on L1)" : "");
+    if (ubx.b1i_refused) {
+      printf("beidou_b1i: not written, a dual-band receiver has B1C and B2a only\n");
+    }
   }
   printf("backup_supply: %s\n", boolStr(ubx.backup_supply));
   printf("sos_restore: %s\n", gpsSosRestoreName(ubx.sos_restore));

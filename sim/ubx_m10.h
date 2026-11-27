@@ -37,6 +37,16 @@ class VirtualM10 {
     uint32_t unknownKey = 0;
     /** Report a 3D fix with validDate and validTime but not fullyResolved. */
     bool unresolved = false;
+    /*
+     * The three fields below are appended so every positional Options
+     * initializer written before them keeps its meaning.
+     *
+     * BAND_L1 is the M10 firmware, whose CFG-SIGNAL table has no L5 key (M10
+     * IFD UBX-21035062 R03, 4.9.21 page 152, Table 42). BAND_L1 | BAND_L5 is
+     * the F10 firmware, which has the four L5 keys (F10 IFD UBX-23002975 R02,
+     * 4.9.20 pages 158 and 159, Table 46).
+     */
+    uint8_t bands = Ubx::BAND_L1;
   };
 
   enum class State : uint8_t {
@@ -83,6 +93,9 @@ class VirtualM10 {
 
   /** Average supply current since reset, from the data sheet figures, in uA. */
   uint32_t averageMicroamps(uint32_t now);
+
+  /** Highest navigation rate the modelled firmware publishes, in Hz. */
+  uint8_t maxRateHz(void) const;
 
   uint32_t valsets = 0;
   uint32_t naks = 0;

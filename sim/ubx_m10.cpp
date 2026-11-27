@@ -43,9 +43,22 @@ constexpr uint32_t ANA_MS = 3u * 24u * 60u * 60u * 1000u;
 constexpr uint32_t STANDBY_UA = 46;
 constexpr uint32_t BACKUP_UA = 28;
 
+/*
+ * The dual-band figures, NEO-F10N data sheet UBX-23002117 R05: cold start 28 s
+ * and hot start 2 s in the multi-GNSS sets (Table 2 page 4), tracking current
+ * 21 mA for the default set with SBAS active (Table 15 page 12), software
+ * standby 49 uA and hardware backup 31 uA (Table 16 page 12). The module cannot
+ * run single-band, so there is no L1-only figure to compare against.
+ */
+constexpr uint32_t TTFF_COLD_DUAL_MS = 28000;
+constexpr uint32_t TTFF_HOT_DUAL_MS = 2000;
+constexpr uint32_t DUAL_TRACKING_UA = 21000;
+constexpr uint32_t DUAL_STANDBY_UA = 49;
+constexpr uint32_t DUAL_BACKUP_UA = 31;
+
 /** Firmware defaults, IFD appendix, with the module production preset on top. */
-const std::map<uint32_t, uint64_t> &defaults(void) {
-  static const std::map<uint32_t, uint64_t> table = {
+const std::map<uint32_t, uint64_t> &defaults(bool dual) {
+  static const std::map<uint32_t, uint64_t> l1 = {
       {RATE_MEAS,                   1000},
       {Ubx::Key::RATE_NAV,          1   },
       {NAVSPG_DYNMODEL,             0   },
@@ -78,7 +91,44 @@ const std::map<uint32_t, uint64_t> &defaults(void) {
       {Ubx::Key::UART1OUTPROT_UBX,  1   },
       {Ubx::Key::UART1OUTPROT_NMEA, 1   },
   };
-  return table;
+  /*
+   * The dual-band firmware, F10 SPG 6.00 with the NEO-F10N module preset: both
+   * bands of GPS, Galileo, BeiDou and QZSS on, SBAS on (NEO-F10N integration
+   * manual UBXDOC-963802114-12193 R04, 2.1.3 page 10 and data sheet
+   * UBX-23002117 R05, 1.3 page 4). BeiDou B1I is not a NEO-F10N signal, so it
+   * starts off (data sheet Table 4 page 5). There is no GLONASS key and no
+   * CFG-PM key in the F10 interface description at all (4.9.20 pages 158 and
+   * 159; 4.9 has no CFG-PM group), which is what makes those writes NAK here.
+   * The firmware version strings are the F10 shape; their exact characters on a
+   * production module are an assumption this model does not need.
+   */
+  static const std::map<uint32_t, uint64_t> dual_table = {
+      {RATE_MEAS,                   1000},
+      {Ubx::Key::RATE_NAV,          1   },
+      {NAVSPG_DYNMODEL,             0   },
+      {Ubx::Key::SIGNAL_GPS_ENA,    1   },
+      {Ubx::Key::SIGNAL_GPS_L1CA,   1   },
+      {Ubx::Key::SIGNAL_GPS_L5,     1   },
+      {Ubx::Key::SIGNAL_SBAS_ENA,   1   },
+      {Ubx::Key::SIGNAL_SBAS_L1CA,  1   },
+      {Ubx::Key::SIGNAL_GAL_ENA,    1   },
+      {Ubx::Key::SIGNAL_GAL_E1,     1   },
+      {Ubx::Key::SIGNAL_GAL_E5A,    1   },
+      {Ubx::Key::SIGNAL_BDS_ENA,    1   },
+      {Ubx::Key::SIGNAL_BDS_B1,     0   },
+      {Ubx::Key::SIGNAL_BDS_B1C,    1   },
+      {Ubx::Key::SIGNAL_BDS_B2A,    1   },
+      {Ubx::Key::SIGNAL_QZSS_ENA,   1   },
+      {Ubx::Key::SIGNAL_QZSS_L1CA,  1   },
+      {Ubx::Key::SIGNAL_QZSS_L1S,   1   },
+      {Ubx::Key::SIGNAL_QZSS_L5,    1   },
+      {ANA_USE_ANA,                 0   },
+      {MSGOUT_NAV_PVT_UART1,        0   },
+      {MSGOUT_NAV_SAT_UART1,        0   },
+      {Ubx::Key::UART1OUTPROT_UBX,  1   },
+      {Ubx::Key::UART1OUTPROT_NMEA, 1   },
+  };
+  return dual ? dual_table : l1;
 }
 
 std::vector<uint8_t> ack(uint8_t cls, uint8_t id, bool ok) {
@@ -127,12 +177,14 @@ uint64_t VirtualM10::valueIn(const std::map<uint32_t, uint64_t> &ram, uint32_t k
   if (found != m_Bbr.end()) {
     return found->second;
   }
-  found = defaults().find(key);
-  return (found != defaults().end()) ? found->second : 0;
+  const bool dual = (m_Options.bands & Ubx::BAND_L5) != 0;
+  found = defaults(dual).find(key);
+  return (found != defaults(dual).end()) ? found->second : 0;
 }
 
 bool VirtualM10::known(uint32_t key) const {
-  return (defaults().count(key) != 0) && (key != m_Options.unknownKey);
+  const bool dual = (m_Options.bands & Ubx::BAND_L5) != 0;
+  return (defaults(dual).count(key) != 0) && (key != m_Options.unknownKey);
 }
 
 uint64_t VirtualM10::value(uint32_t key) const {
@@ -141,6 +193,7 @@ uint64_t VirtualM10::value(uint32_t key) const {
 
 bool VirtualM10::valid(const std::map<uint32_t, uint64_t> &ram) const {
   const auto on = [&](uint32_t key) { return valueIn(ram, key) != 0; };
+  const bool dual = (m_Options.bands & Ubx::BAND_L5) != 0;
   const bool gps = on(Ubx::Key::SIGNAL_GPS_ENA) && on(Ubx::Key::SIGNAL_GPS_L1CA);
   const bool gal = on(Ubx::Key::SIGNAL_GAL_ENA) && on(Ubx::Key::SIGNAL_GAL_E1);
   const bool bds = on(Ubx::Key::SIGNAL_BDS_ENA);
@@ -151,6 +204,35 @@ bool VirtualM10::valid(const std::map<uint32_t, uint64_t> &ram) const {
   // (DS-MAX 1.3 note 13, RN 4.3.6).
   if (!(gps || gal || b1i || b1c || glo) || (b1i && (b1c || glo))) {
     return false;
+  }
+  if (dual) {
+    // The dual-band firmware runs both bands of a constellation together and
+    // refuses a combination that splits them: "it is not possible to disable
+    // one of the bands. Both bands must be enabled and disabled at once.
+    // Unsupported combinations are rejected with a UBX-ACK-NAK message" (NEO-
+    // F10N integration manual UBXDOC-963802114-12193 R04, 2.1.3 page 10).
+    // QZSS L1S is an augmentation signal rather than a band, so it is not part
+    // of the pair, and B1I is not a NEO-F10N signal at all (data sheet
+    // UBX-23002117 R05, Table 4 page 5).
+    if (on(Ubx::Key::SIGNAL_BDS_B1)) {
+      return false;
+    }
+    // Both bands of a constellation agree with each other, and an enabled
+    // constellation has both. A disabled constellation keeps both signal keys
+    // set and is switched off by its enable key.
+    const auto pair = [&](uint32_t l1, uint32_t l5) { return on(l1) == on(l5); };
+    if (!pair(Ubx::Key::SIGNAL_GPS_L1CA, Ubx::Key::SIGNAL_GPS_L5)
+        || !pair(Ubx::Key::SIGNAL_GAL_E1, Ubx::Key::SIGNAL_GAL_E5A)
+        || !pair(Ubx::Key::SIGNAL_BDS_B1C, Ubx::Key::SIGNAL_BDS_B2A)
+        || !pair(Ubx::Key::SIGNAL_QZSS_L1CA, Ubx::Key::SIGNAL_QZSS_L5)) {
+      return false;
+    }
+    if ((on(Ubx::Key::SIGNAL_GPS_ENA) && !on(Ubx::Key::SIGNAL_GPS_L5))
+        || (on(Ubx::Key::SIGNAL_GAL_ENA) && !on(Ubx::Key::SIGNAL_GAL_E5A))
+        || (on(Ubx::Key::SIGNAL_BDS_ENA) && !on(Ubx::Key::SIGNAL_BDS_B2A))
+        || (on(Ubx::Key::SIGNAL_QZSS_ENA) && !on(Ubx::Key::SIGNAL_QZSS_L5))) {
+      return false;
+    }
   }
   // CFG-RATE-MEAS minimum 25 ms (IFD 4.9.17).
   const uint64_t rate = valueIn(ram, RATE_MEAS);
@@ -191,13 +273,16 @@ void VirtualM10::account(uint32_t now) {
 
 uint32_t VirtualM10::currentMicroamps(void) const {
   const bool max = isMax(m_Options.module);
-  const uint32_t continuous = max ? 9500 : 10500;
+  const bool dual = (m_Options.bands & Ubx::BAND_L5) != 0;
+  const uint32_t continuous = dual ? DUAL_TRACKING_UA : (max ? 9500 : 10500);
   const uint32_t cyclic = max ? 5000 : 5500;
+  const uint32_t standby = dual ? DUAL_STANDBY_UA : STANDBY_UA;
+  const uint32_t backup = dual ? DUAL_BACKUP_UA : BACKUP_UA;
   switch (m_State) {
     case State::OFF:
-      return m_Options.vbckp ? BACKUP_UA : 0;
+      return m_Options.vbckp ? backup : 0;
     case State::STANDBY:
-      return STANDBY_UA;
+      return standby;
     case State::STOPPED:
       return continuous;
     case State::ON:
@@ -211,7 +296,7 @@ uint32_t VirtualM10::currentMicroamps(void) const {
       // On for about one epoch per update period, inactive otherwise.
       const uint32_t period = std::max<uint32_t>(1000, periodMs());
       return static_cast<uint32_t>((static_cast<uint64_t>(continuous) * 1000
-                                    + static_cast<uint64_t>(STANDBY_UA) * (period - 1000))
+                                    + static_cast<uint64_t>(standby) * (period - 1000))
                                    / period);
     }
     default:
@@ -232,14 +317,16 @@ void VirtualM10::start(uint32_t now, bool keepBbr) {
   // defaults; RAM is not retained (IM-MAX 3.6.3.2).
   m_Ram.clear();
   m_Stream.clear();
-  uint32_t ttff = TTFF_COLD_MS;
+  const bool dual = (m_Options.bands & Ubx::BAND_L5) != 0;
+  const uint32_t hotMs = dual ? TTFF_HOT_DUAL_MS : TTFF_HOT_MS;
+  uint32_t ttff = dual ? TTFF_COLD_DUAL_MS : TTFF_COLD_MS;
   m_StartName = "cold";
   if (m_Options.hot) {
-    ttff = TTFF_HOT_MS;
+    ttff = hotMs;
     m_StartName = "hot";
     m_Options.hot = false;
   } else if (keepBbr && m_EverFixed && ((now - m_LastFix) < EPHEMERIS_MS)) {
-    ttff = TTFF_HOT_MS;
+    ttff = hotMs;
     m_StartName = "hot";
   } else if (keepBbr && m_EverFixed && (value(ANA_USE_ANA) != 0) && ((now - m_LastFix) < ANA_MS)) {
     ttff = TTFF_ANA_MS;
@@ -248,7 +335,7 @@ void VirtualM10::start(uint32_t now, bool keepBbr) {
     ttff = TTFF_WARM_MS;
     m_StartName = "warm";
   }
-  if (ttff == TTFF_COLD_MS) {
+  if (ttff == (dual ? TTFF_COLD_DUAL_MS : TTFF_COLD_MS)) {
     coldStarts++;
   } else if (ttff == TTFF_WARM_MS) {
     warmStarts++;
@@ -298,8 +385,9 @@ void VirtualM10::setPower(bool on, uint32_t now) {
 void VirtualM10::restart(uint16_t mask, uint32_t now) {
   account(now);
   m_State = State::ON;
+  const bool dual = (m_Options.bands & Ubx::BAND_L5) != 0;
   if (mask == Ubx::RST_HOT) {
-    m_FixAt = now + TTFF_HOT_MS;
+    m_FixAt = now + (dual ? TTFF_HOT_DUAL_MS : TTFF_HOT_MS);
     m_StartName = "hot";
     hotStarts++;
   } else if (mask == Ubx::RST_WARM) {
@@ -309,7 +397,7 @@ void VirtualM10::restart(uint16_t mask, uint32_t now) {
   } else {
     m_EverFixed = false;
     m_RtcValid = false;
-    m_FixAt = now + TTFF_COLD_MS;
+    m_FixAt = now + (dual ? TTFF_COLD_DUAL_MS : TTFF_COLD_MS);
     m_StartName = "cold";
     coldStarts++;
   }
@@ -326,6 +414,35 @@ void VirtualM10::tick(uint32_t now) {
 bool VirtualM10::outputting(uint32_t now) {
   tick(now);
   return m_State == State::ON;
+}
+
+uint8_t VirtualM10::maxRateHz(void) const {
+  // The published ceilings, read independently of the firmware's own table:
+  // MAX-M10S data sheet UBX-20035208 R08, Table 2 page 4 for the L1 sets, and
+  // NEO-F10N data sheet UBX-23002117 R05, Table 2 and Table 3 page 4 for the
+  // dual-band sets.
+  const auto on = [&](uint32_t key) { return value(key) != 0; };
+  const bool gps = on(Ubx::Key::SIGNAL_GPS_ENA);
+  const bool gal = on(Ubx::Key::SIGNAL_GAL_ENA);
+  const bool bds = on(Ubx::Key::SIGNAL_BDS_ENA);
+  const bool glo = on(Ubx::Key::SIGNAL_GLO_ENA);
+  const int majors = (gps ? 1 : 0) + (gal ? 1 : 0) + (bds ? 1 : 0) + (glo ? 1 : 0);
+  if ((m_Options.bands & Ubx::BAND_L5) != 0) {
+    return (majors <= 1) ? 20 : 10;
+  }
+  if (majors <= 1) {
+    return 18;
+  }
+  if (bds && !glo) {
+    return 3;
+  }
+  if (majors == 2) {
+    return 10;
+  }
+  if (majors == 3) {
+    return glo ? 6 : 8;
+  }
+  return 4;
 }
 
 uint32_t VirtualM10::periodMs(void) const {
@@ -463,10 +580,20 @@ std::vector<uint8_t> VirtualM10::handle(const Ubx::Stream &frame, uint32_t now) 
   if ((cls == Ubx::CLASS_MON) && (id == Ubx::ID_MON_VER) && (n == 0)) {
     monVerPolls++;
     Ubx::MonVer ver;
-    ver.sw = "ROM SPG 5.10 (7b202e)";
-    ver.hw = "000A0000";
-    ver.extensions = {"FWVER=SPG 5.10", "PROTVER=34.10", std::string("MOD=") + m_Options.module,
-                      "GPS;GLO;GAL;BDS", "SBAS;QZSS"};
+    if ((m_Options.bands & Ubx::BAND_L5) != 0) {
+      // F10 SPG 6.00 reports protocol 40.00 and its own firmware string (F10
+      // IFD UBX-23002975 R02, 1.2 page 10). The extension text beyond
+      // PROTVER, FWVER and MOD is this model's, not a captured one.
+      ver.sw = "ROM SPG 6.00 (0a1b2c)";
+      ver.hw = "00190000";
+      ver.extensions = {"FWVER=SPG 6.00", "PROTVER=40.00", std::string("MOD=") + m_Options.module,
+                        "GPS;GAL;BDS", "SBAS;QZSS;NAVIC"};
+    } else {
+      ver.sw = "ROM SPG 5.10 (7b202e)";
+      ver.hw = "000A0000";
+      ver.extensions = {"FWVER=SPG 5.10", "PROTVER=34.10", std::string("MOD=") + m_Options.module,
+                        "GPS;GLO;GAL;BDS", "SBAS;QZSS"};
+    }
     return Ubx::encodeMonVer(ver);
   }
 
@@ -540,7 +667,7 @@ std::vector<uint8_t> VirtualM10::handle(const Ubx::Stream &frame, uint32_t now) 
       if (layer == Ubx::GET_RAM) {
         items.push_back({key, value(key)});
       } else if (layer == Ubx::GET_DEFAULT) {
-        items.push_back({key, defaults().at(key)});
+        items.push_back({key, defaults((m_Options.bands & Ubx::BAND_L5) != 0).at(key)});
       } else if (m_Bbr.count(key) != 0) {
         items.push_back({key, m_Bbr.at(key)});
       }

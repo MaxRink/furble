@@ -8,15 +8,22 @@
 #include <vector>
 
 /*
- * Pure u-blox UBX protocol codec for the M10 receivers (MAX-M10S, MIA-M10Q).
+ * Pure u-blox UBX protocol codec for the L1 and dual-band receivers.
  *
  * Free of ESP-IDF, NVS, the board support library and the UI toolkit, so the
- * host tests, the fuzz target and the simulator's virtual M10 link it
- * unchanged. "IFD" below is the u-blox M10 SPG 5.10 Interface description,
- * UBX-21035062 R03 (protocol 34.10), the firmware both modules run from ROM.
- * Every message and key cites its IFD section. plans/implemented/321-ublox-m10-driver.md
- * holds the full source list, including the module data sheets and
- * integration manuals.
+ * host tests, the fuzz target and the simulator's virtual receiver link it
+ * unchanged. Two interface descriptions are in play, and a comment naming a
+ * section says which one it is:
+ *
+ * - "IFD" is the u-blox M10 SPG 5.10 Interface description, UBX-21035062 R03
+ *   (protocol 34.10), the firmware MAX-M10S and MIA-M10Q run from ROM. It has
+ *   no L5 signal key at all (IFD 4.9.21 page 152, Table 42).
+ * - "F10-IFD" is the u-blox F10 SPG 6.00 Interface description, UBX-23002975
+ *   R02 (protocol 40.00), the firmware the L1/L5 parts run. Its CFG-SIGNAL
+ *   table carries the L5 keys (F10-IFD 4.9.20 pages 158 and 159, Table 46).
+ *
+ * Every message and key cites its section and page. plans/implemented/321-ublox-m10-driver.md
+ * holds the M10 source list, plans/512-dual-band-l5.md the dual-band one.
  */
 
 namespace Furble {
@@ -83,18 +90,22 @@ constexpr uint32_t RATE_NAV = 0x30210002;             /* U2 cycles, default 1 */
 constexpr uint32_t NAVSPG_DYNMODEL = 0x20110021;      /* E1, IFD 4.9.12, default 0 */
 constexpr uint32_t SIGNAL_GPS_ENA = 0x1031001f;       /* L, IFD 4.9.21 */
 constexpr uint32_t SIGNAL_GPS_L1CA = 0x10310001;      /* L */
+constexpr uint32_t SIGNAL_GPS_L5 = 0x10310004;        /* L, F10-IFD 4.9.20 page 158 */
 constexpr uint32_t SIGNAL_SBAS_ENA = 0x10310020;      /* L */
 constexpr uint32_t SIGNAL_SBAS_L1CA = 0x10310005;     /* L */
 constexpr uint32_t SIGNAL_GAL_ENA = 0x10310021;       /* L */
 constexpr uint32_t SIGNAL_GAL_E1 = 0x10310007;        /* L */
+constexpr uint32_t SIGNAL_GAL_E5A = 0x10310009;       /* L, F10-IFD 4.9.20 page 158 */
 constexpr uint32_t SIGNAL_BDS_ENA = 0x10310022;       /* L */
 constexpr uint32_t SIGNAL_BDS_B1 = 0x1031000d;        /* L, B1I */
 constexpr uint32_t SIGNAL_BDS_B1C = 0x1031000f;       /* L */
+constexpr uint32_t SIGNAL_BDS_B2A = 0x10310028;       /* L, F10-IFD 4.9.20 page 158 */
 constexpr uint32_t SIGNAL_QZSS_ENA = 0x10310024;      /* L */
 constexpr uint32_t SIGNAL_QZSS_L1CA = 0x10310012;     /* L */
 constexpr uint32_t SIGNAL_QZSS_L1S = 0x10310014;      /* L */
-constexpr uint32_t SIGNAL_GLO_ENA = 0x10310025;       /* L */
-constexpr uint32_t SIGNAL_GLO_L1 = 0x10310018;        /* L */
+constexpr uint32_t SIGNAL_QZSS_L5 = 0x10310017;       /* L, F10-IFD 4.9.20 page 159 */
+constexpr uint32_t SIGNAL_GLO_ENA = 0x10310025;       /* L, IFD only */
+constexpr uint32_t SIGNAL_GLO_L1 = 0x10310018;        /* L, IFD only */
 constexpr uint32_t PM_OPERATEMODE = 0x20d00001;       /* E1, IFD 4.9.15, default FULL */
 constexpr uint32_t PM_POSUPDATEPERIOD = 0x40d00002;   /* U4 s */
 constexpr uint32_t PM_ACQPERIOD = 0x40d00003;         /* U4 s */
@@ -410,6 +421,76 @@ constexpr uint8_t PSM_OFF = 0;
 constexpr uint8_t PSM_CYCLIC = 1;
 constexpr uint8_t PSM_ON_OFF = 2;
 
+/*
+ * Signal bands. A band belongs to the receiver firmware, not to a setting.
+ *
+ * The M10 firmware implements L1 signals only: its CFG-SIGNAL table stops at
+ * GLONASS L1 and has no L5 key (IFD 4.9.21 page 152, Table 42). The F10
+ * firmware implements GPS L5, Galileo E5a, BeiDou B2a and QZSS L5 (F10-IFD
+ * 4.9.20 pages 158 to 159, Table 46). Within a dual-band firmware the two
+ * bands of one constellation cannot be enabled apart: both are enabled or
+ * disabled together, and an unsupported combination is answered with
+ * UBX-ACK-NAK (NEO-F10N integration manual UBXDOC-963802114-12193 R04, 2.1.3
+ * page 10 and the data sheet UBX-23002117 R05, 1.3 page 4).
+ */
+constexpr uint8_t BAND_L1 = 0x01;
+constexpr uint8_t BAND_L5 = 0x02;
+
+/** Firmware families furble can name. An unnamed part stays at L1. */
+constexpr uint8_t FAMILY_UNKNOWN = 0;
+constexpr uint8_t FAMILY_M10 = 1; /**< SPG 5.10, protocol 34.10, L1 only */
+constexpr uint8_t FAMILY_F10 = 2; /**< SPG 6.00, protocol 40.00, L1 and L5 */
+
+/**
+ * What a receiver can do, as far as furble can tell.
+ *
+ * The defaults refuse everything beyond L1, so a receiver furble has not
+ * identified never receives a key it may not implement. capsFromVersion()
+ * reads the MON-VER hint and CapsProbe confirms it by asking the receiver.
+ */
+struct Caps {
+  uint8_t bands;  /**< BAND_* bits the firmware implements */
+  bool psm;       /**< power save modes: CFG-PM-OPERATEMODE and PSMOO/PSMCT */
+  bool glo;       /**< GLONASS signals at all */
+  uint8_t family; /**< FAMILY_* */
+
+  bool dualBand(void) const { return (bands & BAND_L5) != 0; }
+};
+
+/**
+ * Nothing beyond what furble always assumed.
+ *
+ * A receiver furble cannot name keeps the L1 signals, power save and GLONASS
+ * keys the driver has always written; only the L5 band is withheld, because
+ * that is the one capability this model adds and it needs positive evidence.
+ * A signal VALSET carrying an unknown key is refused in full, so guessing it
+ * costs the whole batch.
+ */
+constexpr Caps CAPS_UNKNOWN = {BAND_L1, true, true, FAMILY_UNKNOWN};
+
+/** The M10 preset: L1 only, power save, GLONASS (IFD 4.9.21 page 152). */
+constexpr Caps CAPS_M10 = {BAND_L1, true, true, FAMILY_M10};
+
+/**
+ * The F10 preset: L1 and L5, no power save, no GLONASS.
+ *
+ * The F10 interface description has no CFG-PM group at all, and the module
+ * manual states that power save is not supported while hardware backup and
+ * software standby are (NEO-F10N integration manual UBXDOC-963802114-12193
+ * R04, migration table, page 72). Its CFG-SIGNAL table lists no GLONASS key
+ * (F10-IFD 4.9.20 pages 158 and 159).
+ */
+constexpr Caps CAPS_F10 = {BAND_L1 | BAND_L5, false, false, FAMILY_F10};
+
+/** Capabilities named by a MON-VER answer. A hint until CapsProbe confirms. */
+Caps capsFromVersion(const MonVer &ver);
+
+/** The four L5 signal keys the capability probe asks for. */
+const std::array<uint32_t, 4> &l5Keys(void);
+
+/** Is this one of the four L5 signal keys? */
+bool isL5Key(uint32_t key);
+
 /** What the user asked for, in furble's setting terms. */
 struct Request {
   uint16_t rate_ms;  /**< 0 leaves the receiver rate alone */
@@ -419,6 +500,8 @@ struct Request {
   uint8_t psm;       /**< PSM_* */
   uint32_t period_s; /**< PSMOO update period */
   bool ana;          /**< AssistNow Autonomous */
+  /** What the receiver can do, from the capability probe. */
+  Caps caps;
 };
 
 /** What a plan decided; a driver keeps only this part. */
@@ -426,9 +509,35 @@ struct PlanSummary {
   uint16_t rate_ms;  /**< the rate actually sent, 0 when left alone */
   uint8_t gnss;      /**< effective constellation mask */
   uint8_t psm;       /**< the power save mode actually sent */
+  uint8_t bands;     /**< BAND_* actually written, 0 when no signal write happened */
   bool gnss_refused; /**< the mask broke a rule, signals left alone */
   bool psm_refused;  /**< power save with BeiDou B1C, left at full power */
   bool rate_clamped; /**< the rate exceeded the constellation limit */
+  /**
+   * Power save was asked for on a receiver that has none.
+   *
+   * The F10 firmware has no CFG-PM group and its module manual states that
+   * power save is not supported (NEO-F10N integration manual
+   * UBXDOC-963802114-12193 R04, migration table, page 72), so neither the
+   * mode nor the period key is written.
+   */
+  bool psm_unsupported;
+  /**
+   * BeiDou B1I was asked for on a dual-band receiver.
+   *
+   * The NEO-F10N data sheet lists B1C and B2a only (UBX-23002117 R05, Table 4
+   * page 5), so the plan writes B1C and B2A and leaves B1I alone.
+   */
+  bool b1i_refused;
+  /**
+   * The receiver refused an L5 key after the capability probe passed.
+   *
+   * The driver sets this when a signal batch carrying an L5 key is NAKed, and
+   * demotes the receiver to L1 for the rest of the session. It is reported so
+   * the refusal is never silent: the L1 signals in that batch were refused with
+   * it, because a VALSET applies as a whole (IFD 3.10.5).
+   */
+  bool l5_refused;
   /**
    * AssistNow Autonomous actually written.
    *
@@ -473,8 +582,27 @@ uint8_t gnssFromConstellation(uint8_t constellation);
 /** A mask the receiver accepts: one major GNSS, QZSS and SBAS only with GPS. */
 bool gnssValid(uint8_t mask);
 
+/**
+ * gnssValid plus the receiver's own limits.
+ *
+ * A dual-band part has no GLONASS signal keys (F10-IFD 4.9.20 pages 158 and
+ * 159, Table 46), so a mask that asks for GLONASS on one is refused rather
+ * than written and NAKed.
+ */
+bool gnssValid(uint8_t mask, const Caps &caps);
+
 /** Highest navigation rate for a mask at the default CPU clock (DS Table 2/3). */
 uint8_t maxRateHz(uint8_t mask);
+
+/**
+ * Highest navigation rate for a mask on a receiver with these bands.
+ *
+ * An L1 receiver keeps the M10 figures (MAX-M10S data sheet UBX-20035208 R08,
+ * Table 2 page 4). A dual-band receiver takes the F10 figures: 20 Hz for one
+ * constellation and 10 Hz for more (NEO-F10N data sheet UBX-23002117 R05,
+ * Table 2 and Table 3 page 4).
+ */
+uint8_t maxRateHz(uint8_t mask, const Caps &caps);
 
 /** GPS_PLATFORM 1..4 to DYNMODEL: portable 0, stationary 2, pedestrian 3, automotive 4. */
 uint8_t dynModelForPlatform(uint8_t platform);
@@ -501,6 +629,52 @@ class Detect {
   Result service(uint32_t now, bool &poll);
 
   Result result(void) const { return m_Result; }
+  uint32_t deadline(void) const { return m_Deadline; }
+  uint8_t attempts(void) const { return m_Attempts; }
+
+ private:
+  Result m_Result = Result::IDLE;
+  uint8_t m_Attempts = 0;
+  uint32_t m_Deadline = 0;
+};
+
+/**
+ * Which bands a receiver implements, decided by asking it.
+ *
+ * A CFG-VALGET for the four L5 keys at the default layer is answered with a
+ * CFG-VALGET response by a receiver whose firmware knows them, and refused
+ * with UBX-ACK-NAK by one whose firmware does not: both interface
+ * descriptions state that this message NAKs when any key is unknown to the
+ * firmware (IFD 3.10.4 page 53, F10-IFD 3.10.4 pages 54 and 55). The poll
+ * writes nothing and needs no reset.
+ *
+ * The result is L1 until a positive answer arrives. A receiver that stops
+ * answering part way through leaves furble at L1, so no L5 key is ever
+ * written to a receiver that has not advertised one. That is the whole point:
+ * a signal VALSET carrying an unknown key is refused in full, which would
+ * take the rate, dynamic model and the L1 signals down with it.
+ */
+class CapsProbe {
+ public:
+  static constexpr uint32_t ATTEMPT_MS = 1000;
+  static constexpr uint8_t ATTEMPTS = 2;
+
+  enum class Result : uint8_t {
+    IDLE,    /**< not started */
+    WAITING, /**< a poll is outstanding */
+    L5,      /**< the receiver answered with the L5 keys */
+    L1,      /**< the receiver refused them, or never answered */
+  };
+
+  /** Start. The caller sends the first CFG-VALGET. */
+  void begin(uint32_t now);
+  /** An answer arrived: the VALGET data, or the NAK that ended it. */
+  void answered(bool l5);
+  /** Advance the deadline. Sets poll when the caller must send another poll. */
+  Result service(uint32_t now, bool &poll);
+
+  Result result(void) const { return m_Result; }
+  bool l5(void) const { return m_Result == Result::L5; }
   uint32_t deadline(void) const { return m_Deadline; }
   uint8_t attempts(void) const { return m_Attempts; }
 
