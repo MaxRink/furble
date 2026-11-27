@@ -25,6 +25,10 @@
       "reason": "Waveshare ESP32-S3-Touch-AMOLED-1.8 vendor repository, read at commit 01fd320 and not tracked. Cited by its repository-relative path from plan 360."
     },
     {
+      "prefix": "examples/Factory/",
+      "reason": "LilyGO LilyGo-LoRa-Series factory example, read at master on 2026-11-27 and not tracked. Cited by its repository-relative path from plan 376 and the 541 review record for the T-Beam rail branch it guards."
+    },
+    {
       "prefix": "esptool/",
       "reason": "esptool, installed as a Python package by the flash helpers and not tracked."
     },

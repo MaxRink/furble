@@ -236,6 +236,8 @@ the bench work.
 | [360-waveshare-amoled-1-8-port.md](360-waveshare-amoled-1-8-port.md) | Port plan for the slgray AMOLED-1.8 board: parts with their documents, pin collisions, AXP2101 rails and their boot state, whether M5GFX can drive the CO5300, the profile row, and the simulator and bench work |
 | [364-hardware-candidates.md](364-hardware-candidates.md) | Ranked off-the-shelf port candidates by new reusable capability per driver or profile unit: T-Beam Supreme, CoreS3 and Waveshare 1.75-G on top, the skip list, and the facts no vendor page settles |
 | [366-gps-receiver-selection.md](366-gps-receiver-selection.md) | GNSS receiver decision: the lever ordering with its magnitudes, the flat -146 to -148 dBm cold-start result, seven receivers with bands, constellations, sensitivity, TTFF, update rate, current, backup and driver, three priced options, the antenna against receiver rule and its five exceptions, and three catalog corrections |
+| [376-board-level-documents.md](376-board-level-documents.md) | Board-level document hunt: 28 schematics read and hashed, the boards that publish none, the T-Beam MAX-M10S V_IO path read from the shared drawing and the factory code, and what stays unverified |
+| [541-review-feedback.md](541-review-feedback.md) | Review-feedback record for the board-level document branch, PR #541: the V_BCKP branch misread and the eight HTML citation URLs |
 
 ## Bug analyses
 

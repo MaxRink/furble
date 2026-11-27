@@ -347,6 +347,43 @@ PCF85063ATL).
 - N44 https://www.cnx-software.com/2026/06/30/xiao-nrf54lm20a-sense-board-enables-ultra-low-power-bluetooth-6-0-matter-thread-zigbee-or-2-4-ghz-proprietary-applications/
 - N53 https://github.com/h2zero/n-able-Arduino and https://github.com/h2zero/NimBLE-Arduino
 
+## Follow-up: the M10S trim's V_IO and V_BCKP paths (2026-11-27)
+
+Plan 376 went looking for board-level documents and reopened this plan's
+"there is no M10S schematic" line. It is too strong: the drawing exists under the
+L76K name and the vendor says both trims share it. One of the two facts this
+plan left inferred now has a named path. The other does not, and keeps its
+`[inferred]` tag. Nothing here changes the decision, the ranking or the bench
+plan; the bench item 6 expectation is simply known now.
+
+- There is still no drawing with the MAX-M10S name on it, and there will not be
+  one. In issue 225 a LilyGO maintainer answers a request for it with "It is
+  designed to be compatible, but the hardware designer did not write the M10
+  name on it. They are the same" (comment 2025-03-04). That is a vendor
+  statement, not a document, and it is what makes the L76K carrier drawing
+  readable as the M10S drawing.
+- On the radio and GNSS sheet of that drawing, revision V3.0, module pin 7 is
+  marked RESERVED and is wired through a 0 ohm link to the pin 8 net, which the
+  drawing labels `A_LDO4`. The factory example in the same repository sets
+  `XPOWERS_ALDO4` to 3300 mV and enables it under `//gps`, so that net is the
+  AXP2101 ALDO4 GPS rail at 3.3 V. That is the first named supply path for V_IO,
+  the pin this plan recorded as undocumented.
+- Pin 6 V_BCKP sits on the `VRTC` net in the drawing, which is where this
+  plan already had it. The `[inferred]` tag stays: the factory example disables
+  VBACKUP for this board under `//not use channel`, its only 3300 mV
+  `XPOWERS_VBACKUP` write belongs to the classic ESP32 T-Beam branch, and the
+  hardware page lists both `LDO1(VRTC)` and `VBACKUP` as unused while saying
+  backup power comes from the 18650. What drives `VRTC` is UNVERIFIED.
+- Neither is certified on an M10S assembly. No document says a MAX-M10S is
+  fitted to that pad or that the 0 ohm link is populated, so bench item 6 keeps
+  its place and gains an expected answer: continuity from module pin 7 to the
+  ALDO4 rail, then a UART exchange on that rail. GPIO7 meets pin 5, which is
+  EXTINT on a MAX-M10S rather than a wake input, and whether it does anything
+  useful stays UNVERIFIED.
+- The document identities, hashes and the rest of the board-level pass are in
+  [section 5.1 of the register](../docs/power/datasheet-register.md#51-board-level-schematic-documents)
+  and [board-document-gaps.md](../docs/power/board-document-gaps.md).
+
 ## Implementation state
 
 Research and decision only. No code, board profile or purchase yet.

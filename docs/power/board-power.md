@@ -67,9 +67,12 @@ the text says `measured-local`.
 ### 1.2 What was not available
 
 - No board schematic PDF, netlist, or resistor value is present in this tree.
-  The StickS3 schematic and the Waveshare schematic are referenced by URL only.
-  Every claim that depends on a resistor value or a board net is labelled
-  `unverified` and belongs in the measurement plan.
+  The board drawings were read, counted and hashed on 2026-11-27 and are still
+  cited rather than stored, see section 5.1 of the register and
+  [board-document-gaps.md](board-document-gaps.md). This page predates that
+  pass, so every claim here that depends on a resistor value or a board net is
+  labelled `unverified` and belongs in the measurement plan until it is
+  re-derived from the drawing that now exists.
 - No private hardware corpus or teardown note is present in this worktree. The
   hardware evidence available is the repo plans, the vendor documentation, and
   the pinned library source listed in section 9.
