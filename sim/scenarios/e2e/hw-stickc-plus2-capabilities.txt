@@ -1,0 +1,89 @@
+# M5StickC Plus2 capability facts, including the part-versus-image divergence.
+#
+# The Plus2 shares the m5stick-c-plus image but is a different board: no PMIC,
+# an ADC battery divider, a GPIO35 power key, the IMU interrupt tied nowhere,
+# a BM8563 alarm for a timed wake, and G19 shared between the red LED and the IR
+# emitter. The part carries 8 MB of QIO flash and 2 MB of quad PSRAM while the
+# shared image is built for 4 MB DIO with PSRAM off, so both are asserted here.
+#
+# Sources: src/FurbleBoard.cpp for every profile column;
+# plans/implemented/19-interval-deep-sleep.md (BM8563 alarm plus the G4 HOLD
+# latch); plans/implemented/22-ir-remote-trigger.md and
+# plans/implemented/23-feedback-outputs.md (G19 shared);
+# M5Unified M5Unified.cpp for the 37/39/35 button pins.
+#
+# The RTC columns follow the firmware row: #505 made the Plus2 battery backed,
+# because its calendar survives the HOLD power-off the timed wake uses.
+#
+# Teeth: return true from armMotionWake for every build and motion_wake fails;
+# hard-code the 250 mAh capacity and battery_mah fails; restore the old 4 MB
+# PSRAM-less part row and flash_kb/psram fail; read the RTC backing from the
+# panel build instead of the row and rtc_backed fails.
+seed hw_profile stickc-plus2
+seed imu true
+seed imu_chip mpu6886
+seed hw_motion 2
+wait 300
+
+# Audio: passive buzzer on G2, same as the Plus.
+assert hw.audio yes
+
+# Battery: 200 mAh through an ADC divider, voltage only.
+assert hw.battery_mah 200
+assert hw.gauge voltage
+
+# Motion wake: the Plus2 profile is MotionWake::NONE. Production returns false
+# here, so the hardware engine must fall back to polling rather than claim a
+# wake source.
+assert hw.motion_wake none
+assert hw.motion_wake_pin none
+assert ui.motion_wake no
+assert ui.motion_backend mpu6886-wom
+
+# Timed wake: the BM8563 countdown is the only self-wake path.
+assert hw.timed_wake rtc-alarm
+assert platform.timed_wake yes
+
+# RTC: present but not battery backed in the firmware row (no PMIC keeps the RTC
+# rail up), so time is not claimed across a power cut. UNVERIFIED against the
+# BM8563 datasheet; see plans/implemented/139-persistent-time.md.
+assert hw.rtc yes
+assert hw.rtc_backed yes
+assert hw.rtc_irq_armed no
+assert rtc.backed yes
+assert rtc.countdown_mode disabled
+
+# IR and LED share G19, and the model says so.
+assert hw.ir_pin 19
+assert hw.ir_mark_level high
+assert hw.led_pin 19
+assert hw.led_active_low no
+assert hw.led_shared_with_ir yes
+
+# Buttons: A 37, B 39, power on GPIO35.
+assert hw.button_a 37
+assert hw.button_b 39
+assert hw.button_pwr 35
+assert hw.button_pwr_source gpio35
+
+# The part: 8 MB QIO flash plus 2 MB quad PSRAM. The shared m5stick-c-plus
+# image is built for 4 MB DIO with PSRAM off, so the heap model, which follows
+# the image, reports no PSRAM at all while the part does.
+assert hw.flash_kb 8192
+assert hw.part_psram quad
+assert hw.build_flash_kb 4096
+assert hw.build_flash_mode dio
+assert hw.build_psram absent
+assert hw.psram absent
+assert mem.psram_total 0
+assert mem.flash_kb 4096
+
+# Power latch: no PMIC latch, but the GPIO HOLD latch is asserted during
+# Platform::getInstance(), before the platform reports ready.
+assert pmic.power_latch none
+assert pmic.hold_latch asserted
+assert pmic.hold_order before-ready
+
+# No Port A rail on this board.
+assert hw.rail_boot none
+exit

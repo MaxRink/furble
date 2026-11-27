@@ -1,0 +1,71 @@
+# StickC Plus2 BM8563 countdown: mode switch, clamp and early-wake window.
+#
+# This is the model of the production timed-wake block, src/FurblePlatform.cpp
+# `Platform::powerOffUntil()` for Board::TimedWake::RTC_ALARM. Both sides select
+# the countdown registers through include/FurbleRtcCountdown.h, so these
+# requests pin the same arithmetic the firmware verifies with
+# verifyPlus2Timer(): one-second resolution below 270 s, minute resolution at or
+# above it, an 8-bit clamp, and a 60 s early-wake window. The driver's selection
+# rules are in M5Unified src/utility/rtc/PCF8563_Class.cpp setTimerIRQ(); the
+# BM8563 datasheet itself is cited, not opened, in docs/power/datasheet-register.md.
+#
+# Teeth: change the mode switch from 270 to 256 and the 270 request goes
+# "seconds"; drop the 255 clamp and 269 programs 269; widen the window past 60 s
+# and 15361 is accepted; round the minute request down and 270 is accepted
+# instead of rejected as late.
+seed hw_profile stickc-plus2
+wait 300
+
+assert rtc.enabled yes
+assert rtc.irq_armed no
+assert rtc.irq clear
+
+# 100 s: seconds mode, no clamp, no early wake.
+action rtc-countdown 100
+assert rtc.plan.100 accepted:ok:seconds:100
+assert rtc.countdown_mode seconds
+assert rtc.count 100
+assert rtc.programmed_seconds 100
+assert rtc.irq_armed yes
+
+# 269 s: still seconds mode, clamped to the 8-bit counter, so it wakes 14 s
+# early. Inside the window, so it is accepted.
+action rtc-countdown 269
+assert rtc.plan.269 accepted:ok:seconds:255
+assert rtc.count 255
+assert rtc.programmed_seconds 255
+
+# 270 s: minute mode rounds up to 5 minutes, which is 30 s LATE. A late wake
+# misses the shot deadline, so the firmware rejects it and stays awake. The
+# rejected request also clears the countdown so a later power off cannot wake.
+action rtc-countdown 270
+assert rtc.plan.270 rejected:late:minutes:300
+assert rtc.countdown_mode disabled
+assert rtc.irq_armed no
+
+# 300 s: an exact minute boundary, accepted in minute mode.
+action rtc-countdown 300
+assert rtc.plan.300 accepted:ok:minutes:300
+assert rtc.countdown_mode minutes
+assert rtc.count 5
+assert rtc.programmed_seconds 300
+
+# 815 s: rounds to 14 minutes, 840 s, which is 25 s late. Rejected, and cleared.
+action rtc-countdown 815
+assert rtc.plan.815 rejected:late:minutes:840
+assert rtc.countdown_mode disabled
+
+# 15360 s: 256 minute counts clamp to 255, exactly 60 s early. That is the edge
+# of the resume window, so it is accepted.
+action rtc-countdown 15360
+assert rtc.plan.15360 accepted:ok:minutes:15300
+assert rtc.count 255
+
+# 15361 s: one second further, 61 s early, outside the window. Rejected, and
+# the countdown is cleared rather than left armed.
+action rtc-countdown 15361
+assert rtc.plan.15361 rejected:early:minutes:15300
+assert rtc.countdown_mode disabled
+assert rtc.programmed_seconds 0
+assert rtc.irq_armed no
+exit

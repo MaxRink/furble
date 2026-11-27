@@ -6,6 +6,7 @@
 #include "FurblePlatform.h"
 #include "FurbleRail.h"
 #include "FurbleSimCaps.h"
+
 #include "clock.h"
 #include "hardware_model.h"
 
@@ -61,6 +62,11 @@ class IR {
     if (!isSupported()) {
       return;
     }
+
+    // The hardware model records the frame so a scenario can assert the mark
+    // level of the modelled board and what a light pulse on a shared pin does
+    // while the frame is in flight.
+    Sim::hwIrFrame();
 
     // Same order as firmware: take the hold before the request is queued, so a
     // GPS RAIL_OFF between the two cannot cut the burst.

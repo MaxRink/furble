@@ -10,6 +10,9 @@ assert hw.display 80x160
 assert hw.touch no
 assert hw.ir yes
 assert hw.sd no
+
+# The original StickC has no buzzer and no speaker: LED-only feedback.
+# https://docs.m5stack.com/en/core/m5stickc, plans/implemented/23-feedback-outputs.md
 assert hw.audio no
 assert hw.rtc yes
 assert pmic.battery present

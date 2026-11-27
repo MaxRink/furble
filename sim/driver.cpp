@@ -48,6 +48,7 @@
 #include "FurbleGPS.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
+#include "FurbleRtcCountdown.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
@@ -1469,6 +1470,25 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
     return true;
   }
 
+  if (action.kind == scenario_action_kind_t::RTC_COUNTDOWN) {
+    // Probe the BM8563 countdown the platform drives, through the same model
+    // entry points powerOffUntil() uses: program, then record the firmware
+    // verdict. Both sides apply the rule in FurbleRtcCountdown.h, so a scenario
+    // pins the 270 s mode switch, the 255 clamp and the early-wake window.
+    const int requested = static_cast<int>(action.index);
+    const int programmed = hwRtcProgram(requested);
+    hwRtcNotePlan(requested, Platform::TIMED_WAKE_MAX_EARLY_S);
+    if (!RtcCountdown::accepted(requested, programmed, Platform::TIMED_WAKE_MAX_EARLY_S)) {
+      // Same cleanup as the platform: a rejected request must not leave a
+      // countdown armed that a later manual power off could wake on.
+      hwRtcClearTimer();
+      hwRtcDisableIrq();
+    }
+    ESP_LOGI("platform", "rtc-countdown %d -> %d seconds", requested, programmed);
+    *applied = true;
+    return true;
+  }
+
   if (action.kind != scenario_action_kind_t::SIMPLE) {
     return false;
   }
@@ -1508,6 +1528,21 @@ bool applyTransportFaultAction(const scenario_action_t &action, bool *applied) {
     if (*applied) {
       ir.fire();
     }
+    return true;
+  }
+  if (action.name == "ir-frame") {
+    // The lowest-level pin injector for the IR model: no firmware gate, because
+    // the point is to model a frame the emitter drove, not to drive it. A real
+    // burst reaches the same entry point through sim/shim/FurbleIR.h.
+    hwIrFrame();
+    *applied = true;
+    return true;
+  }
+  if (action.name == "feedback-light") {
+    // The feedback LED's pin write, so a pulse can be placed inside an IR frame
+    // window on a board whose LED and emitter are one pin.
+    hwLightPulse();
+    *applied = true;
     return true;
   }
   if (action.name == "crash-inject-panic") {
@@ -2490,6 +2525,12 @@ std::string queryValueUnscoped(const std::string &key) {
 
   if (key == "platform.timed_wake") {
     return Platform::getInstance().canTimedWake() ? "yes" : "no";
+  }
+
+  if (key == "platform.rail") {
+    // The Port A 5 V rail as the fake receiver sees it. Board state, not a
+    // firmware claim: the StickC and Plus inherit EXTEN on from M5GFX.
+    return furble_sim_uart_rail_on() ? "on" : "off";
   }
 
   if (key == "platform.wake_marker") {

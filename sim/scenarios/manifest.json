@@ -2527,6 +2527,28 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/hw-plus2-shared-led-ir.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-plus2-rtc-wake.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/hw-pmic-axp2101-cpu-rail.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
@@ -2611,6 +2633,58 @@
         "m5stick-s3"
       ],
       "capabilities": [],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-stickc-plus2-capabilities.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-stickc-plus-capabilities.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "imu"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-stickc-gps-rail-boot.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/hw-stickc-capabilities.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-c"
+      ],
+      "capabilities": [
+        "imu"
+      ],
       "expected_exit": 0,
       "certified": true
     },

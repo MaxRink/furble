@@ -4,7 +4,13 @@ Public headers for the app layer in src/, one header per module
 (`Furble<Module>.h`). Everything lives in the `Furble` namespace.
 
 - Add a header here only for src/ modules. lib/furble keeps its headers next
-  to its sources.
+  to its sources. The two dependency-free rule headers,
+  `FurbleRtcCountdown.h` (BM8563 countdown selection and the early-wake
+  acceptance rule) and `FurbleIMUMotionScale.h` (motion threshold counts and
+  per-count scales), exist so the firmware and the simulator compute from one
+  implementation. Change a value there only with the host test and the
+  simulator scenario that pin it (`imu-motion-encoding`,
+  `hw-plus2-rtc-wake.txt`).
 - These headers may include lib/furble headers; the reverse is forbidden
   (see lib/furble/CLAUDE.md).
 - Doxygen-style comments on public members, matching the existing files.

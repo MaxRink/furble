@@ -8,6 +8,10 @@ assert hw.pmic axp192
 assert hw.display 320x240
 assert hw.touch yes
 assert hw.sd yes
+# The model reports the firmware's own feedbackSound column, and the Tough row
+# sets it: M5Unified gives the board no internal speaker, so whether the row is
+# right is the open question plans/351-stickc-sim-align.md records. A row change
+# belongs in src/FurbleBoard.cpp, not in a scenario.
 assert hw.audio yes
 assert hw.rtc yes
 # The Tough's BM8563 carries the BT1 backup cell and its alarm is the wake path

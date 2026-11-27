@@ -220,7 +220,7 @@ at `src/FurbleUI.cpp:53-76`. Only one of the two PRs creates the page.
   (`src/FurbleUI.cpp:523-538`), disconnect cleanly, then call
   `Platform::getInstance().powerOff()`.
 - Power off behaviour differs per board and must be documented in the PR body:
-  - StickS3: `M5PM1::shutdown()` (`src/FurblePlatform.cpp:566`). True off.
+  - StickS3: `M5PM1::shutdown()` (`src/FurblePlatform.cpp:625`). True off.
   - StickC Plus2: `M5.Power.powerOff()` drops the power hold pin, which is
     GPIO4 in the M5Unified pin table. Full off, no self wake.
   - StickC and StickC Plus, Core2, Tough: AXP192 `powerOff()`.
