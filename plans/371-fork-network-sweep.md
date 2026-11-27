@@ -70,10 +70,10 @@ master's push time while also being identical to it.
 3. Shutter release durability, from `LittleBidet` PR #313. The only item in that
    PR's list that we do not obviously already have. Two drop points, and the
    second is the harder one. `Control::Target::sendCommand`
-   (`src/FurbleControl.cpp:131-136`) fails `xQueueSend` with a zero timeout and
+   (`src/FurbleControl.cpp:131-135`) fails `xQueueSend` with a zero timeout and
    only logs, so a release can be lost when a target queue of eight entries
    (`include/FurbleControl.h:79`) is full. `Control::sendCommand`
-   (`src/FurbleControl.cpp:581-606`) routes camera commands per target, and
+   (`src/FurbleControl.cpp:586-611`) routes camera commands per target, and
    `Control::sendCameraCommand` drops a camera command for a target whose link
    is not active and logs at debug level, by design, to stop a press replaying
    after a reconnect. A press accepted just before a link drop therefore loses

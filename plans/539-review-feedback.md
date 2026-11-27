@@ -87,7 +87,7 @@ when the queue is full and only logs it". The drop with the log is in
 `Control::Target::sendCommand`:
 
 ```
-src/FurbleControl.cpp:131-136
+src/FurbleControl.cpp:131-135
   BaseType_t ret = xQueueSend(m_Queue, &cmd, 0);
   if (ret != pdTRUE) {
     m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
@@ -95,7 +95,7 @@ src/FurbleControl.cpp:131-136
   }
 ```
 
-`Control::sendCommand` (`src/FurbleControl.cpp:581-606`) has no log at all; it
+`Control::sendCommand` (`src/FurbleControl.cpp:586-611`) has no log at all; it
 returns the queue status, and the console turns a failure into
 `fail("control queue full")` (`src/FurbleConsole.cpp:169-171`). The conclusion
 for plan 374 stands, the attribution does not.
@@ -104,7 +104,7 @@ Two precision notes for the same item: the per-target queue is eight deep
 (`include/FurbleControl.h:79`, `m_QueueLength = 8`), so "a release queued behind
 a press" cannot overflow it; it takes eight pending commands. And the plan does
 not mention the harder loss path, which is the link-gated drop in
-the link-gated drop in `Control::sendCameraCommand`, at `src/FurbleControl.cpp:645`
+the link-gated drop in `Control::sendCameraCommand`, at `src/FurbleControl.cpp:650`
 where the release is discarded outright because the target is not connected.
 
 ### F6 - the web installer finding omits the gate that requires the shape
@@ -240,7 +240,7 @@ was a presentational gap rather than a wrong claim.
 | F2 byte mirrors | fixed | Now says the twenty-five carry no commits of their own and that twenty-four are behind gkoh master, with `daozhao` the only identical one. |
 | F3 pushed_at counts | fixed | Replaced with the re-derived numbers: twenty-two of forty-one report `pushed_at` before `created_at`, and only `daozhao` carries gkoh's push time. |
 | F4 123 against a column summing to 118 | fixed | The paragraph now states that the ahead column counts each fork's best branch and sums to 118 because nine forks keep work on more than one branch. |
-| F5 wrong symbol | fixed | Now cites `Control::Target::sendCommand` at `src/FurbleControl.cpp:131-136`, `Control::sendCommand` at `:581-606`, the queue length at `include/FurbleControl.h:79`, and the harder loss path in `Control::sendCameraCommand` where a link that drops after a press loses its release. |
+| F5 wrong symbol | fixed | Now cites `Control::Target::sendCommand` at `src/FurbleControl.cpp:131-135`, `Control::sendCommand` at `:586-611`, the queue length at `include/FurbleControl.h:79`, and the harder loss path in `Control::sendCameraCommand` where a link that drops after a press loses its release. |
 | F6 verifier gate omitted | fixed | The web installer item now records that `tools/verify_web_installer.py` requires one build per family, that `pages.yml` runs it on the published site, and that ESP Web Tools selects by detected family. |
 | F7 nine cleared items against six in the doc | fixed | The count in the plan is now six, matching the list. The PR body's "nine" is corrected in the same commit. |
 | F8 branches missing for five forks | fixed | The five rows now name their branches. |
