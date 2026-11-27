@@ -1,0 +1,52 @@
+# Board row versus hardware model: LilyGO T-Watch Ultra.
+#
+# Same contract as board-row-tdeck.txt: the row comes from the build macro and
+# the model carries the LilyGO facts, so the two are independent statements of
+# the same document.
+seed hw_profile twatch-ultra
+wait 300
+
+assert hw.profile twatch-ultra
+assert hw.mcu esp32s3
+assert hw.flash_kb 16384
+assert hw.display 502x410
+assert board.name TWatch-U
+
+# The AXP2101 is present and its rails are brought up, but this port does not
+# read its battery registers, so no telemetry column is claimed.
+assert hw.pmic axp2101
+assert hw.gauge none
+assert hw.battery present
+assert board.battery_voltage no
+assert board.battery_charging no
+assert board.battery_mah 1100
+
+# A PCF85063A exists on the bus and this port does not drive it.
+assert hw.rtc yes
+assert board.rtc_backed no
+assert board.rtc_on_bus no
+
+# The CST9217 touch panel has no driver, so neither side claims touch.
+assert hw.touch no
+assert hw.sd yes
+assert board.sd yes
+assert hw.audio yes
+assert board.audio yes
+assert hw.ir no
+assert board.ir no
+
+# No power-off path in this port.
+assert hw.can_power_off no
+assert board.can_power_off no
+assert board.power_off_path no
+assert board.timed_wake none
+
+# The onboard MIA-M10Q, on the row's own pins.
+assert hw.gps_pin_source profile
+assert board.gps_pin_source profile
+assert hw.gps_rx_pin 44
+assert board.gps_rx_pin 44
+assert hw.gps_tx_pin 43
+assert board.gps_tx_pin 43
+assert board.gps_rail no
+exit

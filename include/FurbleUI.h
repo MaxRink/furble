@@ -1189,6 +1189,22 @@ class UI {
 
   CalibrationUI m_CalibrationUI;
 
+#if FURBLE_LILYGO_BOARD
+  /*
+   * The LilyGO input devices, one read callback per UI role.
+   *
+   * The UI's three roles are LEFT, SELECT and RIGHT: two directions and an
+   * activate. A LilyGO board fills them from its own hardware through
+   * Furble::LilyGo::Buttons, which merges the trackball, the side button and
+   * the keyboard's Enter and Backspace into the same three roles. The
+   * trackball's up and down switches take the LEFT and RIGHT roles because
+   * every list in the UI is one-dimensional.
+   */
+  static void navLeftRead(lv_indev_t *drv, lv_indev_data_t *data);
+  static void navSelectRead(lv_indev_t *drv, lv_indev_data_t *data);
+  static void navRightRead(lv_indev_t *drv, lv_indev_data_t *data);
+#endif
+
   static void buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data);
   static void buttonPEKRead(lv_indev_t *drv, lv_indev_data_t *data);
   static void buttonARead(lv_indev_t *drv, lv_indev_data_t *data);

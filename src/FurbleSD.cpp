@@ -20,7 +20,12 @@
 #include <unistd.h>
 
 #include "FurbleBoard.h"
+// Before the capability test below: FURBLE_LILYGO_BOARD is defined in this
+// header, and asking for it first silently read it as 0.
 #include "FurbleBoardCaps.h"
+#if FURBLE_LILYGO_BOARD
+#include "FurbleDisplay.h"
+#endif
 #include "FurbleGPSHold.h"
 #include "FurblePlatform.h"
 #include "FurbleSD.h"
@@ -33,6 +38,38 @@
 
 namespace Furble {
 namespace {
+
+/*
+ * The panel the UI draws through.
+ *
+ * On an M5 board it is M5Unified's own device. A LilyGO image has no M5 panel
+ * (M5Unified detects nothing it can drive), so it asks the display seam, whose
+ * device the image built from the LilyGO facts row. Keeping the M5 case on
+ * M5.Display leaves the adapter coupling where the ratchet expects it.
+ */
+int32_t screenWidth(void) {
+#if FURBLE_LILYGO_BOARD
+  return Display::width();
+#else
+  return M5.Display.width();
+#endif
+}
+
+int32_t screenHeight(void) {
+#if FURBLE_LILYGO_BOARD
+  return Display::height();
+#else
+  return M5.Display.height();
+#endif
+}
+
+auto *screenPanel(void) {
+#if FURBLE_LILYGO_BOARD
+  return Display::screen().getPanel();
+#else
+  return M5.Display.getPanel();
+#endif
+}
 
 // The device mount point is fixed. Host conformance targets override it to a
 // writable sandbox so the production writer runs over real POSIX I/O.
@@ -170,12 +207,12 @@ bool validInterval(const interval_t &value) {
 }
 
 bool validCalibration(const Settings::calibration_t &value) {
-  if ((M5.Display.width() <= 0) || (M5.Display.height() <= 0)) {
+  if ((screenWidth() <= 0) || (screenHeight() <= 0)) {
     return false;
   }
 
   for (const auto &point : value.pairs) {
-    if ((point.x > M5.Display.width()) || (point.y > M5.Display.height())) {
+    if ((point.x > screenWidth()) || (point.y > screenHeight())) {
       return false;
     }
   }
@@ -983,8 +1020,12 @@ bool SD::mount(void) {
 
   m_MountFailed = true;
 
-  const int8_t cs = M5.getPin(m5::pin_name_t::sd_spi_cs);
-  auto *panel = M5.Display.getPanel();
+  // A board M5Unified does not know carries its own card-select pin; every M5
+  // board asks M5Unified's table, which describes its slot.
+  const Board::Profile &row = Board::profile();
+  const int8_t cs =
+      (row.sdCsPin >= 0) ? row.sdCsPin : static_cast<int8_t>(M5.getPin(m5::pin_name_t::sd_spi_cs));
+  auto *panel = screenPanel();
   if ((cs < 0) || (panel == nullptr)) {
     ESP_LOGE(LOG_TAG, "SD card pins or display panel are unavailable.");
     return false;

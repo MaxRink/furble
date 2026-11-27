@@ -126,6 +126,9 @@ set(FURBLE_SOURCES
     ${SIM_SOURCES}
     "${FURBLE_ROOT}/src/FurbleBoard.cpp"
     "${FURBLE_ROOT}/src/FurbleBootScreen.cpp"
+    "${FURBLE_ROOT}/src/FurbleDisplay.cpp"
+    "${FURBLE_ROOT}/src/FurbleLilyGo.cpp"
+    "${FURBLE_ROOT}/src/FurbleLilyGoDevice.cpp"
     "${FURBLE_ROOT}/src/FurbleBootTimeline.cpp"
     "${FURBLE_ROOT}/src/FurbleCalibrate.cpp"
     "${FURBLE_ROOT}/src/FurbleCompanionAuth.cpp"

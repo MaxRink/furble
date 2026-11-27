@@ -59,6 +59,15 @@ const profile_budget_t BUDGETS[] = {
      32768,                                                                                                                     "esp32s3"},
     {"waveshare-s3-eth", 512 * 1024, 8 * 1024 * 1024, 16384, 16384, 3840, 10240, 4096, 4096, 0,
      false,                                                                                                       0,     32768, "esp32s3"},
+    // The LilyGO boards share the ESP32-S3 memory map. The draw buffer follows
+    // UIMemory::drawBufferBytes for the panel: a 320x240 panel keeps the two
+    // 320x16 buffers the Core uses, and the 502x410 panel is clamped to
+    // UIMemory::MAX_WIDTH, so it renders the same 320-wide bands. Neither has an
+    // IR task, so the IR stack is zero.
+    {"tdeck",            512 * 1024, 8 * 1024 * 1024, 16384, 16384, 3840, 10240, 4096, 4096, 320 * 16 * 2,
+     false,                                                                                                       0,     32768, "esp32s3"},
+    {"twatch-ultra",     512 * 1024, 8 * 1024 * 1024, 16384, 16384, 3840, 10240, 4096, 4096,
+     320 * 16 * 2,                                                                                         false, 0,     32768, "esp32s3"},
 };
 
 const profile_budget_t &budgetFor(const std::string &profile) {

@@ -1,0 +1,34 @@
+# The T-Deck's GPS and SD paths on the pins its row carries.
+#
+# The GPS UART comes from Board::gpsPins(), which reads the row's PROFILE pins
+# (RX 44, TX 43) rather than M5Unified's Port A table; M5Unified knows no LilyGO
+# board and its table would name a pin this board does not have. The fix is
+# accepted on the first fix, so the receiver speaks the same $PCAS/UBX exchange
+# the other boards do. The card is the same panel-bus slot the row reports.
+seed fauxny true
+seed autoconnect true
+seed gps true
+seed gps_power 0
+seed gps_uart_mode ack
+seed sd_gpx true
+wait 4000
+
+assert board.gps_pin_source profile
+assert board.gps_rx_pin 44
+assert board.gps_tx_pin 43
+assert gps.enabled 1
+# The simulator's receiver model answers as an NMEA/PCAS unit; the T-Deck Plus
+# ships an MIA-M10Q that speaks UBX, and the UBX path is the same one the
+# u-blox plans cover. The assertions below prove the row's pins reach the
+# receiver service, not which dialect the bench unit uses.
+
+action nav gps_data
+wait 2000
+assert ui.page gps_data
+
+# The fix reaches the geotag path, and the GPX track is written through the
+# mounted SD model: the row reports the slot and the writer produced a point.
+assert camera.geo_lat_e5 4811730
+assert gpx.points 1
+assert board.sd yes
+exit

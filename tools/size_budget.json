@@ -90,6 +90,30 @@
       "flash_slot": 6291456,
       "dram_bytes": 56320,
       "iram_bytes": 149504
+    },
+    "lilygo-tdeck": {
+      "partitions": "partitions_two_ota_16m.csv",
+      "flash_slot": 6291456,
+      "dram_bytes": 49152,
+      "iram_bytes": 115712
+    },
+    "lilygo-twatch-ultra": {
+      "partitions": "partitions_two_ota_16m.csv",
+      "flash_slot": 6291456,
+      "dram_bytes": 49152,
+      "iram_bytes": 115712
+    },
+    "lilygo-tdeck-debug": {
+      "partitions": "partitions_two_ota_16m.csv",
+      "flash_slot": 6291456,
+      "dram_bytes": 54272,
+      "iram_bytes": 136192
+    },
+    "lilygo-twatch-ultra-debug": {
+      "partitions": "partitions_two_ota_16m.csv",
+      "flash_slot": 6291456,
+      "dram_bytes": 54272,
+      "iram_bytes": 136192
     }
   }
 }

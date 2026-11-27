@@ -257,6 +257,8 @@ jobs:
               "m5stack-core",
               "m5stack-core2",
               "m5stick-s3",
+              "lilygo-tdeck",
+              "lilygo-twatch-ultra",
               "waveshare-s3-eth",
           ]
           config = Path("platformio.ini").read_text(encoding="utf-8")

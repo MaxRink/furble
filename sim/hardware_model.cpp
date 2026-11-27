@@ -51,6 +51,8 @@ constexpr rtc_fact_t RTC_FACTS[] = {
     {"tough",            true,  "BM8563, docs/power/board-power.md"     },
     {"headless-s3",      false, "no RTC, docs/power/board-power.md"     },
     {"waveshare-s3-eth", false, "no RTC on the StampS3"                 },
+    {"tdeck",            false, "no RTC part, LilyGoLib T-Deck doc"     },
+    {"twatch-ultra",     true,  "PCF85063A, LilyGoLib Ultra doc"        },
 };
 
 /*
@@ -114,6 +116,81 @@ struct board_caps_t {
   bool ext5vShared;
 };
 
+// LilyGO T-Deck: ESP32-S3 with 16 MB flash and 8 MB PSRAM, an ST7789
+// 320x240 panel, an ESP32-C3 keyboard, a five-switch trackball, a MAX98357A
+// speaker, a microSD slot on the panel's SPI bus, an MIA-M10Q GNSS on the Plus
+// (UART 44/43, shared with the Grove connector on the base board) and no PMIC,
+// no gauge, no IR and no RTC part. plans/387-lilygo-family-port.md carries the
+// documents.
+const board_caps_t TDECK = {.mcu = "esp32s3",
+                            .flashKb = 16384,
+                            .pmic = "none",
+                            .gauge = "none",
+                            .psram = "octal",
+                            .usb = "usb",
+                            .display = "320x240",
+                            .width = 320,
+                            .height = 240,
+                            .touch = false,
+                            .battery = true,
+                            .wifi = true,
+                            .ethernet = false,
+                            .ble = true,
+                            .ir = false,
+                            .sd = true,
+                            .audio = true,
+                            .rtc = false,
+                            .rtcBatteryBacked = false,
+                            .timedWake = "none",
+                            .vbus = false,
+                            .poe = false,
+                            .rtcOnBus = false,
+                            .canPowerOff = false,
+                            .ledActiveLow = false,
+                            .irMarkLow = false,
+                            .gpsPinSource = "profile",
+                            .gpsRxPin = 44,
+                            .gpsTxPin = 43,
+                            .powerOff = "none",
+                            .powerOffPath = false,
+                            .ext5vShared = false};
+// LilyGO T-Watch Ultra: ESP32-S3 16/8, a 502x410 CO5300 AMOLED, an AXP2101 PMIC
+// with a 1100 mAh cell, an XL9555 expander, an MIA-M10Q GNSS, a PCF85063A RTC,
+// a MAX98357A speaker, a microSD slot, a CST9217 touch panel this port has no
+// driver for and one BOOT switch. No battery telemetry and no software power
+// off in this port, so both capability columns are false.
+const board_caps_t TWATCH_ULTRA = {.mcu = "esp32s3",
+                                   .flashKb = 16384,
+                                   .pmic = "axp2101",
+                                   .gauge = "none",
+                                   .psram = "octal",
+                                   .usb = "usb",
+                                   .display = "502x410",
+                                   .width = 502,
+                                   .height = 410,
+                                   .touch = false,
+                                   .battery = true,
+                                   .wifi = true,
+                                   .ethernet = false,
+                                   .ble = true,
+                                   .ir = false,
+                                   .sd = true,
+                                   .audio = true,
+                                   .rtc = true,
+                                   .rtcBatteryBacked = false,
+                                   .timedWake = "none",
+                                   .vbus = false,
+                                   .poe = false,
+                                   .rtcOnBus = false,
+                                   .canPowerOff = false,
+                                   .ledActiveLow = false,
+                                   .irMarkLow = false,
+                                   .gpsPinSource = "profile",
+                                   .gpsRxPin = 44,
+                                   .gpsTxPin = 43,
+                                   .powerOff = "none",
+                                   .powerOffPath = false,
+                                   .ext5vShared = false};
 const board_caps_t STICKC = {.mcu = "esp32",
                              .flashKb = 4096,
                              .pmic = "axp192",
@@ -879,11 +956,21 @@ const board_caps_t &capsFor(const std::string &profile) {
   if (profile == "waveshare-s3-eth") {
     return WAVESHARE;
   }
+  if (profile == "tdeck") {
+    return TDECK;
+  }
+  if (profile == "twatch-ultra") {
+    return TWATCH_ULTRA;
+  }
   return STICKS3;
 }
 
 std::string defaultProfile(void) {
-#if defined(FURBLE_M5STICKS3)
+#if defined(FURBLE_LILYGO_TDECK)
+  return "tdeck";
+#elif defined(FURBLE_LILYGO_TWATCH_ULTRA)
+  return "twatch-ultra";
+#elif defined(FURBLE_M5STICKS3)
   return "sticks3";
 #elif defined(FURBLE_M5STICKC_PLUS)
   return "stickc-plus";

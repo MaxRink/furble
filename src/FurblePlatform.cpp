@@ -14,8 +14,12 @@
 #include "FurbleBoardCaps.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
+#if FURBLE_LILYGO_BOARD
+#include "FurbleDisplay.h"
+#endif
 #include "FurbleFeedback.h"
 #include "FurbleIP5306.h"
+#include "FurbleLilyGo.h"
 #include "FurblePlatform.h"
 #include "FurblePlatformPolicy.h"
 #include "FurblePmicIrq.h"
@@ -135,6 +139,14 @@ Platform &Platform::getInstance(void) {
         static_cast<Feedback::output_t>(Settings::load<uint8_t>(Settings::FB_OUTPUT)));
     cfg.internal_mic = false;
     cfg.pmic_button = true;
+#if FURBLE_LILYGO_BOARD
+    // M5Unified's speaker is built from its per-board pin table, which does not
+    // describe a LilyGO board: it would try to start I2S on pins this board does
+    // not use. The board's own MAX98357A wiring is configured below instead, and
+    // the feedback path keeps using M5.Speaker, so nothing above this point
+    // changes.
+    cfg.internal_spk = false;
+#endif
 #if FURBLE_HAS_M5PM1
     // The rail manager owns this board's EXT_5V port. M5Unified's default
     // output_power is true and _begin() calls setExtOutput(cfg.output_power)
@@ -165,6 +177,30 @@ Platform &Platform::getInstance(void) {
     cfg.internal_imu = false;
 #endif
     M5.begin(cfg);
+
+#if FURBLE_LILYGO_BOARD
+    // The board panel. M5.begin() ran M5GFX's autodetect against the pinned
+    // display-less name, so nothing has touched the real panel yet; this opens
+    // the board's own bus and controller. A failure leaves the UI without a
+    // panel rather than drawing into one that did not answer, and the log says
+    // which board and which controller.
+    if (!Display::begin()) {
+      ESP_LOGE(LOG_TAG, "LilyGO panel did not answer (%s).", LilyGo::facts().name);
+    }
+    {
+      // The board's MAX98357A over its own I2S pins. M5Unified's speaker owns
+      // the tone generation and the volume curve; only the transport is board
+      // specific, so the feedback path is unchanged.
+      const LilyGo::SpeakerWiring &spk_pins = LilyGo::facts().speaker;
+      auto spk = M5.Speaker.config();
+      spk.pin_bck = spk_pins.bck;
+      spk.pin_ws = spk_pins.ws;
+      spk.pin_data_out = spk_pins.dataOut;
+      spk.i2s_port = static_cast<i2s_port_t>(spk_pins.port);
+      spk.stereo = false;
+      M5.Speaker.config(spk);
+    }
+#endif
 
     // A panel-off IP5306 board draws less than 45 mA, which the boost's
     // light-load cut treats as a request to remove power. Hold it on before
@@ -1046,7 +1082,14 @@ bool Platform::powerOffUntil(uint32_t seconds) {
       }
     }
 
+#if FURBLE_LILYGO_BOARD
+    // The LilyGO panel is not M5Unified's, so it is reached through the seam.
+    Display::screen().sleep();
+#else
+    // M5.Display, not the seam: a host test compiles this file for the wake
+    // paths without an M5GFX include path, and the seam header would need one.
     M5.Display.sleep();
+#endif
 
     const auto &board = Board::profile();
 

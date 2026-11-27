@@ -34,6 +34,10 @@
 #include <Preferences.h>
 #include "CameraList.h"
 #include "FurbleBoard.h"
+// The capability header defines FURBLE_LILYGO_BOARD either way, so the test
+// below is `#if` and not `#if defined`: the latter would be true on an M5 build
+// too and hand it the LilyGO button names.
+#include "FurbleBoardCaps.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
 #include "FurbleCrashLog.h"
@@ -285,7 +289,15 @@ void pushKey(SDL_Keycode key, bool pressed) {
 // This verb is the headless UI-task injection path. It does not toggle the
 // emulated GPIOs; the interactive on-screen control window and the keyboard
 // letters are the GPIO path.
-#if defined(FURBLE_M5COREX)
+#if FURBLE_LILYGO_BOARD
+// A LilyGO board has no M5 silk-screen buttons. The names below are its own
+// input devices: the T-Deck's trackball directions and center switch, and the
+// two keyboard keys with a navigation role. `enter` and `back` go through
+// LilyGo::Buttons::injectKey with the bytes the ESP32-C3 keyboard firmware
+// sends (0x0D and 0x08), so a scenario exercises the same decode the hardware
+// path uses.
+constexpr const char *kSimButtons[] = {"left", "right", "select", "enter", "back"};
+#elif defined(FURBLE_M5COREX)
 // M5Stack Core / Core2: three front buttons A/B/C, no dedicated power button.
 constexpr const char *kSimButtons[] = {"a", "b", "c"};
 #else
@@ -698,7 +710,8 @@ void validateSeed(const std::string &name, const std::string &value) {
     // so a scenario always states which flash assumption it means.
     if (value != "stickc" && value != "stickc-plus" && value != "stickc-plus2" && value != "sticks3"
         && value != "core-4mb" && value != "core-16mb" && value != "core2" && value != "tough"
-        && value != "headless-s3" && value != "waveshare-s3-eth") {
+        && value != "headless-s3" && value != "waveshare-s3-eth" && value != "tdeck"
+        && value != "twatch-ultra") {
       std::cerr << "Invalid hw_profile: " << value << '\n';
       std::exit(2);
     }

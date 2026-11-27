@@ -27,6 +27,8 @@ M5GFX_BOARD=${FURBLE_SIM_M5GFX_BOARD:-board_M5StickS3}
 case "$FURBLE_BOARD" in
   FURBLE_M5STICKC) default_sdkconfig="$ROOT/sdkconfig.m5stick-c" ;;
   FURBLE_M5COREX) default_sdkconfig="$ROOT/sdkconfig.m5stack-core" ;;
+  FURBLE_LILYGO_TDECK) default_sdkconfig="$ROOT/sdkconfig.lilygo-tdeck" ;;
+  FURBLE_LILYGO_TWATCH_ULTRA) default_sdkconfig="$ROOT/sdkconfig.lilygo-twatch-ultra" ;;
   *) default_sdkconfig="$ROOT/sdkconfig.m5stick-s3" ;;
 esac
 SDKCONFIG=${FURBLE_SIM_SDKCONFIG:-$default_sdkconfig}
@@ -360,6 +362,9 @@ done
 for source in \
   "$ROOT/src/FurbleBoard.cpp" \
   "$ROOT/src/FurbleBootScreen.cpp" \
+  "$ROOT/src/FurbleDisplay.cpp" \
+  "$ROOT/src/FurbleLilyGo.cpp" \
+  "$ROOT/src/FurbleLilyGoDevice.cpp" \
   "$ROOT/src/FurbleBootTimeline.cpp" \
   "$ROOT/src/FurbleCalibrate.cpp" \
   "$ROOT/src/FurbleCompanionAuth.cpp" \
