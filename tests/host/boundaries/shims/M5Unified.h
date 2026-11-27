@@ -52,6 +52,32 @@ class Panel_Device {
   IBus *m_Bus = nullptr;
 };
 
+// The production Platform's display seam forwards to M5.Display, so the stub
+// display has to be a device of the library's type. Only the entry points the
+// platform and the boot screen reach are modelled; every drawing call is a
+// no-op that marks the panel used, exactly as the SDL-free host needs.
+class LGFX_Device {
+ public:
+  virtual ~LGFX_Device() = default;
+  virtual int32_t width(void) const { return 320; }
+  virtual int32_t height(void) const { return 240; }
+  virtual Panel_Device *getPanel(void) { return nullptr; }
+  void setBrightness(uint8_t brightness) { m_Brightness = brightness; }
+  uint8_t getBrightness(void) const { return m_Brightness; }
+  virtual void sleep(void) {}
+  virtual void wakeup(void) {}
+  uint8_t getRotation(void) const { return m_Rotation; }
+  void setRotation(uint8_t rotation) { m_Rotation = rotation; }
+  template <typename T>
+  void pushImageDMA(int32_t, int32_t, int32_t, int32_t, const T *) {}
+  virtual void waitDMA(void) {}
+  virtual void readRectRGB(int32_t, int32_t, int32_t, int32_t, uint8_t *) {}
+
+ private:
+  uint8_t m_Brightness = 0;
+  uint8_t m_Rotation = 0;
+};
+
 }  // namespace lgfx
 
 namespace m5 {
@@ -152,25 +178,34 @@ class Power_Class {
   pmic_t type = pmic_ip5306;
 };
 
-class Display_Class {
+class Display_Class: public lgfx::LGFX_Device {
  public:
-  int32_t width() const {
+  int32_t width(void) const override {
     used = true;
     return 320;
   }
-  int32_t height() const {
+  int32_t height(void) const override {
     used = true;
     return 240;
   }
-  lgfx::Panel_Device *getPanel() {
+  lgfx::Panel_Device *getPanel(void) override {
     used = true;
     return &panel;
   }
   // The headless service loop must never reach a panel drawing entry point.
   // Marking every access makes the no_panel check a real probe rather than a
   // constant that no code can ever set.
-  void sleep(void) { sleeping = true; }
+  void sleep(void) override { sleeping = true; }
   bool sleeping = false;
+  void setTouchCalibrate(uint16_t *) { used = true; }
+  uint16_t color565(uint8_t, uint8_t, uint8_t) const { return 0; }
+  uint8_t getRotation() const { return 0; }
+  void setRotation(uint8_t) {}
+  void wakeup(void) override {}
+  void waitDMA(void) override {}
+  void readRectRGB(int32_t, int32_t, int32_t, int32_t, uint8_t *) override {}
+  template <typename T>
+  void pushImageDMA(int32_t, int32_t, int32_t, int32_t, const T *) {}
   void fillScreen(uint16_t) const { used = true; }
   void drawRect(int32_t, int32_t, int32_t, int32_t, uint16_t) const { used = true; }
   void fillRect(int32_t, int32_t, int32_t, int32_t, uint16_t) const { used = true; }

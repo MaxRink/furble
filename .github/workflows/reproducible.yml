@@ -78,6 +78,10 @@ jobs:
           - m5stick-s3
           - esp32-s3-headless
           - waveshare-s3-eth
+          # Bench environment, not a release image: the first non-M5 board has
+          # no device run yet, so it is built here with both budgets rather
+          # than published.
+          - lilygo-tbeam-supreme
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -386,4 +386,14 @@ plan; the bench item 6 expectation is simply known now.
 
 ## Implementation state
 
-Research and decision only. No code, board profile or purchase yet.
+Research and decision only when written. The first decision item, the T-Beam
+Supreme, is now a board profile and firmware environment: see
+[365](367-tbeam-supreme-port.md). That port does not distinguish the two trims.
+It wires the board's UART pins (RX 9, TX 8) and leaves the receiver to the
+runtime MON-VER probe, so an L76K unit keeps the `$PCAS` and NMEA path and a
+MAX-M10S unit takes UBX. Three facts this plan records as UNVERIFIED for the
+M10S trim stay open and are carried in 365's open items: the module's V_IO
+supply on pin 7, the V_BCKP net, and GPIO7's role on that trim (the image drives
+no enable pin on either trim). Owner's priority for the port was GPS quality
+rather than port cost, so the M10S trim is the trim to buy even though the image
+supports both.

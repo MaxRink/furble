@@ -14,40 +14,48 @@ of each column are in `include/FurbleBoard.h`. The values below are the table in
 verification table in
 [board-verification.md](board-verification.md).
 
-| Field | StickC | StickC+ | StickC+2 | StickS3 | Core | Core2 | Tough | Waveshare | Unknown |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `battery.level` | yes | yes | yes | yes | yes | yes | yes | no | no |
-| `battery.voltage` | yes | yes | yes | yes | no | yes | yes | no | no |
-| `battery.current` | yes | yes | no | no | no | yes | yes | no | no |
-| `battery.charging` | yes | yes | no | yes | yes | yes | yes | no | no |
-| `batteryCapacityMah` | 95 | 120 | 200 | 250 | 110 | 500 | 390 | 0 | 0 |
-| `rtcBatteryBacked` | yes | yes | yes | no | no | yes | yes | no | no |
-| `rtcOnBus` | yes | yes | yes | no | no | yes | yes | no | no |
-| `irPin` | 9 | 9 | 19 | 46 | -1 | -1 | -1 | -1 | -1 |
-| `motionWake` | DIRECT | DIRECT | NONE | PMIC_GPIO | NONE | NONE | NONE | NONE | NONE |
-| `motionWakePin` | 35 | 35 | -1 | 13 | -1 | -1 | -1 | -1 | -1 |
-| `timedWake` | NONE | RTC_ALARM | RTC_ALARM | PMIC_TIMER | NONE | NONE | RTC_ALARM | NONE | NONE |
-| `powerHoldPin` | -1 | -1 | 4 | -1 | -1 | -1 | -1 | -1 | -1 |
-| `pmicClickStreak` | yes | yes | no | no | no | no | yes | no | no |
-| `sdSlot` | no | no | no | no | yes | yes | yes | no | no |
-| `canPowerOff` | yes | yes | yes | yes | no | yes | yes | no | yes |
-| `powerOffPath` | yes | yes | yes | yes | yes | yes | yes | no | yes |
-| `modemSleep` | no | no | no | yes | no | no | no | no | no |
-| `minBrightness` | 48 | 48 | 32 | 32 | 32 | 32 | 32 | 32 | 32 |
-| `feedbackSound` | no | yes | yes | yes | yes | yes | yes | no | no |
-| `feedbackLight` | yes | yes | yes | no | no | no | no | no | no |
-| `feedbackVibration` | no | no | no | no | no | yes | no | no | no |
-| `ledPin` | 10 | 10 | 19 | -1 | -1 | -1 | -1 | -1 | -1 |
-| `gpsRail` | yes | yes | no | yes | no | yes | yes | no | no |
-| `ledActiveLow` | yes | yes | no | no | no | no | no | no | yes |
-| `irMarkLow` | yes | yes | no | no | no | no | no | no | no |
-| `gpsPinSource` | BOARD | BOARD | BOARD | BOARD | NONE | BOARD | BOARD | NONE | BOARD |
-| `gpsRxPin` / `gpsTxPin` | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 |
+| Field | StickC | StickC+ | StickC+2 | StickS3 | Core | Core2 | Tough | Waveshare | T-Beam S | Unknown |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `battery.level` | yes | yes | yes | yes | yes | yes | yes | no | yes | no |
+| `battery.voltage` | yes | yes | yes | yes | no | yes | yes | no | yes | no |
+| `battery.current` | yes | yes | no | no | no | yes | yes | no | no | no |
+| `battery.charging` | yes | yes | no | yes | yes | yes | yes | no | yes | no |
+| `batteryCapacityMah` | 95 | 120 | 200 | 250 | 110 | 500 | 390 | 0 | 0 | 0 |
+| `rtcBatteryBacked` | yes | yes | yes | no | no | yes | yes | no | no | no |
+| `rtcOnBus` | yes | yes | yes | no | no | yes | yes | no | no | no |
+| `irPin` | 9 | 9 | 19 | 46 | -1 | -1 | -1 | -1 | -1 | -1 |
+| `motionWake` | DIRECT | DIRECT | NONE | PMIC_GPIO | NONE | NONE | NONE | NONE | NONE | NONE |
+| `motionWakePin` | 35 | 35 | -1 | 13 | -1 | -1 | -1 | -1 | -1 | -1 |
+| `timedWake` | NONE | RTC_ALARM | RTC_ALARM | PMIC_TIMER | NONE | NONE | RTC_ALARM | NONE | NONE | NONE |
+| `powerHoldPin` | -1 | -1 | 4 | -1 | -1 | -1 | -1 | -1 | -1 | -1 |
+| `pmicClickStreak` | yes | yes | no | no | no | no | yes | no | no | no |
+| `sdSlot` | no | no | no | no | yes | yes | yes | no | no | no |
+| `canPowerOff` | yes | yes | yes | yes | no | yes | yes | no | yes | yes |
+| `powerOffPath` | yes | yes | yes | yes | yes | yes | yes | no | yes | yes |
+| `modemSleep` | no | no | no | yes | no | no | no | no | no | no |
+| `minBrightness` | 48 | 48 | 32 | 32 | 32 | 32 | 32 | 32 | 32 | 32 |
+| `feedbackSound` | no | yes | yes | yes | yes | yes | yes | no | no | no |
+| `feedbackLight` | yes | yes | yes | no | no | no | no | no | no | no |
+| `feedbackVibration` | no | no | no | no | no | yes | no | no | no | no |
+| `ledPin` | 10 | 10 | 19 | -1 | -1 | -1 | -1 | -1 | -1 | -1 |
+| `gpsRail` | yes | yes | no | yes | no | yes | yes | no | yes | no |
+| `ledActiveLow` | yes | yes | no | no | no | no | no | no | no | yes |
+| `irMarkLow` | yes | yes | no | no | no | no | no | no | no | no |
+| `gpsPinSource` | BOARD | BOARD | BOARD | BOARD | NONE | BOARD | BOARD | NONE | PROFILE | BOARD |
+| `gpsRxPin` / `gpsTxPin` | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | 9 / 8 | -1 / -1 |
 
 BOARD is `GpsPinSource::BOARD_SUPPORT`. The unknown row is the fallback for a
 board furble cannot identify, and the Waveshare ESP32-S3-ETH is the row for
 `board_M5StampS3`, which is the identity M5GFX reports for that image because
 `platformio.ini` pins it.
+
+The T-Beam Supreme column is the only row chosen at compile time. The board
+support library cannot detect the board, so `Board::compiledProfile()` answers
+with it under `FURBLE_HAS_AXP2101_HAL` and the image pins M5GFX at the
+display-less StampS3 family only to stop that library's probes. Its GPS pins are
+the board's own, RX 9 and TX 8, which is why `gpsPinSource` is PROFILE and the
+pin columns carry values. The evidence for every cell is in
+[plan 390](../../plans/390-tbeam-supreme-port.md).
 
 The per-board facts behind these columns, with a document or a source file for
 each one, are in [board-verification.md](board-verification.md). The columns that
@@ -125,7 +133,7 @@ slider switches rather than dims.
 ## I2C devices
 
 | Part | 7-bit address | Bus owner | Citation |
-| :--- | :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- | :--- |
 | FT6336U touch, Core2 | 0x38 | M5GFX `Touch_FT5x06`, INT on G39 | M5Stack Core2 page, PinMap `CAP.TOUCH` |
 | CHSC6540 touch, Tough | 0x2E | M5GFX `Touch_CHSC6540`, INT on G39 | M5Stack Tough page, PinMap `Cap.Touch` |
 | BMI270 IMU | 0x68 | M5Unified internal bus | `src/FurbleIMUMotionBMI270.cpp:24` |
@@ -146,7 +154,7 @@ is also the wake pin M5Unified records for those boards.
 ## GPS UART
 
 | Item | Value | Citation |
-| :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- |
 | Port | Grove Port A. The comment records RX 33 and TX 32 for the unsupported Module GPS v2.1 | `src/FurbleGPS.cpp:167` |
 | TX and RX pins | `M5.getPin(m5::port_a_pin2)` and `port_a_pin1` | `src/FurbleGPS.cpp:168-169` |
 | Frame | 8N1, no flow control | `src/FurbleGPS.cpp:173-178` |
@@ -160,7 +168,7 @@ for a module the firmware does not enable.
 ## W5500 Ethernet
 
 | Signal | GPIO | Citation |
-| :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- |
 | SPI SCLK | 13 | `src/FurbleEthernet.cpp:131` |
 | SPI MOSI | 11 | `src/FurbleEthernet.cpp:132` |
 | SPI MISO | 12 | `src/FurbleEthernet.cpp:133` |
@@ -207,7 +215,7 @@ M5GFX does not enforce it, so the firmware does (`include/FurbleUI.h:1136`,
 `src/FurbleUI.cpp:1841-1844,1887-1894`).
 
 | Rule | Behaviour | Citation |
-| :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- |
 | Sleep too soon after wake | refused, and the inactivity timer retries | `src/FurbleUI.cpp:1841-1845` |
 | Wake too soon after sleep | the UI task delays the remainder, then wakes | `src/FurbleUI.cpp:1887-1894` |
 | Frame in flight | `M5.Display.waitDMA()` before `sleep()` so the panel is never commanded to sleep mid transfer | `src/FurbleUI.cpp:1860-1863` |
@@ -220,7 +228,7 @@ Both draw buffers are `MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL` because they feed
 the SPI panel and cannot live in PSRAM (`src/FurbleUI.cpp:571-583`).
 
 | Rule | Value | Citation |
-| :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- |
 | Largest panel | 320x240, the bound used for clamping | `include/FurbleUIMemory.h:12-13` |
 | Partial rows divisor | 15 | `include/FurbleUIMemory.h:20` |
 | Narrow panel width | at or below 160 px | `include/FurbleUIMemory.h:23` |
@@ -258,7 +266,7 @@ behind it is documented on its own page.
 ## microSD
 
 | Item | Value | Citation |
-| :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- |
 | Boards with a slot | Core, Core2 and Tough. The StickC family has none, and the stack is compiled out there | `include/FurbleBoardCaps.h`, `src/FurbleBoard.cpp` |
 | Bus | SDSPI on the display SPI bus, 10 MHz | `src/FurbleSD.cpp:959-969` |
 | Mount point | `/sd` by default | `src/FurbleSD.cpp:39-43` |
@@ -278,7 +286,7 @@ simulator (`sim/coverage/hardware_quirks.json`, category `peripheral`, feature
 ## IR emitter
 
 | Item | Value | Citation |
-| :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- |
 | Pin | 9 on StickC and StickC Plus, 19 on Plus2, 46 on StickS3, none elsewhere | `src/FurbleBoard.cpp:132-160` |
 | Peripheral | one RMT TX channel at 1 MHz resolution | `src/FurbleIR.cpp:21,229-236` |
 | Transmit timeout | 1000 ms, then the channel is disabled regardless | `src/FurbleIR.cpp:24,289-305` |
@@ -291,7 +299,7 @@ The protocol timings are in [the IR remote page](../protocols/ir-remote.md).
 ## Speaker, LED and vibration
 
 | Output | Behaviour | Citation |
-| :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- |
 | Sound | M5Unified I2S. The IDF I2S driver holds `ESP_PM_APB_FREQ_MAX` while the channel is enabled, so tones are DFS-safe with no extra lock | `src/FurbleFeedback.cpp:15-19` |
 | LED | plain GPIO, DFS-immune, and the pads hold their level through light sleep because `PM_SLP_DISABLE_GPIO` is unset | `src/FurbleFeedback.cpp:20-22` |
 | Vibration | an I2C write to the PMIC, and the I2C driver recomputes its clock divider per transaction | `src/FurbleFeedback.cpp:23-24` |
@@ -325,7 +333,7 @@ slot (`docs/power/board-power.md:283`).
 ## Open rows
 
 | ID | Missing | Document and section needed | State |
-| :--- | :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- | :--- |
 | C-31a | The microSD electrical limits and the SDSPI timing table | SD Physical Layer Simplified Specification, bus timing chapter | open, the firmware fixes 10 MHz with no cited limit |
 | C-31b | The speaker amplifier part and its gain on the Core | The Basic pinmap puts the speaker on G25 as `DAC/SPK`, and M5Unified drives G25 with `use_dac = true`, so there is no I2S amplifier on that board. Which part buffers the DAC output is still not in the tree | open, narrowed by plan 386 |
 | C-31c | The WS2812 timing | WS2812B datasheet, timing table | open, M5Unified drives it |

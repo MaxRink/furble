@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path, PurePosixPath
 
-BOARDS = {"m5stick-s3", "m5stick-c", "m5stack-core",
+BOARDS = {"m5stick-s3", "m5stick-c", "m5stack-core", "lilygo-tbeam-supreme",
           "lilygo-tdeck", "lilygo-twatch-ultra"}
 CAPABILITIES = {"fauxny", "gps", "imu", "feedback", "ir", "sd"}
 OWNERS = {"power-gate": "sim-power", "bughunt": "sim-bughunt", "e2e": "sim-e2e", "invalid": "sim-parser"}
@@ -15,9 +15,11 @@ SUITE_COMMANDS = {
   "e2e": "check_sim_scenarios.py --list-certified --suite e2e",
   "invalid": "check_sim_scenarios.py --list-certified --suite invalid",
 }
-SUITE_BOARDS = {"power-gate": {"m5stick-s3"}, "bughunt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
-                "e2e": {"m5stick-s3", "m5stick-c", "m5stack-core", "lilygo-tdeck",
-                        "lilygo-twatch-ultra"}, "invalid": {"m5stick-s3"}}
+SUITE_BOARDS = {"power-gate": {"m5stick-s3"},
+               "bughunt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
+               "e2e": {"m5stick-s3", "m5stick-c", "m5stack-core",
+                       "lilygo-tbeam-supreme", "lilygo-tdeck", "lilygo-twatch-ultra"},
+               "invalid": {"m5stick-s3"}}
 REQUIRED_SELECTIONS = {
   "power-gate": {"m5stick-s3"},
   "bughunt": {"m5stick-s3", "m5stick-c", "m5stack-core"},

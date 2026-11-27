@@ -206,7 +206,7 @@ supported-camera claims.
 
 ## Supported Controllers
 
-Initially targeted at the M5StickC, the following controllers from [M5Stack](https://m5stack.com/) are supported:
+Initially targeted at the M5StickC, the following controllers are supported:
 * M5StickC (EOL)
 * M5StickC Plus
 * M5StickC Plus2 (EOL)
@@ -214,6 +214,7 @@ Initially targeted at the M5StickC, the following controllers from [M5Stack](htt
 * M5Core Basic
 * M5Core2 (8 MB PSRAM enabled)
 * M5Tough (untested)
+* LilyGO T-Beam Supreme (ESP32-S3, bench port, no device run yet)
 
 Two [LilyGO](https://lilygo.cc/) handhelds are also supported, with their own
 image each because M5Unified cannot detect them:
@@ -228,8 +229,17 @@ family; the two LilyGO images are single-board, with their panel, keyboard and
 trackball wired from `include/FurbleLilyGo.h`. The
 M5Tough is not a build environment. It shares the M5Core2 image through
 M5Unified board detection, but it has not been verified on hardware. See
+furble builds six release firmware images, one per M5 board environment, plus
+the T-Beam Supreme bench environment. M5Unified detects the exact board at
+runtime, so one image covers a board family. The M5Tough is not a build
+environment. It shares the M5Core2 image through M5Unified board detection, but
+it has not been verified on hardware. The T-Beam Supreme is the first non-M5
+board and is not a release image yet: no M5Unified detection exists for it, so
+its image answers with the compile-time row and drives the AXP2101 through
+`lib/hal` and the SH1106 OLED through M5GFX's `Panel_SH110x`. Its receiver is
+detected at runtime, so an L76K and a MAX-M10S unit share the image; see
 [docs/supported-hardware.md](docs/supported-hardware.md) for the board to
-environment matrix. Hardware that is not supported but is a candidate for a
+environment matrix and the bench items a device still needs. Hardware that is not supported but is a candidate for a
 port or a purchase is catalogued in
 [docs/hardware-catalog.md](docs/hardware-catalog.md), with GNSS classes, input
 schemes, and runtime estimates. The catalog is not a support claim.

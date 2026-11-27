@@ -6112,6 +6112,32 @@
       "expected_exit": 0,
       "certified": false,
       "reason": "Passes on a local T-Deck simulator build. Not certified because no CI job builds a LilyGO simulator binary."
+    },
+    {
+      "path": "sim/scenarios/e2e/tbeam-supreme-l76k.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "lilygo-tbeam-supreme"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/tbeam-supreme-m10s.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "lilygo-tbeam-supreme"
+      ],
+      "capabilities": [
+        "gps"
+      ],
+      "expected_exit": 0,
+      "certified": true
     }
   ]
 }

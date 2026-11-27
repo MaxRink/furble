@@ -6,9 +6,13 @@ list.
 
 ## Controllers and build environments
 
-furble builds six release firmware images. M5Unified detects the exact board at
-runtime, so one image covers a board family. Every environment also has a
-matching `-debug` variant that adds verbose logging and the USB serial console.
+furble builds six release firmware images plus one bench image. M5Unified
+detects the exact M5 board at runtime, so one image covers a board family. The
+LilyGO T-Beam Supreme is not an M5 board and is not a release image yet:
+M5Unified cannot detect it, so its image carries the board row at compile time
+and drives the AXP2101 PMIC and the SH1106 OLED itself. Every environment also
+has a matching `-debug` variant that adds verbose logging and the USB serial
+console.
 
 | Build env | Chip | Flash | MQTT | Boards it runs on | Touch | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -18,6 +22,22 @@ matching `-debug` variant that adds verbose logging and the USB serial console.
 | `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
 | `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | PSRAM enabled. On-screen shutter buttons, touch calibration, power-button screen lock. The M5Tough row enables its microSD slot, NS4168 speaker and battery-backed BM8563 RTC alarm wake from the vendor pinmap and schematic, but no Tough hardware has verified them. |
 | `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet node. Wi-Fi and BLE 5 on the SoC, W5500 for wired Ethernet. No PMIC, battery, RTC part, IMU or IR, and no software power-off path. Hardware verification remains outstanding. |
+| `lilygo-tbeam-supreme` | ESP32-S3 | 8 MB | Yes | LilyGO T-Beam Supreme (L76K or MAX-M10S trim) | No | Bench port with no device run yet. 8 MB quad PSRAM, AXP2101 battery level, voltage and charge direction, 128x64 1-bit SH1106 OLED, GPS on UART RX 9 / TX 8, 32.768 kHz crystal on XTAL_32K. No touch, IR, LED, speaker, vibration motor or SD mount. |
+
+The LilyGO T-Beam Supreme is the first non-M5 board. Its image pins M5GFX at the
+display-less StampS3 family only to stop M5Unified's board probes; the profile
+row comes from the build macro, so the pin never decides what the board is. The
+AXP2101 runs through the `lib/hal` register driver on I2C bus 1 (SDA 42,
+SCL 41), the OLED through M5GFX's `Panel_SH110x` on bus 0 (SDA 17, SCL 18) with
+the address probed at 0x3C and then 0x3D, and the GPS UART pins are the row's
+own (RX 9, TX 8). ALDO4 is the receiver's rail and the only rail furble
+switches. No enable pin is driven: GPIO7 is the L76K's WAKE_UP and pin 5 of the
+MAX-M10S is EXTINT, so a shared image leaves it alone. The microSD slot, the
+SX1262 and the QMI8658 are not used, the RTC part is not read (the wiki calls it
+a PCF85063ATL, the schematic a PCF8563), and the board row keeps the
+conservative RTC and GPS-backup answers until the bench items in plan 367
+close. Every claim above is from the LilyGO wiki page or the vendor factory
+code, not from a device run.
 
 The Waveshare ESP32-S3-ETH is a mains or PoE node. Its board row reports no
 battery, no PMIC, no RTC part, no IR emitter, no IMU and no software power-off
@@ -91,7 +111,10 @@ constellation selection, update rate, dynamic model, cyclic tracking and on/off
 power save, RXM-PMREQ software standby, AssistNow Autonomous and UPD-SOS
 save-on-shutdown. It is verified against a virtual M10 in the simulator only; no
 M10 hardware has been tested. A board that keeps the receiver's V_BCKP supplied
-defines `FURBLE_GPS_BACKUP_SUPPLY`; no supported board does.
+defines `FURBLE_GPS_BACKUP_SUPPLY`. No supported board defines it yet: the
+T-Beam Supreme is the first whose vendor states that the 18650 backs the
+receiver, but the pin-level path is traced only on the L76K sheet and the
+define waits for a bench check.
 
 ## Related pages
 

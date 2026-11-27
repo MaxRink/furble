@@ -18,6 +18,10 @@ CC=${CC:-clang}
 # a different panel class:
 #   M5StickC   80x160  : FURBLE_SIM_FURBLE_BOARD=FURBLE_M5STICKC   FURBLE_SIM_M5GFX_BOARD=board_M5StickC
 #   M5Stack    320x240 : FURBLE_SIM_FURBLE_BOARD=FURBLE_M5COREX    FURBLE_SIM_M5GFX_BOARD=board_M5Stack
+#   T-Beam S   128x64  : FURBLE_SIM_FURBLE_BOARD=FURBLE_LILYGO_TBEAM_SUPREME FURBLE_SIM_M5GFX_BOARD=board_M5StickS3
+# The T-Beam's own 128x64 panel is furble's, in src/FurbleDisplay.cpp; the M5GFX
+# board above only configures the SDL panel M5Unified asks for, which the UI does
+# not draw through on that image.
 FURBLE_BOARD=${FURBLE_SIM_FURBLE_BOARD:-FURBLE_M5STICKS3}
 M5GFX_BOARD=${FURBLE_SIM_M5GFX_BOARD:-board_M5StickS3}
 
@@ -29,6 +33,7 @@ case "$FURBLE_BOARD" in
   FURBLE_M5COREX) default_sdkconfig="$ROOT/sdkconfig.m5stack-core" ;;
   FURBLE_LILYGO_TDECK) default_sdkconfig="$ROOT/sdkconfig.lilygo-tdeck" ;;
   FURBLE_LILYGO_TWATCH_ULTRA) default_sdkconfig="$ROOT/sdkconfig.lilygo-twatch-ultra" ;;
+  FURBLE_LILYGO_TBEAM_SUPREME) default_sdkconfig="$ROOT/sdkconfig.lilygo-tbeam-supreme" ;;
   *) default_sdkconfig="$ROOT/sdkconfig.m5stick-s3" ;;
 esac
 SDKCONFIG=${FURBLE_SIM_SDKCONFIG:-$default_sdkconfig}
@@ -371,6 +376,7 @@ for source in \
   "$ROOT/tests/host/companion/companion_hmac.cpp" \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleControl.cpp" \
+  "$ROOT/src/FurbleDisplay.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurbleGPSUbx.cpp" \
   "$ROOT/src/FurbleMemoryPressure.cpp" \

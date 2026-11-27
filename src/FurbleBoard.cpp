@@ -227,6 +227,20 @@ constexpr Profile UNKNOWN       = {"M5", {false, false, false, false}, 0, false,
     -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, false, false, 16, true,
     false, false, -1, false, false, false,
     GpsPinSource::PROFILE, 44, 43, 21};
+// The T-Beam Supreme is a LilyGO board too, and the only one here whose PMIC
+// furble owns: the AXP2101 runs through lib/hal, so the row reports battery
+// level, voltage and charge direction, a switchable GPS rail on ALDO4 and a
+// software power-off. The OLED is a 128x64 SH1106 on the board's own I2C bus,
+// the GNSS is an L76K or a MAX-M10S on UART RX 9 / TX 8 (chosen at runtime by
+// the MON-VER probe), and the microSD slot sits on its own SPI2 bus, which
+// FurbleSD cannot mount, so the row reports no slot and names no select pin.
+// No IR emitter, LED, speaker, vibration motor or read IMU, and no RTC is read:
+// the fitted part is ambiguous between PCF8563 and PCF85063ATL, so the calendar
+// columns stay conservative. See plans/390-tbeam-supreme-port.md.
+[[maybe_unused]] constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true, true, false, true}, 0, false,
+    false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32,
+    false, false, false, -1, true, false, false, GpsPinSource::PROFILE, 9, 8, -1};
+
 // clang-format on
 }  // namespace
 
@@ -235,6 +249,8 @@ const Profile &compiledProfile(void) {
   return TDECK;
 #elif defined(FURBLE_LILYGO_TWATCH_ULTRA)
   return TWATCH_ULTRA;
+#elif defined(FURBLE_LILYGO_TBEAM_SUPREME)
+  return TBEAM_SUPREME;
 #else
   return profileFor(M5.getBoard());
 #endif
@@ -274,7 +290,7 @@ extern "C" __attribute__((weak)) bool furble_sim_board_profile(m5::board_t *boar
 #endif
 
 const Profile &profile(void) {
-#if FURBLE_LILYGO_BOARD
+#if FURBLE_LILYGO_BOARD || defined(FURBLE_LILYGO_TBEAM_SUPREME)
   // A single-board LilyGO image: the row cannot come from the detected board,
   // because the pinned M5GFX name is only a probe suppressor and M5Unified
   // reports that M5 board, not this one.

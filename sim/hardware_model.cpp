@@ -45,18 +45,19 @@ struct rtc_fact_t {
 };
 
 constexpr rtc_fact_t RTC_FACTS[] = {
-    {"stickc",           true,  "BM8563, docs/power/board-power.md"     },
-    {"stickc-plus",      true,  "BM8563, docs/power/board-power.md"     },
-    {"stickc-plus2",     true,  "BM8563 alarm wake, src/FurbleBoard.cpp"},
-    {"sticks3",          false, "no RTC chip, docs/console-commands.md" },
-    {"core-4mb",         false, "no RTC chip, docs/console-commands.md" },
-    {"core-16mb",        false, "no RTC chip, docs/console-commands.md" },
-    {"core2",            true,  "BM8563, docs/power/board-power.md"     },
-    {"tough",            true,  "BM8563, docs/power/board-power.md"     },
-    {"headless-s3",      false, "no RTC, docs/power/board-power.md"     },
-    {"waveshare-s3-eth", false, "no RTC on the StampS3"                 },
-    {"tdeck",            false, "no RTC part, LilyGoLib T-Deck doc"     },
-    {"twatch-ultra",     true,  "PCF85063A, LilyGoLib Ultra doc"        },
+    {"stickc",           true,  "BM8563, docs/power/board-power.md"                },
+    {"stickc-plus",      true,  "BM8563, docs/power/board-power.md"                },
+    {"stickc-plus2",     true,  "BM8563 alarm wake, src/FurbleBoard.cpp"           },
+    {"sticks3",          false, "no RTC chip, docs/console-commands.md"            },
+    {"core-4mb",         false, "no RTC chip, docs/console-commands.md"            },
+    {"core-16mb",        false, "no RTC chip, docs/console-commands.md"            },
+    {"core2",            true,  "BM8563, docs/power/board-power.md"                },
+    {"tough",            true,  "BM8563, docs/power/board-power.md"                },
+    {"headless-s3",      false, "no RTC, docs/power/board-power.md"                },
+    {"waveshare-s3-eth", false, "no RTC on the StampS3"                            },
+    {"tdeck",            false, "no RTC part, LilyGoLib T-Deck doc"                },
+    {"twatch-ultra",     true,  "PCF85063A, LilyGoLib Ultra doc"                   },
+    {"tbeam-supreme",    true,  "PCF8563/PCF85063, LilyGO T-Beam Supreme schematic"},
 };
 
 /*
@@ -524,6 +525,48 @@ constexpr uint32_t ip5306LightLoadMs(uint8_t sysCtl2) {
   return static_cast<uint32_t>(Furble::IP5306::lightLoadSeconds(sysCtl2)) * 1000U;
 }
 
+// LilyGO T-Beam Supreme: ESP32-S3FN8 with 8 MB flash and 8 MB quad PSRAM, an
+// AXP2101 with an E-gauge percentage and no current sense, a 128x64 1-bit
+// SH1106 OLED on the board's own I2C bus 0, an L76K or MAX-M10S receiver on
+// UART RX 9 / TX 8, and no IR emitter, speaker, vibration motor or touch panel.
+// The microSD slot exists but is on its own SPI bus, which FurbleSD does not
+// mount, so the model reports no slot exactly as the profile row does.
+const board_caps_t TBEAM_SUPREME = {.mcu = "esp32s3",
+                                    .flashKb = 8192,
+                                    .pmic = "axp2101",
+                                    .gauge = "voltage_charge",
+                                    .psram = "quad",
+                                    .usb = "serial_jtag",
+                                    .display = "128x64",
+                                    .width = 128,
+                                    .height = 64,
+                                    .touch = false,
+                                    .battery = true,
+                                    .wifi = true,
+                                    .ethernet = false,
+                                    .ble = true,
+                                    .ir = false,
+                                    .sd = false,
+                                    .audio = false,
+                                    .rtc = true,
+                                    .rtcBatteryBacked = false,
+                                    .timedWake = "none",
+                                    .vbus = true,
+                                    .poe = false,
+                                    // The row the firmware compiles: no RTC is
+                                    // read, so rtcOnBus is false and the
+                                    // calendar is not on the modelled bus.
+                                    .rtcOnBus = false,
+                                    .canPowerOff = true,
+                                    .ledActiveLow = false,
+                                    .irMarkLow = false,
+                                    .gpsPinSource = "profile",
+                                    .gpsRxPin = 9,
+                                    .gpsTxPin = 8,
+                                    .powerOff = "axp2101-off",
+                                    .powerOffPath = true,
+                                    .ext5vShared = false};
+
 struct pmic_state_t {
   std::string variant;
   std::string gauge;
@@ -970,6 +1013,9 @@ const board_caps_t &capsFor(const std::string &profile) {
   if (profile == "twatch-ultra") {
     return TWATCH_ULTRA;
   }
+  if (profile == "tbeam-supreme") {
+    return TBEAM_SUPREME;
+  }
   return STICKS3;
 }
 
@@ -1093,6 +1139,8 @@ std::string defaultProfile(void) {
   return "tdeck";
 #elif defined(FURBLE_LILYGO_TWATCH_ULTRA)
   return "twatch-ultra";
+#elif defined(FURBLE_LILYGO_TBEAM_SUPREME)
+  return "tbeam-supreme";
 #elif defined(FURBLE_M5STICKS3)
   return "sticks3";
 #elif defined(FURBLE_M5STICKC_PLUS)

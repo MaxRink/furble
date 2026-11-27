@@ -12,6 +12,7 @@ set(furble_sources
     FurbleConsole.cpp
     FurbleControl.cpp
     FurbleCrashLog.cpp
+    FurbleDisplay.cpp
     FurbleEthernet.cpp
     FurbleFeedback.cpp
     FurbleGPS.cpp
@@ -91,12 +92,17 @@ if(FURBLE_LILYGO)
        FurbleLilyGoDevice.cpp)
   list(APPEND furble_private_requires esp_driver_gpio esp_driver_spi)
 endif()
+# lib/hal holds the pure chip drivers (plans/322). It is a private include so
+# no public header pulls a register driver into the exported interface.
+set(furble_hal_include "${CMAKE_CURRENT_LIST_DIR}/../lib/hal")
 
 if(FURBLE_NO_DISPLAY)
   idf_component_register(SRCS ${furble_sources}
+                         PRIV_INCLUDE_DIRS ${furble_hal_include}
                          PRIV_REQUIRES ${furble_private_requires} esp_hw_support)
 else()
   idf_component_register(SRCS ${furble_sources}
+                         PRIV_INCLUDE_DIRS ${furble_hal_include}
                          PRIV_REQUIRES ${furble_private_requires} esp_hw_support
                          REQUIRES icons)
 endif()

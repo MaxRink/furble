@@ -1,0 +1,20 @@
+# The same T-Beam Supreme row with a Quectel L76K fitted. The board's row is
+# receiver-agnostic, so the UBX-MON-VER poll goes unanswered, the driver keeps
+# the NMEA backend, and the CASIC `$PCAS` path configures the receiver exactly as
+# it does on an M5 board with a Grove unit. The L76K runs at 9600 baud, the rate
+# the vendor factory code programs for this board.
+#
+# This is also the trim where GPIO7 is the receiver's WAKE_UP input. The image
+# does not drive it on either trim, so the scenario asserts the configuration
+# that reaches the UART and nothing about an enable line.
+seed gps true
+seed gps_baud auto
+seed gps_receiver 9600
+wait 8000
+assert gps.receiver present
+assert gps.baud 9600
+assert gps.backend nmea
+assert gps.ubx.module none
+assert-eventually 3000 gps.source uart
+assert-eventually 3000 gps.satellites 8
+exit

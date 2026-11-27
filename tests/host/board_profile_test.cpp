@@ -439,6 +439,58 @@ int main() {
   check(!Furble::Board::gpsPins(custom, rx, tx), "NONE gps pins do not resolve");
   check(rx == -1 && tx == -1, "NONE leaves both gps pins at -1");
 
+#if FURBLE_HAS_AXP2101_HAL
+  // The T-Beam Supreme image. No M5 board_t names this board, so the row comes
+  // from the build macro and the detected value must not change it: the image
+  // pins M5GFX at the display-less StampS3 family only to take the no-probe
+  // return, and M5Unified then reports that M5 board.
+  {
+    const Profile &tbeam = Furble::Board::compiledProfile();
+    const std::string n = "T-Beam Supreme";
+    check(std::strcmp(tbeam.name, "T-Beam S") == 0, n + " name");
+    check(tbeam.battery.level && tbeam.battery.voltage && !tbeam.battery.current
+              && tbeam.battery.charging,
+          n + " battery caps");
+    check(tbeam.batteryCapacityMah == 0, n + " capacity is the user's cell");
+    check(!tbeam.rtcBatteryBacked, n + " rtc backing stays conservative");
+    check(!tbeam.rtcOnBus, n + " rtc is not on M5Unified's bus");
+    check(!Furble::Board::clearsStaleRtcAlarm(tbeam),
+          n + " clears no stale RTC alarm flag, because no chip is on the bus");
+    check(tbeam.irPin == -1, n + " has no IR emitter");
+    check(tbeam.motionWake == MotionWake::NONE && tbeam.motionWakePin == -1,
+          n + " has no motion wake backend");
+    check(tbeam.timedWake == TimedWake::NONE && tbeam.powerHoldPin == -1, n + " has no timed wake");
+    check(!tbeam.pmicClickStreak, n + " does not fake a PMIC click streak");
+    check(!tbeam.sdSlot, n + " reports no SD slot on the display bus");
+    check(tbeam.canPowerOff && tbeam.powerOffPath, n + " can cut power");
+    check(!tbeam.modemSleep, n + " leaves modem sleep to the setting");
+    check(tbeam.minBrightness == 32 && tbeam.minBrightness % 16 == 0,
+          n + " brightness floor is a slider step multiple");
+    check(!tbeam.feedbackSound && !tbeam.feedbackLight && !tbeam.feedbackVibration
+              && tbeam.ledPin == -1,
+          n + " has no feedback outputs");
+    check(tbeam.gpsRail, n + " GPS rail is ALDO4, a switchable rail");
+    check(!tbeam.ledActiveLow && !tbeam.irMarkLow, n + " drives no LED or emitter");
+    check(tbeam.gpsPinSource == GpsPinSource::PROFILE && tbeam.gpsRxPin == 9 && tbeam.gpsTxPin == 8,
+          n + " carries the board's GPS UART pins");
+
+    M5.board = m5::board_t::board_M5StampS3;
+    check(&Furble::Board::compiledProfile() == &tbeam, n + " row does not follow the M5GFX pin");
+    M5.board = m5::board_t::board_unknown;
+
+    // The pins come from the row, never from M5Unified's Port A table.
+    M5.portAPin1 = 15;
+    M5.portAPin2 = 13;
+    int8_t rx = -2;
+    int8_t tx = -2;
+    check(Furble::Board::gpsPins(tbeam, rx, tx), n + " gps pins resolve");
+    check(rx == 9 && tx == 8, n + " gps pins are RX 9 and TX 8");
+    check(rx != 15 && tx != 13, n + " gps pins ignore Port A");
+    check(!Furble::PinShare::ledSharesIr(tbeam.ledPin, tbeam.irPin),
+          n + " has no LED and no emitter to share");
+  }
+#endif
+
   if (g_Failures == 0) {
     std::cout << "board-profile: PASS\n";
     return 0;

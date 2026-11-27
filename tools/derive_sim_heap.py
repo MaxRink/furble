@@ -49,6 +49,8 @@ ENVS = {
     "waveshare-s3-eth": ("esp32s3", 0, 0, "waveshare-s3-eth"),
     # Not a release env, but CI builds it and the simulator models it.
     "esp32-s3-headless": ("esp32s3", 0, 0, "headless-s3"),
+    # The T-Beam Supreme bench image: 128x64 1-bit panel, quad PSRAM.
+    "lilygo-tbeam-supreme": ("esp32s3", 128, 64, "tbeam-supreme"),
 }
 
 # Board-conditional boot tasks from app_main. IR::init() runs where the board

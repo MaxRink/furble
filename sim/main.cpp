@@ -22,6 +22,7 @@
 #include "FurbleBootScreen.h"
 #include "FurbleControl.h"
 #include "FurbleCrashLog.h"
+#include "FurbleDisplay.h"
 #if defined(FURBLE_SIM_MQTT) && FURBLE_SIM_MQTT
 #include "FurbleMQTT.h"
 #endif
@@ -79,6 +80,14 @@ int runSimulator() {
   Timezone::apply(Timezone::clamp(Settings::load<Settings::TIMEZONE>()));
   Sim::watchdogPhase("panel bring-up");
   Platform::init();
+  // The board's own panel. On the M5 models this is a no-op, because M5.begin()
+  // already ran M5GFX's probe; on the 128x64 model it creates the panel the UI
+  // draws into. It runs before panelReady so the render loop on the main thread
+  // never traverses M5GFX's monitor list while this thread adds an entry.
+  if (!Display::begin()) {
+    std::fprintf(stderr, "simulator: the 128x64 panel did not answer\n");
+    return 1;
+  }
   // Panel_sdl::main starts its render loop concurrently with this callback.
   // M5GFX registers the panel from Platform::init without protecting its
   // global monitor list, so let our main thread observe that registration

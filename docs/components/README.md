@@ -119,7 +119,7 @@ page names.
 | u-blox NEO-F10N | [ublox-neo-f10n.md](ublox-neo-f10n.md) | supported, hardware untested | L1/L5 dual-band GNSS receiver, ROM SPG 6.00 | `lib/furble/protocol/GpsUbx.h` | UBX-23002975 R02, UBX-23002117 R05, UBXDOC-963802114-12193 R04 |
 | Sitronix ST7789 and ST7789V2 | [st7789.md](st7789.md) | board support | Panel on the StickS3 and most M5 boards | M5GFX panel, `src/FurbleUI.cpp` | V1.3 and V1.0 |
 | ILITEK ILI934x | [ili934x.md](ili934x.md) | board support | Panel on the Core2 and the Core | M5GFX panel, `src/FurbleUI.cpp` | ILI9342C V101 |
-| Sino Wealth SH1106 | [sh1106.md](sh1106.md) | future | OLED for the T-Beam Supreme profile | none yet | none found, a distributor mirror only |
+| Sino Wealth SH1106 | [sh1106.md](sh1106.md) | simulator-tested | 128x64 1-bit OLED on the T-Beam Supreme, through M5GFX `Panel_SH110x` | `src/FurbleDisplay.cpp` | none committed, a distributor mirror of V2.3 only |
 | CHIPONE CO5300 | [co5300.md](co5300.md) | future | AMOLED for the T-Watch Ultra profile | none yet | V0.00 |
 | Hynitron CST9217 | [cst9217.md](cst9217.md) | future | Touch for the T-Watch Ultra profile | none yet | none found |
 | Hynitron CST816 | [cst816.md](cst816.md) | board support | Touch controller family M5GFX already supports | M5GFX | CST816D V1.3 |
