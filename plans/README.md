@@ -273,6 +273,7 @@ whose title carries it, and plan 331 is archived there with it.
 | [473-review-feedback.md](473-review-feedback.md) | Review-feedback record for the #473 hardware-trap corrections and the per-panel display dwell rule |
 | [350-stickc-family-fixes.md](implemented/350-stickc-family-fixes.md) | StickC family fixes: shared LED/IR pin ownership, LED and IR polarity, Plus2 RTC backing, AXP192 ADC mask reason, GPIO35 third source, StickC Plus timed wake, GPS rail already on. StickC family fixes: shared LED/IR pin ownership, LED and IR polarity, Plus2 RTC backing, AXP192 ADC mask reason, GPIO35 third source, StickC Plus timed wake, GPS rail already on. Archived: merged as #505 (`b56acc88`). See [391](391-plan-closeout-decisions.md). |
 | [350-review-feedback.md](implemented/350-review-feedback.md) | Review-feedback record for PR #505: the arbiter build gate, the unrecorded-level fallback, the boot-time EXTEN writes, and the polarity and RTC questions this review closed. Review-feedback record for PR #505: the arbiter build gate, the unrecorded-level fallback, the boot-time EXTEN writes, and the polarity and RTC questions this review closed. Archived with its plan, PR #505. See [391](391-plan-closeout-decisions.md). |
+| [551-review-feedback.md](551-review-feedback.md) | Review-feedback record for PR #551: the T-Beam Supreme port, where the hardware matched the vendors and the three blockers were the panel probe, the panel geometry and the single-shot AXP2101 identity read |
 | [371-fork-network-sweep.md](371-fork-network-sweep.md) | Fork network sweep: 41 forks classified, the 123 commits absent by SHA, the two new ones worth taking, the web installer chip family defect, and the items cleared so nobody re-ports them |
 | [373-interval-shutter-hold.md](implemented/373-interval-shutter-hold.md) | Intervalometer shutter hold decision record: the 30 ms default kept, the per-family evidence for which drivers honour the value, why the fork's 400 ms and its migration are rejected, and the one capture that would reopen it. Intervalometer shutter hold decision record: the 30 ms default kept, the per-family evidence for which drivers honour the value, why the fork's 400 ms and its migration are rejected, and the one capture that would reopen it. Archived: merged as #544 (`c8159ee9`); the 30 ms default stays. See [391](391-plan-closeout-decisions.md). |
 | [389-shutter-zero-hold.md](implemented/389-shutter-zero-hold.md) | A configured Shutter of 0: the timer period and the configured duration were conflated, so 0 reused the previous period and a 15 s delay became a 15 s hold. 0 now means due now, and the per-call-site workarounds are gone. Archived: merged as #548 (`6b2da833`). See [391](391-plan-closeout-decisions.md). |
@@ -287,6 +288,9 @@ AMOLED port, and to 362 on nRF. Plan 366 is the receiver decision from the same
 reading: it ranks the levers, compares seven receivers, and defers to 318 for
 the bench work. Plan 367 is the family decision and the first two LilyGO
 implementations, which build on the seams plans 365 (T-Beam Supreme) introduces.
+the bench work. Plan 367 is the T-Beam Supreme port itself, written against 318
+the bench work. Plan 390 is the T-Beam Supreme port itself, written against 318
+and 366 and implemented on this branch.
 
 | Doc | Content |
 |---|---|
@@ -305,6 +309,7 @@ implementations, which build on the seams plans 365 (T-Beam Supreme) introduces.
 | [386-board-verification.md](implemented/386-board-verification.md) | Per-board verification of every `Board::Profile` row and the per-board `Platform` branches against the vendor pages and pin maps: the corrected `rtcOnBus` and `ledActiveLow` columns, the stale profile table, the Core2 rail register, the display-sleep count, the EXT_5V boot-byte simulator defect and its fix, and the eleven facts no document in the tree settles. Archived: merged as #543 (`08709037`); its status line said not merged and the merge is on master. See [391](391-plan-closeout-decisions.md). |
 | [543-review-feedback.md](implemented/543-review-feedback.md) | Review-feedback record for the board verification pass: five blockers and ten smaller findings, each fixed on the branch, with the assertion mutation proof and the corrected simulator boot byte. Archived with its plan, PR #543. See [391](391-plan-closeout-decisions.md). |
 | [387-lilygo-family-port.md](387-lilygo-family-port.md) | The LilyGO family: the per-board fact table for seven products, the finished-article ranking by case and battery, three corrections to the brief (no TCA8418, the T-Watch Ultra has GNSS, CO5300 is 502x410), the shared facts and display seams, and the T-Deck and T-Watch Ultra ports with what stays unverified |
+| [390-tbeam-supreme-port.md](390-tbeam-supreme-port.md) | T-Beam Supreme port: the evidence table with each fact tagged, the board row, the AXP2101 power path and its two deviations from the vendor order, the SH1106 display seam, the runtime receiver choice, the simulator panel class, and every fact that stays UNVERIFIED |
 
 ## Bug analyses
 

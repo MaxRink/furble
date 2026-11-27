@@ -3,6 +3,8 @@
 #include <cstring>
 #include <vector>
 
+#include "M5Unified.h"
+
 #include "FurblePlatform.h"
 #include "FurbleTypes.h"
 #include "boundary_host.h"
@@ -199,6 +201,24 @@ bool logContains(const char *needle) {
 }  // namespace BoundaryHost
 
 namespace Furble {
+
+// The display seam's non-drawing half. The boundary targets compile production
+// drivers, and the SD driver asks for the panel size and its bus. The stub
+// display answers with a 320x240 panel and an SPI bus, which is what every M5
+// board in this harness has.
+namespace Display {
+int32_t width(void) {
+  return M5.Display.width();
+}
+
+int32_t height(void) {
+  return M5.Display.height();
+}
+
+void *panelBus(void) {
+  return M5.Display.getPanel()->getBus();
+}
+}  // namespace Display
 
 Platform &Platform::getInstance() {
   static Platform instance;

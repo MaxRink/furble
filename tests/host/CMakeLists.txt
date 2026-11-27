@@ -3421,6 +3421,25 @@ target_include_directories(lilygo_family_test PRIVATE ${BOUNDARY_SHIM_DIR}
 target_compile_definitions(lilygo_family_test PRIVATE FURBLE_LILYGO_TDECK
                              FURBLE_LILYGO_NO_DEVICE_IO)
 target_compile_options(lilygo_family_test PRIVATE -Wall -Wextra -Werror)
+# The T-Beam Supreme row, from the build macro that also selects the HAL power
+# backend. No M5 board_t names the board, so this needs its own target; the
+# capability macros are compile-time, so one target per board image.
+add_executable(board_profile_tbeam_test
+               board_profile_test.cpp
+               ${BOUNDARY_DIR}/m5_stub.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp)
+target_include_directories(board_profile_tbeam_test PRIVATE ${BOUNDARY_SHIM_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(board_profile_tbeam_test PRIVATE FURBLE_LILYGO_TBEAM_SUPREME)
+target_compile_options(board_profile_tbeam_test PRIVATE -Wall -Wextra -Werror)
+
+# The display address probe and the 128x64 panel geometry. Both are decisions in
+# include/FurbleDisplay.h rather than wiring, so a bus double can NACK one
+# address and prove the other branch is reached; the driver in the firmware
+# calls the same functions.
+add_executable(display_probe_test display_probe_test.cpp)
+target_include_directories(display_probe_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(display_probe_test PRIVATE -Wall -Wextra -Werror)
 
 # Platform::powerOff() refuses a board row without a power-off path. The
 # decision is PlatformPolicy::powerOffAction(), so the test links the real board
@@ -3438,6 +3457,8 @@ if(BUILD_TESTING)
   add_test(NAME board-profile-lilygo-tdeck COMMAND board_profile_lilygo_tdeck_test)
   add_test(NAME board-profile-lilygo-twatch-ultra COMMAND board_profile_lilygo_twatch_ultra_test)
   add_test(NAME lilygo-family COMMAND lilygo_family_test)
+  add_test(NAME board-profile-tbeam COMMAND board_profile_tbeam_test)
+  add_test(NAME display-probe COMMAND display_probe_test)
   add_test(NAME platform-power-off COMMAND platform_power_off_test)
   add_test(NAME platform-wake COMMAND platform_wake_test)
   foreach(mode protocols psram-fallback queue-timeout unsupported)

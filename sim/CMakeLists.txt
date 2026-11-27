@@ -135,6 +135,7 @@ set(FURBLE_SOURCES
     "${FURBLE_ROOT}/tests/host/companion/companion_hmac.cpp"
     "${FURBLE_ROOT}/src/FurbleCompanionService.cpp"
     "${FURBLE_ROOT}/src/FurbleControl.cpp"
+    "${FURBLE_ROOT}/src/FurbleDisplay.cpp"
     "${FURBLE_ROOT}/src/FurbleGPS.cpp"
     "${FURBLE_ROOT}/src/FurbleGPSUbx.cpp"
     "${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp"

@@ -21,6 +21,37 @@
 #endif
 #endif
 
+namespace Furble {
+namespace Display {
+
+/**
+ * Panel geometry the T-Beam driver configures and the simulator models.
+ */
+constexpr int32_t TBEAM_PANEL_WIDTH = 128;
+constexpr int32_t TBEAM_PANEL_HEIGHT = 64;
+
+namespace Detail {
+
+/**
+ * The address the panel answered on, or 0 when neither answered.
+ */
+constexpr uint8_t choosePanelAddress(bool ack_primary, bool ack_secondary) {
+  if (ack_secondary) {
+    return 0x3D;
+  }
+  return ack_primary ? static_cast<uint8_t>(0x3C) : static_cast<uint8_t>(0);
+}
+
+/** SH1106 multiplex ratio for a panel of `height` rows. */
+constexpr uint8_t sh1106MuxRatio(int32_t height) {
+  return static_cast<uint8_t>(height - 1);
+}
+
+}  // namespace Detail
+
+}  // namespace Display
+}  // namespace Furble
+
 #if defined(FURBLE_DISPLAY_HAS_M5GFX)
 
 /**
@@ -44,7 +75,7 @@
 namespace Furble {
 namespace Display {
 
-#if FURBLE_LILYGO_BOARD
+#if FURBLE_LILYGO_BOARD || FURBLE_PANEL_128X64
 
 /** The device the UI draws through. Valid after begin(). */
 lgfx::LGFX_Device &screen(void);

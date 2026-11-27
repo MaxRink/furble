@@ -2,7 +2,7 @@
 
 ## Supported boards
 
-furble runs on these M5Stack ESP32 boards:
+furble runs on these ESP32 boards:
 
 - M5StickC (80x160)
 - M5StickC Plus (135x240)
@@ -11,6 +11,7 @@ furble runs on these M5Stack ESP32 boards:
 - M5Stack Core (320x240)
 - M5Stack Core2 (320x240, touch)
 - M5Tough (320x240, touch, untested)
+- LilyGO T-Beam Supreme (128x64 1-bit OLED, bench port, no device run yet)
 
 and on these LilyGO ESP32-S3 handhelds:
 
@@ -28,6 +29,12 @@ furble defines eight firmware environments. Six are the release images;
 M5Unified detects the exact M5 board at runtime, so one image covers an M5 board
 family. Each LilyGO board has its own image and those two are new: they are not
 in the release matrix or the web installer yet. See
+furble builds six release images plus one bench image. M5Unified detects the
+exact M5 board at runtime, so one image covers a board family. The T-Beam
+Supreme is not an M5 board and is not a release image yet: M5Unified cannot
+detect it, so that image carries its own board row and drives the AXP2101 PMIC
+and the SH1106 OLED directly. Its GPS receiver is detected at start, so an L76K
+unit and a MAX-M10S unit run the same image. See
 [Supported Hardware](Supported-Hardware) for the board to environment matrix.
 
 ## Flashing
@@ -58,8 +65,8 @@ FURBLE_VERSION=dev FURBLE_TEST=0 pio run -e m5stick-s3 -t upload
 ```
 
 Swap `m5stick-s3` for your board environment: `m5stick-c`, `m5stick-c-plus`,
-`m5stick-s3`, `m5stack-core`, or `m5stack-core2`. See the project README for the
-full build notes.
+`m5stick-s3`, `m5stack-core`, `m5stack-core2`, `waveshare-s3-eth` or
+`lilygo-tbeam-supreme`. See the project README for the full build notes.
 
 If the 4 MB Core debug image exceeds its OTA slot, use the developer-only
 `m5stack-core-usb-debug` environment. It is USB-UART only, uses one factory app

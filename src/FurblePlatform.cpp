@@ -14,7 +14,7 @@
 #include "FurbleBoardCaps.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
-#if FURBLE_LILYGO_BOARD
+#if FURBLE_LILYGO_BOARD || FURBLE_PANEL_128X64
 #include "FurbleDisplay.h"
 #endif
 #include "FurbleFeedback.h"
@@ -32,9 +32,185 @@
 #include "FurbleTypes.h"
 #include "FurbleWatchdog.h"
 
+#if FURBLE_HAS_AXP2101_HAL
+#include <lgfx/v1/platforms/common.hpp>
+#include "AXP2101.h"
+#endif
+
 namespace Furble {
 
 bool Platform::m_Ip5306BoostHeld = true;
+
+#if FURBLE_HAS_AXP2101_HAL
+namespace {
+
+/*
+ * The T-Beam Supreme power backend.
+ *
+ * Bus: the AXP2101 and the PCF8563 are on the board's I2C bus 1 at SDA 42 and
+ * SCL 41 with the PMIC IRQ on GPIO 40, and the OLED is on bus 0
+ * (LilyGO T-Beam Supreme pin map and the vendor factory utilities.h
+ * I2C1_SDA/I2C1_SCL/PMU_IRQ). M5Unified's In_I2C is not used: this image tells
+ * it the board is unknown, so it opens no bus of its own, and the register
+ * driver needs only the HalBus seam.
+ *
+ * Rails follow the vendor factory code for T_BEAM_S3_SUPREME (utilities.h and
+ * LoRaBoards.cpp, branch T_BEAM_S3_SUPREME): ALDO4 3300 mV and ALDO3 3300 mV
+ * first, the cold-boot 250 ms power cycle of ALDO1, ALDO2 and BLDO1, then
+ * ALDO1, ALDO2, BLDO1 and BLDO2 at 3300 mV, DCDC3 and DCDC5 at 3300 mV with
+ * DCDC4 at its own maximum, and DCDC2, DLDO1, DLDO2 and the VBACKUP charger
+ * off. Two deviations, both recorded in plans/390-tbeam-supreme-port.md:
+ * ALDO3 (the SX1262) is left off because furble does not drive the radio and
+ * the factory's sleep sequence is a bench item, and the M.2 DCDC3/4/5 group is
+ * left off because nothing on furble's side uses the socket and DCDC4's
+ * XPOWERS_AXP2101_DCDC4_VOL2_MAX value has no meaning in millivolts here.
+ *
+ * ALDO1 feeds the OLED (FPC pin 6), the BME280 with its 4.7K I2C pull-ups and
+ * the magnetometer, so it is never switched off at runtime: a cut blanks the
+ * panel and takes the bus pull-ups with it (plans/322 verification pass,
+ * finding 1). The one exception is the vendor's cold-boot bus reset above,
+ * which cuts ALDO1, ALDO2 and BLDO1 for 250 ms and then restores them before
+ * anything is drawn.
+ */
+class AxpBus: public HAL::RegisterBus {
+ public:
+  explicit AxpBus(int port) : m_Port(port) {}
+
+  bool read(uint8_t reg, uint8_t *data, size_t length) override {
+    if ((data == nullptr) || (length == 0)) {
+      return false;
+    }
+    return lgfx::i2c::readRegister(m_Port, HAL::AXP2101::ADDRESS, reg, data, length, I2C_FREQ)
+        .has_value();
+  }
+
+  bool write(uint8_t reg, const uint8_t *data, size_t length) override {
+    if ((data == nullptr) || (length == 0) || (length >= (sizeof(m_Packet) - 1))) {
+      return false;
+    }
+    m_Packet[0] = reg;
+    memcpy(&m_Packet[1], data, length);
+    return lgfx::i2c::transactionWrite(m_Port, HAL::AXP2101::ADDRESS, m_Packet,
+                                       static_cast<uint8_t>(length + 1), I2C_FREQ)
+        .has_value();
+  }
+
+ private:
+  static constexpr uint32_t I2C_FREQ = 400000;
+  int m_Port;
+  uint8_t m_Packet[8] = {};
+};
+
+constexpr int8_t PMIC_PORT = 1;
+constexpr int8_t PMIC_SDA = 42;
+constexpr int8_t PMIC_SCL = 41;
+
+AxpBus g_AxpBus(PMIC_PORT);
+// DCDC1 is the SoC: the driver refuses to switch it off.
+HAL::AXP2101 g_Axp(g_AxpBus, HAL::AXP2101::railBit(HAL::AXP2101::Rail::DCDC1));
+bool g_AxpReady = false;
+uint32_t g_AxpPollMs = 0;
+bool g_AxpKeyHeld = false;
+
+// BOOT is the board's only GPIO key: GPIO0, button to ground, external pull-up
+// (LilyGO T-Beam Supreme pin map, "BOOT Button 0", and the vendor utilities.h
+// BUTTON_PIN 0 with GPIO_SEL_0). M5Unified drives no button of its own on a
+// board it cannot identify, so Platform::update() samples the pin and hands the
+// level to M5.BtnA, the same way the StickS3 path hands the PMIC key to
+// M5.BtnPWR.
+constexpr gpio_num_t BOOT_BUTTON_GPIO = GPIO_NUM_0;
+bool g_BootButtonReady = false;
+
+void bootButtonBegin(void) {
+  (void)gpio_set_direction(BOOT_BUTTON_GPIO, GPIO_MODE_INPUT);
+  (void)gpio_set_pull_mode(BOOT_BUTTON_GPIO, GPIO_PULLUP_ONLY);
+  g_BootButtonReady = true;
+}
+
+bool axpSwitch(HAL::AXP2101::Rail rail, bool on) {
+  if (!g_AxpReady) {
+    return false;
+  }
+  bool state = false;
+  for (uint8_t attempt = 0; attempt < 2; ++attempt) {
+    if (g_Axp.setRail(rail, on) && g_Axp.railEnabled(rail, state) && (state == on)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool axpBringUp(void) {
+  if (!lgfx::i2c::init(PMIC_PORT, PMIC_SDA, PMIC_SCL).has_value()) {
+    ESP_LOGE(LOG_TAG, "AXP2101 bus did not start");
+    return false;
+  }
+  // The first transaction after an idle bus wakes the PMIC and can be the one
+  // that fails, the same failure mode the M5PM1 path retries. Three attempts,
+  // because losing this read disables the rails, the gauge and power off while
+  // the board row still advertises a power-off path.
+  bool identified = false;
+  for (uint8_t attempt = 0; (attempt < 3) && !identified; ++attempt) {
+    identified = g_Axp.probe();
+    if (!identified) {
+      vTaskDelay(pdMS_TO_TICKS(2));
+    }
+  }
+  if (!identified) {
+    ESP_LOGE(LOG_TAG, "AXP2101 did not answer at 0x34");
+    return false;
+  }
+
+  // The GPS rail is first: the receiver's supply is what the port needs before
+  // the GNSS can be probed, and it is the only rail furble switches later.
+  const bool gps = g_Axp.setLdoVoltage(HAL::AXP2101::Rail::ALDO4, 3300U)
+                   && g_Axp.setRail(HAL::AXP2101::Rail::ALDO4, true);
+
+  // Vendor bus reset: on a cold boot the SD card and the QMC sensor are
+  // power-cycled so neither holds the bus. 250 ms, from LoRaBoards.cpp.
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED) {
+    (void)g_Axp.setRail(HAL::AXP2101::Rail::ALDO1, false);
+    (void)g_Axp.setRail(HAL::AXP2101::Rail::ALDO2, false);
+    (void)g_Axp.setRail(HAL::AXP2101::Rail::BLDO1, false);
+    vTaskDelay(pdMS_TO_TICKS(250));
+  }
+
+  bool rails = gps;
+  for (auto rail : {HAL::AXP2101::Rail::ALDO1, HAL::AXP2101::Rail::ALDO2, HAL::AXP2101::Rail::BLDO1,
+                    HAL::AXP2101::Rail::BLDO2}) {
+    rails = g_Axp.setLdoVoltage(rail, 3300U) && g_Axp.setRail(rail, true) && rails;
+  }
+
+  // The rails furble does not use stay off, and the backup-cell charger stays
+  // off because no cell is fitted; the GNSS backup is fed from the battery.
+  for (auto rail : {HAL::AXP2101::Rail::DCDC2, HAL::AXP2101::Rail::DCDC3, HAL::AXP2101::Rail::DCDC4,
+                    HAL::AXP2101::Rail::DCDC5, HAL::AXP2101::Rail::ALDO3, HAL::AXP2101::Rail::DLDO1,
+                    HAL::AXP2101::Rail::DLDO2}) {
+    (void)g_Axp.setRail(rail, false);
+  }
+  rails = g_Axp.setBackupCharge(false) && rails;
+
+  // The power key is the board's only user input besides BOOT. Its short press
+  // is what getPWRClickCount() reports, so both the press bit and the two edge
+  // bits are enabled: a latched key status holds the IRQ line until it is read.
+  const bool key = g_Axp.enablePowerKeyIrq(true);
+  if (!key) {
+    ESP_LOGW(LOG_TAG, "AXP2101 power-key interrupt enable failed");
+  }
+
+  g_AxpReady = true;
+  if (!rails) {
+    ESP_LOGW(LOG_TAG, "AXP2101 rail setup was incomplete");
+  }
+  bool present = false;
+  uint8_t percent = 0;
+  const bool gauge = g_Axp.batteryPresent(present) && present && g_Axp.batteryPercent(percent);
+  ESP_LOGI(LOG_TAG, "AXP2101 ready, battery %s, gauge %s", present ? "present" : "absent",
+           gauge ? "readable" : "unreadable");
+  return true;
+}
+}  // namespace
+#endif
 
 #if FURBLE_HAS_M5PM1
 namespace {
@@ -222,8 +398,21 @@ Platform &Platform::getInstance(void) {
     if (Board::clearsStaleRtcAlarm(board)) {
       M5.Rtc.disableIRQ();
     }
-    BootTimeline::mark(BootTimeline::DISPLAY_READY);
 
+#if FURBLE_HAS_AXP2101_HAL
+    // The board's own panel and PMIC. This runs before the display timeline mark
+    // so a panel that did not answer is recorded as such, and neither failure
+    // aborts: a remote with no working panel still pairs and fires, and the log
+    // is the only place the operator can see which part of the board was
+    // missing.
+    if (!axpBringUp()) {
+      ESP_LOGE(LOG_TAG, "AXP2101 backend unavailable, no battery or rail control");
+    }
+    bootButtonBegin();
+    if (!Display::begin()) {
+      ESP_LOGE(LOG_TAG, "SH1106 did not answer at 0x3C or 0x3D, the panel stays dark");
+    }
+#else
     // M5Unified enables every AXP192 ADC channel at 25 Hz. Trim the unused
     // channels, but only when the detected PMIC really is an AXP192: Core2 v1.1
     // keeps the board ID while carrying an AXP2101, where these registers are
@@ -232,6 +421,8 @@ Platform &Platform::getInstance(void) {
       M5.In_I2C.writeRegister8(0x34, 0x82, PlatformPolicy::AXP192_ADC_ENABLE_1, 400000);
       M5.In_I2C.writeRegister8(0x34, 0x83, PlatformPolicy::AXP192_ADC_ENABLE_2, 400000);
     }
+#endif
+    BootTimeline::mark(BootTimeline::DISPLAY_READY);
 
     // The IMU keeps the M5Unified default axis order. The spirit level derives
     // roll from atan2(ay, az) to drive screen X and pitch to drive screen Y.
@@ -630,6 +821,20 @@ bool Platform::powerOff(void) {
   if (wasArmed) {
     watchdogEnable(true);
   }
+  return false;
+#elif FURBLE_HAS_AXP2101_HAL
+  // Soft power off keeps VRTC up while VBAT is present (datasheet revision 1.0
+  // section 6.5.4), so the GNSS backup supply survives the cut. A return means
+  // the PMIC refused the command or the bus failed, and the device stays awake
+  // so the user can try again.
+  if (!g_AxpReady) {
+    ESP_LOGW(LOG_TAG, "AXP2101 unavailable, power off refused");
+    return false;
+  }
+  if (g_Axp.powerOff()) {
+    return true;
+  }
+  ESP_LOGW(LOG_TAG, "AXP2101 power off refused, staying alive");
   return false;
 #else
   // M5.Power.powerOff() sleeps the panel, clears the IP5306 boost keep-on bit
@@ -1080,8 +1285,8 @@ bool Platform::powerOffUntil(uint32_t seconds) {
       }
     }
 
-#if FURBLE_LILYGO_BOARD
-    // The LilyGO panel is not M5Unified's, so it is reached through the seam.
+#if FURBLE_LILYGO_BOARD || FURBLE_PANEL_128X64
+    // The panel is not M5Unified's, so it is reached through the seam.
     Display::screen().sleep();
 #else
     // M5.Display, not the seam: a host test compiles this file for the wake
@@ -1321,7 +1526,22 @@ uint8_t Platform::railHolders(Rail rail) {
 }
 
 bool Platform::switchRailLocked(bool on) {
-#if FURBLE_HAS_M5PM1
+#if FURBLE_HAS_AXP2101_HAL
+  // The only Rail is EXT_5V, and on this board the receiver's rail is the
+  // AXP2101 ALDO4 output: the GNSS VCC pin, 3.3 V, with its own enable bit and
+  // no shared net. The request is verified by reading the enable bit back, so a
+  // failed cut is reported rather than assumed, and the GPS driver restarts a
+  // receiver it stopped for a cut that did not take.
+  if (axpSwitch(HAL::AXP2101::Rail::ALDO4, on)) {
+    m_RailOn = on;
+    return true;
+  }
+  bool state = false;
+  m_RailOn = g_AxpReady && g_Axp.railEnabled(HAL::AXP2101::Rail::ALDO4, state) && state;
+  ESP_LOGW(LOG_TAG, "ALDO4 %s did not take, the rail is %s", on ? "on" : "off",
+           m_RailOn ? "on" : "off");
+  return false;
+#elif FURBLE_HAS_M5PM1
   // Off is always allowed: input mode is the vendor default for EXT_5V and the
   // safe direction. On commits the port to output mode, which the M5Stack
   // documentation restricts to a board powered through USB or 5VIN, so the
@@ -1453,6 +1673,16 @@ bool Platform::readRailState(bool *on) {
   m_RailOn = *on;
   return true;
 }
+#elif FURBLE_HAS_AXP2101_HAL
+bool Platform::readRailState(bool *on) {
+  bool state = false;
+  if (!g_AxpReady || !g_Axp.railEnabled(HAL::AXP2101::Rail::ALDO4, state)) {
+    return false;
+  }
+  *on = state;
+  m_RailOn = state;
+  return true;
+}
 #else
 bool Platform::readRailState(bool *on) {
   *on = M5.Power.getExtOutput() != 0;
@@ -1468,6 +1698,34 @@ uint32_t Platform::getBatteryFailCount(void) {
 Platform::battery_t Platform::readBattery(void) {
   battery_t battery = {0, 0, 0, false};
 
+#if FURBLE_HAS_AXP2101_HAL
+  // The AXP2101 E-gauge percentage is only meaningful with a battery present
+  // and the gauge enabled, and batteryPercent() refuses both cases (datasheet
+  // revision 1.0 section 6.13.2.88). There is no current sense on the part, so
+  // the current cap stays 0.
+  if (!g_AxpReady) {
+    return battery;
+  }
+  if (m_BatteryCaps.level) {
+    uint8_t percent = 0;
+    if (g_Axp.batteryPercent(percent)) {
+      battery.level = percent;
+    }
+  }
+  if (m_BatteryCaps.voltage) {
+    uint16_t millivolts = 0;
+    if (g_Axp.batteryVoltage(millivolts)) {
+      battery.voltage = millivolts;
+    }
+  }
+  if (m_BatteryCaps.charging) {
+    HAL::AXP2101::Charge charge = HAL::AXP2101::Charge::STANDBY;
+    if (g_Axp.chargeState(charge)) {
+      battery.charging = charge == HAL::AXP2101::Charge::CHARGING;
+    }
+  }
+  return battery;
+#else
   if (m_BatteryCaps.level) {
     int32_t level = M5.Power.getBatteryLevel();
     battery.level = (level > 0) ? level : 0;
@@ -1506,6 +1764,7 @@ Platform::battery_t Platform::readBattery(void) {
 #endif
 
   return battery;
+#endif
 }
 
 Platform::battery_sample_t Platform::sampleBattery(void) {
@@ -1540,6 +1799,31 @@ Platform::battery_sample_t Platform::getBatterySample(void) const {
 
 Platform::battery_status_t Platform::getBatteryStatus(void) {
   battery_status_t raw = {};
+#if FURBLE_HAS_AXP2101_HAL
+  // The same registers readBattery() uses, taken once here so the status page
+  // and the companion report the sample the policy acts on. VBUS good is a
+  // status bit (REG 00 bit 5, section 6.13.2.1), not a voltage, so the
+  // reported VBUS level is the battery voltage the gauge gives and the adapter
+  // state is what the bit says; BatteryStatus::vbus() only carries a level on
+  // boards that can measure the port.
+  uint8_t percent = 0;
+  uint16_t millivolts = 0;
+  HAL::AXP2101::Charge charge = HAL::AXP2101::Charge::STANDBY;
+  bool vbus = false;
+  if (g_AxpReady) {
+    (void)g_Axp.batteryPercent(percent);
+    (void)g_Axp.batteryVoltage(millivolts);
+    (void)g_Axp.chargeState(charge);
+    (void)g_Axp.vbusGood(vbus);
+  }
+  raw.level = percent;
+  raw.voltage = millivolts;
+  raw.current = 0;
+  raw.charging = static_cast<int>(charge == HAL::AXP2101::Charge::CHARGING);
+  battery_status_t status = BatteryStatus::gate(getBatteryCaps(), raw);
+  status.vbus = BatteryStatus::vbus(true, vbus ? millivolts : 0);
+  return status;
+#else
   raw.level = M5.Power.getBatteryLevel();
   raw.voltage = M5.Power.getBatteryVoltage();
   raw.current = M5.Power.getBatteryCurrent();
@@ -1552,6 +1836,7 @@ Platform::battery_status_t Platform::getBatteryStatus(void) {
   status.vbus = BatteryStatus::vbus(false, 0);
 #endif
   return status;
+#endif
 }
 
 void Platform::update(void) {
@@ -1570,6 +1855,38 @@ void Platform::update(void) {
     }
   }
   watchdogFeed();
+#elif FURBLE_HAS_AXP2101_HAL
+  // The power key is the second of the board's two inputs. The PMIC latches a
+  // short press, a long press and both edges, and reading the status register
+  // clears them, so one poll both counts the presses getPWRClickCount() reports
+  // and tracks the held state the long-press path needs. 50 Hz matches the M5PM1
+  // poll: faster is bus traffic for a human-speed input, slower can drop an edge.
+  const uint32_t now = tick();
+  if (PlatformPolicy::pm1PollDue(now, g_AxpPollMs)) {
+    g_AxpPollMs = now;
+    HAL::AXP2101::PowerKey key = {};
+    if (g_AxpReady && g_Axp.readPowerKey(key)) {
+      if (key.falling) {
+        g_AxpKeyHeld = true;
+      }
+      if (key.rising || key.shortPress || key.longPress) {
+        g_AxpKeyHeld = false;
+      }
+      if (key.shortPress) {
+        if ((now - m_PMICClickTime) < PWR_CLICK_THRESHOLD_MS) {
+          m_PMICClickCount++;
+        } else {
+          m_PMICClickCount = 1;
+        }
+        m_PMICClickTime = now;
+      }
+      M5.BtnPWR.setRawState(now, g_AxpKeyHeld);
+    }
+  }
+  if (g_BootButtonReady) {
+    // Active low: the key shorts GPIO0 to ground through its external pull-up.
+    M5.BtnA.setRawState(now, gpio_get_level(BOOT_BUTTON_GPIO) == 0);
+  }
 #else
   if (m_PMICHack && M5.BtnPWR.wasClicked()) {
     // fake PMIC button as actual button, record the click streak

@@ -1,0 +1,44 @@
+# LilyGO T-Beam Supreme with a u-blox MAX-M10S fitted. The board row carries the
+# board's GPS UART pins (RX 9, TX 8) and names no receiver and no enable pin, so
+# this scenario is the proof that a MAX-M10S trim is supported by the same image
+# as the L76K: the Auto ladder finds the module's factory 38400 baud (MAX-M10S
+# data sheet UBX-20035208 default interface settings), the UBX-MON-VER poll
+# identifies it, and the UBX backend configures it. GPIO7 is never driven,
+# because on this trim that pad is EXTINT (data sheet table 10) and on the L76K
+# trim it is WAKE_UP; driving it would be a guess about which module is fitted.
+#
+# The display assertions are the 128x64 1-bit panel model: one LVGL draw buffer
+# of 512 bytes (128 wide, two partial bands, RGB565) and a flush that waits for
+# the panel, because a mono panel has no DMA to overlap with.
+seed gps true
+seed gps_baud auto
+seed gps_receiver 38400
+seed gps_model m10
+seed gps_m10_hot true
+assert hw.profile tbeam-supreme
+assert hw.mcu esp32s3
+assert hw.flash_kb 8192
+assert hw.psram quad
+assert hw.pmic axp2101
+assert hw.gauge voltage_charge
+assert hw.display 128x64
+assert hw.touch no
+assert hw.ir no
+assert hw.sd no
+assert hw.audio no
+assert hw.rtc yes
+assert hw.usb serial_jtag
+assert ui.draw_buffers 1
+assert ui.flush_serialized yes
+assert mem.component.lvgl_draw 512
+wait 14000
+assert gps.receiver present
+assert gps.baud 38400
+assert gps.backend ubx
+assert gps.ubx.module MAX-M10S
+assert uart.ubx_polls 1
+assert-eventually 3000 gps.config.1.state ACKED
+assert gps.ubx.verified 1
+assert-eventually 3000 gps.from_pvt 1
+assert gps.ubx.sos_restore 3
+exit

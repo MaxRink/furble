@@ -67,6 +67,7 @@ BOARD_MACROS = (
     "FURBLE_M5STACK_CORE",
     "FURBLE_GROVE_CORE",
     "FURBLE_WAVESHARE_S3_ETH",
+    "FURBLE_LILYGO_TBEAM_SUPREME",
 )
 BOARD_MACRO = re.compile(r"\b(?:" + "|".join(BOARD_MACROS) + r")\b")
 CONDITIONAL = re.compile(r"^\s*#\s*(?:if|ifdef|ifndef|elif)\b")

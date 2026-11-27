@@ -12,6 +12,15 @@ CLAUDE.md whose directory it touches.
   m5stack-core2, and waveshare-s3-eth. Each has a `-debug` variant for
   development. CI builds the six release envs and mandatory debug profiles;
   releases build the six release envs and their matching debug profiles.
+- `lilygo-tbeam-supreme` is a seventh, bench-only environment: the first
+  non-M5 board (LilyGO T-Beam Supreme, ESP32-S3, 8 MB flash, 8 MB quad PSRAM,
+  AXP2101, 128x64 SH1106 OLED, GNSS on UART RX 9 / TX 8). It has its own
+  `-debug` variant, is not in the release, Pages or web-installer matrices, and
+  is built by `reproducible.yml` with both budgets. It pins M5GFX at the
+  display-less StampS3 only to take the no-probe return, answers the board row
+  from `Board::compiledProfile()`, drives the AXP2101 through `lib/hal` over
+  `HalBus`, the OLED through M5GFX's `Panel_SH110x`, and draws through the
+  `Furble::Display` seam. See `plans/390-tbeam-supreme-port.md`.
 - The three 4 MB debug envs use size-optimized debug flags (`-Os -g2 -ggdb2`)
   to keep dual-OTA slots while retaining debug symbols, the assert() check and
   abort, the full `ESP_LOG_VERBOSE` log maximum and the `sdkconfig.debug`
@@ -454,7 +463,8 @@ check.
   (`src/lgfx/v1/panel/Panel_LCD.cpp:101-107`,
   `src/lgfx/v1/LGFXBase.hpp:1436-1437`), so both 120 ms waits are furble's:
   `UI::sleepDisplay()` refuses a sleep within 120 ms of the last wake
-  (`src/FurbleUI.cpp:1942-1986`) and `UI::wakeDisplay()` waits the same interval
+  (`src/FurbleUI.cpp:1950-1994`) and `UI::wakeDisplay()` waits the same interval
+  (`src/FurbleUI.cpp:1866-1910`) and `UI::wakeDisplay()` waits the same interval
   before SLPOUT (`src/FurbleUI.cpp:1894-1897`). Together they satisfy all four
   panels. The 5 ms needs no separate delay: after SLPIN the next panel command
   is the SLPOUT that the wake gate holds back 120 ms, and after SLPOUT the wake

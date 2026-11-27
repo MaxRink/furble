@@ -96,11 +96,41 @@ class Speaker_Class {
   bool isPlaying() const { return false; }
 };
 
+// The wake and power-off tests compile the real Platform, whose display seam
+// forwards to M5Unified. Nothing here draws, so every entry point is a no-op;
+// the sizes are the Core's panel.
 class Display_Class {
  public:
+  int32_t width() const { return 320; }
+  int32_t height() const { return 240; }
   void sleep() {}
   void wakeup() {}
   void setBrightness(uint8_t) {}
+  uint8_t getRotation() const { return 0; }
+  void setRotation(uint8_t) {}
+  void setTouchCalibrate(uint16_t *) {}
+  uint16_t color565(uint8_t, uint8_t, uint8_t) const { return 0; }
+  void fillScreen(uint16_t) const {}
+  void fillRect(int32_t, int32_t, int32_t, int32_t, uint16_t) const {}
+  void drawRect(int32_t, int32_t, int32_t, int32_t, uint16_t) const {}
+  void drawString(const char *, int32_t, int32_t) const {}
+  void setTextColor(uint16_t) const {}
+  void setTextColor(uint16_t, uint16_t) const {}
+  void setTextDatum(uint8_t) const {}
+  void setTextSize(uint8_t) const {}
+  void waitDMA() {}
+  template <typename T>
+  void pushImageDMA(int32_t, int32_t, int32_t, int32_t, const T *) {}
+  void readRectRGB(int32_t, int32_t, int32_t, int32_t, uint8_t *) {}
+  // The display seam's panelBus() asks the panel for its bus. Nothing in these
+  // tests shares an SD card, so a null bus is the truthful answer.
+  struct Panel {
+    void *getBus() { return nullptr; }
+  };
+  Panel *getPanel() { return &m_Panel; }
+
+ private:
+  Panel m_Panel;
 };
 
 class config_t {

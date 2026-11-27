@@ -18,6 +18,14 @@ has been built, so neither has a recorded size or stack budget, and the table
 below describes the code as written rather than a shipped image. Every
 environment except `lilygo-twatch-ultra` has a matching `-debug` variant that
 adds verbose logging and the USB serial console.
+furble builds six release firmware images and one bench image. M5Unified
+detects the exact M5 board at runtime, so one image covers a board family. An
+image that runs on exactly one board pins it at build time instead, which skips
+detection and drops the other boards' probes and display drivers. The LilyGO
+T-Beam Supreme is not an M5 board and is not a release image: its environment
+names the compile-time row and drives the AXP2101 and the SH1106 OLED itself.
+Every environment also has a matching `-debug` variant that adds verbose
+logging and the USB serial console.
 
 | Build env | Chip | Flash | MQTT | Boards it runs on | Touch | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -29,6 +37,25 @@ adds verbose logging and the USB serial console.
 | `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet node pinned to the display-less StampS3, so no M5 probe touches the W5500 pins. Wi-Fi and BLE 5 on the SoC, W5500 for wired Ethernet. No PMIC, battery, RTC part, IMU or IR, and no software power-off path. Hardware verification remains outstanding. |
 | `lilygo-tdeck` | ESP32-S3 | 16 MB | Yes | LilyGO T-Deck and T-Deck Plus | No | A 2.8 inch 320x240 ST7789, an ESP32-C3 keyboard over I2C, a five-switch trackball, a MAX98357A speaker and a microSD slot. No PMIC and no gauge: the battery divider on GPIO4 is not read yet, so no battery level or voltage is shown. No software power-off, no IR, no IMU, no RTC part. GPS pins are the Grove UART the T-Deck Plus puts its MIA-M10Q on. |
 | `lilygo-twatch-ultra` | ESP32-S3 | 16 MB | Yes | LilyGO T-Watch Ultra | No | A 2.06 inch 502x410 CO5300 AMOLED over quad SPI, an AXP2101 whose rails this image brings up, an MIA-M10Q GNSS, a MAX98357A speaker and a microSD slot. **Input is one button**: the CST9217 touch controller has no driver, so the UI can activate the focused row but not move focus. No battery level, voltage or charging state is reported and there is no software power-off, because the AXP2101 power backend is a separate change. The BHI260AP and the DRV2605 have no backend. |
+| `lilygo-tbeam-supreme` | ESP32-S3 | 8 MB | Yes | LilyGO T-Beam Supreme, L76K or MAX-M10S trim | No | Bench port with no device run yet. 8 MB quad PSRAM, 8 MB flash, AXP2101 battery level, voltage and charge direction, 128x64 1-bit SH1106 OLED, GPS on UART RX 9 / TX 8, 32.768 kHz crystal on XTAL_32K. No touch, IR, LED, speaker, vibration motor or SD mount. |
+
+The LilyGO T-Beam Supreme is the first non-M5 board. M5Unified cannot detect
+it, so the image pins M5GFX at the display-less StampS3 family only to take the
+no-probe return, and `Board::compiledProfile()` answers with the T-Beam row
+rather than with whatever M5Unified reports. The AXP2101 runs through the
+`lib/hal` register driver over the `HalBus` seam on the board's own I2C bus 1
+(SDA 42, SCL 41); the OLED runs through M5GFX's `Panel_SH110x` on bus 0 (SDA 17,
+SCL 18) with its address probed at 0x3C and then 0x3D, and is drawn at its real
+128x64 geometry with 24 px menu icons. ALDO4 is the receiver's supply and the
+only rail furble switches; ALDO1 (OLED, BME280, magnetometer and their I2C
+pull-ups) is never cut. No enable pin is driven, because GPIO7 is the L76K's
+WAKE_UP while pin 5 of the MAX-M10S is EXTINT, and an image cannot tell the
+trims apart. The microSD slot is on its own SPI bus and is not mounted, the
+SX1262 radio is left unpowered rather than slept, the QMI8658 IMU has no
+backend, the RTC part is not read because the vendor wiki and the schematic
+disagree on it (PCF85063ATL against PCF8563), and the row keeps the
+conservative RTC-backing and GPS-backup answers. Every one of those is a bench
+item in [plan 390](../plans/390-tbeam-supreme-port.md), not a measured result.
 
 The Waveshare ESP32-S3-ETH is a mains or PoE node rather than a handheld. Its
 board row reports no battery and no PMIC, so `status` shows battery level and
@@ -132,6 +159,8 @@ for both bands of each enabled constellation. The answer appears as `bands` in
 | LilyGO T-Watch Ultra | u-blox MIA-M10Q | Built in | `lilygo-twatch-ultra` | On board | Ported in plan 387. The GNSS is on the UBX path through the pin seam; the receiver is on ALDO1/BLDO1 rails the image brings up. |
 | LilyGO T-LoRa Pager | u-blox MIA-M10Q | Built in | Not a furble board yet | On board | Receiver supported, board not ported. See plan 387. |
 | Generic dual-band UART module | u-blox NEO-F10N or other F10 | Dual-band L1/L5 antenna required | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. Both bands of each constellation run together and there is no power save mode. See [ublox-neo-f10n.md](components/ublox-neo-f10n.md). |
+| LilyGO T-Beam Supreme M10S | u-blox MAX-M10S | SMA | T-Beam Supreme image | On board, RX 9 / TX 8 | Simulator-tested, hardware-untested. Detected by the UBX-MON-VER poll; the factory default 38400 baud needs `Auto` or an explicit 38400. GPIO7 is not an enable on this trim and furble drives no enable pin. |
+| LilyGO T-Beam Supreme L76K | Quectel L76K, `$PCAS` | SMA | T-Beam Supreme image | On board, RX 9 / TX 8 | Simulator-tested, hardware-untested. Keeps the NMEA and `$PCAS` backend. GPIO7 is this trim's WAKE_UP input and furble leaves it undriven. |
 
 The M5Stack Core and the Waveshare ESP32-S3-ETH have no GPS UART. Grove
 Port A on the Core is the internal I2C bus that carries the IP5306 and the
@@ -153,6 +182,7 @@ L5, and has no GLONASS or power-save keys at all. It is verified against a
 virtual receiver in the simulator only, both variants; no u-blox hardware has
 been tested. A board that keeps the receiver's V_BCKP supplied defines
 `FURBLE_GPS_BACKUP_SUPPLY`; no supported board does.
+the T-Beam Supreme is the first whose vendor states that the 18650 backs the
 
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
 checked against the firmware GPS support in `src/FurbleGPS.cpp`. The u-blox M10

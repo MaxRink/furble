@@ -24,6 +24,14 @@ constexpr uint8_t REG_LDO_EN1 = 0x91;
 constexpr uint8_t REG_ALDO1_VOLTAGE = 0x92;
 constexpr uint8_t REG_PERCENT = 0xA4;
 
+// INFERRED, not from a datasheet: neither AXP2101 revision the driver cites
+// defines register 0x03, revision 0.1 documents 0x47 or 0x57 for it, and 0x4A
+// traces to the X-Powers reference library this value is copied from. It is
+// also the value the pinned board support library's own AXP2101 path compares
+// against (its src/utility/power/AXP2101_Class.cpp:34). Recorded as inferred in
+// docs/components/axp2101.md row 17 and open question C-19a, and the probe
+// retries because a failed identity read costs every rail and the power-off
+// path.
 constexpr uint8_t CHIP_ID = 0x4A;
 constexpr uint8_t STATUS1_VBUS_GOOD = 1U << 5;
 constexpr uint8_t STATUS1_BATTERY_PRESENT = 1U << 3;

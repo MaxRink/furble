@@ -132,6 +132,17 @@ constexpr bool clearsStaleRtcAlarm(const Profile &row) {
   return row.rtcOnBus && (row.timedWake != TimedWake::RTC_ALARM);
 }
 
+/**
+ * The row this image is built for.
+ *
+ * A multi-board image serves several models, so the row is the detected board.
+ * An image built for one board that M5Unified cannot detect answers with its
+ * compile-time row instead: the T-Beam Supreme image reports board_unknown on
+ * the hardware, and it pins M5GFX at a different M5 board's name only to stop
+ * the autodetect probes, so the detected value must never choose the row.
+ */
+const Profile &compiledProfile(void);
+
 /** The row for the running board. Valid after Platform::init(). */
 const Profile &profile(void);
 

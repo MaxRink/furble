@@ -21,6 +21,24 @@
 
 namespace Furble {
 
+// The display seam. The production SD source and the calibration validator ask
+// it for the panel size and the panel bus; this test has no M5GFX, so it answers
+// from the stub display. The board has an SPI display bus and no card, which is
+// exactly the mount() refusal path this suite never calls.
+namespace Display {
+int32_t width(void) {
+  return M5.Display.width();
+}
+
+int32_t height(void) {
+  return M5.Display.height();
+}
+
+void *panelBus(void) {
+  return M5.Display.getPanel()->getBus();
+}
+}  // namespace Display
+
 // The helper test does not exercise the GPX writer. These definitions satisfy
 // the SD service's unrelated task paths without replacing any settings code.
 GPX &GPX::getInstance(void) {

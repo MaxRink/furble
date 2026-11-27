@@ -116,7 +116,7 @@ Do not copy `addSpinnerPage`. It is 120 lines of per board layout work at
 One `lv_timer` in one shot form. On start:
 
 1. `shutterLock(Control::getInstance())`, which sends `CMD_SHUTTER_PRESS` and
-   sets `m_ShutterLock` (`src/FurbleUI.cpp:2266-2266`).
+   sets `m_ShutterLock` (`src/FurbleUI.cpp:2285-2285`).
 2. Record the end time as `tick() + duration_ms` using
    `SpinValue::toMilliseconds()` and `UI::tick()` (`src/FurbleUI.cpp:380`).
 3. Start a 333 ms refresh timer that renders the remaining time with
@@ -140,7 +140,7 @@ is correct. Verify they are re-enabled after release.
   Confirm that path covers the bulb page too, and add an explicit release on page
   exit if it does not.
 - A disconnect during an exposure must cancel the timer. `doDisconnect` is at
-  `src/FurbleUI.cpp:8811-8857`. Add the timer pause there, next to the existing
+  `src/FurbleUI.cpp:8830-8876`. Add the timer pause there, next to the existing
   `lv_timer_pause(m_ConnectTimer)`.
 - Long exposures interact with the inactivity timer at
   `src/FurbleUI.cpp:2094-2112`, which only dims the display today. Dimming during

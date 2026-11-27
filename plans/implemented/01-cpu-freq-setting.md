@@ -160,7 +160,7 @@ On device, M5StickS3 over USB:
 5. Power cycle. Confirm the selection persists.
 6. Connect to the Fujifilm camera at 80 MHz and at 160 MHz. Confirm connect
    works and the shutter fires. Note any latency difference by feel and in the
-   log timestamps around `UI::handleShutter` (`src/FurbleUI.cpp:2301-2334`).
+   log timestamps around `UI::handleShutter` (`src/FurbleUI.cpp:2320-2353`).
 
 One AXP192 device, M5StickC Plus, gets the same steps 1 to 5. The frequency path
 is shared code, not board switched, so a smoke test is enough.

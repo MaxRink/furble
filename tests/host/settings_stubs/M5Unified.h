@@ -37,6 +37,11 @@ class Bus {
   virtual int busType() const { return bus_spi; }
 };
 
+// M5GFX names the bus interface IBus. The production SD source asks the display
+// seam for its panel bus and checks that it is an SPI bus, so this stub needs
+// the same name for the type it models.
+using IBus = Bus;
+
 class Bus_SPI: public Bus {
  public:
   bus_config_t config() const { return {}; }

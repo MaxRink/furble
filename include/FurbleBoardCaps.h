@@ -51,14 +51,20 @@
 
 // The console runs on the ESP32-S3 USB Serial/JTAG port, not on UART0. Every
 // LilyGO board here is an ESP32-S3 with the native USB port.
-#if defined(FURBLE_M5STICKS3) || FURBLE_LILYGO_BOARD || defined(FURBLE_USB_CONSOLE)
+#if defined(FURBLE_M5STICKS3) || FURBLE_LILYGO_BOARD || defined(FURBLE_USB_CONSOLE) \
+    || defined(FURBLE_LILYGO_TBEAM_SUPREME)
 #define FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE 1
 #else
 #define FURBLE_HAS_USB_SERIAL_JTAG_CONSOLE 0
 #endif
 
-// An SD card slot. The StickC family has none.
-#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS)
+// An SD card slot. The StickC family has none. The T-Beam Supreme has one, but
+// it sits on its own SPI bus (SCK 36, MISO 37, MOSI 35, CS 47) rather than the
+// display bus FurbleSD mounts through, and this image does not drive it yet:
+// the row reports no slot and the SD stack is compiled out. See
+// plans/390-tbeam-supreme-port.md.
+#if defined(FURBLE_M5STICKC) || defined(FURBLE_M5STICKC_PLUS) \
+    || defined(FURBLE_LILYGO_TBEAM_SUPREME)
 #define FURBLE_HAS_SD 0
 #else
 #define FURBLE_HAS_SD 1
@@ -69,7 +75,7 @@
 // charger drives a charge LED and the T-Watch Ultra's AXP2101 reports charging
 // over I2C, which this port does not read yet. A zero column keeps M5Unified's
 // undriven judgement out of the battery display.
-#if defined(FURBLE_WAVESHARE_S3_ETH) || FURBLE_LILYGO_BOARD
+#if defined(FURBLE_WAVESHARE_S3_ETH) || FURBLE_LILYGO_BOARD || defined(FURBLE_LILYGO_TBEAM_SUPREME)
 #define FURBLE_HAS_VBUS_SENSE 0
 #else
 #define FURBLE_HAS_VBUS_SENSE 1
@@ -80,7 +86,7 @@
 // pins, so opening In_I2C there manufactures bus traffic on a pin that is not
 // a bus. Neither LilyGO image opens M5Unified's In_I2C: the T-Deck keyboard and
 // the T-Watch Ultra PMIC/expander sit on their own buses, driven here.
-#if defined(FURBLE_WAVESHARE_S3_ETH) || FURBLE_LILYGO_BOARD
+#if defined(FURBLE_WAVESHARE_S3_ETH) || FURBLE_LILYGO_BOARD || defined(FURBLE_LILYGO_TBEAM_SUPREME)
 #define FURBLE_HAS_INTERNAL_I2C 0
 #else
 #define FURBLE_HAS_INTERNAL_I2C 1
@@ -126,8 +132,26 @@
 #define FURBLE_PANEL_502X410 0
 #endif
 
-// A portrait Stick panel, 80 or 135 pixels wide.
-#define FURBLE_PANEL_NARROW (FURBLE_PANEL_80X160 || FURBLE_PANEL_135X240)
+// The AXP2101 through lib/hal and its RegisterBus adapter, instead of the board
+// support library's own path. The T-Beam image also builds its panel here, so
+// it shares the LilyGO display path without being a LilyGO-PMIC board.
+#if defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#define FURBLE_HAS_AXP2101_HAL 1
+#else
+#define FURBLE_HAS_AXP2101_HAL 0
+#endif
+
+// A 128x64 1-bit OLED. M5GFX drives it with lgfx::Panel_SH110x over I2C; there
+// is no backlight and brightness is a contrast command, and 24 pixel icons are
+// what fits four rows. See plans/390-tbeam-supreme-port.md.
+#if defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#define FURBLE_PANEL_128X64 1
+#else
+#define FURBLE_PANEL_128X64 0
+#endif
+
+// A portrait Stick panel, 80 or 135 pixels wide, or the T-Beam's 128x64 OLED.
+#define FURBLE_PANEL_NARROW (FURBLE_PANEL_80X160 || FURBLE_PANEL_135X240 || FURBLE_PANEL_128X64)
 
 // Any panel with room for the wide layouts. At most one large class is 1.
 #define FURBLE_PANEL_LARGE (FURBLE_PANEL_320X240 || FURBLE_PANEL_502X410)

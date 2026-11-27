@@ -41,7 +41,7 @@ Evidence: at 8ff406ea `git grep -iE "between (the )?(SLPIN|SLPOUT|Sleep In|Sleep
 Out)"` returns nothing, and every remaining `dwell` hit that names a direction
 names a panel class. The code already enforced both intervals:
 `UI::sleepDisplay()` refuses a sleep within 120 ms of the last wake
-(`src/FurbleUI.cpp:1942-1986`) and `UI::wakeDisplay()` waits the same interval
+(`src/FurbleUI.cpp:1950-1994`) and `UI::wakeDisplay()` waits the same interval
 before `M5.Display.wakeup()` (`src/FurbleUI.cpp:2013-2016`), against
 `DISPLAY_SLEEP_DWELL_MS = 120` at `include/FurbleUI.h:1136`. M5GFX 0.2.27
 writes the bare SLPIN or SLPOUT with no delay

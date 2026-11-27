@@ -68,6 +68,14 @@ const profile_budget_t BUDGETS[] = {
      false,                                                                                                       0,     32768, "esp32s3"},
     {"twatch-ultra",     512 * 1024, 8 * 1024 * 1024, 16384, 16384, 3840, 10240, 4096, 4096,
      320 * 16 * 2,                                                                                         false, 0,     32768, "esp32s3"},
+    // LilyGO T-Beam Supreme: an ESP32-S3 with 8 MB quad PSRAM and a 128x64
+    // 1-bit panel. The draw buffer is UIMemory::drawBufferBytes(128, 64, 2):
+    // 64 / PARTIAL_LINES = 4 bands, halved for a narrow panel, times 128 px and
+    // 2 bytes. The IR stack is the table's default; this board has no emitter,
+    // so the task never runs, and the figure only keeps the component list in
+    // one shape across boards.
+    {"tbeam-supreme",    512 * 1024, 8 * 1024 * 1024, 8192,  12288, 3840, 10240, 3072, 4096,
+     128 * 2 * 2,                                                                                          true,  0,     32768, "esp32s3"},
 };
 
 const profile_budget_t &budgetFor(const std::string &profile) {

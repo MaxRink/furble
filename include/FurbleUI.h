@@ -1211,6 +1211,8 @@ class UI {
   static void buttonBRead(lv_indev_t *drv, lv_indev_data_t *data);
   static void buttonCRead(lv_indev_t *drv, lv_indev_data_t *data);
   static void touchRead(lv_indev_t *drv, lv_indev_data_t *data);
+  /** A key this board does not have: always released, never a press. */
+  static void buttonAbsentRead(lv_indev_t *drv, lv_indev_data_t *data);
 
   /** Get the navigation key assigned to an input device. */
   uint32_t inputKey(lv_indev_t *drv) const;

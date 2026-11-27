@@ -13,7 +13,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 BOARDS = ("sticks3", "core2", "core-4mb", "stickc", "stickc-plus", "stickc-plus2",
-          "headless-s3", "waveshare-s3-eth")
+          "headless-s3", "waveshare-s3-eth", "tbeam-supreme")
 # Profiles that have no firmware env to derive from. They boot on the
 # simulator default pool; any other profile without a derived pool fails.
 UNDERIVED_PROFILES = {"stickc-plus2"}

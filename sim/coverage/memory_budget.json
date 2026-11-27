@@ -110,6 +110,18 @@
         "mqtt_camera": 5120,
         "mqtt_worker": 3072
       }
+    },
+    "profile-tbeam-supreme": {
+      "min_internal_free": 197264,
+      "min_internal_largest": 197264,
+      "max_leaks": 0,
+      "components": {
+        "main_stack": 12288,
+        "lvgl_draw": 512,
+        "mqtt_queue": 9392,
+        "mqtt_camera": 5120,
+        "mqtt_worker": 3072
+      }
     }
   }
 }

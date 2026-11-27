@@ -17,6 +17,14 @@ Public headers for the app layer in src/, one header per module
 - Any change to a public header must update this guidance when it changes a
   synchronization or ownership contract, and must be reviewed as a public API
   change.
+- `FurbleDisplay.h` is the display seam the UI, the boot screen and the SD
+  service draw through. It names no M5GFX type, so a host test that includes the
+  production SD source compiles without the library; the M5 boards forward it to
+  `M5.Display` from `src/FurblePlatform.cpp` and the simulator from
+  `sim/FurblePlatformSim.cpp`, and the T-Beam Supreme image implements it in
+  `src/FurbleDisplay.cpp` with `Panel_SH110x` over I2C. A new drawing entry point
+  goes here rather than a new direct `M5.Display` call, and `panelBus()` stays
+  opaque (`void *`) for the same reason.
 - `FurbleControl.h` atomic state changes must document the acquire/release
   contract in this file and preserve the existing mutex-protected transitions.
 - `FurbleControl` reconnect mode, backoff, attempt, and hint fields are

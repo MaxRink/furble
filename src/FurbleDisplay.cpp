@@ -25,7 +25,7 @@
  * peripheral gate are in FurbleLilyGo, and the profile row is in FurbleBoard.
  */
 
-#if FURBLE_LILYGO_BOARD
+#if FURBLE_LILYGO_BOARD || FURBLE_PANEL_128X64
 
 #if defined(FURBLE_SIM)
 
@@ -35,9 +35,14 @@
 
 #include <driver/gpio.h>
 #include <lgfx/v1/Light.hpp>
+#if FURBLE_PANEL_128X64
+#include <lgfx/v1/panel/Panel_SSD1306.hpp>
+#include <lgfx/v1/platforms/esp32/Bus_I2C.hpp>
+#else
 #include <lgfx/v1/panel/Panel_CO5300.hpp>
 #include <lgfx/v1/panel/Panel_ST7789.hpp>
 #include <lgfx/v1/platforms/esp32/Bus_SPI.hpp>
+#endif
 
 #endif  // FURBLE_SIM
 
@@ -70,6 +75,17 @@ constexpr uint_fast8_t SIM_SCALE = 1;
 class SimPanel: public lgfx::LGFX_Device {
  public:
   SimPanel(void) {
+#if FURBLE_PANEL_128X64
+    // The T-Beam's panel is a fixed 128x64 module with no facts row: its
+    // geometry is the constant the driver programs.
+    auto cfg = m_Panel.config();
+    cfg.panel_width = TBEAM_PANEL_WIDTH;
+    cfg.panel_height = TBEAM_PANEL_HEIGHT;
+    cfg.memory_width = TBEAM_PANEL_WIDTH;
+    cfg.memory_height = TBEAM_PANEL_HEIGHT;
+    cfg.offset_x = 0;
+    cfg.offset_y = 0;
+#else
     const Facts &f = facts();
     auto cfg = m_Panel.config();
     // The SDL panel has no controller to program, so it models the driven
@@ -81,6 +97,7 @@ class SimPanel: public lgfx::LGFX_Device {
     cfg.memory_height = drivenHeight(f.panel);
     cfg.offset_x = f.panel.offsetX;
     cfg.offset_y = f.panel.offsetY;
+#endif
     cfg.offset_rotation = 0;
     cfg.bus_shared = false;
     m_Panel.config(cfg);
@@ -131,6 +148,7 @@ class LightDigital: public lgfx::ILight {
   int8_t m_Pin;
 };
 
+#if !FURBLE_PANEL_128X64
 /** The T-Deck's ST7789 over the shared SPI bus. */
 class SpiPanel: public lgfx::LGFX_Device {
  public:
@@ -274,10 +292,154 @@ class QspiPanel: public lgfx::LGFX_Device {
   lgfx::Panel_CO5300 m_Panel;
 };
 
+#endif  // !FURBLE_LILYGO_TBEAM_SUPREME
+
+#if FURBLE_PANEL_128X64
+// LilyGO T-Beam Supreme: a 1.3 inch 128x64 SH1106 on the board's own I2C bus 0
+// at SDA 17 and SCL 18, with the 7-bit address strapped by R51 and R52 per
+// radio band. The magnetometer shares the bus and also answers 0x3C on some
+// variants, which is why both addresses are probed and the decision is the
+// header's choosePanelAddress().
+constexpr int8_t TBEAM_SDA = 17;
+constexpr int8_t TBEAM_SCL = 18;
+constexpr int8_t TBEAM_I2C_PORT = 0;
+constexpr uint32_t TBEAM_I2C_FREQ = 400000;
+constexpr uint8_t TBEAM_ADDRESS_PRIMARY = 0x3C;
+constexpr uint8_t TBEAM_ADDRESS_SECONDARY = 0x3D;
+// The init list leaves contrast at 0x00, and the UI applies the stored
+// brightness only once it exists, so begin() leaves the panel visible.
+constexpr uint8_t TBEAM_BOOT_CONTRAST = 128;
+// The SH1106 has 132 columns of RAM for a 128 pixel window; the module's wiring
+// decides whether that window starts at column 0 or 2 (bench check).
+constexpr uint8_t TBEAM_OFFSET_X = 0;
+
+/**
+ * The 128x64 module, as a class derived from M5GFX's SH110x driver.
+ *
+ * The base constructor sets 128 rows and its init list programs multiplex 0x7F,
+ * which a 64-common part decodes as pages 0 to 7 repeated. Both the geometry and
+ * the init list are set here, and the multiplex value comes from the same
+ * constant the simulator window is built with.
+ */
+class Sh1106Panel64: public lgfx::Panel_SH110x {
+ public:
+  Sh1106Panel64(void) {
+    _cfg.panel_width = TBEAM_PANEL_WIDTH;
+    _cfg.panel_height = TBEAM_PANEL_HEIGHT;
+    _cfg.memory_width = TBEAM_PANEL_WIDTH;
+    _cfg.memory_height = TBEAM_PANEL_HEIGHT;
+    _cfg.offset_x = TBEAM_OFFSET_X;
+    _cfg.offset_y = 0;
+  }
+
+ protected:
+  const uint8_t *getInitCommands(uint8_t listno) const override {
+    static constexpr uint8_t list0[] = {
+        CMD_DISP_OFF,
+        CMD_SETSTARTLINE,
+        CMD_READMODIFYWRITE_END,
+        CMD_PAGEADDRESSINGMODE,
+        CMD_SETDISPSTARTLINE,
+        0x00,
+        CMD_SETDISPLAYCLOCKDIV,
+        0x50,
+        CMD_SETMULTIPLEX,
+        Detail::sh1106MuxRatio(TBEAM_PANEL_HEIGHT),
+        CMD_SETDISPLAYOFFSET,
+        0x00,
+        CMD_DCDC,
+        0x8B,
+        CMD_SEGREMAP,
+        CMD_COMSCANINC,
+        CMD_SETPRECHARGE,
+        0x20,
+        CMD_SETVCOMDETECT,
+        0x35,
+        CMD_DISPLAYALLON_RESUME,
+        CMD_SETCONTRAST,
+        0x00,
+        CMD_SETCOMPINS,
+        0x12,
+        CMD_DISP_ON,
+        0xFF,
+        0xFF,  // end
+    };
+    switch (listno) {
+      case 0:
+        return list0;
+      default:
+        return nullptr;
+    }
+  }
+};
+
+/** The T-Beam's SH1106 over the board's own I2C bus. */
+class Sh1106Panel: public lgfx::LGFX_Device {
+ public:
+  Sh1106Panel(void) {
+    auto cfg = m_Bus.config();
+    cfg.freq_write = TBEAM_I2C_FREQ;
+    cfg.freq_read = TBEAM_I2C_FREQ;
+    cfg.pin_scl = TBEAM_SCL;
+    cfg.pin_sda = TBEAM_SDA;
+    cfg.i2c_port = TBEAM_I2C_PORT;
+    cfg.i2c_addr = TBEAM_ADDRESS_PRIMARY;
+    // SH110x command and data control bytes, the M5GFX defaults.
+    cfg.prefix_cmd = 0x00;
+    cfg.prefix_data = 0x40;
+    cfg.prefix_len = 1;
+    m_Bus.config(cfg);
+    m_Panel.setBus(&m_Bus);
+    setPanel(&m_Panel);
+  }
+
+  /**
+   * Probe both strapped addresses, then bring the panel up at the one that
+   * answered. M5GFX reports a NACK from i2c_wait() through endTransaction(), so
+   * that result is the acknowledgement; checking the begin call alone always
+   * succeeds. A NACK on both leaves the display unready.
+   */
+  bool start(void) {
+    if (!lgfx::i2c::init(TBEAM_I2C_PORT, TBEAM_SDA, TBEAM_SCL).has_value()) {
+      return false;
+    }
+    const bool ack_primary = probe(TBEAM_ADDRESS_PRIMARY);
+    const bool ack_secondary = probe(TBEAM_ADDRESS_SECONDARY);
+    const uint8_t address = Detail::choosePanelAddress(ack_primary, ack_secondary);
+    if (address == 0) {
+      return false;
+    }
+    auto cfg = m_Bus.config();
+    cfg.i2c_addr = address;
+    m_Bus.config(cfg);
+    if (!lgfx::LGFX_Device::init_without_reset(false)) {
+      return false;
+    }
+    setBrightness(TBEAM_BOOT_CONTRAST);
+    return true;
+  }
+
+  lgfx::Bus_I2C m_Bus;
+  Sh1106Panel64 m_Panel;
+
+ private:
+  bool probe(uint8_t address) {
+    const bool started =
+        lgfx::i2c::beginTransaction(TBEAM_I2C_PORT, address, TBEAM_I2C_FREQ, false).has_value();
+    // The stop is where the NACK surfaces, so its result is the probe. It is
+    // sent even when the start failed, to release the bus.
+    const bool acked = lgfx::i2c::endTransaction(TBEAM_I2C_PORT).has_value();
+    return started && acked;
+  }
+};
+#endif  // FURBLE_LILYGO_TBEAM_SUPREME
+
 #endif  // FURBLE_SIM
 
 #if defined(FURBLE_SIM)
 SimPanel g_Panel;
+#elif FURBLE_PANEL_128X64
+Sh1106Panel g_Panel;
 #elif defined(FURBLE_LILYGO_TWATCH_ULTRA)
 QspiPanel g_Panel;
 #else
@@ -296,10 +458,12 @@ bool begin(void) {
   if (s_Ready) {
     return true;
   }
-#if !defined(FURBLE_SIM)
+#if !defined(FURBLE_SIM) && !FURBLE_PANEL_128X64
   // The board's peripheral gate and PMIC rails come up before the panel: on the
   // T-Watch Ultra the panel supply is switched by the XL9555 output that
-  // powerOn() sets, and on the T-Deck the panel sits behind GPIO10.
+  // powerOn() sets, and on the T-Deck the panel sits behind GPIO10. The T-Beam
+  // has no such gate: Platform::init() brings its AXP2101 rails up first and
+  // the OLED sits on ALDO1, which is never cut at runtime.
   if (!powerOn()) {
     return false;
   }

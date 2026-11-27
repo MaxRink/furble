@@ -250,6 +250,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   gates the TimeKeeper sync. The ephemeris cache and AID-INI are CASIC only and
   never reach a UBX receiver. The stream split is the pure
   `GpsDemux::split()`; keep demultiplexing there, not in the driver.
+- `FurbleDisplay.cpp` is the board panel behind `include/FurbleDisplay.h`. On
+  the T-Beam Supreme image it owns the SH1106 device: I2C port 0 at SDA 17 and
+  SCL 18, the address probed at 0x3C then 0x3D, and no drawing at all until one
+  answers. On the simulator it is the 128x64 1-bit model, a `Panel_sdl` window
+  of that size with every pushed block thresholded to the panel's two colours.
+  The M5 boards do not compile this file's body at all: their seam lives in
+  `src/FurblePlatform.cpp`, which is also where the AXP2101 backend sits.
 - `FurbleEthernet.cpp` owns the W5500 RESETn pulse. The pinned ESP-IDF W5500
   PHY hardcodes 100 us in `w5500_reset_hw()`, so the transport drives a 500 us
   pulse before `esp_eth_driver_install()` (which runs the PHY hardware reset and
