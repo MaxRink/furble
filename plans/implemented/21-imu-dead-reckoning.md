@@ -122,7 +122,7 @@ Settings
 ```
 
 Both entries hide with GPS, using the same callback that already hides
-`m_Status.gpsBaud` and `m_Status.gpsData` at `src/FurbleUI.cpp:733-748`.
+`m_Status.gpsBaud` and `m_Status.gpsData` at `src/FurbleUI.cpp:746-761`.
 
 ## Implementation notes
 
@@ -248,7 +248,7 @@ of this one.
 `src/FurbleGPS.cpp:189-191` currently picks between `icon_my_location` and
 `icon_location_disabled`. Add the third state using `icon_location_searching`,
 which is already declared in `components/icons/icons.h:31` and already used as
-the GPS menu icon at `src/FurbleUI.cpp:1515`.
+the GPS menu icon at `src/FurbleUI.cpp:1528`.
 
 ```
 LIVE -> icon_my_location
@@ -256,7 +256,7 @@ HELD -> icon_location_searching
 NONE -> icon_location_disabled
 ```
 
-The GPS Data page (`src/FurbleUI.cpp:1548-1603`) already prints the fix age. Add
+The GPS Data page (`src/FurbleUI.cpp:1561-1722`) already prints the fix age. Add
 one line with the state and, when held, the remaining hold time. That is the page
 a user checks when a photo has an unexpected position.
 

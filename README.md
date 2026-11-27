@@ -215,8 +215,17 @@ Initially targeted at the M5StickC, the following controllers from [M5Stack](htt
 * M5Core2 (8 MB PSRAM enabled)
 * M5Tough (untested)
 
-furble builds six release firmware images, one per board environment. M5Unified
-detects the exact board at runtime, so one image covers a board family. The
+Two [LilyGO](https://lilygo.cc/) handhelds are also supported, with their own
+image each because M5Unified cannot detect them:
+* LilyGO T-Deck, and the T-Deck Plus which shares its image and adds the GNSS
+* LilyGO T-Watch Ultra (input is the single BOOT button; its touch controller has
+  no driver yet)
+
+furble defines eight firmware environments, one per board. Six are the release
+images; the two LilyGO environments are new and not in the release matrix yet.
+M5Unified detects the exact M5 board at runtime, so one image covers a board
+family; the two LilyGO images are single-board, with their panel, keyboard and
+trackball wired from `include/FurbleLilyGo.h`. The
 M5Tough is not a build environment. It shares the M5Core2 image through
 M5Unified board detection, but it has not been verified on hardware. See
 [docs/supported-hardware.md](docs/supported-hardware.md) for the board to

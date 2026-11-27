@@ -25,30 +25,30 @@ Out of scope:
 
 ## Files to change
 
-- `src/FurbleUI.cpp:53-76`, `UI::m_Menu`. Add an entry for the new Connected
+- `src/FurbleUI.cpp:57-80`, `UI::m_Menu`. Add an entry for the new Connected
   page item. The Connected page grid currently holds `m_RemoteShutter {0,0}`
   (line 72), `m_RemoteInterval {1,0}` (line 73) and `m_RemoteDisconnect {2,0}`
   (line 74).
-- `src/FurbleUI.cpp:1265-1279`, `UI::addConnectedMenu`. Lines 1268-1275 set a
+- `src/FurbleUI.cpp:1278-1292`, `UI::addConnectedMenu`. Lines 1268-1275 set a
   three column by one row grid for `FURBLE_M5COREX`. Lines 1277-1279 create the
   three existing items. Add the Settings item here.
-- `src/FurbleUI.cpp:1402-1413`, the shared page pattern used for the
+- `src/FurbleUI.cpp:1415-1426`, the shared page pattern used for the
   intervalometer. `lv_menu_set_load_page_event(menuIntervalometer.main,
   menuInterval.button, menuIntervalometer.page)` at lines 1404-1405 attaches an
   already created page to a second button. Copy it for Settings.
-- `src/FurbleUI.cpp:950`, the empty `else if (page ==
+- `src/FurbleUI.cpp:963`, the empty `else if (page ==
   m_Menu.at(m_SettingsStr).page) {}` branch in the `LV_EVENT_VALUE_CHANGED`
   handler. This is where the back button must be re-enabled and un-hidden.
-- `src/FurbleUI.cpp:955-961`, the Connected page branch. It stops scans, then
+- `src/FurbleUI.cpp:968-974`, the Connected page branch. It stops scans, then
   disables and hides the back button. This stays, and it is what re-hides back
   when the user comes back from Settings.
-- `src/FurbleUI.cpp:980-998`, the `LV_EVENT_CLICKED` handler. Its Connected
+- `src/FurbleUI.cpp:993-1011`, the `LV_EVENT_CLICKED` handler. Its Connected
   branch at lines 990-996 moves focus off the back button and releases the
   shutter lock. Check the same is right when arriving from Settings.
-- `src/FurbleUI.cpp:1251-1263`, `UI::doDisconnect`. It clears the menu history
+- `src/FurbleUI.cpp:1264-1276`, `UI::doDisconnect`. It clears the menu history
   and jumps to the main page. Confirm it behaves correctly when the user is deep
   in Settings at the moment of a disconnect.
-- `src/FurbleUI.cpp:869-873`, `addMainMenu` calls `addSettingsMenu()` at line 872
+- `src/FurbleUI.cpp:882-886`, `addMainMenu` calls `addSettingsMenu()` at line 872
   before `addConnectedMenu()` at line 873. So the Settings page object already
   exists when the Connected menu is built. This is the same ordering the
   intervalometer relies on.
@@ -68,7 +68,7 @@ Connected
 ```
 
 On Core and Core2 the Connected page is a grid, created at
-`src/FurbleUI.cpp:1269-1274` with three columns and one row. A fourth item does
+`src/FurbleUI.cpp:1282-1287` with three columns and one row. A fourth item does
 not fit. Either widen the column descriptor to four columns, or go to two rows of
 two and move Disconnect to `{1,1}`. Two rows of two reads better on a 320x240
 screen and matches the four slot look of the main menu. Whichever is chosen, the
@@ -98,7 +98,7 @@ handling is needed for the happy path.
 The back button is a single shared object,
 `lv_menu_get_main_header_back_button(m_MainMenu.main)`. Its disabled and hidden
 state is set per page by the `LV_EVENT_VALUE_CHANGED` handler starting at
-`src/FurbleUI.cpp:887`. The Connected branch at lines 959-961 sets both
+`src/FurbleUI.cpp:900`. The Connected branch at lines 959-961 sets both
 `LV_STATE_DISABLED` and `LV_OBJ_FLAG_HIDDEN`. Nothing clears them on the Settings
 page today, because the Settings branch at line 950 is empty. So entering
 Settings from Connected would leave the user with no back button.
@@ -121,30 +121,30 @@ there and makes the page self contained.
 
 ### Disconnect while inside Settings
 
-`doDisconnect` at `src/FurbleUI.cpp:1251-1263` calls `lv_menu_clear_history` then
+`doDisconnect` at `src/FurbleUI.cpp:1264-1276` calls `lv_menu_clear_history` then
 `lv_menu_set_page(m_MainMenu.main, m_MainMenu.page)` and focuses the Connect
 button. That already yanks the user out of any page, so an unexpected disconnect
 from inside Settings lands on the main menu. Verify it does not leave a stale
 back button state, since the main page branch re-enables back on load. Also
-verify the connection message box at `src/FurbleUI.cpp:1256` is hidden correctly
+verify the connection message box at `src/FurbleUI.cpp:1269` is hidden correctly
 when the user was not on the Connected page.
 
 ### Connection unsafe pages
 
 Four settings pages do something that disturbs an active connection:
 
-- Theme, `src/FurbleUI.cpp:1980-1992`, has a Restart button that calls
+- Theme, `src/FurbleUI.cpp:2109-2122`, has a Restart button that calls
   `esp_restart()`.
-- Touch calibration, `src/FurbleUI.cpp:1935-1947`, takes over the screen.
-- GPS enable and GPS baud, `src/FurbleUI.cpp:1517` and `:1531-1546`, call
+- Touch calibration, `src/FurbleUI.cpp:2055-2067`, takes over the screen.
+- GPS enable and GPS baud, `src/FurbleUI.cpp:1530` and `:1531-1546`, call
   `reloadSetting()`, which cycles the Grove 5 V rail through
   `M5.Power.setExtOutput` at `src/FurbleGPS.cpp:118` and `:128`.
-- TX Power, `src/FurbleUI.cpp:2010-2037`, calls `control.setPower()` on release,
+- TX Power, `src/FurbleUI.cpp:2140-2176`, calls `control.setPower()` on release,
   which changes the radio while connected.
 
 Show a message box when one of these pages is opened during an active
 connection. Use the existing `lv_msgbox_create` pattern from
-`src/FurbleUI.cpp:191-198`. Query connection state with
+`src/FurbleUI.cpp:195-202`. Query connection state with
 `Control::getInstance().getState()` against `STATE_ACTIVE`, declared at
 `include/FurbleControl.h:24-37` and `:124`. Warn only. Do not block, and do not
 change what the controls do.
@@ -163,8 +163,8 @@ Settings, and those pages inherit this navigation for free.
   Call this out in the PR body.
 - Changing settings during a connection can drop the link. That is the user's
   choice, and the warning covers it.
-- The shutter lock state at `src/FurbleUI.cpp:506-521` is released when the
-  Connected page is clicked into (`src/FurbleUI.cpp:995`). Confirm a lock is not
+- The shutter lock state at `src/FurbleUI.cpp:510-525` is released when the
+  Connected page is clicked into (`src/FurbleUI.cpp:1008`). Confirm a lock is not
   left engaged when the user wanders into Settings and back.
 
 ## Verification
@@ -192,7 +192,7 @@ On device, M5StickS3 over USB, connected to the Fujifilm camera:
 9. Power off the camera while the user is inside Settings. Confirm the UI lands
    on the main menu with a working back button and no stale message box.
 10. Repeat 1 to 4 with Multi-Connect enabled and two targets if a second camera
-    is available. Otherwise enable FauxNY (`src/FurbleUI.cpp:933-936`) as the
+    is available. Otherwise enable FauxNY (`src/FurbleUI.cpp:946-949`) as the
     second target.
 
 On Core2, verify the Connected page grid: four items, no overlap, focus order

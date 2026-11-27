@@ -95,9 +95,9 @@ There is no UART transmit path at all. `uart_set_pin` is called at
 ### Procedure, part 1: backup rail
 
 1. Enable GPS in Settings, wait for a fix. Confirm the fix on the GPS Data page
-   (`src/FurbleUI.cpp:1548-1603`) and note the satellite count.
+   (`src/FurbleUI.cpp:1561-1722`) and note the satellite count.
 2. Add a temporary debug button, or reuse the GPS enable switch at
-   `src/FurbleUI.cpp:1517`, to toggle the rail. Toggling the GPS setting off and
+   `src/FurbleUI.cpp:1530`, to toggle the rail. Toggling the GPS setting off and
    on already calls `disable()` then `enable()`, which cuts and restores the
    rail.
 3. Turn GPS off. Wait 60 s with a stopwatch. Turn GPS on.

@@ -47,9 +47,9 @@ Verified current state:
   `STATE_DISCONNECTING`, calls `ble_gap_conn_cancel()`, then blocks on the same
   `m_Mutex`.
 - `src/FurbleControl.cpp:115-118` clears `failcount` on success.
-- `src/FurbleUI.cpp:1243` passes `Settings::load<Settings::RECONNECT>()` into
+- `src/FurbleUI.cpp:1256` passes `Settings::load<Settings::RECONNECT>()` into
   `connectAll()`.
-- `src/FurbleUI.cpp:1616-1619` builds the Features page with `AUTOCONNECT`,
+- `src/FurbleUI.cpp:1735-1738` builds the Features page with `AUTOCONNECT`,
   `FAUXNY`, `RECONNECT`, `MULTICONNECT`.
 
 ## New settings
@@ -64,7 +64,7 @@ flat 5 s delay at `src/FurbleControl.cpp:127`.
 ## Menu placement
 
 `Settings > Features > Reconnect backoff`, directly after Infinite-ReConnect at
-`src/FurbleUI.cpp:1618`. Use `UI::addSettingItem()`.
+`src/FurbleUI.cpp:1737`. Use `UI::addSettingItem()`.
 
 If PR08 has already landed, place it under `Settings > Bluetooth` instead, which
 matches the agreed final settings tree. Features is the fallback so this PR stays
@@ -72,7 +72,7 @@ independent of PR08.
 
 The toggle only has an effect when Infinite-ReConnect is on. Disable or grey the
 item when `RECONNECT` is off, using the same event pattern already used for the
-`RECONNECT` icon at `src/FurbleUI.cpp:750-767`.
+`RECONNECT` icon at `src/FurbleUI.cpp:763-780`.
 
 ## Implementation notes
 

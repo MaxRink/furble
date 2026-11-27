@@ -98,10 +98,26 @@ struct Profile {
   GpsPinSource gpsPinSource;
   int8_t gpsRxPin;  // PROFILE source, -1 when none
   int8_t gpsTxPin;  // PROFILE source, -1 when none
+  // The microSD card select, -1 when the row has no slot or when the pin comes
+  // from M5Unified's own table. A board with a slot and no M5Unified row, which
+  // is every LilyGO board here, must name it, because SDSPI needs the pin the
+  // board wires and M5Unified cannot supply one it does not know.
+  int8_t sdCsPin;
 };
 
 /** The row for a board model. Unknown boards get a no-hardware row. */
 const Profile &profileFor(m5::board_t board);
+
+/**
+ * The row this image is built for.
+ *
+ * A multi-board image serves several models, so the row is the detected board.
+ * An image built for one LilyGO board answers with its compile-time row
+ * instead: M5Unified detects none of them, and the image pins M5GFX at a
+ * different M5 board's name only to stop the autodetect probes, so the detected
+ * value must never choose the row. See plans/387-lilygo-family-port.md.
+ */
+const Profile &compiledProfile(void);
 
 /**
  * True when the boot path may clear a stale RTC alarm flag on this row.

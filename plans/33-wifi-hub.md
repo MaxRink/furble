@@ -173,21 +173,21 @@ Out of scope:
   `Settings::init()` at 28, `Device::init(...)` at 29, the control task at 32
   and `vUITask(NULL)` at 39. Lines 27 to 32 are display independent and stay.
   Line 39 branches.
-- `src/FurblePlatform.cpp:9-45`, `Platform::getInstance`. It calls `M5.begin()`
+- `src/FurblePlatform.cpp:9-59`, `Platform::getInstance`. It calls `M5.begin()`
   with `cfg.clear_display = true` at line 17. On a bare devkit `M5.getBoard()`
   returns `board_unknown` and `M5.Display` has no panel. Confirm M5Unified
   tolerates this rather than assuming it. The `m_PMICHack` switch at lines
   24-32 falls through to `default:` for an unknown board, which is correct.
-- `src/FurbleUI.cpp:81-91`, the `UI` constructor. It reads
+- `src/FurbleUI.cpp:85-95`, the `UI` constructor. It reads
   `M5.Display.width()`, `M5.Display.height()` and calls `lv_init()` and
   `M5.Display.setBrightness()`. This is the hard dependency that forces the
   whole file out of a headless build rather than a stub.
-- `src/FurbleUI.cpp:2123-2134`, `UI::task`. The headless loop must reproduce
+- `src/FurbleUI.cpp:2263-2274`, `UI::task`. The headless loop must reproduce
   the `Platform::getInstance().update()` call at line 2125 and the 5 ms delay
   at line 2133. `update()` is what services the M5 button and PMIC state.
   Dropping it breaks power button handling on boards that have one.
-- `src/FurbleUI.cpp:2094-2111`, `UI::processInactivity`, and
-  `src/FurbleUI.cpp:2114-2121`, `UI::handleLockScreen`. Both are display only
+- `src/FurbleUI.cpp:2234-2251`, `UI::processInactivity`, and
+  `src/FurbleUI.cpp:2254-2261`, `UI::handleLockScreen`. Both are display only
   and have no headless equivalent.
 - `include/FurbleSettings.h:16-29`, `type_t`. Add `DISPLAY_MODE`.
 - `src/FurbleSettings.cpp:11-24`, `m_Setting`. Add the name, key and namespace.
@@ -226,7 +226,7 @@ because the headless main loop is the thing every later PR here depends on.
 
 ### The headless main loop
 
-`UI::task` at `src/FurbleUI.cpp:2123-2134` is three things in a loop:
+`UI::task` at `src/FurbleUI.cpp:2263-2274` is three things in a loop:
 `Platform::getInstance().update()`, the LVGL handler under `m_Mutex`, and a
 5 ms delay. Only the first and the third survive without a display.
 
@@ -237,7 +237,7 @@ is too small to justify one.
 
 The 5 ms delay is worth keeping identical rather than lengthening. It is what
 makes `Platform::update()` responsive enough for the PMIC click counter at
-`src/FurblePlatform.cpp:54-60`.
+`src/FurblePlatform.cpp:68-74`.
 
 ### The intervalometer is not a UI feature but it lives in the UI
 
@@ -255,7 +255,7 @@ Note it in the PR body as known missing, and make PR33c depend on it.
 ### Runtime toggle mechanics
 
 `CONSOLE` mode should do the same thing `plans/implemented/12-display-off.md` calls true
-display off, not merely set brightness to zero. `src/FurbleUI.cpp:2100`, inside
+display off, not merely set brightness to zero. `src/FurbleUI.cpp:2240`, inside
 `UI::processInactivity`, only calls `M5.Display.setBrightness(m_MinimumBrightness)`,
 which leaves the panel powered.
 
@@ -272,13 +272,13 @@ no work if it is not ticked. Do not tear down the object tree. Re-entering
 `esp32-s3-devkitc-1` is already the board for `m5stick-s3`
 (`platformio.ini:39-41`), so the toolchain and flash settings are proven. What is
 not proven is `M5.begin()` on hardware with no display, no PMIC and no IMU. The
-existing config at `src/FurblePlatform.cpp:16-22` already disables the IMU, the
+existing config at `src/FurblePlatform.cpp:16-26` already disables the IMU, the
 speaker and the mic, so the remaining risk is the display and `pmic_button`.
 
 Test this on the StickS3 running the headless image. A bare devkit is out of scope for 33a (PMIC dependency, see Scope).
 If `M5.begin()` misbehaves, the fallback is to skip M5Unified entirely under
 `FURBLE_NO_DISPLAY` and call `esp_timer_get_time()` directly for
-`Platform::tick()` at `src/FurblePlatform.cpp:51-53`. That is a bigger change
+`Platform::tick()` at `src/FurblePlatform.cpp:65-67`. That is a bigger change
 and should be a second PR if it is needed.
 
 ### Flash saved
@@ -838,9 +838,9 @@ Out of scope:
   silently when no camera is connected.
 - `include/FurbleControl.h:99` `getTargets()` and `:124` `getState()`. These
   back the status topics.
-- The UI request queue PR27 adds at `src/FurbleUI.cpp:2123-2134`. Anything that
+- The UI request queue PR27 adds at `src/FurbleUI.cpp:2263-2274`. Anything that
   touches LVGL, which includes connect and disconnect via
-  `UI::doConnect` at `src/FurbleUI.cpp:1229-1249` and `UI::doDisconnect` at
+  `UI::doConnect` at `src/FurbleUI.cpp:1242-1262` and `UI::doDisconnect` at
   `1251-1263`, goes through it. In a headless build it goes through the PR33a
   loop instead.
 - `lib/furble/Device.h:37`, `Device::getStringID()`, which returns the

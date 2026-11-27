@@ -52,7 +52,7 @@ minor.
 - Suspected cause: only the Stop button pauses `m_IntervalTimer` /
   `m_IntervalPageRefresh` (`src/FurbleUI.cpp` ~3180). The run page's back branch
   in the main menu `LV_EVENT_VALUE_CHANGED` handler contradicts its own comment:
-  `src/FurbleUI.cpp:1598-1600` says "disable 'Back' when intervalometer is
+  `src/FurbleUI.cpp:1717-1719` says "disable 'Back' when intervalometer is
   running" but calls `lv_obj_remove_state(back, LV_STATE_DISABLED)`, which
   enables back. Navigating away never stops the run.
 - Known/new: NEW.
@@ -65,7 +65,7 @@ minor.
   modal only appears when a companion peer raises a pending pairing over the rig
   transport, which needs a TCP peer the headless harness does not yet start. See
   the harness gap note below.
-- Static evidence (strong): `src/FurbleUI.cpp:551-571`. `Accept` and `Reject` are
+- Static evidence (strong): `src/FurbleUI.cpp:564-584`. `Accept` and `Reject` are
   created with `lv_msgbox_add_footer_button` but never `addToInputGroup(m_Group,
   ...)` the way every other interactive widget is. `lv_group_focus_obj(accept)`
   at line 571 is then a no-op because `accept` has no group, so on an encoder
@@ -93,7 +93,7 @@ minor.
   lingers with no connection indicator in the header (#40). The header has no
   connection icon (only reconnect/gps/battery, lines 303-306).
 - Harness note: the existing `ui.connected` query gates on
-  `getState()==STATE_ACTIVE` (`src/FurbleUI.cpp:1804-1813`), which is stricter
+  `getState()==STATE_ACTIVE` (`src/FurbleUI.cpp:1923-1932`), which is stricter
   than the human-visible UI, so a lingering connected page would NOT be caught by
   that query. A laxer "page shows connected controls regardless of Control state"
   query is needed to test #40 once the drop hook exists.
@@ -122,7 +122,7 @@ minor.
 ### F6 - Remote shutter page (non-touch) leaves Back hidden and disabled (NEW, low)
 
 - Severity: minor / potential trap.
-- Static evidence: `src/FurbleUI.cpp:1582-1589`. Arriving from the connected page
+- Static evidence: `src/FurbleUI.cpp:1701-1708`. Arriving from the connected page
   (which disables+hides Back), the non-touch branch only adds HIDDEN and never
   clears DISABLED, so escape depends entirely on the hardware left long-press
   (`navigateBack`). Touch path re-enables correctly.

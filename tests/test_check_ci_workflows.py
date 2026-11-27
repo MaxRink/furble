@@ -559,8 +559,9 @@ jobs:
     return json.loads(line.removeprefix("matrix="))["platform"]
 
   def test_discover_emits_both_mandatory_core_debug_profiles(self):
-    # Six release envs, then one debug env per board with both Core debug
-    # profiles in place of m5stack-core-debug alone: 13 in all.
+    # Eight release envs, then one debug env per board with both Core debug
+    # profiles in place of m5stack-core-debug alone: 17 in all. The two LilyGO
+    # boards joined the release list in plan 387, each with its own debug env.
     self.assertEqual(
         self._run_discover(),
         [
@@ -569,6 +570,8 @@ jobs:
             "m5stack-core",
             "m5stack-core2",
             "m5stick-s3",
+            "lilygo-tdeck",
+            "lilygo-twatch-ultra",
             "waveshare-s3-eth",
             "m5stick-c-debug",
             "m5stick-c-plus-debug",
@@ -576,7 +579,11 @@ jobs:
             "m5stack-core-debug",
             "m5stack-core2-debug",
             "m5stick-s3-debug",
+            "lilygo-tdeck-debug",
+            "lilygo-twatch-ultra-debug",
             "waveshare-s3-eth-debug",
+            # the release list is the order the discover step reads, so both
+            # LilyGO entries sit before the Waveshare one there too
         ],
     )
 

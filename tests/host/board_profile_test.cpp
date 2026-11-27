@@ -69,6 +69,7 @@
 #include <string>
 
 #include "FurbleBoard.h"
+#include "FurbleBoardCaps.h"
 #include "FurblePinShare.h"
 
 using Furble::Board::GpsPinSource;
@@ -292,10 +293,15 @@ int main() {
   check(!core.canPowerOff, "the Core row offers no auto-off or low-battery policy");
   check(core.powerOffPath, "the Core row keeps its deferred IP5306 power-off path");
 
-  // profile() is the row for the detected board.
+#if !FURBLE_LILYGO_BOARD
+  // profile() is the row for the detected board on an M5 image. A LilyGO image
+  // is the exception the block after this one pins: it answers from its build
+  // macro, because the detected value is the M5 name pinned only to suppress
+  // the autodetect probes.
   M5.board = m5::board_t::board_M5StickCPlus2;
   check(&Furble::Board::profile() == &Furble::Board::profileFor(m5::board_t::board_M5StickCPlus2),
         "profile follows the detected board");
+#endif
 
   // gpsPins() resolves the source its row names. A row that asks M5Unified
   // returns whatever the shim reports for Port A unchanged, so the resolved
@@ -303,6 +309,7 @@ int main() {
   // A row that names no source resolves nothing and claims no pin, which is what
   // keeps the Core's internal I2C bus and the Waveshare W5500 clock out of the
   // UART.
+#if !FURBLE_LILYGO_BOARD
   const struct {
     int32_t pin1;
     int32_t pin2;
@@ -329,6 +336,87 @@ int main() {
       check(rx == portA.pin1 && tx == portA.pin2, n + " gps pins come from M5Unified");
     }
   }
+#endif
+
+#if FURBLE_LILYGO_BOARD
+  // The LilyGO rows. No m5::board_t names these boards, so the row comes from
+  // the build macro through compiledProfile(), and the detected value must not
+  // change it: the image pins M5GFX at the display-less StampS3 family only to
+  // take the no-probe return, and M5Unified then reports that M5 board. Every
+  // column below is pinned to a LilyGO document; plans/387-lilygo-family-port.md
+  // carries the URL and retrieval date for each one.
+  {
+    const Profile &row = Furble::Board::compiledProfile();
+    M5.board = m5::board_t::board_M5StampS3;
+    check(&Furble::Board::profile() == &row, "the LilyGO row ignores the detected M5 board");
+#if defined(FURBLE_LILYGO_TDECK)
+    const std::string n = "T-Deck";
+    check(std::strcmp(row.name, "T-Deck") == 0, n + " name");
+    check(
+        !row.battery.level && !row.battery.voltage && !row.battery.current && !row.battery.charging,
+        n + " claims no battery telemetry: the divider is not driven yet");
+    check(row.batteryCapacityMah == 2000, n + " 2000 mAh vendor nominal cell");
+    check(!row.rtcBatteryBacked && !row.rtcOnBus, n + " has no RTC part");
+    check(row.irPin == -1, n + " has no IR emitter");
+    check(row.motionWake == MotionWake::NONE && row.motionWakePin == -1,
+          n + " has no IMU and no motion wake");
+    check(row.timedWake == TimedWake::NONE && row.powerHoldPin == -1,
+          n + " has no timed wake and no hold pin");
+    check(!row.pmicClickStreak, n + " has no PMIC");
+    check(row.sdSlot && row.sdCsPin == 39, n + " microSD selects on GPIO39");
+    check(!row.canPowerOff && !row.powerOffPath,
+          n + " cannot cut its own power: the switch is mechanical");
+    check(!row.modemSleep, n + " leaves modem sleep to the setting");
+    check(row.minBrightness == 16 && row.minBrightness % 16 == 0,
+          n + " brightness floor is a slider step multiple");
+    check(row.feedbackSound && !row.feedbackLight && !row.feedbackVibration,
+          n + " has a speaker only");
+    check(row.ledPin == -1, n + " has no LED");
+    check(!row.gpsRail, n + " has no switchable GPS rail");
+    check(!row.ledActiveLow && !row.irMarkLow, n + " has no driven LED or emitter stage");
+    check(row.gpsPinSource == GpsPinSource::PROFILE, n + " carries its own GPS pins");
+    check(row.gpsRxPin == 44 && row.gpsTxPin == 43, n + " GPS UART is RX 44 / TX 43");
+    M5.portAPin1 = 15;
+    M5.portAPin2 = 13;
+    int8_t rx = -2;
+    int8_t tx = -2;
+    check(Furble::Board::gpsPins(rx, tx), n + " gps pins resolve");
+    check(rx == 44 && tx == 43, n + " gps pins come from the row, not M5Unified");
+#elif defined(FURBLE_LILYGO_TWATCH_ULTRA)
+    const std::string n = "T-Watch Ultra";
+    check(std::strcmp(row.name, "TWatch-U") == 0, n + " name");
+    check(
+        !row.battery.level && !row.battery.voltage && !row.battery.current && !row.battery.charging,
+        n + " claims no battery telemetry: no AXP2101 backend in this port");
+    check(row.batteryCapacityMah == 1100, n + " 1100 mAh vendor cell");
+    check(!row.rtcBatteryBacked && !row.rtcOnBus, n + " has a PCF85063A this port does not drive");
+    check(row.irPin == -1, n + " has no IR emitter");
+    check(row.motionWake == MotionWake::NONE && row.motionWakePin == -1,
+          n + " has a BHI260AP with no backend");
+    check(row.timedWake == TimedWake::NONE && row.powerHoldPin == -1,
+          n + " has no timed wake and no hold pin");
+    check(!row.pmicClickStreak, n + " does not fake a PMIC click streak");
+    check(row.sdSlot && row.sdCsPin == 21, n + " microSD selects on GPIO21");
+    check(!row.canPowerOff && !row.powerOffPath, n + " has no power-off path in this port");
+    check(!row.modemSleep, n + " leaves modem sleep to the setting");
+    check(row.minBrightness == 16 && row.minBrightness % 16 == 0,
+          n + " brightness floor is a slider step multiple");
+    check(row.feedbackSound && !row.feedbackLight && !row.feedbackVibration,
+          n + " has a speaker only: the DRV2605 has no backend");
+    check(row.ledPin == -1, n + " has no LED");
+    check(!row.gpsRail, n + " has no switchable GPS rail");
+    check(!row.ledActiveLow && !row.irMarkLow, n + " has no driven LED or emitter stage");
+    check(row.gpsPinSource == GpsPinSource::PROFILE, n + " carries its own GPS pins");
+    check(row.gpsRxPin == 44 && row.gpsTxPin == 43, n + " GNSS UART is RX 44 / TX 43");
+    M5.portAPin1 = 15;
+    M5.portAPin2 = 13;
+    int8_t rx = -2;
+    int8_t tx = -2;
+    check(Furble::Board::gpsPins(rx, tx), n + " gps pins resolve");
+    check(rx == 44 && tx == 43, n + " gps pins come from the row, not M5Unified");
+#endif
+  }
+#endif
 
   // A board M5Unified cannot describe carries its own pins, as the T-Beam
   // Supreme row in plans/322 plans to (RX 9, TX 8). PROFILE and NONE have no

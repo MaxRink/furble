@@ -7,11 +7,17 @@ it matches the shipped behaviour. For a friendly overview see the top level
 
 ## Controllers and build environments
 
-furble builds six release firmware images. M5Unified detects the exact board at
-runtime, so one image covers a board family. An image that runs on exactly one
-board pins it at build time instead, which skips detection and drops the other
-boards' probes and display drivers. Every environment also has a matching
-`-debug` variant that adds verbose logging and the USB serial console.
+furble defines eight firmware environments. Six are the release matrix, and
+M5Unified detects the exact board at runtime, so one M5 image covers a board
+family. An image that runs on exactly one board pins it at build time instead,
+which skips detection and drops the other boards' probes and display drivers.
+The other two are LilyGO boards, which M5Unified cannot detect at all: their
+row, panel, input devices and rails come from `include/FurbleLilyGo.h` and the
+seams it feeds. **Those two are not in the CI or release matrix yet**: neither
+has been built, so neither has a recorded size or stack budget, and the table
+below describes the code as written rather than a shipped image. Every
+environment except `lilygo-twatch-ultra` has a matching `-debug` variant that
+adds verbose logging and the USB serial console.
 
 | Build env | Chip | Flash | MQTT | Boards it runs on | Touch | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -21,6 +27,8 @@ boards' probes and display drivers. Every environment also has a matching
 | `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. No IR emitter, no RTC, no software power off. |
 | `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | PSRAM enabled. On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. The Tough shares the Core2 SD slot, speaker and BM8563; no backup cell is recorded for its RTC. |
 | `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet node pinned to the display-less StampS3, so no M5 probe touches the W5500 pins. Wi-Fi and BLE 5 on the SoC, W5500 for wired Ethernet. No PMIC, battery, RTC part, IMU or IR, and no software power-off path. Hardware verification remains outstanding. |
+| `lilygo-tdeck` | ESP32-S3 | 16 MB | Yes | LilyGO T-Deck and T-Deck Plus | No | A 2.8 inch 320x240 ST7789, an ESP32-C3 keyboard over I2C, a five-switch trackball, a MAX98357A speaker and a microSD slot. No PMIC and no gauge: the battery divider on GPIO4 is not read yet, so no battery level or voltage is shown. No software power-off, no IR, no IMU, no RTC part. GPS pins are the Grove UART the T-Deck Plus puts its MIA-M10Q on. |
+| `lilygo-twatch-ultra` | ESP32-S3 | 16 MB | Yes | LilyGO T-Watch Ultra | No | A 2.06 inch 502x410 CO5300 AMOLED over quad SPI, an AXP2101 whose rails this image brings up, an MIA-M10Q GNSS, a MAX98357A speaker and a microSD slot. **Input is one button**: the CST9217 touch controller has no driver, so the UI can activate the focused row but not move focus. No battery level, voltage or charging state is reported and there is no software power-off, because the AXP2101 power backend is a separate change. The BHI260AP and the DRV2605 have no backend. |
 
 The Waveshare ESP32-S3-ETH is a mains or PoE node rather than a handheld. Its
 board row reports no battery and no PMIC, so `status` shows battery level and
@@ -115,7 +123,8 @@ baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
 | Atomic GPS Base v2.0 | AT6668 | SMA | None | Atom base | Out of scope. furble targets no Atom board. |
 | Generic M10 UART module | u-blox MAX-M10S or other M10 | Module dependent | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. MAX-M10S runs at 9600 baud and MIA-M10Q at 38400, so select `Auto`. |
 | LilyGO T-Beam Supreme M10S | u-blox MAX-M10S | SMA | Not a furble board yet | On board | Receiver supported, board not ported. See plan 318. |
-| LilyGO T-Watch Ultra, T-LoRa Pager | u-blox MIA-M10Q | Built in | Not furble boards yet | On board | Receiver supported, boards not ported. See plan 318. |
+| LilyGO T-Watch Ultra | u-blox MIA-M10Q | Built in | `lilygo-twatch-ultra` | On board | Ported in plan 387. The GNSS is on the UBX path through the pin seam; the receiver is on ALDO1/BLDO1 rails the image brings up. |
+| LilyGO T-LoRa Pager | u-blox MIA-M10Q | Built in | Not a furble board yet | On board | Receiver supported, board not ported. See plan 387. |
 
 The M5Stack Core and the Waveshare ESP32-S3-ETH have no GPS UART. Grove
 Port A on the Core is the internal I2C bus that carries the IP5306 and the

@@ -69,7 +69,8 @@ baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
 | Atomic GPS Base v2.0 | AT6668 | SMA | None | Atom base | Out of scope. furble targets no Atom board. |
 | Generic M10 UART module | u-blox MAX-M10S or other M10 | Module dependent | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. MAX-M10S runs at 9600 baud and MIA-M10Q at 38400, so select `Auto`. |
 | LilyGO T-Beam Supreme M10S | u-blox MAX-M10S | SMA | Not a furble board yet | On board | Receiver supported, board not ported. See plan 318. |
-| LilyGO T-Watch Ultra, T-LoRa Pager | u-blox MIA-M10Q | Built in | Not furble boards yet | On board | Receiver supported, boards not ported. See plan 318. |
+| LilyGO T-Watch Ultra | u-blox MIA-M10Q | Built in | `lilygo-twatch-ultra` | On board | Ported in plan 387. The GNSS is on the UBX path through the pin seam; the receiver is on ALDO1/BLDO1 rails the image brings up. |
+| LilyGO T-LoRa Pager | u-blox MIA-M10Q | Built in | Not a furble board yet | On board | Receiver supported, board not ported. See plan 387. |
 
 The M5Stack Core and the Waveshare ESP32-S3-ETH have no GPS UART. Grove
 Port A on the Core is the internal I2C bus that carries the IP5306 and the

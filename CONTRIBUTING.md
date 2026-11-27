@@ -166,7 +166,7 @@ that names no file in this checkout, a line past the end of its file, and a
 citation that names a symbol which is not on the cited line and not inside that
 symbol's definition. The symbol half is deliberately narrow: it reads a symbol
 only from the inline code span the citation annotates, so `legendSelectable()`
-followed by `(src/FurbleUI.cpp:11344)` is checked, while a symbol mentioned
+followed by `(src/FurbleUI.cpp:11484)` is checked, while a symbol mentioned
 earlier in the sentence is not. Citations into a tree this checkout does not
 contain (ESP-IDF, M5GFX, LVGL, esptool, newlib) are declared in
 `tools/doc_citations.json` with a reason and counted as external, not verified.

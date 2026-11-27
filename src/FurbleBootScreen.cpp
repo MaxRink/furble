@@ -8,6 +8,10 @@
 #include <freertos/task.h>
 
 #include "FurbleBoard.h"
+#include "FurbleBoardCaps.h"
+#if FURBLE_LILYGO_BOARD
+#include "FurbleDisplay.h"
+#endif
 #include "FurbleBootScreen.h"
 #include "FurbleBootTimeline.h"
 #include "FurblePlatform.h"
@@ -81,7 +85,11 @@ void BootScreen::begin(uint8_t totalStages) {
     return;
   }
 
+#if FURBLE_LILYGO_BOARD
+  auto &display = Display::screen();
+#else
   auto &display = M5.Display;
+#endif
   s_Width = display.width();
   s_Height = display.height();
   if ((s_Width <= 0) || (s_Height <= 0)) {
@@ -134,7 +142,11 @@ void BootScreen::begin(uint8_t totalStages) {
 }
 
 void BootScreen::drawProgress(const char *label) {
+#if FURBLE_LILYGO_BOARD
+  auto &display = Display::screen();
+#else
   auto &display = M5.Display;
+#endif
   const auto bg = display.color565(BG_R, BG_G, BG_B);
   const auto bar = display.color565(BAR_R, BAR_G, BAR_B);
 

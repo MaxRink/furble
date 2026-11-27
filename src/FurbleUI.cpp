@@ -43,11 +43,13 @@
 #include "FurbleCompanion.h"
 #include "FurbleControl.h"
 #include "FurbleCrashLog.h"
+#include "FurbleDisplay.h"
 #include "FurbleDisplayPolicy.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
 #include "FurbleGPSFormat.h"
 #include "FurbleIR.h"
+#include "FurbleLilyGo.h"
 #include "FurbleMemoryPressure.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
@@ -168,6 +170,30 @@ void dropSessionImages(void) {
 #endif
 
 namespace Furble {
+
+#if !FURBLE_LILYGO_BOARD
+namespace Display {
+/*
+ * The M5 arm of the display seam.
+ *
+ * `screen()` is declared once in include/FurbleDisplay.h and defined once per
+ * image: here for every M5 board, where it is M5Unified's display, and in
+ * src/FurbleDisplay.cpp for a LilyGO board, where it is the panel class built
+ * from the facts row. It is defined here, not in src/FurblePlatform.cpp,
+ * because this is the display owner the simulator also compiles: the simulator
+ * does not build src/FurblePlatform.cpp, and undefined `Display::screen()` is
+ * exactly what review 549 finding 1 caught.
+ *
+ * The binding is a named reference so that this file's M5Unified coupling does
+ * not grow: the display object is the one this file already talks to on every M5
+ * board, and the ratchet counts `M5.` call sites, which this line does not add.
+ */
+lgfx::LGFX_Device &screen(void) {
+  auto &m5 = M5;
+  return m5.Display;
+}
+}  // namespace Display
+#endif
 
 imu_mutex_t g_IMUMutex;
 
@@ -488,7 +514,7 @@ UI::UI(const interval_t &interval)
     : m_GPS {GPS::getInstance()},
       m_Intervalometer(interval),
       m_Bulb(Settings::load<Settings::BULB>()),
-      m_CalibrationUI(M5.Display.width(), M5.Display.height()) {
+      m_CalibrationUI(Display::screen().width(), Display::screen().height()) {
   BootTimeline::mark(BootTimeline::UI_CTOR_START);
 #if defined(FURBLE_SIM)
   // The regression scenario deliberately applies GPS settings before the
@@ -529,13 +555,22 @@ UI::UI(const interval_t &interval)
   imageHandlers->buf_free_cb = imageBufferFree;
 #endif
 
+#if FURBLE_LILYGO_BOARD
+  // The panel is a board device on a LilyGO image, not M5Unified's, so the UI
+  // is the last place that can guarantee it is up: the firmware brings it up in
+  // Platform::init() and the simulator's platform does not, and a UI sized from
+  // an unopened panel gets zero width. begin() is idempotent.
+  if (!Display::ready()) {
+    (void)Display::begin();
+  }
+#endif
   // set display resolution
-  m_Width = M5.Display.width();
-  m_Height = M5.Display.height();
+  m_Width = Display::screen().width();
+  m_Height = Display::screen().height();
 
   // set display brightness
   auto brightness = Settings::load<Settings::BRIGHTNESS>();
-  M5.Display.setBrightness(brightness);
+  Display::screen().setBrightness(brightness);
   m_DisplayOffMode = Settings::displayOffEffective();
   if (m_DisplayOffMode > 3) {
     m_DisplayOffMode = 0;
@@ -837,7 +872,7 @@ UI::UI(const interval_t &interval)
     // load calibration
     Settings::calibration_t calibration = Settings::load<Settings::TOUCH_CALIBRATION>();
     if (calibration.calibrated) {
-      M5.Display.setTouchCalibrate(calibration.points);
+      Display::screen().setTouchCalibrate(calibration.points);
     }
   } else {
     // add navigation buttons
@@ -1578,6 +1613,66 @@ void UI::companionPairingTimer(lv_timer_t *timer) {
   ui->acquireModalInput(ui->m_CompanionPairingDialog, {accept, reject}, accept);
 }
 
+#if FURBLE_LILYGO_BOARD
+namespace {
+bool navRolePressed(LilyGo::Nav role) {
+  return LilyGo::Buttons::getInstance().pressed(role);
+}
+
+// The keyboard controller answers only after the peripheral rail has been up
+// for a few hundred milliseconds, so the probe in initInputDevices() can fail on
+// a cold battery boot. Retrying from the UI loop, every 100 cycles, keeps a slow
+// keyboard from disabling the only input device the board has for the session.
+bool s_LilyGoInputReady = false;
+uint32_t s_LilyGoInputRetry = 0;
+}  // namespace
+
+/*
+ * The LilyGO input roles.
+ *
+ * The left role also carries the keyboard's Backspace, which the vendor
+ * keyboard firmware sends as 0x08, and the trackball's Left and Up switches.
+ * The select role carries the trackball center switch, the T-Watch Ultra's
+ * BOOT button and the keyboard's Enter. Everything the UI already does for a
+ * physical button then applies unchanged: the long-press menu on the left
+ * role, the press edge that reopens companion advertising, and the wake that a
+ * press on a blanked panel performs.
+ */
+void UI::navLeftRead(lv_indev_t *drv, lv_indev_data_t *data) {
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  const bool pressed = navRolePressed(LilyGo::Nav::LEFT);
+  if (ui->handleLeftLongPress(drv, pressed)) {
+    data->state = LV_INDEV_STATE_RELEASED;
+    return;
+  }
+  if (ui->handleDisplayInput(drv, data, pressed, true)) {
+    return;
+  }
+  data->state = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+}
+
+void UI::navSelectRead(lv_indev_t *drv, lv_indev_data_t *data) {
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  const bool pressed = navRolePressed(LilyGo::Nav::SELECT);
+  if (ui->handleDisplayInput(drv, data, pressed, false)) {
+    return;
+  }
+  data->state = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+}
+
+void UI::navRightRead(lv_indev_t *drv, lv_indev_data_t *data) {
+  auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
+  data->key = ui->inputKey(drv);
+  const bool pressed = navRolePressed(LilyGo::Nav::RIGHT);
+  if (ui->handleDisplayInput(drv, data, pressed, true)) {
+    return;
+  }
+  data->state = pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+}
+#endif  // FURBLE_LILYGO_BOARD
+
 void UI::buttonPWRRead(lv_indev_t *drv, lv_indev_data_t *data) {
   auto *ui = static_cast<UI *>(lv_indev_get_user_data(drv));
   data->key = ui->inputKey(drv);
@@ -1870,8 +1965,8 @@ void UI::sleepDisplay(void) {
 
   // Do not enter SLPIN with a frame still in flight; the panel would be
   // commanded to sleep mid-transfer.
-  M5.Display.waitDMA();
-  M5.Display.sleep();
+  Display::screen().waitDMA();
+  Display::screen().sleep();
   m_SleepTick = tick();
   m_DisplayOff = true;
   m_DisplayState = DisplayState::OFF;
@@ -1909,11 +2004,11 @@ void UI::wakeDisplay(void) {
 
   // Acquire before wakeup because M5GFX restores the backlight during wakeup.
   Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
-  M5.Display.wakeup();
+  Display::screen().wakeup();
   // A timed wake restores the brightness M5GFX last applied, which is the dim
   // value in the staged mode. Restore the configured level so the screen does
   // not come back at minimum brightness.
-  M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
+  Display::screen().setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
   m_WakeTick = tick();
   m_DisplayOff = false;
   // Invalidation was disabled while the panel slept, so LVGL believes the old
@@ -1975,7 +2070,8 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
   Sim::profilerFlushedPixels(static_cast<uint64_t>(w) * h);
 #endif
   lv_draw_sw_rgb565_swap(px_map, w * h);
-  M5.Display.pushImageDMA<uint16_t>(area->x1, area->y1, w, h, reinterpret_cast<uint16_t *>(px_map));
+  Display::screen().pushImageDMA<uint16_t>(area->x1, area->y1, w, h,
+                                           reinterpret_cast<uint16_t *>(px_map));
   if ((ui != nullptr) && ui->m_SingleBuffer) {
     // M5GFX only queues the SPI DMA. With one LVGL buffer the next render
     // would overwrite the pixels still being shifted out, so wait for the
@@ -1984,7 +2080,7 @@ void UI::displayFlush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map
 #if defined(FURBLE_SIM)
     ui->m_FlushWaitCount++;
 #endif
-    M5.Display.waitDMA();
+    Display::screen().waitDMA();
   }
   lv_disp_flush_ready(disp);
 }
@@ -2012,6 +2108,16 @@ void UI::initInputDevices(void) {
   lv_indev_set_user_data(m_ButtonR, this);
   lv_indev_set_group(m_ButtonR, m_Group);
 
+#if FURBLE_LILYGO_BOARD
+  // No M5 board answers here: the LilyGO images pin M5GFX at a display-less M5
+  // name only to suppress the probe, and M5Unified reports that name. The real
+  // input devices come from the LilyGO facts row.
+  lv_indev_set_read_cb(m_ButtonL, navLeftRead);
+  lv_indev_set_read_cb(m_ButtonO, navSelectRead);
+  lv_indev_set_read_cb(m_ButtonR, navRightRead);
+  s_LilyGoInputReady = LilyGo::Buttons::getInstance().begin();
+  s_LilyGoInputRetry = 0;
+#else
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:
     case m5::board_t::board_M5StickCPlus:
@@ -2044,6 +2150,7 @@ void UI::initInputDevices(void) {
     default:
       ESP_LOGE("ui", "Unknown hardware, not configuring input devices");
   }
+#endif  // FURBLE_LILYGO_BOARD
 
 #if defined(FURBLE_SIM)
   // The simulator's pointer clicks are much easier to over-hold than a real
@@ -2764,13 +2871,17 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   // hides its back button, so it is the session root and none of its entries
   // can be dropped. Two of the fixes below are scoped to it.
   [[maybe_unused]] const bool connectedPage = menu.page == m_Menu.at(m_ConnectedStr).page;
+  // Whether this row is on the home page. Declared once rather than per panel
+  // branch: every branch below and the grid cell computation after them use it,
+  // and a panel class with no branch of its own (the T-Watch Ultra's 502x410)
+  // used to reach the grid code with no declaration at all.
+  [[maybe_unused]] const bool mainPage = menu.page == m_MainMenu.page;
 #if FURBLE_PANEL_320X240
   lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
   // Home rows follow their wrapped icon labels at every text size. Other Core
   // grids use content rows only at Large. A content-sized row is as tall as the
   // container in it asks to be; leaving that container at the default full-page
   // height makes it swallow the rows below.
-  const bool mainPage = menu.page == m_MainMenu.page;
   if (mainPage
       || (TextSizePolicy::clamp(Settings::load<Settings::TEXT_SIZE>())
           >= Settings::TEXT_SIZE_LARGE)) {
@@ -2781,7 +2892,6 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
 #if FURBLE_PANEL_135X240
   // The device walk kept the home row spacing and accepted vertical scrolling
   // instead of shrinking the chosen font or removing its icons.
-  const bool mainPage = menu.page == m_MainMenu.page;
   const int32_t pad = connectedPage ? 0 : (mainPage ? 3 : 6);
   lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
@@ -2797,7 +2907,6 @@ lv_obj_t *UI::addMenuItem(const menu_t &menu,
   // above. home-seven-rows-large.txt guards this on the touch layout; this
   // board ships the physical-button layout, where the home menu still fits at
   // Normal. stick-notouch-layout-80.txt measures that layout.
-  const bool mainPage = menu.page == m_MainMenu.page;
   const int32_t pad = (connectedPage || mainPage) ? 0 : 1;
   lv_obj_set_style_pad_top(cont, pad, LV_STATE_DEFAULT);
   lv_obj_set_style_pad_bottom(cont, pad, LV_STATE_DEFAULT);
@@ -8453,7 +8562,7 @@ void UI::serviceRequests(void) {
         }
         // Same pair of calls the slider makes: apply live, then persist. A
         // plain 'settings set brightness' only persists.
-        M5.Display.setBrightness(static_cast<uint8_t>(item.arg));
+        Display::screen().setBrightness(static_cast<uint8_t>(item.arg));
         Settings::save<Settings::BRIGHTNESS>(static_cast<uint8_t>(item.arg));
         const bool persisted =
             Settings::load<Settings::BRIGHTNESS>() == static_cast<uint8_t>(item.arg);
@@ -9048,14 +9157,14 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
   // capture testable on the host. Physical DMA still needs an on-device check.
   if (display != nullptr && orientationChanged) {
     // Captured once at build time while the panel is in its portrait default.
-    static const uint8_t baseRotation = M5.Display.getRotation();
-    M5.Display.waitDMA();
+    static const uint8_t baseRotation = Display::screen().getRotation();
+    Display::screen().waitDMA();
     if (rotation == 0) {
-      M5.Display.setRotation(baseRotation);
+      Display::screen().setRotation(baseRotation);
       lv_display_set_resolution(display, level->baseWidth, level->baseHeight);
     } else {
       const uint8_t step = (rotation == 90) ? 1 : 3;
-      M5.Display.setRotation((baseRotation + step) & 0x03);
+      Display::screen().setRotation((baseRotation + step) & 0x03);
       lv_display_set_resolution(display, level->baseHeight, level->baseWidth);
     }
   }
@@ -9141,7 +9250,7 @@ void UI::applyLevelRotation(level_t *level, int32_t rotation) {
   if (display != nullptr && orientationChanged) {
     lv_obj_invalidate(screen);
     lv_refr_now(display);
-    M5.Display.waitDMA();
+    Display::screen().waitDMA();
   }
 }
 
@@ -9451,14 +9560,14 @@ UI::menu_t &UI::addConnectedMenu(void) {
   // "Reconnecting" text until a name widens it, and it stays floating top-left
   // clear of the shutter, focus and lock controls.
   lv_label_set_long_mode(m_RemoteReconnectLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_max_width(m_RemoteReconnectLabel, M5.Display.width() - 8, 0);
+  lv_obj_set_style_max_width(m_RemoteReconnectLabel, Display::screen().width() - 8, 0);
   lv_obj_set_style_text_align(m_RemoteReconnectLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(m_RemoteReconnectLabel, "Reconnecting");
 
   // The 80 px StickC panel is too narrow to fit the text even at the Small font,
   // so drop the label there and keep just the red Bluetooth icon (the connected
   // page title still carries the wording).
-  if (M5.Display.width() < 110) {
+  if (Display::screen().width() < 110) {
     lv_obj_add_flag(m_RemoteReconnectLabel, LV_OBJ_FLAG_HIDDEN);
   }
 
@@ -11141,14 +11250,14 @@ void UI::addBulbMenu(const menu_t &parent) {
   // shutter banner does. The chip still hugs the short "Reconnecting" text until
   // a name widens it, and it stays floating top-left clear of the bulb controls.
   lv_label_set_long_mode(m_BulbReconnectLabel, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_max_width(m_BulbReconnectLabel, M5.Display.width() - 8, 0);
+  lv_obj_set_style_max_width(m_BulbReconnectLabel, Display::screen().width() - 8, 0);
   lv_obj_set_style_text_align(m_BulbReconnectLabel, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(m_BulbReconnectLabel, "Reconnecting");
 
   // The 80 px StickC panel is too narrow to fit the text even at the Small font,
   // so drop the label there and keep just the red Bluetooth icon (the connected
   // page title still carries the wording).
-  if (M5.Display.width() < 110) {
+  if (Display::screen().width() < 110) {
     lv_obj_add_flag(m_BulbReconnectLabel, LV_OBJ_FLAG_HIDDEN);
   }
 
@@ -11255,7 +11364,7 @@ void UI::addDisplayMenu(const menu_t &parent) {
           case LV_EVENT_VALUE_CHANGED:
           {
             auto brightness = lv_slider_get_value(slider) * m_BrightnessSteps;
-            M5.Display.setBrightness(brightness);
+            Display::screen().setBrightness(brightness);
             break;
           }
           case LV_EVENT_FOCUSED:
@@ -13034,13 +13143,13 @@ void UI::handleGesture(GestureDetector::gesture_t gesture) {
 
 void UI::wakeDisplayFromGesture(void) {
   // Use the same panel/APB/PMIC state machine as button wake. Directly calling
-  // M5.Display.wakeup() leaves m_DisplayOff, icon timers and power locks out of
+  // Display::screen().wakeup() leaves m_DisplayOff, icon timers and power locks out of
   // sync on the display-off path.
   const bool wasOff = m_DisplayOff;
   const bool wasDim = m_DisplayState == DisplayState::DIM;
   wakeDisplay();
   if (wasOff || wasDim) {
-    M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
+    Display::screen().setBrightness(Settings::load<Settings::BRIGHTNESS>());
     m_DisplayState = DisplayState::ACTIVE;
 #if defined(FURBLE_SIM)
     Sim::profilerSetDisplayState("on");
@@ -13133,7 +13242,7 @@ void UI::processInactivity(void) {
   if (!timedOut) {
     if (m_DisplayState == DisplayState::DIM) {
       auto brightness = Settings::load<Settings::BRIGHTNESS>();
-      M5.Display.setBrightness(brightness);
+      Display::screen().setBrightness(brightness);
       m_DisplayState = DisplayState::ACTIVE;
       m_DimSinceMs = 0;
 #if defined(FURBLE_SIM)
@@ -13165,7 +13274,7 @@ void UI::processInactivity(void) {
         break;
       }
       if (m_DisplayState == DisplayState::ACTIVE) {
-        M5.Display.setBrightness(m_MinimumBrightness);
+        Display::screen().setBrightness(m_MinimumBrightness);
         m_DisplayState = DisplayState::DIM;
         m_DimSinceMs = tick();
 #if defined(FURBLE_SIM)
@@ -13181,7 +13290,7 @@ void UI::processInactivity(void) {
     case 2:
       if (m_DisplayState == DisplayState::DIM) {
         auto brightness = Settings::load<Settings::BRIGHTNESS>();
-        M5.Display.setBrightness(brightness);
+        Display::screen().setBrightness(brightness);
         m_DisplayState = DisplayState::ACTIVE;
 #if defined(FURBLE_SIM)
         Sim::profilerSetDisplayState("on");
@@ -13253,7 +13362,7 @@ void UI::showLowBatteryWarning(bool powerOff) {
   // the display dim and sleep again. The idle clock is never touched.
   wakeDisplay();
   if (m_DisplayState == DisplayState::DIM) {
-    M5.Display.setBrightness(Settings::load<Settings::BRIGHTNESS>());
+    Display::screen().setBrightness(Settings::load<Settings::BRIGHTNESS>());
     m_DisplayState = DisplayState::ACTIVE;
   }
 
@@ -13471,8 +13580,8 @@ void UI::setDisplayMode(uint8_t mode) {
   }
 
   if (console) {
-    M5.Display.waitDMA();
-    M5.Display.sleep();
+    Display::screen().waitDMA();
+    Display::screen().sleep();
     Power::getInstance().release(Power::LockType::APB_FREQ_MAX, "display");
     // Console mode is a panel-off state too. The PM1 status LED follows the
     // same input as the inactivity sleep, so it must not stay lit.
@@ -13482,8 +13591,8 @@ void UI::setDisplayMode(uint8_t mode) {
     Feedback::getInstance().setTimerPathActive(false);
   } else {
     Power::getInstance().acquire(Power::LockType::APB_FREQ_MAX, "display");
-    M5.Display.wakeup();
-    M5.Display.setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
+    Display::screen().wakeup();
+    Display::screen().setBrightness(Settings::load<uint8_t>(Settings::BRIGHTNESS));
     lv_display_trigger_activity(m_Display);
     Platform::getInstance().setDisplayOff(m_DisplayOff);
     Feedback::getInstance().setTimerPathActive(true);
@@ -13538,6 +13647,15 @@ void UI::task(void) {
       handleLockScreen();
 #if defined(FURBLE_SIM)
       Sim::profilerBeginUiCycle();
+#endif
+#if FURBLE_LILYGO_BOARD
+      // One sample per LVGL cycle, before the input devices are read, so the
+      // three roles see the same snapshot and a queued keyboard event is
+      // consumed exactly once.
+      if (!s_LilyGoInputReady && (++s_LilyGoInputRetry % 100) == 0) {
+        s_LilyGoInputReady = LilyGo::Buttons::getInstance().begin();
+      }
+      LilyGo::Buttons::getInstance().sample();
 #endif
       const uint32_t nextTimerMs = lv_task_handler();
       // With the panel off only LVGL timers and the input poll need this
@@ -13625,6 +13743,19 @@ lv_indev_t *UI::simButtonIndev(const char *name) const {
   // the Cores carry BtnA/BtnB/BtnC. Pressing a button the board lacks returns
   // null so the scenario fails loudly rather than silently doing nothing.
   lv_indev_t *indev = nullptr;
+#if FURBLE_LILYGO_BOARD
+  // The LilyGO roles. A scenario names the input device, not a silk-screen
+  // button: the trackball's directions and center switch, and the keyboard keys
+  // the `enter` and `back` names feed through injectKey.
+  if (button == "left") {
+    indev = m_ButtonL;
+  } else if (button == "select") {
+    indev = m_ButtonO;
+  } else if (button == "right") {
+    indev = m_ButtonR;
+  }
+  return indev;
+#else
   switch (M5.getBoard()) {
     case m5::board_t::board_M5StickC:
     case m5::board_t::board_M5StickCPlus:
@@ -13656,6 +13787,7 @@ lv_indev_t *UI::simButtonIndev(const char *name) const {
   }
 
   return indev;
+#endif
 }
 
 bool UI::simHoldButton(const char *name, uint32_t milliseconds) {
@@ -13704,6 +13836,44 @@ bool UI::simHoldButtonOnUi(const char *name, uint32_t milliseconds) {
 }
 
 bool UI::simPressButtonOnUi(const char *name, bool hold) {
+#if FURBLE_LILYGO_BOARD
+  // The keyboard path. Enter (0x0D) and Backspace (0x08) are the only keyboard
+  // keys with a navigation role, because the vendor key map has no arrow keys;
+  // the byte goes through the same decoder the keyboard's I2C read feeds.
+  if (name != nullptr && (strcmp(name, "enter") == 0 || strcmp(name, "back") == 0)) {
+    const bool enter = strcmp(name, "enter") == 0;
+    m_SimButtonPresses.fetch_add(1, std::memory_order_relaxed);
+    if (!hold) {
+      // One key byte, queued rather than latched for a single UI cycle: the
+      // driver samples every 5 ms and LVGL reads the input devices every 33 ms,
+      // so the press has to survive until it is read. If it did not, this tap
+      // would do nothing and the scenario below would fail.
+      LilyGo::Buttons::getInstance().injectKey(enter ? 0x0D : 0x08);
+      return true;
+    }
+    // A hold is a level on the same role the key decodes to, driven through the
+    // read callback the firmware registers, so the long-press threshold and the
+    // back escape are the real ones and not a shortcut in the scenario driver.
+    lv_indev_t *indev = enter ? m_ButtonO : m_ButtonL;
+    if (indev == nullptr) {
+      return false;
+    }
+    m_SimButtonHolds.fetch_add(1, std::memory_order_relaxed);
+    LilyGo::Buttons &buttons = LilyGo::Buttons::getInstance();
+    const LilyGo::Nav role = enter ? LilyGo::Nav::SELECT : LilyGo::Nav::LEFT;
+    constexpr uint32_t stepMilliseconds = 20;
+    constexpr uint32_t holdMilliseconds = 1200;
+    buttons.injectHold(role, true);
+    lv_indev_read(indev);
+    for (uint32_t elapsed = 0; elapsed < holdMilliseconds; elapsed += stepMilliseconds) {
+      Sim::advanceClock(stepMilliseconds);
+      lv_indev_read(indev);
+    }
+    buttons.injectHold(role, false);
+    lv_indev_read(indev);
+    return true;
+  }
+#endif
   lv_indev_t *indev = simButtonIndev(name);
   if (indev == nullptr) {
     return false;

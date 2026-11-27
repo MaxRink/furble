@@ -284,7 +284,8 @@ and the Waveshare documents on 2026-11-26. Plan 383 is the port-cost ranking
 added the same day; it defers to 318 on the T-Beam trim, to 360 on the first
 AMOLED port, and to 362 on nRF. Plan 366 is the receiver decision from the same
 reading: it ranks the levers, compares seven receivers, and defers to 318 for
-the bench work.
+the bench work. Plan 367 is the family decision and the first two LilyGO
+implementations, which build on the seams plans 365 (T-Beam Supreme) introduces.
 
 | Doc | Content |
 |---|---|
@@ -301,6 +302,7 @@ the bench work.
 | [541-review-feedback.md](541-review-feedback.md) | Review-feedback record for the board-level document branch, PR #541: the V_BCKP branch misread and the eight HTML citation URLs. Review-feedback record for the board-level document branch, PR #541: the V_BCKP branch misread and the eight HTML citation URLs. Record, follows plan 376. See [391](391-plan-closeout-decisions.md). |
 | [386-board-verification.md](implemented/386-board-verification.md) | Per-board verification of every `Board::Profile` row and the per-board `Platform` branches against the vendor pages and pin maps: the corrected `rtcOnBus` and `ledActiveLow` columns, the stale profile table, the Core2 rail register, the display-sleep count, the EXT_5V boot-byte simulator defect and its fix, and the eleven facts no document in the tree settles. Archived: merged as #543 (`08709037`); its status line said not merged and the merge is on master. See [391](391-plan-closeout-decisions.md). |
 | [543-review-feedback.md](implemented/543-review-feedback.md) | Review-feedback record for the board verification pass: five blockers and ten smaller findings, each fixed on the branch, with the assertion mutation proof and the corrected simulator boot byte. Archived with its plan, PR #543. See [391](391-plan-closeout-decisions.md). |
+| [387-lilygo-family-port.md](387-lilygo-family-port.md) | The LilyGO family: the per-board fact table for seven products, the finished-article ranking by case and battery, three corrections to the brief (no TCA8418, the T-Watch Ultra has GNSS, CO5300 is 502x410), the shared facts and display seams, and the T-Deck and T-Watch Ultra ports with what stays unverified |
 
 ## Bug analyses
 

@@ -76,6 +76,18 @@ if(FURBLE_ETHERNET)
        esp_driver_gpio esp_driver_spi esp_eth esp_event esp_netif)
 endif()
 
+# The LilyGO family seam. The panel, the family facts and the board I/O are one
+# feature: a LilyGO image without them has no display and no input. The profile
+# macro reaches CMake as well as the compiler so the sources and their GPIO/SPI
+# requirements are resolved only for those envs.
+if(FURBLE_LILYGO)
+  list(APPEND furble_sources
+       FurbleDisplay.cpp
+       FurbleLilyGo.cpp
+       FurbleLilyGoDevice.cpp)
+  list(APPEND furble_private_requires esp_driver_gpio esp_driver_spi)
+endif()
+
 if(FURBLE_NO_DISPLAY)
   idf_component_register(SRCS ${furble_sources}
                          PRIV_REQUIRES ${furble_private_requires} esp_hw_support)
@@ -83,4 +95,12 @@ else()
   idf_component_register(SRCS ${furble_sources}
                          PRIV_REQUIRES ${furble_private_requires} esp_hw_support
                          REQUIRES icons)
+endif()
+
+# The AXP2101 and XL9555 register drivers are plain sources in lib/hal, which
+# PlatformIO exposes as a library. Name the directory explicitly so the firmware
+# include path does not depend on that library discovery. This has to follow
+# idf_component_register(): before it, COMPONENT_LIB names no target yet.
+if(FURBLE_LILYGO)
+  target_include_directories(${COMPONENT_LIB} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../lib/hal)
 endif()

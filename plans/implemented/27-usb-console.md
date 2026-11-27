@@ -78,7 +78,7 @@ Out of scope:
   `src/CMakeLists.txt:1-10`.
 - `platformio.ini:1-5`, the `[furble]` shared `build_flags`. The gate flag is
   added to the debug environments from PR00, not here.
-- `src/FurbleUI.cpp:2123-2134`, `UI::task`. Line 2125 calls
+- `src/FurbleUI.cpp:2263-2274`, `UI::task`. Line 2125 calls
   `Platform::getInstance().update()`, lines 2127-2129 take `UI::m_Mutex` around
   `lv_task_handler()`, line 2133 delays 5 ms. The console request queue is
   drained here.
@@ -100,7 +100,7 @@ Out of scope:
 - `include/FurbleSettings.h:65-90`, the public `Settings` interface. `m_Setting`
   itself is private, so a public accessor is needed. See Implementation notes.
 - `include/FurbleGPS.h`, `GPS::getInstance().get()` returns the `TinyGPSPlus`
-  object used by the GPS Data page at `src/FurbleUI.cpp:1555-1589`. The `gps`
+  object used by the GPS Data page at `src/FurbleUI.cpp:1568-1708`. The `gps`
   command reads the same fields.
 - `lib/furble/CameraList.h:28-62`, `load()`, `size()`, `get(n)` and
   `getSaveCount()`. These back `cameras list` and `connect <n>`.
@@ -119,7 +119,7 @@ build can reach.
 If upstream would rather have it available in release builds, the fallback is
 one bool `CONSOLE` setting defaulting to `false`, following the pattern at
 `src/FurbleSettings.cpp:209-215`, with a switch added next to the existing ones
-at `src/FurbleUI.cpp:1616-1619`. Offer it, but lead with the compile-time gate.
+at `src/FurbleUI.cpp:1735-1738`. Offer it, but lead with the compile-time gate.
 It costs nothing in the release binary, which is the whole argument.
 
 ## Menu placement
@@ -227,11 +227,11 @@ control task only forwards those commands in `STATE_ACTIVE`
 rather than silently doing nothing when no camera is connected.
 
 **Anything that touches LVGL goes through a request queue drained by the UI
-task.** `UI::doConnect` and `UI::doDisconnect` (`src/FurbleUI.cpp:1229-1249` and
+task.** `UI::doConnect` and `UI::doDisconnect` (`src/FurbleUI.cpp:1242-1262` and
 `1251-1263`) both call `lv_menu_set_page` and manipulate objects, so the REPL
 task must not call them. Add a small FreeRTOS queue owned by `UI`, holding an
 enum plus one integer argument, and drain it at the top of the `UI::task` loop
-(`src/FurbleUI.cpp:2123-2134`), inside the same `m_Mutex` section that already
+(`src/FurbleUI.cpp:2263-2274`), inside the same `m_Mutex` section that already
 wraps `lv_task_handler()` at lines 2127-2129. That is roughly fifteen lines and
 it is the same mechanism PR50, the companion app, will need. Do not take
 `UI::m_Mutex` from the REPL task directly. It is private and static, and
@@ -240,9 +240,9 @@ reaching into it from another translation unit would be the wrong shape.
 **Settings go through `Settings::save` directly.** It is NVS through
 `Preferences` (`src/FurbleSettings.cpp:342`) and is safe from any task. But
 saving is not the same as applying. Some settings are read on every use, for
-example `MULTICONNECT` at `src/FurbleUI.cpp:1438` and `RECONNECT` at
-`src/FurbleUI.cpp:1243`, and those take effect immediately. Others are cached in
-the UI at construction, for example brightness at `src/FurbleUI.cpp:89-90`, and
+example `MULTICONNECT` at `src/FurbleUI.cpp:1451` and `RECONNECT` at
+`src/FurbleUI.cpp:1256`, and those take effect immediately. Others are cached in
+the UI at construction, for example brightness at `src/FurbleUI.cpp:93-94`, and
 those only take effect after a reboot. Do not try to fix that here. Have
 `settings set` print `saved, applies on reboot` for the cached ones, and
 document which is which in the command help.
@@ -357,7 +357,7 @@ PR50 inherits it.
 ## Risks
 
 - The UI request queue is new machinery in the hottest loop in the firmware
-  (`src/FurbleUI.cpp:2123-2134`). A bug there affects every board and every
+  (`src/FurbleUI.cpp:2263-2274`). A bug there affects every board and every
   user, gate or no gate, if the drain call is not itself gated. Compile the
   drain out entirely when the console is not built.
 - Log and prompt interleaving may turn out to be unusable in practice on the S3,

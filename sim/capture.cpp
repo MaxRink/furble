@@ -6,6 +6,7 @@
 
 #include <M5Unified.h>
 
+#include "FurbleDisplay.h"
 #include "capture.h"
 #include "heap_count.h"
 
@@ -80,14 +81,14 @@ std::vector<uint8_t> deflateStore(const std::vector<uint8_t> &data) {
 bool captureFrame(const std::string &path) {
   // Screenshot buffers are host memory, not the device frame buffer.
   const Furble::Sim::HostAllocScope hostScope;
-  const int32_t width = M5.Display.width();
-  const int32_t height = M5.Display.height();
+  const int32_t width = Furble::Display::screen().width();
+  const int32_t height = Furble::Display::screen().height();
   if (width <= 0 || height <= 0) {
     return false;
   }
 
   std::vector<uint8_t> rgb(static_cast<size_t>(width) * height * 3);
-  M5.Display.readRectRGB(0, 0, width, height, rgb.data());
+  Furble::Display::screen().readRectRGB(0, 0, width, height, rgb.data());
 
   std::vector<uint8_t> scanlines;
   scanlines.reserve(static_cast<size_t>(height) * (width * 3 + 1));

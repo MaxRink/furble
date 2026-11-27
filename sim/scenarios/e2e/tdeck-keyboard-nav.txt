@@ -1,0 +1,32 @@
+# The T-Deck keyboard drives the UI.
+#
+# The vendor keyboard firmware sends one character per press: Enter is 0x0D and
+# Backspace is 0x08 (examples/Keyboard_ESP32C3/Keyboard_ESP32C3.ino). Backspace
+# decodes to the UI's LEFT role and Enter to SELECT. That is the whole keyboard
+# navigation surface, because the key map has no arrow keys; the trackball moves
+# focus.
+#
+# Both steps below fail if the driver latches a key for a single sample: the
+# input sampler runs every 5 ms and LVGL reads the devices every 33 ms, so a
+# press that lived for one sample would be gone before it was read.
+seed fauxny true
+wait 300
+action connect
+wait 3200
+assert ui.connected yes
+action blind
+wait 300
+assert ui.page shutter
+
+# A held Backspace reaches the UI's universal back escape: the scenario holds
+# the LEFT role for 1200 ms through the same read callback the firmware wires,
+# so the long-press threshold is the real one.
+btn back hold
+wait 400
+assert ui.page connected
+
+# And a single Enter reopens the Remote page through the key event queue.
+btn enter
+wait 400
+assert ui.page shutter
+exit

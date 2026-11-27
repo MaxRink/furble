@@ -1,5 +1,10 @@
 #include "FurbleBoard.h"
 
+// Before anything below tests FURBLE_LILYGO_BOARD: the macro is defined in this
+// header, and a translation unit that asks for it first silently reads 0, which
+// sends profile() to the detected M5 board instead of the LilyGO row.
+#include "FurbleBoardCaps.h"
+
 namespace Furble {
 namespace Board {
 
@@ -139,31 +144,31 @@ namespace {
 constexpr Profile STICKC        = {"StickC", {true,  true,  true,  true}, 95, true, true, 9,
     MotionWake::DIRECT, 35, TimedWake::NONE, -1, true, false, true, true, false, 48, false,
     true, false, 10, true, true, true,
-    GpsPinSource::BOARD_SUPPORT, -1, -1};
+    GpsPinSource::BOARD_SUPPORT, -1, -1, -1};
 constexpr Profile STICKC_PLUS   = {"StickC+", {true,  true,  true,  true}, 120, true, true, 9,
     MotionWake::DIRECT, 35, TimedWake::RTC_ALARM, -1, true, false, true, true, false, 48,
     true, true, false, 10, true, true, true,
-    GpsPinSource::BOARD_SUPPORT, -1, -1};
+    GpsPinSource::BOARD_SUPPORT, -1, -1, -1};
 constexpr Profile STICKC_PLUS2  = {"StickC+2", {true,  true,  false, false}, 200, true, true, 19,
     MotionWake::NONE, -1, TimedWake::RTC_ALARM, 4, false, false, true, true, false, 32,
     true, true, false, 19, false, false, false,
-    GpsPinSource::BOARD_SUPPORT, -1, -1};
+    GpsPinSource::BOARD_SUPPORT, -1, -1, -1};
 constexpr Profile STICKS3       = {"StickS3", {true,  true,  false, true}, 250, false, false, 46,
     MotionWake::PMIC_GPIO, 13, TimedWake::PMIC_TIMER, -1, false, false, true, true, true,
     32, true, false, false, -1, true, false, false,
-    GpsPinSource::BOARD_SUPPORT, -1, -1};
+    GpsPinSource::BOARD_SUPPORT, -1, -1, -1};
 constexpr Profile CORE          = {"Core", {true,  false, false, true}, 110, false, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, true, false, 32, true,
     false, false, -1, false, false, false,
-    GpsPinSource::NONE, -1, -1};
+    GpsPinSource::NONE, -1, -1, -1};
 constexpr Profile CORE2         = {"Core2", {true,  true,  true,  true}, 500, true, true, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, true, true, false, 32, true,
     false, true, -1, true, false, false,
-    GpsPinSource::BOARD_SUPPORT, -1, -1};
+    GpsPinSource::BOARD_SUPPORT, -1, -1, -1};
 constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, true, true, -1,
     MotionWake::NONE, -1, TimedWake::RTC_ALARM, -1, true, true, true, true, false, 32, true,
     false, false, -1, true, false, false,
-    GpsPinSource::BOARD_SUPPORT, -1, -1};
+    GpsPinSource::BOARD_SUPPORT, -1, -1, -1};
 // The Waveshare ESP32-S3-ETH is a mains or PoE node. It has no PMIC, no
 // battery and no switchable rail, so there is nothing for a software power off
 // to switch: with no PMIC, M5Unified's Power_Class::powerOff() arms no wake
@@ -177,16 +182,63 @@ constexpr Profile TOUGH         = {"Tough", {true,  true,  true,  true}, 390, tr
 constexpr Profile WAVESHARE    = {"Waveshare", {false, false, false, false}, 0, false, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, false, false, false, 32,
     false, false, false, -1, false, false, false,
-    GpsPinSource::NONE, -1, -1};
+    GpsPinSource::NONE, -1, -1, -1};
 // An unrecognized board has no trustworthy battery backend. The Waveshare
 // ESP32-S3-ETH in particular is a mains/PoE node with no battery or PMIC, so
 // M5Unified's fallback values must not become a fake battery percentage.
 constexpr Profile UNKNOWN       = {"M5", {false, false, false, false}, 0, false, false, -1,
     MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32, false,
     false, false, -1, false, true, false,
-    GpsPinSource::BOARD_SUPPORT, -1, -1};
+    GpsPinSource::BOARD_SUPPORT, -1, -1, -1};
+
+// The LilyGO rows below have no m5::board_t value: M5Unified detects none of
+// these boards. They are reached through Board::compiledProfile() under the
+// board's build macro, which is also what pins the M5GFX board name at a
+// display-less M5 board to stop the autodetect probes.
+//
+// The T-Deck (and the T-Deck Plus, which shares this mainboard mapping) has no
+// PMIC and no fuel gauge: battery voltage is a 2:1 divider on GPIO4, and no
+// battery column is claimed because this port does not drive that ADC yet (a
+// follow-up in plans/387: the pin and divider are vendor facts, the reading is
+// not implemented). It cannot cut its own power, so the Auto off and Low
+// battery policies stay off; the board has a mechanical power switch. Its
+// 2000 mAh figure is the vendor nominal cell, not a gauge result. GPS pins are
+// the Grove UART the T-Deck Plus repurposes for its MIA-M10Q, and on the base
+// T-Deck they are the same two pins on the Grove connector, so an external
+// module works there. No IR emitter, no LED, no vibration motor, no IMU wake
+// and no RTC part; the speaker is the MAX98357A behind I2S, and the SD card
+// selects on GPIO39 on the panel's SPI bus.
+[[maybe_unused]] constexpr Profile TDECK = {"T-Deck", {false, false, false, false}, 2000, false, false,
+    -1,
+    MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, false, false, 16,
+    true, false, false, -1, false, false, false,
+    GpsPinSource::PROFILE, 44, 43, 39};
+// The T-Watch Ultra is a finished watch: an AXP2101 PMIC, a 1100 mAh cell, a
+// 502x410 CO5300 AMOLED, an MIA-M10Q GNSS and a MAX98357A speaker. This port
+// brings its rails up so the panel, card and speaker work, but it does not own
+// a power backend for the PMIC yet: battery telemetry and a software power-off
+// are absent rather than guessed, so both the caps and the power-off path are
+// false and the UI offers no auto-off. The touch controller is a CST9217 that
+// M5GFX 0.2.27 has no driver for, so no touch column is claimed here either;
+// the only user switch is BOOT on GPIO0, which the input seam reads. GPS is the
+// onboard MIA-M10Q on UART 43/44, and the SD card selects on GPIO21 on the
+// shared SPI bus.
+[[maybe_unused]] constexpr Profile TWATCH_ULTRA = {"TWatch-U", {false, false, false, false}, 1100, false, false,
+    -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, true, false, false, false, 16, true,
+    false, false, -1, false, false, false,
+    GpsPinSource::PROFILE, 44, 43, 21};
 // clang-format on
 }  // namespace
+
+const Profile &compiledProfile(void) {
+#if defined(FURBLE_LILYGO_TDECK)
+  return TDECK;
+#elif defined(FURBLE_LILYGO_TWATCH_ULTRA)
+  return TWATCH_ULTRA;
+#else
+  return profileFor(M5.getBoard());
+#endif
+}
 
 const Profile &profileFor(m5::board_t board) {
   switch (board) {
@@ -222,6 +274,12 @@ extern "C" __attribute__((weak)) bool furble_sim_board_profile(m5::board_t *boar
 #endif
 
 const Profile &profile(void) {
+#if FURBLE_LILYGO_BOARD
+  // A single-board LilyGO image: the row cannot come from the detected board,
+  // because the pinned M5GFX name is only a probe suppressor and M5Unified
+  // reports that M5 board, not this one.
+  return compiledProfile();
+#else
 #if defined(FURBLE_SIM)
   m5::board_t board = M5.getBoard();
   if (furble_sim_board_profile(&board)) {
@@ -229,6 +287,7 @@ const Profile &profile(void) {
   }
 #endif
   return profileFor(M5.getBoard());
+#endif
 }
 
 bool gpsPins(const Profile &row, int8_t &rx, int8_t &tx) {

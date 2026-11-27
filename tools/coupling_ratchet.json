@@ -51,9 +51,9 @@
     "src/FurbleIMU.cpp": 3,
     "src/FurbleIMUMotionBMI270.cpp": 5,
     "src/FurbleIMUMotionMPU6886.cpp": 5,
-    "src/FurbleSD.cpp": 7,
+    "src/FurbleSD.cpp": 5,
     "src/FurbleTimeKeeper.cpp": 4,
-    "src/FurbleUI.cpp": 82,
+    "src/FurbleUI.cpp": 50,
     "src/FurbleUIGesture.cpp": 4
   },
   "m5_get_board": {

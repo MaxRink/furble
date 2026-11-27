@@ -342,7 +342,7 @@ screened candidates add new points to that matrix:
 Today furble's input model is the M5 button set plus optional touch, gated
 throughout `src/FurbleUI.cpp` by `M5.Touch.isEnabled()`, which selects between a
 touch pointer device and an LVGL encoder or button navigation group. The touch
-branch registers an `lv_indev` pointer (`src/FurbleUI.cpp:504`); the non-touch
+branch registers an `lv_indev` pointer (`src/FurbleUI.cpp:508`); the non-touch
 branch drives an encoder group. Every candidate here brings an input type furble
 does not model:
 
@@ -356,7 +356,7 @@ does not model:
 - GT911 and other capacitive touch (T-Deck Plus, T-Watch S3). furble already has
   a touch path, but it assumes the M5Unified touch API. A board profile must feed
   the panel's own touch controller, GT911 on the T-Deck Plus, into the same
-  `touchRead` callback (`src/FurbleUI.cpp:443`).
+  `touchRead` callback (`src/FurbleUI.cpp:447`).
 - Rotary knob (ThinkNode M5, M1). A rotary encoder is the classic LVGL encoder
   input and maps directly onto the existing non-touch navigation group.
 
@@ -514,7 +514,7 @@ furble source and plan anchors
 
 - `lib/furble/Camera.h:20,168` BLE central role, NimBLEClient ownership
 - `platformio.ini:14` framework espidf, not Arduino
-- `src/FurbleUI.cpp:443,504` touch read callback and pointer indev
+- `src/FurbleUI.cpp:447,504` touch read callback and pointer indev
 - `plans/40-thinknode-port.md` nRF52 rewrite verdict
 - `plans/41-alternative-hardware.md` sidecar hardware survey, ThinkNode M5 pick
 - `plans/implemented/34-ota-partitions.md` OTA partition scheme, adjacent to the two-app switch

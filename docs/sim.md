@@ -17,6 +17,14 @@ together:
 | M5StickC, 80x160 | `FURBLE_M5STICKC` | `board_M5StickC` |
 | M5StickS3, 135x240 | `FURBLE_M5STICKS3` | `board_M5StickS3` |
 | M5Stack Core, 320x240 | `FURBLE_M5COREX` | `board_M5Stack` |
+| LilyGO T-Deck, 320x240 | `FURBLE_LILYGO_TDECK` | `board_M5StampS3` |
+| LilyGO T-Watch Ultra, 502x410 | `FURBLE_LILYGO_TWATCH_ULTRA` | `board_M5StampS3` |
+
+The two LilyGO panels are not M5GFX boards: the simulator builds the same
+`lgfx::Panel_sdl` device the firmware's display seam builds, at the geometry the
+LilyGO facts row carries, and M5GFX is pinned at the display-less StampS3 so
+M5Unified opens no panel of its own. `src/FurbleDisplay.cpp` is the only place
+that knows the difference.
 
 The default is the M5StickS3 135x240 panel. The Core panel models the 320x240
 Core class used by the simulator. A visible interactive run with the on-screen
@@ -392,7 +400,7 @@ text after a comment are ignored. Each line starts with one verb.
 | `wait` / `advance` | `wait MS` or `advance MS` advances virtual time. |
 | `stall` | `stall MS` advances virtual time without running the platform update loop. On the StickS3 model this can expire the PM1 watchdog; `MS` must be non-zero. |
 | `key` / `press` | `key KEY` or `press KEY`, where `KEY` is `up`, `down`, `left`, `right`, `return`, or `enter`. |
-| `btn` / `button` | `btn NAME [hold\|long]` or `button NAME [hold\|long]`. Stick boards expose `a`, `b`, and `pwr`; Core exposes `a`, `b`, and `c`. A tap samples one pressed and one released state through the production read callback and LVGL input processing in the device's current mode. The `hold` modifier is the left-button long-press escape and calls `navigateBack()` directly; on other buttons it behaves like a tap because only the left button has that escape. It is not a timed hold. Use `btn-hold` to exercise the repeat cadence. |
+| `btn` / `button` | `btn NAME [hold\|long]` or `button NAME [hold\|long]`. Stick boards expose `a`, `b`, and `pwr`; Core exposes `a`, `b`, and `c`; the LilyGO boards expose `left`, `right` and `select` for the input roles, plus `enter` and `back`, which inject the keyboard bytes 0x0D and 0x08 through `LilyGo::Buttons::injectKey`. The keyboard verbs exercise the decode and the role mapping, not the I2C transport. A tap samples one pressed and one released state through the production read callback and LVGL input processing in the device's current mode. The `hold` modifier is the left-button long-press escape and calls `navigateBack()` directly; on other buttons it behaves like a tap because only the left button has that escape. It is not a timed hold. Use `btn-hold` to exercise the repeat cadence. |
 | `btn-hold` / `button-hold` | `btn-hold NAME MS` or `button-hold NAME MS` presses a physical button for `MS` virtual milliseconds (1 to 60000), sampling LVGL every 20 ms through the production encoder read path, then releases it. It proves the long-press and repeat timing configured by `UI::initInputDevices`. The board button names match `btn`. |
 | `capture` | `capture NAME` writes a PNG under the capture directory. |
 | `uart-dump` | Prints captured fake-UART writes as `uart-tx` lines, then clears them. |
@@ -721,7 +729,11 @@ gaps advance on the virtual clock.
 
 `hw_profile` selects a supported board identity from `stickc`, `stickc-plus`,
 `stickc-plus2`, `sticks3`, `core-4mb`, `core-16mb`, `core2`, `tough`,
-`headless-s3`, `waveshare-s3-eth` or the Core USB-UART fallback. The two Core
+`headless-s3`, `waveshare-s3-eth`, `tdeck`, `twatch-ultra` or the Core USB-UART
+fallback. The two LilyGO profiles are the only ones whose `Board::profile()` row
+does not come from this hook: their image is built for one board, so
+`Board::compiledProfile()` answers from the build macro and the seeded profile
+only chooses the model row. The two Core
 names are the flash variants of one board: the committed `m5stack-core` image is
 built for 4 MB (`CONFIG_ESPTOOLPY_FLASHSIZE_4MB`), while current Basic units ship
 16 MB. The bare name `core` is refused so a scenario always states which

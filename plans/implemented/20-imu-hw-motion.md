@@ -129,7 +129,7 @@ A motion source with no consumer is dead code, so this PR wires one. On master
 today that is the panel:
 
 - The source arms at boot when the `IMU` setting is on, and is polled from the
-  existing one second housekeeping timer at `src/FurbleUI.cpp:398`. No new
+  existing one second housekeeping timer at `src/FurbleUI.cpp:402`. No new
   timer: a hardware engine only needs its status register read, and the software
   backend thresholds one sample.
 - On `MOVING` the callback calls `lv_display_trigger_activity()`. That is all it

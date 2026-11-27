@@ -243,7 +243,7 @@ typedef struct {
 } multiselect_t;
 ```
 
-Save it once in `doConnect` (`src/FurbleUI.cpp:8656-8690`) after the activate
+Save it once in `doConnect` (`src/FurbleUI.cpp:8757-8791`) after the activate
 loop. Load and apply it in the `addConnectMenu` refresh callback
 (`src/FurbleUI.cpp:1434-1458`), right where each item is created: if the camera
 name matches an entry, call `camera->setActive(true)` and
@@ -281,7 +281,7 @@ per connection, so build the rows when the page is opened, not in the timer:
 The timer runs only while the page is visible. That is the whole point of the
 GPS Data pattern and it is why this costs nothing when the page is closed.
 
-Guard the rebuild with `UI::m_Mutex` (`src/FurbleUI.cpp:384`) the same way
+Guard the rebuild with `UI::m_Mutex` (`src/FurbleUI.cpp:410`) the same way
 `updateItems` is guarded from the scan callback at `src/FurbleUI.cpp:943-945`.
 `getTargets()` returns a reference to `m_Targets`, which `Control::disconnect`
 clears at `src/FurbleControl.cpp:242` under `m_Mutex`. Do not hold that
@@ -374,7 +374,7 @@ snapshot from that PR instead.
 - `getTargets()` hands out a reference to a vector that `Control::disconnect`
   clears (`src/FurbleControl.cpp:242`). A timer tick that runs during a
   disconnect can walk a stale vector. Re-fetch every tick, and pause the timer
-  in `doDisconnect` (`src/FurbleUI.cpp:8692-8738`) as well as in the page leave
+  in `doDisconnect` (`src/FurbleUI.cpp:8793-8839`) as well as in the page leave
   handler.
 - `NimBLEClient::getRssi()` blocks. Measured cost is unknown until it is tried
   on hardware. Mitigation is above.

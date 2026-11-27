@@ -5932,6 +5932,60 @@
       ],
       "expected_exit": 0,
       "certified": true
+    },
+    {
+      "path": "sim/scenarios/e2e/board-row-tdeck.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "lilygo-tdeck"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Passes on a local T-Deck simulator build. Not certified because no CI job builds a LilyGO simulator binary; the first job that does can certify all four."
+    },
+    {
+      "path": "sim/scenarios/e2e/board-row-twatch-ultra.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "lilygo-twatch-ultra"
+      ],
+      "capabilities": [],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Committed with the T-Watch Ultra row. Not certified because no CI job builds a LilyGO simulator binary."
+    },
+    {
+      "path": "sim/scenarios/e2e/tdeck-keyboard-nav.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "lilygo-tdeck"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Passes on a local T-Deck simulator build. Not certified because no CI job builds a LilyGO simulator binary."
+    },
+    {
+      "path": "sim/scenarios/e2e/tdeck-gps-sd.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "lilygo-tdeck"
+      ],
+      "capabilities": [
+        "fauxny",
+        "gps",
+        "sd"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Passes on a local T-Deck simulator build. Not certified because no CI job builds a LilyGO simulator binary."
     }
   ]
 }

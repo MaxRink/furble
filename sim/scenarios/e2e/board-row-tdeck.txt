@@ -1,0 +1,55 @@
+# Board row versus hardware model: LilyGO T-Deck.
+#
+# The row has no m5::board_t value, so Board::compiledProfile() answers from the
+# build macro. The model carries the same facts from the LilyGO documents listed
+# in plans/387-lilygo-family-port.md, so a row that drifts from the hardware
+# fails here instead of being checked against itself.
+seed hw_profile tdeck
+wait 300
+
+assert hw.profile tdeck
+assert hw.mcu esp32s3
+assert hw.flash_kb 16384
+assert hw.display 320x240
+assert board.name T-Deck
+
+# No PMIC and no gauge: this port does not read the GPIO4 divider, so no battery
+# column is claimed on either side.
+assert hw.pmic none
+assert hw.gauge none
+assert hw.battery present
+assert board.battery_voltage no
+assert board.battery_charging no
+assert board.battery_mah 2000
+
+# No RTC part, no IR emitter, no IMU, no motor, no LED.
+assert hw.rtc no
+assert board.rtc_backed no
+assert board.rtc_on_bus no
+assert hw.ir no
+assert board.ir no
+assert board.led_active_low no
+assert board.ir_mark_low no
+
+# A microSD slot on the panel bus, a speaker, no touch.
+assert hw.sd yes
+assert board.sd yes
+assert hw.audio yes
+assert board.audio yes
+assert hw.touch no
+
+# Mechanical power switch: neither a UI policy gate nor a platform path.
+assert hw.can_power_off no
+assert board.can_power_off no
+assert board.power_off_path no
+assert board.timed_wake none
+
+# The GPS pins come from the row, not from M5Unified's Port A table.
+assert hw.gps_pin_source profile
+assert board.gps_pin_source profile
+assert hw.gps_rx_pin 44
+assert board.gps_rx_pin 44
+assert hw.gps_tx_pin 43
+assert board.gps_tx_pin 43
+assert board.gps_rail no
+exit

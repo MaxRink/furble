@@ -10,7 +10,7 @@ only code that closes the GPX track file and unmounts the card, so a slow mount
 or a slow FAT write that outlasted the wait left both open.
 
 `Platform::powerOff()` then cut the rail a few lines later
-(`src/FurblePlatform.cpp:564-609` runs the handshake, `:458` is the M5PM1
+(`src/FurblePlatform.cpp:600-645` runs the handshake, `:458` is the M5PM1
 `shutdown()`; the AXP192 and IP5306 boards fall through to
 `M5.Power.powerOff()`). Cutting the rail there loses the track tail written
 after the last `fsync()` and leaves FAT in its dirty state, so the next mount
@@ -34,7 +34,7 @@ this fix changes a public header rather than only the wait.
     at 3 s (`POWER_OFF_WAIT_MS`), then extends once by 5 s
     (`POWER_OFF_EXTENDED_WAIT_MS`).
 - The refusal logs name the writer task, and the logs and `xTaskCreate()` share
-  one `WRITER_TASK_NAME` (`src/FurbleSD.cpp:54`) so the name cannot drift:
+  one `WRITER_TASK_NAME` (`src/FurbleSD.cpp:90`) so the name cannot drift:
   - error: `SD writer task 'sd' did not take the power off request in 100 ms, refusing to power off.`
   - warning: `SD writer task 'sd' did not acknowledge power off in 3000 ms, extending the wait.`
   - error: `SD writer task 'sd' did not acknowledge power off after 8000 ms, refusing to power off.`

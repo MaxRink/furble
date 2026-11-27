@@ -57,7 +57,7 @@ Reviews keep catching power bugs of the same three classes before merge. Each
 class has already happened in this tree at least once.
 
 **Timers running while their page is hidden.** The UI owns ten LVGL timers:
-the inactivity timer at `src/FurbleUI.cpp:154`, the battery timer at `:230`,
+the inactivity timer at `src/FurbleUI.cpp:158`, the battery timer at `:230`,
 the diagnostics timer at `:233`, the icon timer at `:237`, the connect timer
 at `:385`, the intervalometer timer at `:389`, plus the GPS data, interval
 page, bulb and bulb page timers declared at `:54-62`. The discipline is

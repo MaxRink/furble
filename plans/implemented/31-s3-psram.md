@@ -162,10 +162,10 @@ verification.
 
 ### Display buffers stay internal
 
-`src/FurbleUI.cpp:125-127` allocates both display buffers with
+`src/FurbleUI.cpp:129-131` allocates both display buffers with
 `heap_caps_aligned_alloc(64, BUFFER_SIZE, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)`.
 `MALLOC_CAP_DMA` already forces internal memory on the S3, and
-`MALLOC_CAP_INTERNAL` states it a second time. `src/FurbleUI.cpp:376` hands those
+`MALLOC_CAP_INTERNAL` states it a second time. `src/FurbleUI.cpp:380` hands those
 buffers to `M5.Display.pushImageDMA()`. Nothing here changes and nothing here may
 change. `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768` exists to keep this kind of
 allocation working when the general heap is busy.

@@ -22,7 +22,7 @@ succeeded.
 
 The chain, from the UI back to the link layer:
 
-1. `src/FurbleUI.cpp:1244` The UI switches to the Connected menu purely on
+1. `src/FurbleUI.cpp:1257` The UI switches to the Connected menu purely on
    `Control::STATE_ACTIVE`. There is no separate confirmation gate.
 
 2. `src/FurbleControl.cpp:121-124` `connectAll()` returns `STATE_ACTIVE` as soon

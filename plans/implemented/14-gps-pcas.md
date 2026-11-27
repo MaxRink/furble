@@ -61,15 +61,15 @@ Settings
 └─ GPS      Enable · Baud · Update rate · Sentences · Constellation · GPS Data
 ```
 
-`addGPSMenu` at `src/FurbleUI.cpp:1514-1604` currently builds one flat page with
+`addGPSMenu` at `src/FurbleUI.cpp:1527-1723` currently builds one flat page with
 the Enable switch (`:1517`), the 115200 baud switch (`:1521-1546`) and the
 GPS Data subpage (`:1548-1603`). Keep Enable and Baud in place, add three roller
 subpages, and keep GPS Data where it is. Register the new page names in
-`UI::m_Menu` at `src/FurbleUI.cpp:53-76` with `{col,row}` positions so the Core
+`UI::m_Menu` at `src/FurbleUI.cpp:57-80` with `{col,row}` positions so the Core
 grid layout still works.
 
 The Enable switch already hides the dependent widgets when GPS is off
-(`src/FurbleUI.cpp:1550-1553`). Extend that list with the new subpage buttons.
+(`src/FurbleUI.cpp:1563-1566`). Extend that list with the new subpage buttons.
 
 Raw NMEA and satellite page goes under Settings -> Diagnostics, created by PR05.
 

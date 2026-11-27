@@ -122,7 +122,7 @@ can tell them apart:
    tears the link down (`lib/furble/Camera.cpp:53-54`), `connectAll` counts a
    failure and returns `STATE_CONNECT` (`src/FurbleControl.cpp:548-551`), and
    the control task retries. With reconnect enabled
-   (`Settings::RECONNECT`, `src/FurbleUI.cpp:1438`) it retries forever, so the
+   (`Settings::RECONNECT`, `src/FurbleUI.cpp:1451`) it retries forever, so the
    UI shows `connecting` indefinitely; each retry hits the same stale-session
    condition. This matches "90 seconds and longer" as a few retry cycles.
 

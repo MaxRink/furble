@@ -75,14 +75,14 @@ PR05 is not merged yet, put the live page under `Sensors` and move it in a
 follow-up.
 
 `m_Menu` grid coordinates are only meaningful for the Core grid layout
-(`src/FurbleUI.cpp:426-426`). Take the next free `{col,row}` on the Settings
+(`src/FurbleUI.cpp:452-452`). Take the next free `{col,row}` on the Settings
 page. PR01 (Power), PR05 (Diagnostics) and PR08 (Bluetooth) also add cells, so
 the final grid must be settled by whichever of those lands last.
 
 ## Implementation notes
 
 Init order is the critical part. `Platform::getInstance()` runs `M5.config()` and
-`M5.begin()` at `src/FurblePlatform.cpp:16-22`, and `main.cpp:27` calls it before
+`M5.begin()` at `src/FurblePlatform.cpp:16-26`, and `main.cpp:27` calls it before
 `Settings::init()` at `main.cpp:28`. Reading the `IMU` setting inside
 `Platform::getInstance()` therefore requires the swap.
 
@@ -114,18 +114,18 @@ pitch = atan2(-x, sqrt(y*y + z*z))
 Draw a bubble as an `lv_obj` circle offset from the page centre, clamped to a
 fixed radius, plus numeric roll and pitch labels. Refresh from an `lv_timer` at
 about 20 Hz, and pause the timer when the page is not shown. Use the same
-timer start/stop pattern as the GPS Data page (`src/FurbleUI.cpp:1592-1611`).
+timer start/stop pattern as the GPS Data page (`src/FurbleUI.cpp:1711-1730`).
 
 Apply a light low pass filter (EWMA, alpha around 0.2) to the accelerometer
 vector. Raw BMI270 output is noisy enough to make the bubble jitter.
 
 Axis orientation differs per board. Use `M5.Imu.setAxisOrder()` or a per-board
 sign table selected by `M5.getBoard()`, following the existing runtime switch
-style at `src/FurbleUI.cpp:95-109`. Get the S3 orientation right first, then
+style at `src/FurbleUI.cpp:99-113`. Get the S3 orientation right first, then
 correct the AXP192 sticks.
 
 Toggling `IMU` needs a restart because `cfg.internal_imu` is only consumed by
-`M5.begin()`. Copy the Theme page pattern at `src/FurbleUI.cpp:1984-1992`: a
+`M5.begin()`. Copy the Theme page pattern at `src/FurbleUI.cpp:2113-2122`: a
 Restart button that saves the setting and calls `esp_restart()`.
 
 Cameras stay untouched. No BLE code changes.

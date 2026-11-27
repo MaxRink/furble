@@ -3352,6 +3352,37 @@ target_include_directories(board_profile_test PRIVATE ${BOUNDARY_SHIM_DIR}
                            ${FURBLE_ROOT}/include)
 target_compile_options(board_profile_test PRIVATE -Wall -Wextra -Werror)
 
+# The LilyGO rows have no m5::board_t value: M5Unified detects none of those
+# boards, so Board::compiledProfile() answers from the build macro. The
+# capability macros are compile-time, so each board image gets its own target
+# that compiles the same test source against that row.
+function(add_lilygo_board_profile_target target macro)
+  add_executable(${target}
+                 board_profile_test.cpp
+                 ${BOUNDARY_DIR}/m5_stub.cpp
+                 ${FURBLE_ROOT}/src/FurbleBoard.cpp)
+  target_include_directories(${target} PRIVATE ${BOUNDARY_SHIM_DIR}
+                             ${FURBLE_ROOT}/include)
+  target_compile_definitions(${target} PRIVATE ${macro})
+  target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
+endfunction()
+
+add_lilygo_board_profile_target(board_profile_lilygo_tdeck_test FURBLE_LILYGO_TDECK)
+add_lilygo_board_profile_target(board_profile_lilygo_twatch_ultra_test
+                                FURBLE_LILYGO_TWATCH_ULTRA)
+
+# The family facts and the two pure input decoders. No bus, no GPIO: the decoders
+# are what the UI's roles are built from, so they are pinned without hardware.
+add_executable(lilygo_family_test
+               lilygo_family_test.cpp
+               ${FURBLE_ROOT}/src/FurbleLilyGo.cpp
+               ${FURBLE_ROOT}/src/FurbleLilyGoDevice.cpp)
+target_include_directories(lilygo_family_test PRIVATE ${BOUNDARY_SHIM_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(lilygo_family_test PRIVATE FURBLE_LILYGO_TDECK
+                             FURBLE_LILYGO_NO_DEVICE_IO)
+target_compile_options(lilygo_family_test PRIVATE -Wall -Wextra -Werror)
+
 # Platform::powerOff() refuses a board row without a power-off path. The
 # decision is PlatformPolicy::powerOffAction(), so the test links the real board
 # table and pins the refusal per row.
@@ -3365,6 +3396,9 @@ target_compile_options(platform_power_off_test PRIVATE -Wall -Wextra -Werror)
 
 if(BUILD_TESTING)
   add_test(NAME board-profile COMMAND board_profile_test)
+  add_test(NAME board-profile-lilygo-tdeck COMMAND board_profile_lilygo_tdeck_test)
+  add_test(NAME board-profile-lilygo-twatch-ultra COMMAND board_profile_lilygo_twatch_ultra_test)
+  add_test(NAME lilygo-family COMMAND lilygo_family_test)
   add_test(NAME platform-power-off COMMAND platform_power_off_test)
   add_test(NAME platform-wake COMMAND platform_wake_test)
   foreach(mode protocols psram-fallback queue-timeout unsupported)

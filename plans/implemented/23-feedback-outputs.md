@@ -106,7 +106,7 @@ Settings
 ```
 
 `Feedback` is a new submenu created by this PR. Take the next free `{col,row}`
-cell on the Settings page grid at `src/FurbleUI.cpp:53-76`. PR01, PR05, PR08,
+cell on the Settings page grid at `src/FurbleUI.cpp:57-80`. PR01, PR05, PR08,
 PR16 and PR22 also add cells, so the final grid is settled by whichever lands
 last.
 
@@ -126,11 +126,11 @@ The M5Stack StickC Plus2 buzzer documentation page confirms the same thing from
 the other side: the Plus2 buzzer driver is `Speaker_Class` from M5Unified.
 
 `cfg.internal_spk` is currently hardcoded `false` at
-`src/FurblePlatform.cpp:19`. It has to become the loaded setting, which means
+`src/FurblePlatform.cpp:23`. It has to become the loaded setting, which means
 `Settings::init()` must run before `Platform::init()`. That reorder is already
 specified and justified in PR16, so this PR depends on it rather than repeating
 it. Changing `FB_OUTPUT` between Off and a sound mode needs a restart, same as
-the IMU toggle and the Theme page precedent at `src/FurbleUI.cpp:1984-1992`.
+the IMU toggle and the Theme page precedent at `src/FurbleUI.cpp:2113-2122`.
 
 ### Amplifier power and the IR receiver conflict
 
@@ -197,15 +197,15 @@ Anything above about 100 ms is unpleasant. Use 60 ms for a shutter tick and two
 
 Call sites:
 
-- Shutter: the remote page handlers at `src/FurbleUI.cpp:506-616` and the
-  intervalometer `STATE_SHUTTER_OPEN` case at `src/FurbleUI.cpp:1197-1204`.
+- Shutter: the remote page handlers at `src/FurbleUI.cpp:510-629` and the
+  intervalometer `STATE_SHUTTER_OPEN` case at `src/FurbleUI.cpp:1210-1217`.
 - Countdown: `m_IntervalPageRefresh` already runs every 333 ms and computes
-  `remaining` from `m_IntervalNext` at `src/FurbleUI.cpp:1835-1845`. Fire the
+  `remaining` from `m_IntervalNext` at `src/FurbleUI.cpp:1954-1964`. Fire the
   countdown beep when `remaining` crosses each of 3000, 2000 and 1000 ms. Track
   the last announced second so a 333 ms timer does not beep three times per
   second.
 - Connect and disconnect: `connectTimerHandler` around
-  `src/FurbleUI.cpp:1109-1167`, on the transition into `STATE_ACTIVE` and into
+  `src/FurbleUI.cpp:1122-1180`, on the transition into `STATE_ACTIVE` and into
   `STATE_IDLE`.
 - Low battery: PR13 owns the threshold and the hysteresis. Add one `signal()`
   call there.
