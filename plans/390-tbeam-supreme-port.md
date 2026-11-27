@@ -14,12 +14,14 @@ to 367 on the rebase onto `baa4ac23`, and to 390 by the arbiter's renumbering.
 
 Related: [318](318-next-board-battery-gps.md) (the board decision and the
 32.768 kHz finding), [322](implemented/322-hardware-abstraction.md) (the
-`lib/hal` seams and the profile row), [364](364-hardware-candidates.md) (the
-port-cost ranking that put this board first), [366](366-gps-receiver-selection.md)
-(the receiver decision, its lever ordering and the UNVERIFIED backup domain),
-[336](336-gps-pin-seam.md) (the GPS pin seam this port uses),
-[321](implemented/321-ublox-m10-driver.md) (the UBX backend the MAX-M10S trim
-needs).
+`lib/hal` seams and the profile row), [383](383-hardware-candidates.md) (the
+port-cost ranking that put this board first, numbered 364 before the plan
+renumbering), [366](366-gps-receiver-selection.md) (the receiver decision, its
+lever ordering and the UNVERIFIED backup domain),
+[376](376-board-level-documents.md) (the board-level drawings and what they do
+and do not settle about V_IO and V_BCKP), [336](336-gps-pin-seam.md) (the GPS
+pin seam this port uses), [321](implemented/321-ublox-m10-driver.md) (the UBX
+backend the MAX-M10S trim needs).
 
 ## Why this board, and why the receiver moved to the front
 
