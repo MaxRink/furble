@@ -17,6 +17,14 @@ on:
 permissions:
   contents: read
 
+# A newer pull request run for the same ref supersedes the previous one, so a
+# stale pull request run stops instead of queueing. Every other event keys its
+# own group on the run, so a push, schedule or dispatch run is never cancelled
+# and never replaces a pending run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'shared' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # macos-15 plus an explicit Xcode path prevents a runner image update from
   # silently changing the Apple SDK used by this workflow. GitHub retired the

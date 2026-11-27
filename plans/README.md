@@ -451,6 +451,8 @@ document is authoritative over any older summary.
 | [346-plans-cleanup.md](346-plans-cleanup.md) | Plans directory cleanup: archived plans, corrected status lines, repointed references and the documents left alone with the reason |
 | [346-review-feedback.md](346-review-feedback.md) | Review-feedback record for PR 484: the dead links master added after the base, the count of documents left alone, the duplicate plan number and the plan 167 justification |
 | [384-plan-number-deduplication.md](384-plan-number-deduplication.md) | Duplicate plan numbers: the seven plans that moved to 377 to 383, the plan each number keeps, and every reference that moved with them |
+| [392-ci-concurrency.md](392-ci-concurrency.md) | Pull request concurrency cancellation: one live pull request run per workflow and merge ref, with every push, tag, schedule and dispatch run in a slot of its own |
+| [553-review-feedback.md](553-review-feedback.md) | Review record for PR 553: the pending-slot hazard in the group key, the corrected job and occupancy figures, and the checker rule that now pins the exact expressions |
 
 ## Design documents
 
