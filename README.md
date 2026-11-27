@@ -233,6 +233,13 @@ interface.
 3. Select the device model and click `Install`.
 4. Approve the serial port when the browser asks.
 
+Each published manifest covers one chip family, so the installer refuses an
+image that does not match the selected model and keeps the Connect button
+disabled until it has checked. M5StickC, M5StickC Plus, M5Stack Core and
+M5Stack Core2 are ESP32; M5StickS3 and the Waveshare ESP32-S3-ETH are ESP32-S3.
+Pick the exact model: the two families load their bootloader at different
+offsets. See [docs/web-installer.md](docs/web-installer.md).
+
 For M5StickS3, the installer first opens the running developer-console image
 and requires all PMIC safety acknowledgements before it offers the firmware
 port. Approve the same port again to continue flashing. If the running image

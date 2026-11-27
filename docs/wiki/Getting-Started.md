@@ -24,6 +24,11 @@ the device over USB, and flash.
 
 - Fork web installer: https://maxrink.github.io/furble/
 
+Pick the exact model. Each manifest covers one chip family, and the installer
+refuses an image that does not match the board you selected: the ESP32 boards
+and the ESP32-S3 boards load their bootloader at different offsets, so the wrong
+image does not boot until the board is re-flashed over USB.
+
 To build and flash from source instead, furble is an ESP-IDF 5.x project built
 with PlatformIO:
 

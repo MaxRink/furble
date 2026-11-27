@@ -6,10 +6,22 @@ committed.
 - `generate-manifest.py` renders `manifest.tmpl` from the `PLATFORM` and
   `VERSION` env vars, one manifest per board env. Asset paths use the
   `ASSET_BASE_URL` env var. Without it, they target a MaxRink/furble release.
-- Flash offsets differ by chip: bootloader at 0x1000 on ESP32, 0x0 on
-  ESP32-S3. Shared offsets: partition table at 0x8000, otadata at 0xf000,
-  app at 0x20000. Keep both `builds` entries in sync when changing
-  partitions.
+- A manifest declares exactly one `chipFamily`, the family the environment
+  actually targets. `generate-manifest.py` reads it from the `CONFIG_IDF_TARGET`
+  of the sdkconfig that environment builds with, through
+  `tools/web_installer_layout.py`. Never add a second `builds` entry: ESP Web
+  Tools matches the entry by the chip it detects, so a second entry lets a user
+  flash one board's binaries at the other family's bootloader offset. Plan 372
+  records that defect and the board it bricked.
+- Flash offsets differ by chip: bootloader at 0x1000 on ESP32, 0x0 on ESP32-S3.
+  Shared offsets: partition table at 0x8000, otadata at 0xf000, app at 0x20000.
+  All four come from `tools/web_installer_layout.py`, which
+  `tools/verify_web_installer.py` and `tests/test_web_installer.py` also use.
+- `index.html` carries a `data-chip-family` attribute on every board radio. The
+  page fetches the selected manifest, refuses it unless it declares exactly that
+  one family, and only then enables the Connect button. It fails closed: a
+  manifest it cannot read keeps the button disabled. Keep the attribute in step
+  with the sdkconfig target; the regression test compares them.
 - Firmware binary names follow `furble[-part]-$PLATFORM-$VERSION.bin`. Any
   rename must match the release workflow in `.github/workflows/`.
 - `.github/workflows/pages.yml` builds the six release environments on a tag
@@ -43,9 +55,11 @@ committed.
   its `m5stack-core-usb-debug` fallback is single-factory and developer-only.
 - The debug variant is a value of `PLATFORM`, not a separate template. The
   release workflow sets `PLATFORM=<board>-debug`, and the `-debug` suffix flows
-  straight into every binary path in `manifest.tmpl`. Flash offsets and
-  chipFamily entries are shared with the release path, because debug envs share
-  the release `sdkconfig`. `generate-manifest.py` needs no variant logic.
+  straight into every binary path in `manifest.tmpl`. The chip family and flash
+  offsets are shared with the release path, because debug envs share the release
+  sdkconfig and its `CONFIG_IDF_TARGET`. `generate-manifest.py` needs no variant
+  logic: the suffix is not part of any sdkconfig file name, and the longest
+  matching base board wins.
 - Naming contract: the debug manifest is `manifest_<board>-debug.json` and its
   binaries are `furble[-part]-<board>-debug-$VERSION.bin`. These sit next to
   the release `manifest_<board>.json` in the deploy root and `deploy/firmware`.
