@@ -114,7 +114,7 @@ as separate boards when a rail is involved.
 | `m5stick-c` | M5StickC | ESP32 | AXP192, 100 mA charge, 4.2 V | Voltage, current, charge state | DCDC1 3.35 V MCU, LDO2 backlight, LDO3 3.0 V LCD, EXTEN Grove 5 V, ST7735S, IR on G9, LED on G10, no SD | Light sleep 0.8 mA plus AXP192, deep sleep 10 uA plus AXP192, off 27 uA, no PMIC timed wake |
 | `m5stick-c-plus` | M5StickC Plus and Plus2 | ESP32 | Plus: AXP192, 100 mA. Plus2: no PMIC, external charger | Plus: voltage, current, charge. Plus2: ADC voltage only | Plus: LDO2 backlight, LDO3 LCD, EXTEN. Plus2: PWM backlight G27, HOLD G4, battery divider G38, LED and IR G19, ST7789V, no SD | Plus as above. Plus2 light 0.8 mA plus divider, deep 10 uA plus divider, power off through HOLD |
 | `m5stick-s3` | M5StickS3 | ESP32-S3-PICO-1-N8R8, 8 MB quad flash and 8 MB octal PSRAM, so SPICS1 and GPIO33 to GPIO37 are PSRAM pins | M5PM1, charger on by default, profile not documented | Voltage and charge state on PM1 GPIO0, no current | 3.3 V DCDC and LDO, 5 V boost for Grove and EXT_5V and IR, L3B on PM1 GPIO2, ST7789P3 backlight G38, BMI270, ES8311 and AW8737, IR TX G46 and RX G42, no SD, USB Serial/JTAG | Light sleep 240 uA plus 140 uA PSRAM plus PM1, deep sleep 7 uA plus PM1, off 14.02 uA, L1 52.47 uA, L2 102.40 uA, PM1 timer wake |
-| `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level only, 100, 75, 50, 25, 0 percent | 3.3 V rail, backlight G32, ILI9342C, speaker, SD; IMU on the Gray variant, part not recorded in this tree | IP5306 boost held on for the running session, so no light-load cut while awake; the manual Off clears that bit and deep sleeps, and the light-load cut then removes the boost after 64 s. No shutdown command, so the Off is deferred rather than immediate |
+| `m5stack-core` | M5Stack Core Basic and Gray | ESP32 | IP5306, 150 mA charge, 4.2 V | Four-level (100, 75, 50, 25, 0 percent) plus a charge-state bit, no voltage or current ADC | 3.3 V rail, backlight G32, ILI9342C, speaker, SD; IMU on the Gray variant, part not recorded in this tree | IP5306 boost held on for the running session, so no light-load cut while awake; the manual Off clears that bit and deep sleeps, and the light-load cut then removes the boost after 64 s. No shutdown command, so the Off is deferred rather than immediate |
 | `m5stack-core2` | Core2 and M5Tough (untested) | ESP32 | AXP192, 360 mA charge on Core2 (M5Unified target; vendor page 0.219 A) | Voltage, current, charge state | DCDC3 backlight, LDO2 3.3 V LCD and SD, LDO3 vibration on Core2 and backlight on Tough, AXP192 GPIO0 enables one BUS_5V net for Port A and the M-Bus, ILI9342C, FT6336U touch, MPU6886, NS4168, SD, BM8563 (Tough has BT1 backup; Core2 2023.2 removed it) | Light sleep 0.8 mA plus AXP192 plus touch, deep sleep 10 uA plus AXP192, off 27 uA, touch wake on G39, Tough RTC alarm wake |
 | `waveshare-s3-eth` | Waveshare ESP32-S3-ETH | ESP32-S3R8, 8 MB octal PSRAM on GPIO33 to GPIO37 | None, no battery | None | USB-C 5 V or PoE HAT, W5500 on SPI, WS2812 on G21, microSD in 1-line mode and unused by furble, no display or IMU; GPS only through the Pico header | Tickless idle off, so no automatic light sleep; DFS is left on; mains powered |
 | `esp32-s3-headless` | ESP32-S3-DevKitC-1 | ESP32-S3, 8 MB PSRAM in sdkconfig | None, no battery | None | USB or 5 V, USB Serial/JTAG, no display, PMIC, or RTC | Tickless idle on, light sleep 240 uA plus PSRAM, mains or development |
@@ -192,9 +192,11 @@ the M-Bus. The touch controller is deliberately left running so a
 tap can wake the screen. The MPU6886 is initialized when the IMU setting is on;
 furble only reads acceleration, so the gyro current is likely wasted. The NS4168 amp
 is shut down until a tone is due. Opportunities: PM-04, PM-07, PM-08, PM-10,
-PL-03, PL-05, PL-06, PL-07, PL-08, RL-06, RL-11. Tough shares the image but is
-untested and uses LDO3 for the backlight, so do not apply the Core2 LDO3
-assumption to Tough.
+PL-03, PL-05, PL-06, PL-07, PL-08, RL-06, RL-11. Tough shares the image and the
+SD slot, the NS4168 speaker path and the BM8563, but is untested and uses LDO3
+for the backlight, so do not apply the Core2 LDO3 or vibration assumptions to
+Tough. No backup cell is recorded for the Tough RTC, so the firmware row does
+not claim a battery-backed one there.
 
 **Waveshare ESP32-S3-ETH (`waveshare-s3-eth`).** There is no battery and no
 PMIC. Every "saving" on this board is mains input current or heat, not
@@ -245,7 +247,10 @@ whole-chip operating figure. The "about 2 mA AXP192 floor" in plan 98 is a
 plan estimate, not a datasheet line; the block sum with DCDC1, LDO2, LDO3, and
 LDOIO0 enabled is about 316 uA before any load.
 
-**IP5306 (Core).** M5Unified writes `0x00 = 0b00110001`, `0x01 = 0b00011101`,
+**IP5306 (Core).** The part reports a charge-state bit in `REG_READ0` bit 3 and
+M5Unified exposes it through `IP5306_Class::isCharging()`, so the Core row
+declares charge state while voltage and current stay unknown. M5Unified writes
+`0x00 = 0b00110001`, `0x01 = 0b00011101`,
 `0x02 = 0b01101100`, `0x20 = 0x00`, `0x21 = 0x09`, `0x22 = 0x02` (4.2 V plus
 28 mV boost), `0x23 = 0xAE`, `0x24 = 0b11000001` (150 mA charge). Bit 1 of
 `0x00`, "BOOST output normally open", starts clear; furble sets it at boot and

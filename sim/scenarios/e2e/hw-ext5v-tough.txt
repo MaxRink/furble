@@ -1,0 +1,18 @@
+# Tough: same shared external 5 V net as the Core2.
+#
+# The Tough carries the shared Core2 image and the same AXP192 5 V output. The
+# model answers the collateral question the same way.
+seed hw_profile tough
+wait 300
+
+assert board.gps_rail yes
+assert power.rail.ext5v off
+
+action gps-rail-on
+assert power.rail.ext5v on
+
+action gps-rail-off
+assert power.rail.gps off
+assert power.rail.ext5v off
+assert power.rail.ext5v_drops 1
+exit

@@ -1,0 +1,25 @@
+# M5Stack Core, 16 MB part.
+#
+# Current Basic units ship 16 MB flash while the committed m5stack-core image is
+# built for 4 MB, so the model carries both rows and the name says which one a
+# scenario means. Everything except the flash size is the same board.
+seed hw_profile core-16mb
+wait 100
+
+assert hw.profile core-16mb
+assert hw.flash_kb 16384
+assert hw.mcu esp32
+assert hw.psram absent
+assert hw.pmic ip5306
+assert hw.gauge four_level
+assert hw.touch no
+assert hw.ir no
+assert hw.sd yes
+assert hw.audio yes
+assert hw.rtc no
+assert board.name Core
+assert board.sd yes
+assert board.battery_mah 110
+assert platform.battery.capacity 110
+assert power.off_path ip5306-light-load
+exit

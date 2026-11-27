@@ -18,8 +18,8 @@ boards' probes and display drivers. Every environment also has a matching
 | `m5stick-c` | ESP32 | 4 MB | No | M5StickC | No | End of life. |
 | `m5stick-c-plus` | ESP32 | 4 MB | No | M5StickC Plus, M5StickC Plus2 (EOL) | No | Plus and Plus2 share the image. The Plus2 is end of life. |
 | `m5stick-s3` | ESP32-S3 | 8 MB | Yes | M5StickS3 | No | Native USB Serial/JTAG. PSRAM enabled. Only board with Sleep while connected and Watchdog. |
-| `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. |
-| `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | PSRAM enabled. On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. |
+| `m5stack-core` | ESP32 | 4 MB | No | M5Stack Core (Basic/Gray) | No | No Auto off or Low battery. No IR emitter, no RTC, no software power off. |
+| `m5stack-core2` | ESP32 | 16 MB | Yes | M5Stack Core2, M5Tough (untested) | Yes | PSRAM enabled. On-screen shutter buttons, touch calibration, power-button screen lock. The firmware detects the M5Tough and branches for it, but it has not been verified on hardware. The Tough shares the Core2 SD slot, speaker and BM8563; no backup cell is recorded for its RTC. |
 | `waveshare-s3-eth` | ESP32-S3 | 16 MB | Yes | Waveshare ESP32-S3-ETH | No | Display-less wired-Ethernet node pinned to the display-less StampS3, so no M5 probe touches the W5500 pins. Wi-Fi and BLE 5 on the SoC, W5500 for wired Ethernet. No PMIC, battery, RTC part, IMU or IR, and no software power-off path. Hardware verification remains outstanding. |
 
 The Waveshare ESP32-S3-ETH is a mains or PoE node rather than a handheld. Its
@@ -34,6 +34,13 @@ GPIO 4 to 7, but no card-select pin is mapped, so the profile reports no SD
 slot while the image still compiles the SD stack. Wi-Fi and BLE 5 are
 available on the SoC alongside the wired link. PoE is an optional module that
 feeds POE_5V, the same net as VBUS, so firmware cannot claim either source.
+
+Flash figures are the build configuration, not the current retail part. The
+`m5stack-core` environments are built for 4 MB (`CONFIG_ESPTOOLPY_FLASHSIZE_4MB`
+and `partitions_two_ota_large.csv`), while current Core Basic units ship 16 MB;
+the simulator carries both as `core-4mb` and `core-16mb` so a scenario states
+which one it models. The Core family has no IR emitter and the Core has no RTC
+chip; the IP5306 reports a charge-state bit but no voltage or current.
 
 The opt-in HTTPS WebUI is compiled for the four 8 MB/16 MB profiles. The
 M5StickS3 is **not yet a supported WebUI target**. With WiFi connected, the

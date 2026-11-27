@@ -57,7 +57,7 @@ FujifilmSecure::FujifilmSecure(const void *data, size_t len)
   // composition is idempotent, so an entry saved after this change is
   // unaffected.
   m_Name = composeName(m_Name, m_Serial);
-  m_Queue = xQueueCreate(3, sizeof(bool));
+  m_Queue = xQueueCreate(3, sizeof(scan_match_t));
 }
 
 FujifilmSecure::FujifilmSecure(const NimBLEAdvertisedDevice *pDevice)
@@ -72,7 +72,7 @@ FujifilmSecure::FujifilmSecure(const NimBLEAdvertisedDevice *pDevice)
   if (parsed) {
     std::memcpy(m_Serial.data, advertisement.serial.data(), advertisement.serial.size());
   }
-  m_Queue = xQueueCreate(3, sizeof(bool));
+  m_Queue = xQueueCreate(3, sizeof(scan_match_t));
 
   ESP_LOGI(LOG_TAG, "Advertised name = %s", m_Name.c_str());
   // Fujifilm advertises the bare model, so two bodies of the same model are
@@ -127,8 +127,15 @@ void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
     return;
   }
 
-  bool success = true;
-  xQueueSend(m_Queue, &success, 0);
+  // Hand the live address across with the match. The saved record's address is
+  // whatever the body advertised when the record was written, and a Secure body
+  // re-pairs under a new resolvable private address, so the match is the only
+  // current source for it.
+  scan_match_t match = {};
+  match.success = true;
+  match.address = static_cast<uint64_t>(pDevice->getAddress());
+  match.type = pDevice->getAddress().getType();
+  xQueueSend(m_Queue, &match, 0);
 }
 
 /**
@@ -137,7 +144,6 @@ void FujifilmSecure::onResult(const NimBLEAdvertisedDevice *pDevice) {
 bool FujifilmSecure::_connect(void) {
   // Drop any stale characteristic pointer from a previous session.
   m_Shutter = nullptr;
-  bool success = false;
   m_Progress = 0;
   const bool cancelOnInactive = isActive();
   m_RegistrationGeneration.fetch_add(1);
@@ -167,10 +173,11 @@ bool FujifilmSecure::_connect(void) {
     m_Progress += 5;
 
     // wait up to 60s for camera to appear
+    scan_match_t match = {};
     BaseType_t timeout = pdFALSE;
     do {
-      timeout = xQueueReceive(m_Queue, &success, pdMS_TO_TICKS(1000));
-    } while (scan.isActive() && !success && !connectCancelled());
+      timeout = xQueueReceive(m_Queue, &match, pdMS_TO_TICKS(1000));
+    } while (scan.isActive() && !match.success && !connectCancelled());
     scan.stop();
 
     // The scan wait runs under Camera::m_Mutex like the rest of the attempt,
@@ -186,9 +193,25 @@ bool FujifilmSecure::_connect(void) {
       return false;
     }
 
-    if (!success) {
+    if (!match.success) {
       ESP_LOGI(LOG_TAG, "Failed to scan paired camera");
       return false;
+    }
+
+    // Adopt the address the body advertised just now. A Fujifilm Secure body
+    // advertises a resolvable private address and re-pairs under a new one, so
+    // the address in the saved record is stale as soon as the body rotates it,
+    // and connecting to it dials a peer that is no longer there. Nikon already
+    // takes its reconnect address from the advertisement for the same reason.
+    //
+    // The write runs on this task, under Camera::m_Mutex, before the link is
+    // up, and only when the address really moved. serialise() then writes the
+    // new address, so the next save of this record carries it.
+    const NimBLEAddress matched(match.address, match.type);
+    if (matched != m_Address) {
+      ESP_LOGI(LOG_TAG, "Camera address moved from %s to %s", m_Address.toString().c_str(),
+               matched.toString().c_str());
+      m_Address = matched;
     }
   }
 

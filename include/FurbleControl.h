@@ -403,7 +403,13 @@ class Control {
   /** The saved transmit power setting as a camera library level. */
   static TxPower savedTxPower(void);
 
-  /** Enable or disable adaptive connection parameters on active cameras. */
+  /**
+   * Enable or disable adaptive connection parameters on active cameras.
+   *
+   * Returns at once. The fan-out enters NimBLE per camera and can block on the
+   * HCI transport for seconds, while the UI toggle that calls this runs on the
+   * LVGL task, so the request is published and applied by the control task.
+   */
   void setConnSaver(bool enabled);
 
 #if defined(FURBLE_HOST_CONTROL_TEST)
@@ -532,6 +538,13 @@ class Control {
    */
   void applyPower(esp_power_level_t power);
 
+  /**
+   * Apply a queued setConnSaver() request to every live target.
+   *
+   * Blocking radio call. Caller must not hold m_Mutex.
+   */
+  void applyPendingConnSaver(void);
+
   static constexpr UBaseType_t m_QueueLength = 32;
   static constexpr const char *POWER_LOCK_OWNER = "control";
 
@@ -579,6 +592,14 @@ class Control {
   // session flags above.
   bool m_ClearConnectCancel = false;
   std::atomic<state_t> m_State {STATE_IDLE};
+
+  // setConnSaver() publishes the requested value and raises the pending flag;
+  // the control task applies it to every target in applyPendingConnSaver().
+  // Atomics because the request comes from the UI task, and a plain bool pair
+  // would be the same unlocked cross-task write the rest of this class avoids.
+  std::atomic<bool> m_ConnSaverWanted {false};
+  std::atomic<bool> m_ConnSaverPending {false};
+
 #if defined(FURBLE_SIM)
   std::atomic<uint32_t> m_SimIdleTicks {0};
 #endif

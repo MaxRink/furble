@@ -1,0 +1,29 @@
+# Core2: the Port A rail is the whole external 5 V net.
+#
+# M5Unified switches Port A 5 V through AXP192 LDOIO0 and, on the Core2, that
+# same output is the external 5 V rail: a cut removes BUS_5V as well as the
+# Grove port, so any device on the 5 V net loses power with the GPS unit. The
+# model reports the collateral so a scenario can hold a rail cut to it.
+seed hw_profile core2
+wait 300
+
+assert board.gps_rail yes
+assert power.rail.gps off
+assert power.rail.ext5v off
+assert power.rail.ext5v_drops 0
+
+action gps-rail-on
+assert power.rail.gps on
+assert power.rail.ext5v on
+assert power.rail.ext5v_drops 0
+
+action gps-rail-off
+assert power.rail.gps off
+assert power.rail.ext5v off
+assert power.rail.ext5v_drops 1
+
+# A second cycle counts a second drop, so the counter is per cut.
+action gps-rail-on
+action gps-rail-off
+assert power.rail.ext5v_drops 2
+exit

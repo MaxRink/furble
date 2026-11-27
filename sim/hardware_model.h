@@ -82,6 +82,22 @@ uint32_t hwWatchdogCycles(void);
 void hwSetPsramMode(const std::string &mode);
 void hwSetPmicVariant(const std::string &variant);
 void hwSetBatteryGauge(const std::string &gauge);
+
+/** Seed the modelled load current in milliamps. */
+void hwSetLoadMa(int loadMa);
+
+/**
+ * Seed the modelled IP5306 light-load window in milliseconds, overriding the
+ * value REG_SYS_CTL2 bits 3:2 decode to.
+ */
+void hwSetLightLoadWindowMs(uint32_t windowMs);
+
+/**
+ * Seed the modelled IP5306 REG_SYS_CTL2 byte. The light-load window follows its
+ * bits 3:2, so a scenario can decode a field value the vendor block does not
+ * select.
+ */
+void hwSetIp5306SysCtl2(uint8_t value);
 void hwSetResetReasonName(const std::string &name);
 void hwSetBatteryState(const std::string &state);
 void hwSetMqttStackModel(bool enabled,
@@ -122,6 +138,35 @@ std::string hwQuery(const std::string &key);
 
 /** True when a modelled quirk violation has been recorded. */
 bool hwFailClosed(void);
+
+/** Touch panel capability of the modelled board, used by the SDL platform. */
+bool hwTouch(void);
+
+/**
+ * Run the modelled board's power-off path.
+ *
+ * Returns what Platform::powerOff() must report. A board whose modelled rail
+ * cannot drop returns false and stays powered: the IP5306 has no off command,
+ * only a low-load boost cutoff.
+ */
+bool hwPowerOff(void);
+
+/** Record the modelled panel state so the IP5306 light-load timer can run. */
+void hwSetPanelOff(bool off);
+
+/**
+ * True when the modelled display may be switched off.
+ *
+ * `Platform::canTurnDisplayOff()` reports this. A board without an IP5306
+ * answers yes. On an IP5306 board the answer is the boost keep-on bit: with the
+ * bit clear a panel-off load falls below the 45 mA light-load floor and the
+ * charger would remove the boost, so the firmware keeps the panel dim rather
+ * than off (plan 354).
+ */
+bool hwCanTurnDisplayOff(void);
+
+/** Advance the modelled board's time-dependent power path by one tick. */
+void hwTick(void);
 
 /** Battery availability and gauge capability used by Platform. */
 bool hwBatteryPresent(void);

@@ -5,7 +5,7 @@
     "stickc-plus",
     "stickc-plus2",
     "sticks3",
-    "core",
+    "core-4mb",
     "core2",
     "tough",
     "headless-s3",
@@ -531,7 +531,7 @@
     },
     {
       "id": "board.core.identity",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "board",
       "feature": "MCU/flash/profile identity",
       "source": "docs/supported-hardware.md",
@@ -546,7 +546,7 @@
     },
     {
       "id": "board.core.psram",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "memory",
       "feature": "PSRAM mode and size",
       "source": "sdkconfig.*",
@@ -560,7 +560,7 @@
     },
     {
       "id": "board.core.display",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "display",
       "feature": "Panel and touch",
       "source": "M5GFX board data",
@@ -574,7 +574,7 @@
     },
     {
       "id": "board.core.pmic",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "power",
       "feature": "PMIC/gauge/watchdog",
       "source": "docs/power/board-power.md",
@@ -589,7 +589,7 @@
     },
     {
       "id": "board.core.usb",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "usb",
       "feature": "USB transport",
       "source": "docs/supported-hardware.md",
@@ -602,7 +602,7 @@
     },
     {
       "id": "board.core.radios",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "radio",
       "feature": "WiFi/Ethernet/BLE presence",
       "source": "platformio.ini",
@@ -617,7 +617,7 @@
     },
     {
       "id": "board.core.peripherals",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "peripheral",
       "feature": "IR/SD/audio/RTC presence",
       "source": "docs/power/board-power.md",
@@ -633,7 +633,7 @@
     },
     {
       "id": "memory.core.internal_budget",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "memory",
       "feature": "Internal RAM and main stack",
       "source": "sdkconfig.*",
@@ -647,7 +647,7 @@
     },
     {
       "id": "memory.core.lvgl_budget",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "memory",
       "feature": "LVGL draw buffer budget",
       "source": "include/FurbleUIMemory.h",
@@ -1544,7 +1544,7 @@
     },
     {
       "id": "crash.psram_icon_0x3003",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "memory",
       "feature": "12,291-byte icon OOM without PSRAM",
       "source": "plans/implemented/31-s3-psram.md",
@@ -1631,7 +1631,7 @@
     },
     {
       "id": "power.ip5306",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "power",
       "feature": "IP5306 four-level gauge",
       "source": "docs/power/board-power.md",
@@ -1813,7 +1813,7 @@
     },
     {
       "id": "usb.uart_reset",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "usb",
       "feature": "USB-UART chip reset reason",
       "source": "hardware session",
@@ -1911,7 +1911,7 @@
     },
     {
       "id": "peripheral.audio",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "peripheral",
       "feature": "Audio overcurrent",
       "source": "src/FurbleFeedback.cpp",
@@ -1925,7 +1925,7 @@
     },
     {
       "id": "peripheral.ir",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "peripheral",
       "feature": "IR RMT timeout",
       "source": "src/FurbleIR.cpp",
@@ -1939,7 +1939,7 @@
     },
     {
       "id": "peripheral.sd",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "peripheral",
       "feature": "SD absent/mounted/error",
       "source": "src/FurbleSD.cpp",
@@ -2142,7 +2142,7 @@
     },
     {
       "id": "memory.psram_absent",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "memory",
       "feature": "No PSRAM",
       "source": "sim/heap_model.cpp",
@@ -2366,7 +2366,7 @@
     },
     {
       "id": "boundary.ir_driver",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "peripheral",
       "feature": "IR RMT driver",
       "source": "src/FurbleIR.cpp",
@@ -2383,7 +2383,7 @@
     },
     {
       "id": "boundary.sd_driver",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "peripheral",
       "feature": "SD writer driver",
       "source": "src/FurbleSD.cpp",
@@ -2404,7 +2404,7 @@
     },
     {
       "id": "boundary.audio_driver",
-      "profile": "core",
+      "profile": "core-4mb",
       "category": "peripheral",
       "feature": "Speaker driver",
       "source": "src/FurbleFeedback.cpp",

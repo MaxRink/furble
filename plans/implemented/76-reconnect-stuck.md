@@ -88,7 +88,7 @@ Call chain during the stall:
    (`src/FurbleControl.cpp:104`)
 -> `Camera::connect()` holding `Camera::m_Mutex`
    (`lib/furble/Camera.h:753`)
--> `FujifilmSecure::_connect()` (`lib/furble/FujifilmSecure.cpp:137`).
+-> `FujifilmSecure::_connect()` (`lib/furble/FujifilmSecure.cpp:144`).
 
 `_connect()` prints `Connected` at `lib/furble/FujifilmSecure.cpp:107` right
 after `m_Client->connect(m_Address)` succeeds. That is the `Connected` line seen

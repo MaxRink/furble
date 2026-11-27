@@ -1,0 +1,80 @@
+# Board row versus hardware model: M5StickC.
+#
+# The simulator compiles one SDL panel class, so M5.getBoard() cannot name the
+# board under test. Board::profile() reads a scenario-selected identity under
+# FURBLE_SIM, and every capability below is asserted twice: once against the
+# hardware model (hw.*, power.*, platform.battery.*) and once against the
+# firmware Profile row (board.*). Both sides are pinned to the same literal, so
+# a row that drifts from the model fails here instead of being checked against
+# itself.
+#
+# Evidence: docs/power/board-power.md section 2 (AXP192, BM8563 kept on the
+# board PMU, buzzer but no speaker path, no SD slot, EXTEN Grove 5 V).
+seed hw_profile stickc
+wait 100
+
+assert hw.profile stickc
+assert board.name StickC
+
+# SD slot.
+assert hw.sd no
+assert board.sd no
+
+# Sound feedback output.
+assert hw.audio no
+assert board.audio no
+
+# Battery-backed calendar RTC.
+assert hw.rtc yes
+assert hw.rtc_backed yes
+assert board.rtc_backed yes
+
+# Timed wake path.
+assert hw.timed_wake none
+assert board.timed_wake none
+
+# IR emitter.
+assert hw.ir yes
+assert board.ir yes
+
+# Touch panel.
+assert hw.touch no
+
+# Battery capacity, reported through the platform boundary.
+assert board.battery_mah 95
+assert platform.battery.capacity 95
+
+# Gauge capability against the row's battery caps.
+assert hw.gauge voltage_current
+assert platform.battery.caps.level yes
+assert board.battery_charging yes
+assert platform.battery.caps.charging yes
+assert platform.battery.caps.voltage yes
+assert board.battery_voltage yes
+
+# Power-off path.
+assert power.off_path axp192-off
+assert power.can_off yes
+assert hw.can_power_off yes
+assert board.can_power_off yes
+
+# GPS rail.
+assert board.gps_rail yes
+assert power.rail.gps off
+assert power.rail.ext5v n/a
+# The remaining row columns, each pinned on both sides.
+# The model twin of the row's power-off path is power.can_off, above.
+assert board.power_off_path yes
+assert hw.rtc_on_bus no
+assert board.rtc_on_bus no
+assert hw.led_active_low yes
+assert board.led_active_low yes
+assert hw.ir_mark_low yes
+assert board.ir_mark_low yes
+assert hw.gps_pin_source board-support
+assert board.gps_pin_source board-support
+assert hw.gps_rx_pin -1
+assert board.gps_rx_pin -1
+assert hw.gps_tx_pin -1
+assert board.gps_tx_pin -1
+exit

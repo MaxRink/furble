@@ -114,6 +114,10 @@ size_t g_StartSecurityCount = 0;
 // value to the peer, so the mock starts from the same number.
 uint16_t g_PreferredAttMtu = 256;
 size_t g_AttWriteRejections = 0;
+// Which task issued each updateConnParams() request, oldest first. Guarded by
+// g_ClientsMutex like the rest of the mock's globals.
+constexpr size_t MAX_CONN_PARAM_THREADS = 64;
+std::vector<std::thread::id> g_ConnParamThreads;
 NimBLEMockPeer *g_Peer = nullptr;
 std::vector<std::pair<NimBLEAddress, NimBLEMockPeer *>> g_Peers;
 std::vector<std::unique_ptr<NimBLEClient>> g_Clients;
@@ -1029,6 +1033,15 @@ bool NimBLEClient::updateConnParams(uint16_t min_interval,
                                     uint16_t max_interval,
                                     uint16_t latency,
                                     uint16_t timeout) {
+  {
+    const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+    // Bounded: the record answers "did this task issue a request", so a long
+    // soak must not grow it without limit.
+    if (g_ConnParamThreads.size() >= MAX_CONN_PARAM_THREADS) {
+      g_ConnParamThreads.erase(g_ConnParamThreads.begin());
+    }
+    g_ConnParamThreads.push_back(std::this_thread::get_id());
+  }
   if ((m_Peer == nullptr) || !m_Connected) {
     return false;
   }
@@ -1450,6 +1463,16 @@ size_t NimBLEDevice::mockAttWriteRejections() {
   return g_AttWriteRejections;
 }
 
+std::vector<std::thread::id> NimBLEDevice::mockConnParamThreads() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  return g_ConnParamThreads;
+}
+
+void NimBLEDevice::mockClearConnParamThreads() {
+  const std::lock_guard<std::recursive_mutex> lock(g_ClientsMutex);
+  g_ConnParamThreads.clear();
+}
+
 void NimBLEDevice::injectPassKey(NimBLEConnInfo &connInfo, uint32_t passKey) {
   NimBLEMockPeer *peer = nullptr;
   {
@@ -1642,6 +1665,7 @@ void NimBLEDevice::resetMock() {
   g_ScanStartAllowed = true;
   g_ConnectDelayMs = 0;
   g_ConnParamApplyDelayReads = 1;
+  g_ConnParamThreads.clear();
   g_Bonded = false;
   g_BondAddress = NimBLEAddress {};
   g_IdAddress = NimBLEAddress {};

@@ -1,0 +1,41 @@
+# The IP5306 light-load cutoff runs once the boost keep-on bit is released.
+#
+# The IP5306 drops its boost when the load stays below 45 mA for the window
+# REG_SYS_CTL2 bits 3:2 select (datasheet V1.01 for the 45 mA threshold, the
+# register document V1.21 for the field). The board boots with SYS_CTL0 bit 1
+# set, because furble holds the boost on for the session (plans/354), so the cut
+# is not armed until the manual Off releases it.
+#
+# The window is shortened here so the scenario stays cheap; the decoded default
+# is asserted in hw-ip5306-default-window.txt.
+seed hw_profile core-4mb
+seed ip5306_load_ma 20
+seed ip5306_light_load_ms 5000
+wait 100
+
+assert hw.pmic ip5306
+assert pmic.boost_keep_on yes
+assert pmic.reg.0x00 51
+assert pmic.load_ma 20
+assert pmic.light_load_window_ms 5000
+assert pmic.light_load_cuts 0
+assert power.state on
+
+# A manual Off is accepted and deferred: the bit is released, and the rail is
+# still up until the charger sees the low load for the full window.
+action nav power_off
+wait 100
+assert platform.power_off yes
+assert power.off_attempts 1
+assert pmic.boost_keep_on no
+assert pmic.reg.0x00 49
+assert power.state on
+
+# The panel is dark, so the timer runs. It has not reached the window yet.
+assert_max pmic.light_load_ms 600
+assert power.state on
+
+wait 6000
+assert power.state off
+assert pmic.light_load_cuts 1
+exit

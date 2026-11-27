@@ -1,4 +1,10 @@
 # GPS standby policy with a five second fix interval.
+# The committed power baseline in tools/power-model/baseline was recorded
+# in the touch layout, before touch defaulted to the modelled capability.
+# Keep that layout here so the gate stays a comparison of the same
+# scenario; re-recording the baselines in the shipped button layout is a
+# plan 63 follow-up.
+seed touch true
 seed gps true
 seed gps_power 1
 seed gps_duty 5

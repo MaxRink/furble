@@ -15,6 +15,7 @@
 # and ui.indicator_clearance clear at both extents. The bounds encode the
 # measured range: dropping a row fails the minimum, and adding enough content
 # to need more than 369 px fails the maximum.
+seed touch true
 seed text_size 2
 wait 300
 assert setting.text_size 2

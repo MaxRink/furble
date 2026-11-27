@@ -1,6 +1,12 @@
 # Power baseline with the detector on. Both gesture features are enabled and the
 # display is allowed to reach off, so the reported estimate is the standing cost
 # of the 50 Hz accelerometer poll against screen-off-30s.json.
+# The committed power baseline in tools/power-model/baseline was recorded
+# in the touch layout, before touch defaulted to the modelled capability.
+# Keep that layout here so the gate stays a comparison of the same
+# scenario; re-recording the baselines in the shipped button layout is a
+# plan 63 follow-up.
+seed touch true
 seed brightness 255
 seed inactivity 1
 seed display_off 1

@@ -1,0 +1,67 @@
+# Board row versus hardware model: M5StickC Plus2.
+#
+# The Plus2 has no PMIC: the battery is an ADC divider, so only voltage is
+# known, and the HOLD pin is the power latch. Its BM8563 is cited in the tree
+# but no backup cell is recorded, so neither side claims a battery-backed RTC.
+# See board-row-stickc.txt for the assertion contract.
+seed hw_profile stickc-plus2
+wait 100
+
+assert hw.profile stickc-plus2
+assert board.name StickC+2
+
+assert hw.sd no
+assert board.sd no
+
+assert hw.audio yes
+assert board.audio yes
+
+assert hw.rtc yes
+assert hw.rtc_backed yes
+assert board.rtc_backed yes
+
+# Timed wake path.
+assert hw.timed_wake rtc-alarm
+assert board.timed_wake rtc-alarm
+
+
+assert hw.ir yes
+assert board.ir yes
+
+assert hw.touch no
+
+assert board.battery_mah 200
+assert platform.battery.capacity 200
+
+assert hw.gauge voltage
+assert platform.battery.caps.level yes
+assert platform.battery.caps.voltage yes
+assert board.battery_voltage yes
+assert platform.battery.caps.charging no
+assert board.battery_charging no
+
+assert power.off_path hold-latch
+assert power.can_off yes
+assert hw.can_power_off yes
+assert board.can_power_off yes
+
+# The Plus2 has no Grove 5 V switch.
+assert board.gps_rail no
+assert power.rail.gps off
+assert power.rail.ext5v n/a
+# The remaining row columns, each pinned on both sides.
+# The model twin of the row's power-off path is power.can_off, above.
+assert board.power_off_path yes
+assert hw.rtc_on_bus yes
+assert board.rtc_on_bus yes
+assert hw.led_active_low no
+assert board.led_active_low no
+assert hw.ir_mark_low no
+assert board.ir_mark_low no
+assert hw.gps_pin_source board-support
+assert board.gps_pin_source board-support
+assert hw.gps_rx_pin -1
+assert board.gps_rx_pin -1
+assert hw.gps_tx_pin -1
+assert board.gps_tx_pin -1
+exit

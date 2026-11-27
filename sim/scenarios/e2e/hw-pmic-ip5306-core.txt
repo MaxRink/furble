@@ -1,15 +1,14 @@
 # M5Stack Core IP5306 profile.
 #
 # The IP5306 has a four-level gauge, no current ADC, a 64 s low-load boost
-# cutoff and no PM1 watchdog. The board has no PSRAM. The cutoff timer itself is
-# not modelled: the simulator has no continuous-load accounting and no PMIC
-# power-cut event, so only the profile fields below are asserted. M5Unified
-# writes SYS_CTL2 bits 3:2 = 11, which is 64 s, not the 32 s power-on default.
-# See plans/334-sim-hardware-alignment.md.
-seed hw_profile core
+# cutoff and no PM1 watchdog. The board has no PSRAM. The cutoff timer itself
+# runs on this model and is asserted in hw-ip5306-light-load-cut.txt; here the
+# profile fields are the subject. M5Unified writes SYS_CTL2 bits 3:2 = 11, which
+# is 64 s, not the 32 s power-on default.
+seed hw_profile core-4mb
 wait 100
 
-assert hw.profile core
+assert hw.profile core-4mb
 assert hw.mcu esp32
 assert hw.flash_kb 4096
 assert hw.psram absent
@@ -32,8 +31,9 @@ assert hw.usb uart
 assert hw.wifi yes
 assert hw.ethernet no
 assert hw.ble yes
-assert hw.ir yes
-# The Core has no calendar RTC chip (docs/console-commands.md).
+assert hw.ir no
+# The fault shims read the same column: no emitter means no IR state to drive.
+assert ir.state absent
 assert hw.rtc no
 assert hw.rtc_capability match
 assert hw.gauge four_level

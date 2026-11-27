@@ -1,0 +1,28 @@
+# The AXP2101 CPU-rail guard is live.
+#
+# hw-pmic-axp2101-cpu-rail.txt asserts 0x82 is never written, which is only
+# worth something if a write would be caught. This is the negative control: the
+# AXP192 ADC block is submitted on the AXP2101 part, the model refuses all three
+# bytes, records a violation for each, and the rail register still reads its
+# reset value.
+seed hw_profile core2
+seed pmic_variant axp2101
+wait 100
+
+assert pmic.reg.0x82.writes 0
+assert pmic.violations 0
+
+action pmic-axp192-adc
+
+assert pmic.violations 3
+# Refused, so the byte and the write count did not move.
+assert pmic.reg.0x82 0
+assert pmic.reg.0x82.writes 0
+assert pmic.reg.0x83 0
+assert pmic.reg.0x83.writes 0
+assert pmic.reg.0x84 0
+assert pmic.reg.0x84.writes 0
+# The AXP2101 write that did go in is still the BATFET byte.
+assert pmic.reg.0x12.writes 1
+assert pmic.reg.0x12.meaning axp2101-batfet
+exit
