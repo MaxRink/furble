@@ -74,7 +74,7 @@ Reading notes from the same block (`src/FurbleBoard.cpp:7-23`):
 
 The AXP192, IP5306 and the Core2 touch controller are driven entirely by
 M5Unified and M5GFX, so their addresses are not in this repository. That is an
-open row in [the gap closure plan](../../plans/332-docs-gap-closure.md), not a
+open row in [the gap closure plan](../../plans/379-docs-gap-closure.md), not a
 value this page may invent.
 
 ## GPS UART

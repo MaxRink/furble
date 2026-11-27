@@ -1,4 +1,4 @@
-# 354 - GNSS datasheet verification
+# 382 - GNSS datasheet verification
 
 Status: documentation only, plus two comment-only corrections in
 `src/FurbleGPS.cpp` and `lib/furble/protocol/GpsCasic.h`. No behaviour, setting,
@@ -177,7 +177,7 @@ The page numbers are the only systematic problem.
 
 ## The firmware audit's findings
 
-A parallel firmware audit (`fix/gnss-doc-audit`, plan 332) reported facts that
+A parallel firmware audit (`fix/gnss-doc-audit`, plan 377) reported facts that
 land on these pages. Each was checked in the code before it was used.
 
 | Finding | Checked where | What these pages now say |

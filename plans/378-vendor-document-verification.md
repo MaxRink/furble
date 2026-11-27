@@ -1,4 +1,4 @@
-# 332: Vendor document verification for the SoC, radio and board docs
+# 378: Vendor document verification for the SoC, radio and board docs
 
 State: documentation only. No firmware, settings, partition or build change, so
 no simulator or flash gate applies. Every page cited below was opened and read

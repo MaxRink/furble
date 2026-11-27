@@ -29,7 +29,7 @@ the row is listed as open with the document and section it needs, and no value i
 invented.
 
 The gap register that tracks this work is
-[plan 332](../../plans/332-docs-gap-closure.md).
+[plan 379](../../plans/379-docs-gap-closure.md).
 
 ## Related research
 

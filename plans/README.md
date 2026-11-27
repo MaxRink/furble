@@ -33,6 +33,49 @@ The sim-only paragraph above is dated 2026-11-13 and describes master at
 `85b89931` (#494). Those gate results were not re-run, and
 [313-sim-only-status.md](313-sim-only-status.md) still holds them unchanged.
 
+## Plan renumbering
+
+Dated 2026-11-26. Four numbers were worn by more than one plan: 332 by five, 335,
+354 and 364 by two each. `plans/CLAUDE.md` says not to renumber a merged
+document; that rule protects a merged plan's history, not a number two plans both
+answer to, because a stale reference resolved to whichever document the reader
+happened to open. Seven plans therefore moved to 377 to 383, the first run free
+above everything in use. Each move changed the file name and its title line, its
+row here, its review record where it had one, and every citation in `docs/`, the
+`CLAUDE.md` files, the source comments and the other plans that named it.
+
+A number is free only when nothing in flight answers to it, so the check reads
+three sources and not just master: the tracked files on `origin/master`, the tree
+of every open pull request branch, and the plans named in open pull request
+bodies. Take the run above the highest of those, and re-derive it immediately
+before the push, because four claims appeared while this change was being
+written. Nothing in the tooling catches a collision:
+`tools/check_pr_hygiene.py` `check_plan_links` only tests that a link resolves,
+and a number two branches both hold resolves perfectly.
+
+| Old number | Plan | New number | Why this one moved |
+| --- | --- | --- | --- |
+| 332 | [332-gnss-vendor-audit.md](377-gnss-vendor-audit.md) | 377 | Moved. 332 stays with the motion scale audit, which six files outside `plans/` cite, against four for the gap closure, one for this plan and none for the other two |
+| 332 | [332-vendor-document-verification.md](378-vendor-document-verification.md) | 378 | Moved. Every reference was inside `plans/`, two of them bare `plans/332` citations in `plans/357-review-feedback.md` that now name 378 |
+| 332 | [332-docs-gap-closure.md](379-docs-gap-closure.md) | 379 | Moved. Four files cite it, all under `docs/`; no source comment does |
+| 332 | [332-sim-rtc.md](380-sim-rtc.md) | 380 | Moved, with its review record, to [380-review-feedback.md](380-review-feedback.md) |
+| 335 | [335-display-touch-datasheet-promotions.md](381-display-touch-datasheet-promotions.md) | 381 | Moved. 335 stays with the withdrawn control stack cut, which `docs/stack-budget.md` and plan 314 cite |
+| 354 | [354-gnss-datasheet-verification.md](382-gnss-datasheet-verification.md) | 382 | Moved. 354 stays with the Core family power fix, which seven files outside `plans/` cite against one for this plan |
+| 364 | [364-hardware-candidates.md](383-hardware-candidates.md) | 383 | Moved. 364 stays with the EXT_5V rail ownership plan, which sixteen files outside `plans/` cite against none for this plan |
+
+The plan that keeps a number is the one the most files outside `plans/` cite,
+because those are the references a rename rewrites by hand; within a number the
+movers take consecutive numbers in the order they were added. The maximum is
+unique at all four numbers. 332, 335, 354 and 364 are single plans again. Five
+files changed content beyond a name and a title: this section, the numbering
+preambles at [383-hardware-candidates.md](383-hardware-candidates.md),
+[366-gps-receiver-selection.md](366-gps-receiver-selection.md) and
+[332-imu-motion-scale-review-feedback.md](332-imu-motion-scale-review-feedback.md),
+and the `plans/332` to `plans/378` citations in `plans/357-review-feedback.md`.
+365 was never a duplicate: `fix/core-sim-align` held it and merged as #513 with
+its own record. [384-plan-number-deduplication.md](384-plan-number-deduplication.md)
+is this change's own plan and records the check behind each number.
+
 ## Open issue ownership (2026-11-06)
 
 Every open issue maps to one owning plan. The plan records the implementation
@@ -44,7 +87,7 @@ state and the remaining gate; the issue stays open until that gate lands.
 | #289 | [173](173-sim-scheduler-visibility.md) | All five items done. The item 4 settle failure was `Scan::stop()` waiting on a plain condition variable for a radio-task callback, invisible to the simulator scheduler. It is now `scan_condition_t`, a scheduler-visible type under `FURBLE_SIM`. 6,000 container runs passed with no breaker parks; the last 3,600 ran at a median loadavg of 81.5. |
 | #381 | [302](302-companion-restart-reconnect.md) | Open. Long USB console runs reset into the ROM USB-JTAG unit. The 5 s command timeout and monitor fixes are merged. Host-side recovery is implemented: the USB monitor reopens a lost port, reports ROM reset lines and app restarts, and hard resets only with `--usb-hard-reset`, with a fake-transport test. A UART0 panic capture and the hardware retest of the recovery remain. |
 | #390 | [304](304-webui-stick-memory.md) | Open. The WebUI now fails closed on the StickS3 instead of boot-looping, and the TLS identity is generated before WiFi and the companion. Simulator work is complete: `hw-memory-webui-first-boot` covers a first boot with WiFi, BLE, the companion and a camera connect, on the inferred 25,911 / 24,148 heap. A connect now sheds the WebUI before its target task starts, the icon cache lives in PSRAM and is dropped at disconnect, so HTTPS pauses for the camera session and returns after it. Review record: [304-review-feedback.md](304-review-feedback.md). A support claim still needs the hardware memory gate, a TLS handshake, a settings write and a soak; plan 304 holds the exact procedure. |
-| #455 | [332](332-sim-rtc.md) | Implemented on `feat/455-sim-rtc` in #507: the simulator models a battery-backed RTC, and the deep-sleep scenarios cover a rejected stale record, an accepted valid record, an immediate late shot and a resume after the cell dropped. Closed against #507; the hardware item stays with the plan. |
+| #455 | [380](380-sim-rtc.md) | Implemented on `feat/455-sim-rtc` in #507: the simulator models a battery-backed RTC, and the deep-sleep scenarios cover a rejected stale record, an accepted valid record, an immediate late shot and a resume after the cell dropped. Closed against #507; the hardware item stays with the plan. |
 | upstream #316 | [359](359-sony-legacy-generation.md) | Fixed on `fix/316-sony-7rm4`: the 2019 advertisement generation is accepted, the ATT MTU floor is requested and verified with a graceful location skip, and a body without DD30/DD31 gets a best-effort DD11 write. Host and virtual peer only; a real ILCE-7RM4 capture remains, listed in the plan. |
 
 Closed issues #280, #281, #282, #288, #290, #451 and #464 are retained in their
@@ -128,22 +171,22 @@ whose title carries it, and plan 331 is archived there with it.
 | [325-peer-subscription-race.md](implemented/325-peer-subscription-race.md) | Thread-safe subscription tables for the virtual camera test doubles (#451) |
 | [325-review-feedback.md](implemented/325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
 | [326-docs-accuracy.md](implemented/326-docs-accuracy.md) | Documentation accuracy refresh: stale plan status, wiki screenshot claims and gate numbers |
-| [332-gnss-vendor-audit.md](332-gnss-vendor-audit.md) | GNSS configuration audit against the CASIC V6.3.2 and V4.2.0.3, AT6668 and u-blox M10 documents: `$PCAS03` field count, `$PCAS04` encoding, B1C rejections and write order |
+| [377-gnss-vendor-audit.md](377-gnss-vendor-audit.md) | GNSS configuration audit against the CASIC V6.3.2 and V4.2.0.3, AT6668 and u-blox M10 documents: `$PCAS03` field count, `$PCAS04` encoding, B1C rejections and write order |
 | [326-review-feedback.md](implemented/326-review-feedback.md) | Review-feedback record for the documentation accuracy refresh |
 | [327-control-gps-race.md](327-control-gps-race.md) | Locked `Control::m_Targets` walk for the GPS fan-out and the control task's `STATE_ACTIVE` liveness check |
 | [328-reference-docs-audit.md](328-reference-docs-audit.md) | Reference documentation audit: settings and console claims re-verified against the code, with the fixes and the claims that did not hold |
 | [332-imu-motion-scale-audit.md](332-imu-motion-scale-audit.md) | IMU motion wake scale audit against the BMI270 revision 1.6, MPU-6886 revision 1.1 and QMI8658A Rev D documents; one scale definition shared by the backends, the simulator double and the host tests |
 | [332-imu-motion-scale-review-feedback.md](332-imu-motion-scale-review-feedback.md) | Review-feedback record for PR 504: the bytes decode to 83.0 and 70.3 mg, both durations obey the 50 Hz sample rule, the MPU-6886 count size is an assumption everywhere and no register value changed, plus the two component pages the change left contradicting the code |
-| [332-sim-rtc.md](332-sim-rtc.md) | Battery-backed RTC in the simulator: seeded calendar chip, `FURBLE_SIM` TimeKeeper seam, and the stale, valid, late and lost deep-sleep scenarios (#455) |
-| [332-review-feedback.md](332-review-feedback.md) | Review-feedback record for the simulator RTC model: the unasserted production epoch, the leaked `.rtc` sidecar, the completed scenario table, and the board-row duplication |
+| [380-sim-rtc.md](380-sim-rtc.md) | Battery-backed RTC in the simulator: seeded calendar chip, `FURBLE_SIM` TimeKeeper seam, and the stale, valid, late and lost deep-sleep scenarios (#455) |
+| [380-review-feedback.md](380-review-feedback.md) | Review-feedback record for the simulator RTC model: the unasserted production epoch, the leaked `.rtc` sidecar, the completed scenario table, and the board-row duplication |
 | [340-gps-uart-install.md](340-gps-uart-install.md) | GPS UART install failure: absent receiver without a task, null-queue guards and the install-failure scenario |
 | [340-review-feedback.md](340-review-feedback.md) | Review-feedback record for PR 509: the publish order, the fake's error code, the wiki paragraph, the firmware compile claim, and the race the latch cannot close |
 | [341-sd-shutdown-ack.md](341-sd-shutdown-ack.md) | SD power-off handshake: `SD::powerOff()` reports a refusal for a missed acknowledgement or a request the writer never took, `Platform::powerOff()` then keeps the rail up, and the automatic paths back off |
 | [342-wifi-lost-ip.md](342-wifi-lost-ip.md) | Lost DHCP lease: `IP_EVENT_STA_LOST_IP` clears the WiFi cache, and the WebUI gate and status page read the live station address |
 | [342-review-feedback.md](342-review-feedback.md) | Review-feedback record for the lost-lease fix: doc paragraph, deliberate-stop gate test, and five recorded follow-ups |
 | [339-mqtt-retry-backoff.md](339-mqtt-retry-backoff.md) | Capped exponential MQTT retry backoff and a WiFi-style failure classifier, so an outage never blocks the hub |
-| [332-vendor-document-verification.md](332-vendor-document-verification.md) | Vendor document verification: ESP32 and ESP32-S3 TRMs, S3 and PICO-1 datasheets, SX1262 Rev 2.2, W5500 1.1.0, M5PM1 V1.9 and the FCC grants, with revision, page and hash for every fact |
-| [332-docs-gap-closure.md](332-docs-gap-closure.md) | Component and protocol documentation gap closure: inventory, gap register, 47 rows closed and 48 open, each open row naming the document and section it needs |
+| [378-vendor-document-verification.md](378-vendor-document-verification.md) | Vendor document verification: ESP32 and ESP32-S3 TRMs, S3 and PICO-1 datasheets, SX1262 Rev 2.2, W5500 1.1.0, M5PM1 V1.9 and the FCC grants, with revision, page and hash for every fact |
+| [379-docs-gap-closure.md](379-docs-gap-closure.md) | Component and protocol documentation gap closure: inventory, gap register, 47 rows closed and 48 open, each open row naming the document and section it needs |
 | [349-waveshare-board-row.md](349-waveshare-board-row.md) | Waveshare ESP32-S3-ETH board row: dedicated profile keyed on board_M5StampS3, power-off refusal, corrected simulator capabilities |
 | [358-resilience-round3.md](358-resilience-round3.md) | Resiliency round three: the SD settings backup that never completed and destroyed the last good copy, the refused companion notification that stayed lost for the session, and the ranked findings left open |
 | [358-review-feedback.md](358-review-feedback.md) | Review-feedback record for PR 516: the FatFs rename that refused the existing backup, the keepalive stamp that never advanced, the boundary case count and the peer double race |
@@ -207,7 +250,7 @@ whose title carries it, and plan 331 is archived there with it.
 | [322-hardware-abstraction.md](implemented/322-hardware-abstraction.md) | Hardware abstraction for the next boards: dependency audit, pure chip drivers, board profile and power backend |
 | [322-review-feedback.md](implemented/322-review-feedback.md) | Review-feedback record for the plan 322 hardware abstraction branches |
 | [333-datasheet-corpus.md](333-datasheet-corpus.md) | Datasheet citation corpus: one page per part, document revision and section per register fact, the citation gate, and the zero-PDF licence decision |
-| [354-gnss-datasheet-verification.md](354-gnss-datasheet-verification.md) | GNSS datasheet verification: the AT6668 datasheet and both CASIC protocol revisions read against the pages, the M10 module documents opened, and the facts that stay open |
+| [382-gnss-datasheet-verification.md](382-gnss-datasheet-verification.md) | GNSS datasheet verification: the AT6668 datasheet and both CASIC protocol revisions read against the pages, the M10 module documents opened, and the facts that stay open |
 | [336-gps-pin-seam.md](336-gps-pin-seam.md) | GPS UART pin source in the board profile: M5Unified lookup behind `Board::gpsPins()`, no-GPS rows for the Core and the Waveshare ESP32-S3-ETH, M5 table evidence, first step of the plan 322 port sequence |
 | [336-review-feedback.md](336-review-feedback.md) | Review-feedback record for PR #510: the Waveshare doc that still advertised a GPS port, the moved pin-lookup citations, the rotated doc citations, and the regression, stickiness, `isEnabled()` and GPIO13 checks |
 | [473-review-feedback.md](473-review-feedback.md) | Review-feedback record for the #473 hardware-trap corrections and the per-panel display dwell rule |
@@ -220,7 +263,7 @@ whose title carries it, and plan 331 is archived there with it.
 
 Research and design from the 2026-11-13 hardware survey. None of it is
 implemented. Plan 360 is the later addition: it was read from the slgray fork
-and the Waveshare documents on 2026-11-26. Plan 364 is the port-cost ranking
+and the Waveshare documents on 2026-11-26. Plan 383 is the port-cost ranking
 added the same day; it defers to 318 on the T-Beam trim, to 360 on the first
 AMOLED port, and to 362 on nRF. Plan 366 is the receiver decision from the same
 reading: it ranks the levers, compares seven receivers, and defers to 318 for
@@ -232,9 +275,9 @@ the bench work.
 | [319-meshtastic-dual-boot.md](319-meshtastic-dual-boot.md) | Design only: furble and Meshtastic on one ESP32-S3 node, slot ownership, private NVS and switching |
 | [320-rtc-use.md](320-rtc-use.md) | RTC domain use: wall clock across soft resets, timed-wake time restore, drift calibration, rejected ULP ideas |
 | [324-hw-research-review-feedback.md](implemented/324-hw-research-review-feedback.md) | Review-feedback record for the hardware research branch |
-| [335-display-touch-datasheet-promotions.md](335-display-touch-datasheet-promotions.md) | Display and touch datasheet promotions: what was re-read on 2026-11-26, the page each number came from, the licence limits, and the items that stay unverified |
+| [381-display-touch-datasheet-promotions.md](381-display-touch-datasheet-promotions.md) | Display and touch datasheet promotions: what was re-read on 2026-11-26, the page each number came from, the licence limits, and the items that stay unverified |
 | [360-waveshare-amoled-1-8-port.md](360-waveshare-amoled-1-8-port.md) | Port plan for the slgray AMOLED-1.8 board: parts with their documents, pin collisions, AXP2101 rails and their boot state, whether M5GFX can drive the CO5300, the profile row, and the simulator and bench work |
-| [364-hardware-candidates.md](364-hardware-candidates.md) | Ranked off-the-shelf port candidates by new reusable capability per driver or profile unit: T-Beam Supreme, CoreS3 and Waveshare 1.75-G on top, the skip list, and the facts no vendor page settles |
+| [383-hardware-candidates.md](383-hardware-candidates.md) | Ranked off-the-shelf port candidates by new reusable capability per driver or profile unit: T-Beam Supreme, CoreS3 and Waveshare 1.75-G on top, the skip list, and the facts no vendor page settles |
 | [366-gps-receiver-selection.md](366-gps-receiver-selection.md) | GNSS receiver decision: the lever ordering with its magnitudes, the flat -146 to -148 dBm cold-start result, seven receivers with bands, constellations, sensitivity, TTFF, update rate, current, backup and driver, three priced options, the antenna against receiver rule and its five exceptions, and three catalog corrections |
 | [376-board-level-documents.md](376-board-level-documents.md) | Board-level document hunt: 28 schematics read and hashed, the boards that publish none, the T-Beam MAX-M10S V_IO path read from the shared drawing and the factory code, and what stays unverified |
 | [541-review-feedback.md](541-review-feedback.md) | Review-feedback record for the board-level document branch, PR #541: the V_BCKP branch misread and the eight HTML citation URLs |
@@ -407,6 +450,7 @@ document is authoritative over any older summary.
 | [141-ci-manual-dispatch.md](implemented/141-ci-manual-dispatch.md) | Reliable manual firmware CI |
 | [346-plans-cleanup.md](346-plans-cleanup.md) | Plans directory cleanup: archived plans, corrected status lines, repointed references and the documents left alone with the reason |
 | [346-review-feedback.md](346-review-feedback.md) | Review-feedback record for PR 484: the dead links master added after the base, the count of documents left alone, the duplicate plan number and the plan 167 justification |
+| [384-plan-number-deduplication.md](384-plan-number-deduplication.md) | Duplicate plan numbers: the seven plans that moved to 377 to 383, the plan each number keeps, and every reference that moved with them |
 
 ## Design documents
 

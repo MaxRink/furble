@@ -1,4 +1,4 @@
-# 335 Display and touch datasheet promotions
+# 381 Display and touch datasheet promotions
 
 Status: implemented as a documentation change. Every date below is 2026-11-26,
 the local date of the reading pass.

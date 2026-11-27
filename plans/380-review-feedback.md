@@ -1,7 +1,7 @@
-# 332 - Review feedback
+# 380 - Review feedback
 
 An independent, adversarial review of the simulator's battery-backed RTC model
-([332-sim-rtc.md](332-sim-rtc.md)), the `FURBLE_SIM` TimeKeeper seam and the
+([380-sim-rtc.md](380-sim-rtc.md)), the `FURBLE_SIM` TimeKeeper seam and the
 eight deep-sleep scenarios.
 
 PR #507 landed as `c644f39e` with no review thread and no review-feedback
@@ -17,7 +17,7 @@ reaches a firmware build.
 | ---: | :--- | :--- | :--- | :--- |
 | 1 | Blocking | No scenario asserted the epoch the firmware accepted. The driver exposes `time.epoch_s` (`sim/driver.cpp:1879-1881`), the plan lists it as a query, and nothing used it: every RTC scenario asserted `time.valid`, `time.source` and `hw.rtc_epoch`, which is the model's own number. A firmware that accepted the chip's sample at the wrong instant, or converted it wrongly, passed every scenario. | Fixed. Every RTC scenario now asserts `time.epoch_s` at the boot, after the waits and across the restart, so the number production holds is checked against the seeded calendar. | `grep -rn "time.epoch_s" sim/scenarios` was empty before this change; the scenario diffs add it. |
 | 2 | Non-blocking | The `<FURBLE_SIM_PREFS>.rtc` sidecar was never removed. `removePreferences()` removed the store and its marker, and `sweepStalePreferences()` removed a dead store with its `.tmp.<pid>` sidecars, but neither touched `.rtc`. Every scripted RTC run left a file behind, a crashed run left one for good, and `check-preferences-lifecycle.sh` cannot see them because it globs `furble-sim-preferences-*.bin`. | Fixed in both places, with the sweep's unit test extended to assert that a dead store's `.rtc` goes and a live store's stays. | `sim/driver.cpp` `removePreferences()`; `sim/preferences_sweep.cpp`; `tests/host/preferences_sweep_test.cpp`. |
-| 3 | Non-blocking | Plan 332 listed four of the eight scenarios the pull request added. `rtc-persist`, `rtc-cold-boot`, `rtc-start` and `rtc-resume` appeared only under Evidence, so the plan's own scenario table did not describe the implementation. | Fixed. The table lists all eight with their assertions. | [332-sim-rtc.md](332-sim-rtc.md) "Scenarios". |
+| 3 | Non-blocking | Plan 380 listed four of the eight scenarios the pull request added. `rtc-persist`, `rtc-cold-boot`, `rtc-start` and `rtc-resume` appeared only under Evidence, so the plan's own scenario table did not describe the implementation. | Fixed. The table lists all eight with their assertions. | [380-sim-rtc.md](380-sim-rtc.md) "Scenarios". |
 
 Verified, no change needed:
 

@@ -180,7 +180,7 @@ with no nearby datasheet line passes only when its name appears in backticks in
 the first column.
 
 The open rows table carries an ID from the gap register in
-`plans/332-docs-gap-closure.md`, the document and section that would close the
+`plans/379-docs-gap-closure.md`, the document and section that would close the
 row, and the state. A row is closed by filling the fact table with the document
 revision and page, not by deleting the row.
 

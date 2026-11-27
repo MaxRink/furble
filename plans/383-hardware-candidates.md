@@ -1,16 +1,19 @@
-# 364 - Off-the-shelf port candidates, ranked
+# 383 - Off-the-shelf port candidates, ranked
 
 Status: research and ranking. This plan adds no board, environment, driver,
 profile row or support claim. No candidate was bought, powered or measured, and
 no current or timing figure here comes from a bench. Sources were read on
 2026-11-26; facts about this checkout were read at master `0f3e8905`.
 
-The document is numbered 364, not 363. Plan 363 is already claimed twice by open
-branches: `plans/363-core-sim-align.md` and `plans/363-review-feedback.md` on
-`fix/core-sim-align`, and `plans/363-pmic-irq-speaker.md` and
-`plans/363-review-feedback.md` on `fix/pmic-irq-and-speaker`. Master's highest
-plan is 362. 364 was checked free against the plan files on the head of every
-open branch on 2026-11-26.
+The document is numbered 383. It was added as 364 on 2026-11-26, when 363 was
+claimed twice by open branches and 364 was free on master. It did not stay free:
+`fix/ext5v-rail-ownership` (PR #493) merged as `79df13a7` an hour and a quarter
+later and claimed 364 as well, so two plans and two review records shared the
+number. The rail plan kept it because sixteen files outside `plans/` cite it and
+this ranking was cited only from inside `plans/`, so this one moved. 383 is the
+first number free above everything in use on master, on every branch and in
+every open pull request. The mapping is in
+[README.md](README.md#plan-renumbering).
 
 Tags on every claim:
 
