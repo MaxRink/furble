@@ -53,7 +53,7 @@ CLAUDE.md whose directory it touches.
   share an image and keep autodetect. Waveshare pins `board_M5StampS3`, which
   has no M5GFX arm, so the patch returns it from the ESP32-S3 section before
   the first probe and nothing drives the W5500 pins; the assignment alone was
-  not enough, see plans/352-m5gfx-board-pin.md. `tools/check_m5gfx_pinning.py`
+  not enough, see plans/implemented/352-m5gfx-board-pin.md. `tools/check_m5gfx_pinning.py`
   fails a branch where a pin stops taking effect. Core debug fits its OTA slot
   again and is a mandatory CI lane; with the u-blox driver (plan 321) and the
   esp_err codes in error logs (plan 106) it is 1,740,400 bytes, 400 under the
@@ -104,7 +104,7 @@ CLAUDE.md whose directory it touches.
   the default `queue: single` replaces a pending run whatever
   `cancel-in-progress` says, which is why the run key is required. The ref of a
   stacked PR is its own merge ref, so a stack and its base never share a group.
-  See [plans/392-ci-concurrency.md](plans/392-ci-concurrency.md); the exact
+  See [plans/implemented/392-ci-concurrency.md](plans/implemented/392-ci-concurrency.md); the exact
   expressions are asserted by `tools/check_ci_workflows.py`.
 - The simulator power gate compares each report against its baseline with the
   two-sided `tools/power-model/compare.py --threshold` policy. The default 10%
@@ -130,7 +130,7 @@ CLAUDE.md whose directory it touches.
   the measured pixel deltas, so the CI log states the comparison it made.
   `CompanionStatusListRowTests` covers the `List` flattening the pixels cannot:
   it counts the rows SwiftUI builds for the same section. See
-  `plans/343-apple-ui-snapshot.md`.
+  `plans/implemented/343-apple-ui-snapshot.md`.
 - Release tags beginning with `companion-test-` are reserved for companion
   testing and skip the firmware release workflow; other release tags are
   unchanged. Release and Pages matrices omit the Core single-factory debug

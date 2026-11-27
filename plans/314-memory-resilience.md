@@ -1203,7 +1203,7 @@ the top of `autodetect`, so only the pinned board's arm can match and the
 compiler drops every other board's probe, panel and touch driver. A pinned
 board with no arm of its own, the display-less StampS3 on the Waveshare, is
 returned from the ESP32-S3 section before the first probe; plan
-[352](352-m5gfx-board-pin.md) records why the assignment alone did not
+[352](implemented/352-m5gfx-board-pin.md) records why the assignment alone did not
 suppress it. PlatformIO installs `lib_deps` after `pre:` scripts run, so
 `post:patches/m5gfx_board.py` applies the patch through the existing locked,
 marker-checked `apply_patch`. A fresh libdeps directory was verified.
@@ -1873,5 +1873,5 @@ four boards a cut would change.
 Nothing moves the derived boot heap, so `sim/coverage/board_heap.json` and the
 `profile-*` floors in `sim/coverage/memory_budget.json` keep the values this
 plan derived. Evidence and the per-env table are in
-[335-stack-cuts.md](335-stack-cuts.md) and
-[335-review-feedback.md](335-review-feedback.md).
+[335-stack-cuts.md](implemented/335-stack-cuts.md) and
+[335-review-feedback.md](implemented/335-review-feedback.md).

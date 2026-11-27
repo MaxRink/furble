@@ -142,4 +142,4 @@ Pages deploy cannot disagree about a board's family.
 - [Supported hardware](supported-hardware.md) has the board list and status.
 - [Getting started](wiki/Getting-Started.md) is the user-facing flashing guide.
 - `web-installer/CLAUDE.md` holds the rules for changing the page.
-- `plans/372-web-installer-chip-family.md` records the defect and this fix.
+- `plans/implemented/372-web-installer-chip-family.md` records the defect and this fix.

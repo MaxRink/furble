@@ -142,7 +142,7 @@ without PSRAM, a PSRAM task stack on a board without PSRAM, a failed per-camera
 task allocation during a connect, a task stack on a present but too small PSRAM
 pool, a failed MQTT owner task and a failed MQTT client task on the retry.
 A block freed twice aborts the same way (`SIM PANIC: heap block freed twice`),
-which `sim-heap-caps-shim` certifies; see `plans/370-sim-memory-coverage.md`.
+which `sim-heap-caps-shim` certifies; see `plans/implemented/370-sim-memory-coverage.md`.
 The simulator build force-includes the board's memory sdkconfig subset from
 `tools/gen_sim_sdkconfig.py`. `tools/derive_sim_heap.py` derives each board's
 boot heap ceiling into `sim/coverage/board_heap.json`, which the memory

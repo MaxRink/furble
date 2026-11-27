@@ -244,7 +244,7 @@ Research only when written; C1 is the recommended first change.
 
 ## Follow-up: StickC Plus timed wake landed as C4's Part
 
-State: implemented on `fix/stickc-family` as part of [350](350-stickc-family-fixes.md).
+State: implemented on `fix/stickc-family` as part of [350](implemented/350-stickc-family-fixes.md).
 The StickC Plus row is `TimedWake::RTC_ALARM`, so it reuses the Plus2 path rather
 than the deep-sleep design C4 sketches: `setAlarmIRQ()`, the countdown register
 readback, the early-wake rejection, `consumeTimedWake()`'s `getIRQstatus()` check

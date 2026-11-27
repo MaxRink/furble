@@ -156,7 +156,7 @@ receiver. That coupling used to make the IR feature depend on the GPS duty
 cycle: a GPS `RAIL_OFF` or a failed probe cut the IR circuit and any Grove
 device on the port. The rail now has one owner and named holders (GPS, IR,
 Grove), so a cut is refused while another holder needs it (`code`,
-plans/364-ext5v-rail.md). The BMI270 is read at 1 Hz for gestures and 50 Hz on the level
+plans/implemented/364-ext5v-rail.md). The BMI270 is read at 1 Hz for gestures and 50 Hz on the level
 page; the gyro is never used by furble. The 8 MB octal PSRAM adds about 140 uA
 to light sleep per the ESP32-S3 datasheet, which the S3 energy model does not
 charge. Octal mode is also what takes pins: on this SiP, SPICS1 and GPIO33 to
@@ -348,7 +348,7 @@ not a runtime. Do not invent one in a power document.
 | Core2 | LDO3 | Vibration motor on Core2 | Yes, `M5.Power.setVibration` |
 | Core2, Tough | AXP192 GPIO0 | One BUS_5V boost feeding Grove Port A and the M-Bus | Yes, `M5.Power.setExtOutput`; the request is advisory and the PMIC can refuse an enable on a low battery with VBUS current and no ACIN |
 | StickS3 | 3.3 V DCDC and LDO | ESP32, panel, PM1 | No, PM1 default on |
-| StickS3 | 5 V boost | Grove, EXT_5V, IR TX and RX | Yes, through PM1 `PWR_CFG` bit 3, owned by the rail manager (`Platform::railAcquire`/`railRelease`) with named holders and an output-mode interlock. Unlike the AXP boards the port is **off from boot**: `Platform::init()` passes `output_power = false`, so it stays in the vendor default of input mode until a holder acquires it, and the infrared circuit holds it around each burst. See plans/364-ext5v-rail.md |
+| StickS3 | 5 V boost | Grove, EXT_5V, IR TX and RX | Yes, through PM1 `PWR_CFG` bit 3, owned by the rail manager (`Platform::railAcquire`/`railRelease`) with named holders and an output-mode interlock. Unlike the AXP boards the port is **off from boot**: `Platform::init()` passes `output_power = false`, so it stays in the vendor default of input mode until a holder acquires it, and the infrared circuit holds it around each burst. See plans/implemented/364-ext5v-rail.md |
 | StickS3 | L3B | Hat rail, PM1 GPIO2 | Not touched by furble |
 | Core, Plus2, Waveshare | Port A 5 V | none | No switch. `M5.Power.setExtOutput` does nothing on these boards, so the Grove 5 V pin has no firmware control and this rail manager has nothing to own. |
 | All Core boards | SD slot | microSD | No load switch; the card stays powered when inserted |
@@ -379,7 +379,7 @@ purpose, and the difference is the direction this project had to choose.
 `cfg.output_power = false` is scoped with `#if FURBLE_HAS_M5PM1` for exactly this
 reason: on the AXP boards the Grove 5 V output has no other owner, so clearing
 it at boot left the port unpowered with no client that could switch it back on,
-which is the regression plans/364-review-feedback.md records as B2.
+which is the regression plans/implemented/364-review-feedback.md records as B2.
 
 Two consequences follow. First, the only true peripheral power controls in
 furble are the Grove 5 V rail and the panel backlight. Everything else is

@@ -204,7 +204,7 @@ and the interlock fails closed on an external source or an unreadable supply.
 Both are header-only and the firmware and the simulator Platform drive them
 unchanged; the refused probe and the deferred IR cut are covered by
 `sim/scenarios/e2e/ext5v-rail-holders.txt`. Never reimplement the count in a
-test double. See plans/364-ext5v-rail.md.
+test double. See plans/implemented/364-ext5v-rail.md.
 
 `boundary-platform-rail` compiles the production `src/FurblePlatform.cpp` itself
 against `boundaries/platform_shims/M5PM1.h`, a register-bus fake that records

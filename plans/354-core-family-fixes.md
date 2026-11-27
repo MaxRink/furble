@@ -4,10 +4,10 @@ Status: implemented on `fix/core-family`, not merged. No hardware was attached:
 the Core, Core2 and Tough gates below are unverified. Every register and board
 fact quoted here comes from the cited vendor document, not from the firmware.
 
-Related: [322](322-hardware-abstraction.md) (the board profile and power
+Related: [322](implemented/322-hardware-abstraction.md) (the board profile and power
 backend this changes), [13](implemented/13-auto-off-low-batt.md) (power-off
 policy), [19](implemented/19-interval-deep-sleep.md) (timed deep sleep),
-[321](321-ublox-m10-driver.md) (GPS rail cycling),
+[321](implemented/321-ublox-m10-driver.md) (GPS rail cycling),
 [98](98-power-optimization-audit.md) and
 [board-power.md](../docs/power/board-power.md) (PM-06, PL-07).
 

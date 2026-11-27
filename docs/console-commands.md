@@ -303,7 +303,7 @@ port, or `refuse-unknown-supply` for an unreported or unreadable supply.
 and `enables_refused` counts output-mode enables the interlock refused. Both
 counters are cumulative for the boot, so a bench run compares two readings.
 A refusal is logged at WARN when the verdict changes and at DEBUG for repeats.
-See `docs/power/board-power.md` and `plans/364-ext5v-rail.md`.
+See `docs/power/board-power.md` and `plans/implemented/364-ext5v-rail.md`.
 
 ## gps
 

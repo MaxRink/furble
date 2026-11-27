@@ -48,7 +48,7 @@ setting itself and never claims success from a completed write.
 ## Review round 1
 
 The independent review is recorded in
-[537-review-feedback.md](../537-review-feedback.md). Its blocking item was a
+[537-review-feedback.md](537-review-feedback.md). Its blocking item was a
 cross-PR interaction with plan 372's validator fixture, fixed in
 `tests/test_web_installer.py`. The three domain gaps it found are fixed in both
 halves:

@@ -36,8 +36,8 @@ stay in the parent [`plans/`](../README.md) directory.
 | [112-connect-crash-mid-drop.md](112-connect-crash-mid-drop.md) | 112 - Connect crash on a mid-connect peer drop |
 | [113-connection-state-sim-coverage.md](113-connection-state-sim-coverage.md) | Plan 113: connection-state sim coverage |
 | [113-per-board-ota-slots.md](113-per-board-ota-slots.md) | 113 - Per-board OTA slot sizing for boards with spare flash |
-| [114-provision-parser.md](114-provision-parser.md) | 114 - One-shot provisioning parser and console apply |
 | [114-flasher-provisioning.md](114-flasher-provisioning.md) | 114b - Web flasher WiFi and settings provisioning |
+| [114-provision-parser.md](114-provision-parser.md) | 114 - One-shot provisioning parser and console apply |
 | [115-ota-engine.md](115-ota-engine.md) | 115 - Transport-independent OTA engine |
 | [116-companion-password.md](116-companion-password.md) | Shared-secret gate for privileged companion operations |
 | [117-sim-mqtt-coverage.md](117-sim-mqtt-coverage.md) | 117 - Sim MQTT coverage |
@@ -142,10 +142,61 @@ stay in the parent [`plans/`](../README.md) directory.
 | [325-review-feedback.md](325-review-feedback.md) | Review-feedback record for the virtual camera subscription race |
 | [326-docs-accuracy.md](326-docs-accuracy.md) | Documentation accuracy refresh: stale plan status, wiki screenshot claims and gate numbers |
 | [326-review-feedback.md](326-review-feedback.md) | Review-feedback record for the documentation accuracy refresh |
+| [328-reference-docs-audit.md](328-reference-docs-audit.md) | 328 - Reference documentation audit: settings and console |
 | [331-merge-gate-base.md](331-merge-gate-base.md) | Merge gate reads the workflow path filters at the PR base commit and fails closed when they cannot be read (#464) |
+| [332-imu-motion-scale-audit.md](332-imu-motion-scale-audit.md) | 332 - IMU motion wake scale audit |
+| [332-imu-motion-scale-review-feedback.md](332-imu-motion-scale-review-feedback.md) | 332 review feedback (IMU motion scale audit) |
+| [335-review-feedback.md](335-review-feedback.md) | 335 - Review feedback |
+| [335-stack-cuts.md](335-stack-cuts.md) | 335 - The control stack cut is not supported, and the walk now sees why |
+| [336-gps-pin-seam.md](336-gps-pin-seam.md) | 336 - GPS UART pin seam |
+| [336-review-feedback.md](336-review-feedback.md) | 336 - Review feedback for the GPS UART pin seam |
+| [339-mqtt-retry-backoff.md](339-mqtt-retry-backoff.md) | 339 - MQTT retry backoff instead of a permanent block |
+| [34-ota-partitions.md](34-ota-partitions.md) | 34 - OTA updates and the partition scheme change that enables them |
+| [340-gps-uart-install.md](340-gps-uart-install.md) | 340 - GPS UART install failure |
+| [340-review-feedback.md](340-review-feedback.md) | 340 - Review feedback for the GPS UART install failure |
+| [343-apple-ui-snapshot.md](343-apple-ui-snapshot.md) | 343 - Apple companion UI snapshot |
+| [343-review-feedback.md](343-review-feedback.md) | 343 review feedback |
+| [345-doc-citation-gate.md](345-doc-citation-gate.md) | 345 - A gate for `file:line` citations in docs and plans |
+| [346-plans-cleanup.md](346-plans-cleanup.md) | 346 - plans directory cleanup |
+| [346-review-feedback.md](346-review-feedback.md) | 346 - Review feedback for the plans cleanup |
+| [348-review-feedback.md](348-review-feedback.md) | 348 - Review feedback for the StickS3 simulator alignment |
+| [348-sticks3-sim-align.md](348-sticks3-sim-align.md) | 348: align the StickS3 simulator model with the verified board facts |
 | [35-exposure-presets.md](35-exposure-presets.md) | 35: Exposure time presets in 1/3 stops |
+| [350-review-feedback.md](350-review-feedback.md) | 350 - Review feedback for the StickC family fixes |
+| [350-stickc-family-fixes.md](350-stickc-family-fixes.md) | 350 - StickC family fixes |
+| [352-m5gfx-board-pin.md](352-m5gfx-board-pin.md) | 352 - M5GFX board pinning |
+| [352-review-feedback.md](352-review-feedback.md) | 352 - Review feedback for the M5GFX board pinning |
+| [357-review-feedback.md](357-review-feedback.md) | 357 - Retrospective review of seven merged pull requests |
 | [36-camera-test-harness.md](36-camera-test-harness.md) | 36 - camera test harness: protocol tests without cameras |
+| [363-pmic-irq-speaker.md](363-pmic-irq-speaker.md) | 363 - PMIC IRQ latches, the RTC IRQ write and StickS3 speaker timing |
+| [363-review-feedback.md](363-review-feedback.md) | 363 - Review feedback |
+| [364-ext5v-rail.md](364-ext5v-rail.md) | 364 - EXT_5V rail ownership on the M5StickS3 |
+| [364-review-feedback.md](364-review-feedback.md) | 364 - Review feedback for the EXT_5V rail ownership branch |
+| [365-core-sim-align.md](365-core-sim-align.md) | 365 - Align the simulator with the verified Core family facts |
+| [365-review-feedback.md](365-review-feedback.md) | 365 - Review feedback for the Core family simulator alignment |
+| [370-sim-memory-coverage.md](370-sim-memory-coverage.md) | Plan 370: simulator memory-management coverage audit |
+| [372-web-installer-chip-family.md](372-web-installer-chip-family.md) | 372 - Web installer chip family |
+| [373-interval-shutter-hold.md](373-interval-shutter-hold.md) | 373: intervalometer shutter hold decision record |
+| [374-control-release-durability.md](374-control-release-durability.md) | 374 Control release durability |
+| [375-ci-apt-resilience.md](375-ci-apt-resilience.md) | Plan 375: CI apt installs survive a broken third-party repository |
+| [380-review-feedback.md](380-review-feedback.md) | 380 - Review feedback |
+| [380-sim-rtc.md](380-sim-rtc.md) | 380 - Battery-backed RTC in the simulator |
+| [384-plan-number-deduplication.md](384-plan-number-deduplication.md) | 384 - duplicate plan numbers |
+| [385-hal-register-verification.md](385-hal-register-verification.md) | 385 - HAL register verification pass 3 |
+| [386-board-verification.md](386-board-verification.md) | 386 - Board implementation verification against the vendor documents |
+| [389-shutter-zero-hold.md](389-shutter-zero-hold.md) | 389: a configured Shutter of 0 |
+| [392-ci-concurrency.md](392-ci-concurrency.md) | 392 - pull request concurrency cancellation |
 | [42-waveshare-eth-node.md](42-waveshare-eth-node.md) | 42 - Waveshare ESP32-S3-ETH wired MQTT node and display-less onboarding |
+| [511-review-feedback.md](511-review-feedback.md) | 511 - Review feedback for the documentation citation gate |
+| [537-review-feedback.md](537-review-feedback.md) | 537 - Review feedback |
+| [540-review-feedback.md](540-review-feedback.md) | 540 - Review feedback for the HAL register verification pass |
+| [542-review-feedback.md](542-review-feedback.md) | 542 - Review feedback |
+| [543-review-feedback.md](543-review-feedback.md) | 543 - Board verification pass, review feedback |
+| [544-review-feedback.md](544-review-feedback.md) | 544 - Interval shutter hold decision record, review feedback |
+| [545-review-feedback.md](545-review-feedback.md) | 545 - CI apt resilience, review feedback |
+| [546-review-feedback.md](546-review-feedback.md) | 546 - Review feedback |
+| [547-review-feedback.md](547-review-feedback.md) | 547 - Simulator memory coverage, review feedback |
+| [553-review-feedback.md](553-review-feedback.md) | PR 553 review feedback: pull request concurrency cancellation |
 | [60-issue-257.md](60-issue-257.md) | PR60: Nikon Z50II smart device support (upstream issue 257) |
 | [62-issue-140.md](62-issue-140.md) | 62: Configurable button behavior (upstream issue 140) |
 | [66-pairing-code-display.md](66-pairing-code-display.md) | 66: Camera pairing code on the furble display |

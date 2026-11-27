@@ -384,7 +384,7 @@ master pushes. The ref of a stacked pull request is its own merge ref, so a stac
 and its base never cancel each other. Re-run the newest run of a workflow only: a
 re-run re-enters its group, and re-running an older run on a pull request can
 cancel the current head. The evidence is in
-[plans/392-ci-concurrency.md](plans/392-ci-concurrency.md), and
+[plans/implemented/392-ci-concurrency.md](plans/implemented/392-ci-concurrency.md), and
 `tools/check_ci_workflows.py` asserts the exact expressions.
 Node.js is also required for the installer event-flow regression in
 `tests/test_check_ci_workflows.py`; the standard GitHub-hosted Ubuntu runner

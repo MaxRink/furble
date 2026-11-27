@@ -124,7 +124,7 @@ conflated (`plans/CLAUDE.md`).
 A GR IV in BLE standby keeps the link up and reports CameraPower `0x01` ON
 while `OperationMode` (`1452335A-EC7F-4877-B8AB-0F72E18BB295`, Camera service)
 reads `0x02` BLE_STARTUP. A capture write in that state cold boots the body and
-can wedge its firmware, so phase 1 of [plan 149](../plans/149-ricoh-sleep-shutter-gate.md)
+can wedge its firmware, so phase 1 of [plan 149](../../plans/149-ricoh-sleep-shutter-gate.md)
 requires a fresh `OperationMode` read of `0x00` CAPTURE before every capture.
 `CameraPower` (`B58CE84C-0666-4DE9-BEC8-2D27B27B3211`) is not an authorization
 source for exactly that reason.

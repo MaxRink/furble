@@ -340,7 +340,7 @@ write the same value, which NVS skips.
 
 Superseded: the retry returns `board_unknown`, not a known board, so the
 probes this section places under M5Unified did run. See the follow-up at the
-end of this document and `plans/352-m5gfx-board-pin.md`.
+end of this document and `plans/implemented/352-m5gfx-board-pin.md`.
 
 Not covered by the pin: M5Unified drives GPIO 46 high on every S3, and with no
 detected board its own check pulls GPIO 4, 8, 10, 12 and 38, probes I2C on
@@ -485,7 +485,7 @@ power cycles to link up. That bench run belongs with verification step 1.
 
 ## Follow-up: the M5GFX pin did not suppress the probes
 
-`plans/352-m5gfx-board-pin.md` corrects this document. The pin
+`plans/implemented/352-m5gfx-board-pin.md` corrects this document. The pin
 `M5GFX_BOARD=board_t::board_M5StampS3` is real and it does fold M5GFX's own
 probe code away, because `board` becomes a constant that no arm of
 `M5GFX::autodetect` matches. What it did not do is leave a known board:

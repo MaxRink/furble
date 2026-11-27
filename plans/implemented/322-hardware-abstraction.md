@@ -209,7 +209,7 @@ output and the infrared circuit, so the name now describes what it powers
 rather than one consumer. Ownership of that rail is not part of this contract:
 `setRail` is the owner's own switch, and clients hold the rail through
 `Platform::railAcquire()`/`railRelease()` with a named `RailHolder`. See
-plans/364-ext5v-rail.md. `meetsPowerBackend<P>()` checks the nine members
+plans/implemented/364-ext5v-rail.md. `meetsPowerBackend<P>()` checks the nine members
 every `Platform` defines (battery caps, read and capacity, `setRail`,
 power-button clicks, power off and the three timed-wake calls) by comparing
 `decltype(&P::member)` with the documented signature and rejecting a
@@ -479,7 +479,7 @@ both matter to a port:
   the display-less `board_M5StampS3` on the Waveshare ESP32-S3-ETH, used to
   fall through to `board_unknown`, and the retry loop in `M5GFX::init_impl`
   ran every ESP32-S3 probe five times. The patch now returns that family
-  before the first probe. Plan [352](../352-m5gfx-board-pin.md) holds the defect,
+  before the first probe. Plan [352](352-m5gfx-board-pin.md) holds the defect,
   the mechanism and the artifact evidence.
 - M5Unified keys its own identification probe and its In_I2C master off
   `Display.getBoard()`. A known board skips the probe, and a pin table row
@@ -645,7 +645,7 @@ straps, and the panel's column offset.
 `src/FurbleBoard.cpp` gained a dedicated row for the Waveshare ESP32-S3-ETH,
 keyed on `m5::board_t::board_M5StampS3`, so the board no longer resolves to the
 unknown-board row. That row and the platform refusal are specified in
-[349-waveshare-board-row.md](349-waveshare-board-row.md).
+[349-waveshare-board-row.md](../349-waveshare-board-row.md).
 
 The row needed one column this plan did not have. `canPowerOff` reads as "the
 board can power off", but its consumers are the UI policy gates: the Auto off and
