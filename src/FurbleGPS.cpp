@@ -815,7 +815,9 @@ void GPS::serviceCycle(void) {
         }
       }
       if (m_TextState != nullptr) {
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
         text().save_session.clear();
+#endif
         text().save_queue.clear();
       }
       m_RailOffPending = false;

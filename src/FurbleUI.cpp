@@ -5641,6 +5641,7 @@ std::string UI::simQueryState(const char *key) {
     // token, so a scenario can assert that a setting the part cannot take is
     // shown to the user and not only logged. "none" means the page is not open,
     // the label is missing, or nothing was refused.
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
     if (field == "nmea.refusals") {
       const std::string config = labelText(m_NMEA.config);
       const size_t start = config.find("refused: ");
@@ -5656,6 +5657,7 @@ std::string UI::simQueryState(const char *key) {
       }
       return out.empty() ? "none" : out;
     }
+#endif
 
     return "";
   }
@@ -10404,6 +10406,7 @@ void UI::gpsDataStop(lv_event_t *e) {
  */
 namespace {
 
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
 /**
  * Names of the settings the active receiver refused, space separated.
  *
@@ -10449,6 +10452,8 @@ std::string gpsConfigRefusals(GPS &gps) {
   }
   return out;
 }
+
+#endif  // FURBLE_GPS_TEXT
 
 }  // namespace
 
@@ -10551,6 +10556,7 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         if (config.empty()) {
           config = "cfg empty";
         }
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
         // A setting the part refused is otherwise only in the log. This page
         // names it, after the command rows so the first line stays a result and
         // the existing diag.nmea check keeps reading the same shape.
@@ -10558,6 +10564,7 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         if (!refusals.empty()) {
           config += "\nrefused: " + refusals;
         }
+#endif
         if (config != ui->m_NMEA.configText) {
           ui->m_NMEA.configText = config;
           lv_label_set_text(ui->m_NMEA.config, config.c_str());
