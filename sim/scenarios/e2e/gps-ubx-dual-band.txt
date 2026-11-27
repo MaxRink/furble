@@ -11,9 +11,9 @@
 seed gps true
 seed gps_model f10
 seed gps_m10_hot true
-# GPS and Galileo only, so BeiDou and QZSS stay at the receiver preset and the
-# L5 rows of the two enabled constellations are the interesting ones.
-seed gps_gnss 9
+# GPS, Galileo, QZSS and SBAS: 1 + 8 + 16 + 32. QZSS is the constellation whose
+# L5 key is easiest to forget, so it is in the set.
+seed gps_gnss 57
 wait 8000
 assert gps.backend ubx
 assert gps.ubx.module NEO-F10N
@@ -39,10 +39,11 @@ assert m10.ram.10310024 1
 assert m10.ram.10310012 1
 assert m10.ram.10310017 1
 assert m10.ram.10310020 1
-# BeiDou was not decided, so its keys are deleted from BBR and B1I is never
-# written on a dual-band part (NEO-F10N data sheet UBX-23002117 R05, Table 4
-# page 5).
-assert gps.ubx.gnss 9
+# BeiDou is off in this mask, so its keys are written off and B1I is never
+# written at all on a dual-band part (NEO-F10N data sheet UBX-23002117 R05,
+# Table 4 page 5).
+assert gps.ubx.gnss 57
+assert m10.ram.10310022 0
 # No CFG-PM group on this firmware: power save stays off and no PM key is sent,
 # which is why the receiver does not NAK the power batch (F10 interface
 # description 4.9; module manual, appendix migration table, page 64).

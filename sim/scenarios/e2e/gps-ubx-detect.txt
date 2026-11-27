@@ -18,7 +18,9 @@ assert gps.ubx.verified 1
 assert m10.ram.20910007 1
 assert m10.bbr.20910007 1
 assert gps.ubx.sos_restore 3
-assert gps.ubx.naks 0
+# The one NAK is the L5 capability probe, refused because this firmware has no
+# L5 signal key (M10 IFD 3.10.4 page 53).
+assert gps.ubx.naks 1
 assert-eventually 3000 gps.source uart
 assert gps.from_pvt 1
 assert gps.ubx.fix_type 3

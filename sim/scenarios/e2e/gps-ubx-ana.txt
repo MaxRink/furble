@@ -9,5 +9,7 @@ assert-eventually 3000 gps.ubx.verified 1
 assert gps.ubx.ana 1
 assert m10.ram.10230001 1
 assert m10.bbr.10230001 1
-assert m10.naks 0
+# One NAK: the receiver refused the L5 capability probe, which is how an
+# L1-only firmware answers it (M10 IFD 3.10.4 page 53).
+assert m10.naks 1
 exit

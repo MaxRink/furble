@@ -10,7 +10,8 @@
 seed gps true
 seed gps_model m10
 seed gps_m10_hot true
-seed gps_gnss 9
+# GPS, Galileo, QZSS and SBAS: 1 + 8 + 16 + 32.
+seed gps_gnss 57
 wait 8000
 assert gps.backend ubx
 assert gps.ubx.module MAX-M10S
@@ -28,6 +29,8 @@ assert m10.ram.10310001 1
 assert m10.ram.10310021 1
 assert m10.ram.10310007 1
 assert m10.ram.10310024 1
+assert m10.ram.10310012 1
+assert m10.ram.10310017 0
 assert m10.ram.10310020 1
 assert-eventually 5000 gps.source uart
 exit

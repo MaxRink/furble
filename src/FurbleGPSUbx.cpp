@@ -541,8 +541,12 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       m_UbxHaveVersion = true;
       // MON-VER names the firmware family, which is what the capability line
       // reports until the probe answers. The bands it grants are only a hint:
-      // serviceCaps() asks the receiver before any L5 key is written.
-      m_UbxCaps = Ubx::capsFromVersion(m_UbxVersion);
+      // serviceCaps() asks the receiver before any L5 key is written. Once the
+      // probe or a refused batch has decided the bands, a late MON-VER answer
+      // does not reopen them.
+      if (!m_UbxCapsProbed) {
+        m_UbxCaps = Ubx::capsFromVersion(m_UbxVersion);
+      }
     }
     const backend_t backend = getBackend();
     if ((backend == backend_t::UBX) || (backend == backend_t::UNKNOWN)) {

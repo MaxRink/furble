@@ -197,6 +197,10 @@ because that is how an unknown key is reported (M10 IFD 3.10.4 page 53, F10 IFD
 3.10.4 pages 54 and 55). Nothing is written, so the receiver configuration is
 untouched whatever the answer.
 
+The probe's refusal is counted in the receiver NAK count, so a healthy L1-only
+receiver reports one NAK after every GPS start. The console says which exchange
+it was: `bands: L1 (asked the receiver)` next to `naks: 1`.
+
 The probe is the only way furble learns the band, and it runs before the first
 configuration is built (`GPS::applyConfiguration` at `src/FurbleGPS.cpp:1795`, which
 calls `GPS::serviceCaps` and returns, and `GPS::serviceConfig` at

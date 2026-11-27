@@ -338,6 +338,7 @@ registered in `sim/scenarios/manifest.json`. `check_sim_scenarios.py` passes.
 | `docs/supported-hardware.md`, `README.md`, `docs/wiki/` | the GNSS section: which receivers furble configures and which it only reads |
 | `docs/console-commands.md` | the new `gps ubx` fields |
 | `docs/settings-and-controls.md` | the power-save control is disabled for a receiver without it |
+| `docs/sim.md` | the `f10` receiver model and its three scenarios |
 | `plans/README.md` | this plan's index row |
 
 ## 14. Implementation state
@@ -356,3 +357,11 @@ and the fuzz invariant. Deviations from the first draft of this plan:
 - `capsFromVersion()` keeps the module-name table, which the documents do not
   give as a `MOD=` value; it is a fallback for a missing `PROTVER` and is listed
   as UNVERIFIED item 8.
+- The first draft made BeiDou B1C need the BeiDou mask bit on a dual-band
+  receiver. That split the B1C and B2a pair whenever BeiDou was switched off,
+  which the virtual receiver refused, and it was the furble plan that was wrong:
+  every signal key is one and the constellation enable key does the switching.
+  B1C now carries no dependency of its own on a dual-band receiver, and the
+  simulator refused the earlier plan before any hardware did.
+- The scenario seeds grew from GPS and Galileo to GPS, Galileo, QZSS and SBAS
+  once the QZSS L5 key turned out to be the one a mask can silently leave out.

@@ -733,10 +733,12 @@ Plan plan(const Request &request) {
         continue;
       }
       if (dual && (signal.key == Key::SIGNAL_BDS_B1C)) {
-        // On a dual-band receiver BeiDou runs B1C beside B2a, so B1C needs only
-        // the BeiDou bit. The M10 rule, where B1C needs GLONASS because B1I
-        // cannot run beside it, stays the L1 row's (IM-MAX 2.1.3).
-        signal.need = GNSS_MASK_BDS;
+        // On a dual-band receiver BeiDou runs B1C beside B2a and the receiver
+        // has no B1I and no GLONASS at all, so B1C carries no dependency of its
+        // own: like every other signal key, it stays one and the constellation
+        // enable key switches it. The M10 rule, where B1C needs GLONASS because
+        // B1I cannot run beside it, stays the L1 row's (IM-MAX 2.1.3).
+        signal.need = 0;
         signal.clear = 0;
       }
       writeSignal(signal);

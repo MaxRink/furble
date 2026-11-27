@@ -100,6 +100,15 @@ class GPS {
     bool gnss_refused;
     bool psm_refused;
     bool rate_clamped;
+    // Signal band capability, mirroring the firmware snapshot.
+    uint8_t bands;
+    bool bands_probed;
+    uint8_t family;
+    bool psm_supported;
+    bool psm_unsupported;
+    bool l5_written;
+    bool b1i_refused;
+    bool l5_refused;
     bool backup_supply;
     bool have_sat;
     std::array<uint8_t, 7> sat_view;
