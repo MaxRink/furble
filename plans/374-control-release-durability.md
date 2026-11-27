@@ -123,7 +123,7 @@ Producer and consumer rates bound the window.
 
 - The UI loop runs on `app_main`'s task, which ESP-IDF starts at priority 1 and
   no sdkconfig in this tree overrides. A target task runs at priority 3
-  (`src/FurbleControl.cpp:1418`) and the control task at 4
+  (`src/FurbleControl.cpp:1419`) and the control task at 4
   (`src/main.cpp:524`).
 - Because a runnable target task preempts the UI, the queue holds at most one
   command in normal operation. It can only build a backlog while the target task
@@ -136,7 +136,7 @@ Producer and consumer rates bound the window.
   `m_IdleTimeout = 700` in 10 ms units).
 - In those seconds the producers keep posting. At the fastest intervalometer
   settings one command leaves per 100 ms tick, so 8 slots is 800 ms. A 1 Hz GPS
-  fan-out adds one per second (`src/FurbleControl.cpp:275-277`), and a
+  fan-out adds one per second (`src/FurbleControl.cpp:276-278`), and a
   multi-connect session shares one radio across up to three queues, which
   multiplies each command's latency by the number of cameras.
 

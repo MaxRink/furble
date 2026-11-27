@@ -143,7 +143,7 @@ as the defect's location and not as a line in the current file.
   ownership move is actually wanted.
 - **Open: the target-side GPS handoff.** `Target::m_GPS` and `m_Timesync` are
   written by `updateGPS()` under `m_Mutex` and read by the target task in the
-  `CMD_GPS_UPDATE` case with no lock (`FurbleControl.cpp:277`). That is a
+  `CMD_GPS_UPDATE` case with no lock (`FurbleControl.cpp:278`). That is a
   separate, pre-existing race that predates this fix and is unchanged by it: the
   write is now serialized against other `Control` tasks, not against the target
   task's read. Fixing it needs a per-target handoff (a queue payload or a

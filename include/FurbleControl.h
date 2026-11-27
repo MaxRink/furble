@@ -80,7 +80,7 @@ class Control {
      * calls this in the same critical section, which is what keeps the target
      * alive across the call. That is a lifetime contract, not reader
      * synchronization: the target task reads both fields with no lock in the
-     * CMD_GPS_UPDATE case (FurbleControl.cpp:277), so that read stays the
+     * CMD_GPS_UPDATE case (FurbleControl.cpp:278), so that read stays the
      * handoff race recorded in plan 327. Pure member assignment, so it must
      * never grow a radio call, a heap allocation or a delay.
      */
