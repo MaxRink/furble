@@ -376,7 +376,6 @@ for source in \
   "$ROOT/tests/host/companion/companion_hmac.cpp" \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleControl.cpp" \
-  "$ROOT/src/FurbleDisplay.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurbleGPSUbx.cpp" \
   "$ROOT/src/FurbleMemoryPressure.cpp" \
