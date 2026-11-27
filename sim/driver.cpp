@@ -667,8 +667,7 @@ void validateSeed(const std::string &name, const std::string &value) {
     // behind an unknown module string), a receiver that answers no binary
     // protocol, or one of the vendor text parts of plan 388.
     if (value != "casic" && value != "m10" && value != "m10-mia" && value != "f10"
-        && value != "f10-unnamed" && value != "nmea" && value != "quectel"
-        && value != "unicore") {
+        && value != "f10-unnamed" && value != "nmea" && value != "quectel" && value != "unicore") {
       std::cerr << "Invalid gps_model: " << value << '\n';
       std::exit(2);
     }

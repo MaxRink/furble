@@ -1976,7 +1976,6 @@ void GPS::serviceConfig(void) {
 void GPS::applyConfiguration(void) {
   const backend_t backend = getBackend();
   if (backend == backend_t::UBX) {
-  if (backend == backend_t::UBX) {
 #if FURBLE_GPS_L5
     if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::IDLE)
         || (m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING)) {
