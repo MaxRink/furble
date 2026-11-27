@@ -240,8 +240,9 @@ Recorded on this branch, macOS host, no device attached:
   the debug fragments.
 - `python3 tools/check_size_budget.py --env lilygo-tbeam-supreme`: PASS, flash
   1,816,480 of 3,145,728 bytes, DRAM 47,308 of 48,128, IRAM 110,848 of 111,616.
-  The `-debug` env records flash 2,211,952, DRAM 52,404 and IRAM 129,792
-  against the same slot.
+  The `-debug` env records flash 2,214,912, DRAM 52,404 and IRAM 129,792
+  against the same slot, rebuilt on this commit rather than carried over from
+  the pre-rebase tree.
 - `python3 tools/stack_budget.py --env lilygo-tbeam-supreme` and the `-debug`
   env: PASS, every task under its stack, and no new entry was needed in
   `tools/stack_budget.json`.
@@ -253,8 +254,8 @@ Recorded on this branch, macOS host, no device attached:
 - The two simulator scenarios named above pass on a build made with
   `FURBLE_SIM_FURBLE_BOARD=FURBLE_LILYGO_TBEAM_SUPREME`, run through
   `sim/scripts/run-e2e.sh` with `FURBLE_SIM_BOARD_ID=lilygo-tbeam-supreme`.
-- The same suite on the M5StickS3 binary: 249 of 249 scenarios pass, so the
-  display seam changed no M5 board's behaviour.
+- The same suite on the M5StickS3 binary: 274 of 274 scenarios pass on the
+  rebased tree, so the display seam changed no M5 board's behaviour.
 - `python3 tools/pre_review.py --base origin/master`: 13 of 13 gates.
   `sh sim/scripts/check-doc-tokens.sh` and
   `python3 tools/check_doc_citations.py` are clean.
