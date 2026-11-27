@@ -500,4 +500,3 @@ measurement against the old budget and leaves the actual growth unsaid.
 - Vendor documents were fetched and read page by page: Q76 V1.1 (107 numbered
   pages), Q29 V1.2 (111), UC R1.5 (153). Every checksum the review relies on was
   recomputed independently in Python.
-
