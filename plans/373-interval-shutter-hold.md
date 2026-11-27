@@ -84,13 +84,13 @@ is dead time in the shot cycle.
 
 | Family | Driver | Press | Release | Write flag | Shutter value | Source |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| Fujifilm Basic and Secure | `Fujifilm` | `{01 00}` then `{02 00}` | `{01 00}` then `{00 00}` | response | Honours. `2` is full press, `0` is release, so the value is how long the body sees full press. | `lib/furble/Fujifilm.cpp:178-195`; `docs/camera-research/fuji-canon-nikon.md:107-113`; `docs/camera-research/parity-matrix.md:312-313` |
+| Fujifilm Basic and Secure | `Fujifilm` | `{01 00}` then `{02 00}` | `{01 00}` then `{00 00}` | response | Honours. `2` is full press, `0` is release, so the value is how long the body sees full press. | `lib/furble/Fujifilm.cpp:178-195`; `lib/furble/protocol/FujifilmProtocol.cpp:144-158`; `docs/camera-research/fuji-canon-nikon.md:107-113`; `docs/camera-research/parity-matrix.md:312-313` |
 | Canon EOS Remote | `CanonEOSRemote` | `{8c}` | `{0c}` | response | Honours. Separate press and release bytes. | `lib/furble/CanonEOSRemote.cpp:69-79`; `docs/camera-research/parity-matrix.md:318` |
 | Canon EOS Smart | `CanonEOSSmart` | `{00 01}` | `{00 02}` | no response | Honours. Separate press and release bytes. Both can share one connection event because neither waits for an ATT response. | `lib/furble/CanonEOSSmart.cpp:194-202`; `docs/camera-research/fuji-canon-nikon.md:296-298`; `docs/camera-research/parity-matrix.md:317` |
 | Nikon Remote | `NikonRemote` | `{02 02}` short press | `{02 00}`, a documented no-op | response | Ignores. The press completes the capture on its own. Nikon also states the ML-L7 shutter cannot be held for burst capture. | `lib/furble/NikonRemote.cpp:89-97`; `docs/camera-research/fuji-canon-nikon.md:421-423`; `docs/camera-research/fuji-canon-nikon.md:367-372`; `docs/camera-research/parity-matrix.md:319-320` |
 | Nikon Smart | `NikonSmart` | nothing | nothing | n/a | Ignores. The mode cannot become active over BLE. | `lib/furble/NikonSmart.cpp:167-181`; `docs/camera-research/parity-matrix.md:321` |
 | Sony | `Sony` | `0x0901` full down | `0x0801` full up | response | Honours. Full down and full up. | `lib/furble/Sony.cpp:173-183`; `lib/furble/Sony.h:124-125`; `docs/camera-research/sony-lumix-dji.md:135-136`; `docs/camera-research/parity-matrix.md:322` |
-| LUMIX | `Lumix` | opcode `04` | opcode `05` | response | Honours. ShutterOn and ShutterOff inside the started session. | `lib/furble/Lumix.cpp:273-284`, `lib/furble/Lumix.cpp:322-328`; `docs/camera-research/sony-lumix-dji.md:282-283`; `docs/camera-research/parity-matrix.md:323` |
+| LUMIX | `Lumix` | opcode `04` | opcode `05` | response | Honours. ShutterOn and ShutterOff inside the started session. | `lib/furble/Lumix.cpp:273-284`, `lib/furble/Lumix.cpp:322-328`, `lib/furble/Lumix.h:96-97`; `docs/camera-research/sony-lumix-dji.md:282-283`; `docs/camera-research/parity-matrix.md:323` |
 | Ricoh | `Ricoh` | `{01 01}` capture with AF | logs and returns | response | Ignores. Single-write capture. | `lib/furble/Ricoh.cpp:448-458`; `docs/camera-research/parity-matrix.md:314-316`; `docs/settings-and-controls.md:232-233` |
 | DJI Osmo Action | `DJIOsmo` | record toggle | logs and returns | n/a | Ignores. No still capture on this path. | `lib/furble/DJIOsmo.cpp:447-462`; `docs/camera-research/parity-matrix.md:324` |
 | FauxNY | `FauxNY` | logs | logs | n/a | Ignores. Test camera. | `lib/furble/FauxNY.cpp:56-70` |
@@ -103,12 +103,15 @@ the shutter is held per frame" in `docs/settings-and-controls.md:225` and
 
 ## Why 400 ms is rejected
 
-**It has no source.** The fork commit cites issue `#208` as the reason the value
-is "long enough for the camera to focus and fire". `gkoh/furble#208` is
-"Fujifilm firmware update (July 2025) breaks furble connectivity": pairing,
-bonding and rotated Bluetooth addresses. It says nothing about shutter timing.
-The same commit bundles an unrelated AF-ON label rename, so the number arrived
-with a UI preference rather than with a measurement.
+**It has no source.** The only reason the fork gives is a header comment in the
+same commit: "Long enough for the camera to focus and fire, see #208", at
+`zhuimeng2026-hub/furble` `include/interval.h` lines 20 to 24 of `78a9a7b5`.
+`gkoh/furble#208` is "Fujifilm firmware update (July 2025) breaks furble
+connectivity": pairing, bonding and rotated Bluetooth addresses. It says
+nothing about shutter timing, so the citation does not support the number. The
+commit message adds no reference of its own, and the same commit bundles an
+unrelated AF-ON label rename, so the value arrived with a UI preference rather
+than with a measurement.
 
 **It is wrong on Ricoh, DJI and Nikon.** Those three read the press as the whole
 capture and ignore the release, so 400 ms adds 370 ms of dead time to every shot
@@ -165,8 +168,8 @@ default cannot simply be changed:
 - So a v2 to v3 migration has exactly two defensible rules and cannot have both:
   keep every stored 30 ms, which is safe and reaches no one, or rewrite every
   stored 30 ms, which reaches everyone and destroys an explicit choice. The fork
-  chose the second, which breaks the `plans/` rule to keep a user override
-  intact.
+  chose the second, which breaks `plans/README.md:5-6`: defaults keep current
+  behavior.
 - A future default change would first need a v3 layout with an explicit "user
   set this" bit written on the first spinner edit, and even then the v2 to v3
   step still has to pick one of the two rules above.
@@ -206,7 +209,12 @@ One real case reopens this, and nothing else does:
 
 No behaviour change, so no doc change is required by the documentation mandate.
 `docs/settings-and-controls.md:225` and `docs/wiki/Settings-Reference.md:215`
-already state the shipped default and agree with `include/interval.h:11`.
+already state the shipped default and agree with `include/interval.h:11`. That
+agreement was verified by reading, because no gate compares the three:
+`tests/host/settings_table_test.cpp:294-298` reads only
+`src/FurbleSettings.cpp` and `include/CLAUDE.md`, and
+`tools/check_settings_contracts.py` reports the INTERVAL default as an
+unresolved aggregate, so its documentation comparison marks the row unverified.
 `docs/supported-hardware.md` makes no claim about the intervalometer value and
 does not need to change. `docs/ui-walkthrough.md:414-423` describes the Shutter
 row without a number, and no UI label changes.
