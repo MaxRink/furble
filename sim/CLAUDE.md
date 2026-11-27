@@ -1279,15 +1279,22 @@ reads `mqtt.retry_delay`.
   so the production no-driver boot is exercised: no GPS task, an absent
   receiver from the shared status word, and no crash record.
   `e2e/gps-uart-install-failure.txt` is the contract scenario.
-- The virtual u-blox M10 (`seed gps_model m10|m10-mia`) is a UBX state
-  machine with RAM, BBR and default layers, the M10 VALSET validity rules,
+- The virtual u-blox receiver (`seed gps_model m10|m10-mia|f10`) is a UBX
+  state machine with RAM, BBR and default layers, the VALSET validity rules,
   MON-VER, RXM-PMREQ standby, CFG-RST, UPD-SOS, and data sheet start times and
   currents. It owns no clock or UART: the fake feeds it bytes and asks it for
   epochs, so the host suite drives the same object. Every rule and figure cites
   plan 321; undocumented behaviour (warm start time, the flashless SOS answer,
   the byte that wakes a UART standby) is marked as an assumption in the source.
   `m10.uart_wakes` counts standby wakes caused by a received byte;
-  `gps-ubx-standby` asserts it stays 0.
+  `gps-ubx-standby` asserts it stays 0. `f10` is the dual-band variant: it
+  has the four L5 signal keys, refuses a plan that splits a constellation's
+  bands, and has no GLONASS key and no CFG-PM key at all, so those writes
+  NAK exactly as the documents say. `f10-unnamed` is the same firmware behind
+  a MON-VER module string furble does not know, which is what the capability
+  probe has to settle. `gps-ubx-dual-band`, `gps-ubx-dual-band-unnamed`,
+  `gps-ubx-dual-band-glonass-refused` and `gps-ubx-l1-only-refuses-l5` are
+  the four contract scenarios.
   Receiver detection writes up to two MON-VER polls at GPS start, so a scenario
   that asserts `uart.count 0` must clear the journal after detection settles.
   `seed gps_m10_backup` gives the modelled board a V_BCKP supply, which

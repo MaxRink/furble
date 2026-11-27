@@ -62,6 +62,7 @@ marked where one exists:
 - The AT6668 protocol revision and the retired AT6558 current proxy,
   at6668.md
 - The MIA-M10Q default constellation, ublox-mia-m10q.md
+- The L5 signal keys and the band capability, ublox-neo-f10n.md
 
 ## Support status
 
@@ -115,6 +116,7 @@ page names.
 | CASIC AT6668 | [at6668.md](at6668.md) | shipped | GNSS receiver in the M5 GPS unit | `src/FurbleGPS.cpp`, `lib/furble/protocol/GpsCasic.cpp` | DS-AT6668 V1.4, CASIC R6, CASIC V4.2.0.3 |
 | u-blox MAX-M10S | [ublox-max-m10s.md](ublox-max-m10s.md) | shipped, hardware untested | GNSS receiver, ROM SPG 5.10 | `lib/furble/protocol/GpsUbx.h` | UBX-21035062 R03, UBX-20035208 R08 |
 | u-blox MIA-M10Q | [ublox-mia-m10q.md](ublox-mia-m10q.md) | shipped, hardware untested | GNSS module variant, same ROM | `lib/furble/protocol/GpsUbx.h` | UBX-22015849 R08, UBX-21028173 R05 |
+| u-blox NEO-F10N | [ublox-neo-f10n.md](ublox-neo-f10n.md) | supported, hardware untested | L1/L5 dual-band GNSS receiver, ROM SPG 6.00 | `lib/furble/protocol/GpsUbx.h` | UBX-23002975 R02, UBX-23002117 R05, UBXDOC-963802114-12193 R04 |
 | Sitronix ST7789 and ST7789V2 | [st7789.md](st7789.md) | board support | Panel on the StickS3 and most M5 boards | M5GFX panel, `src/FurbleUI.cpp` | V1.3 and V1.0 |
 | ILITEK ILI934x | [ili934x.md](ili934x.md) | board support | Panel on the Core2 and the Core | M5GFX panel, `src/FurbleUI.cpp` | ILI9342C V101 |
 | Sino Wealth SH1106 | [sh1106.md](sh1106.md) | future | OLED for the T-Beam Supreme profile | none yet | none found, a distributor mirror only |

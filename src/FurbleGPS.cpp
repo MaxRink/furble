@@ -1752,6 +1752,19 @@ void GPS::serviceConfig(void) {
     applyConfiguration();
   }
 
+#if FURBLE_GPS_L5
+  if ((getBackend() == backend_t::UBX)
+      && (m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING)) {
+    // Which signal bands the receiver implements is a question, not a guess.
+    // The configuration is built only once the answer is in, and a receiver
+    // that never answers stays on L1.
+    if (serviceCaps(Platform::getInstance().tick())) {
+      applyConfiguration();
+    }
+    return;
+  }
+#endif
+
   if (m_ConfigInFlight.has_value()) {
     const uint32_t now = Platform::getInstance().tick();
     if ((now - m_ConfigSent) < configAckTimeout()) {
@@ -1783,6 +1796,15 @@ void GPS::serviceConfig(void) {
 
 void GPS::applyConfiguration(void) {
   if (getBackend() == backend_t::UBX) {
+#if FURBLE_GPS_L5
+    if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::IDLE)
+        || (m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING)) {
+      // Ask before writing. serviceConfig() calls back here once the answer is
+      // in, and a receiver that ignores the poll stays on L1.
+      serviceCaps(Platform::getInstance().tick());
+      return;
+    }
+#endif
     configureUbx();
     return;
   }

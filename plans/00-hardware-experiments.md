@@ -121,7 +121,7 @@ Expected outcomes:
    GPS Data page. The NMEA checksum is the XOR of all characters between `$` and
    `*`. Send exactly `$PCAS12,10*<CS>\r\n`.
 2. Log every received NMEA line for 60 s around the send. `GPS::serviceSerial` at
-   `src/FurbleGPS.cpp:3099-3138` is the hook. Add an `ESP_LOGI` of the raw buffer.
+   `src/FurbleGPS.cpp:3121-3160` is the hook. Add an `ESP_LOGI` of the raw buffer.
 3. Observe the receive stream.
 
 Expected outcomes:

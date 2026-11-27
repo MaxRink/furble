@@ -244,8 +244,14 @@ half of the same rule: `$PCAS10` only inside `GPS::restart()`, no hand-written
 `$PCAS03` in the driver, and `$PCAS04` bounded at the seven values both CASIC
 revisions agree on. `gps_ubx_fuzz` checks `Ubx::Stream` against a reference
 splitter built on `scan()`, intact-frame delivery, and that chunked demux
-input yields the same frames and NMEA text as one-shot input. It runs under
-ASan and UBSan like every fuzz target.
+input yields the same frames and NMEA text as one-shot input, and it builds
+a plan from a random request so any key the request's capability says the
+receiver lacks fails the run. `testDualBand()` covers the four L5 key ids,
+`capsFromVersion()`, both `maxRateHz()` tables, the dual-band plan and the
+`CapsProbe` state machine; `testDualBandVariant()` drives both virtual
+receiver variants, including the NAK an L1-only part returns for an L5 key
+and the refusal a band-splitting plan gets. They run under ASan and UBSan
+like every fuzz target.
 
 ## WebUI and companion contracts
 

@@ -69,9 +69,9 @@ useful settings).
 
 One helper, one flag, and the per-call-site workarounds removed:
 
-- `armIntervalTimer()` (`src/FurbleUI.cpp:7795`) is the single expression of
+- `armIntervalTimer()` (`src/FurbleUI.cpp:7813-7827`) is the single expression of
   "due on the next pass": `lv_timer_resume()` then `lv_timer_ready()`.
-- `transition_pending` (`src/FurbleUI.cpp:7863`) is the "is there a next
+- `transition_pending` (`src/FurbleUI.cpp:7881-7883`) is the "is there a next
   transition" answer. Only FINISHED clears it (`src/FurbleUI.cpp:7860`), and the
   tail reads it once (`src/FurbleUI.cpp:7871`) to choose between a period and an
   armed timer.

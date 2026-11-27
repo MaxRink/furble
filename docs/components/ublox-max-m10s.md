@@ -35,19 +35,20 @@ describe the receiver as shipped, which is not always the ROM default.
 
 | # | Fact | Document and section | Code | State |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | A UBX frame is 0xB5 0x62, a class, an id, a two-byte length and a payload | IFD 3.2 UBX frame structure | `lib/furble/protocol/GpsUbx.h:26`, `:27`, `:28` | VERIFIED |
-| 2 | The checksum is two bytes over class, id, length and payload | IFD 3.4 UBX checksum | `lib/furble/protocol/GpsUbx.h:29` | VERIFIED |
-| 3 | The message classes used are NAV 0x01, RXM 0x02, ACK 0x05, CFG 0x06, UPD 0x09 and MON 0x0A | IFD 3.8 UBX messages overview | `lib/furble/protocol/GpsUbx.h:42` to `:47` | VERIFIED |
-| 4 | UBX-ACK-ACK is class 0x05, id 0x01 and UBX-ACK-NAK is class 0x05, id 0x00 | IFD 3.9.1 and 3.9.2 | `lib/furble/protocol/GpsUbx.h:49`, `:50` | VERIFIED |
-| 5 | UBX-CFG-RST is 0x06 0x04, UBX-CFG-VALDEL 0x06 0x8C, UBX-CFG-VALGET 0x06 0x8B and UBX-CFG-VALSET 0x06 0x8A | IFD 3.10.2 to 3.10.5 | `lib/furble/protocol/GpsUbx.h:51` to `:54` | VERIFIED |
-| 6 | UBX-MON-VER is 0x0A 0x04, UBX-NAV-PVT is 0x01 0x07 and UBX-NAV-SAT is 0x01 0x35 | IFD 3.14.9, 3.15.11, 3.15.13 | `lib/furble/protocol/GpsUbx.h:55` to `:58` | VERIFIED |
-| 7 | UBX-RXM-PMREQ is class 0x02, id 0x41, the power management request used for standby. The payload is a version byte, a 32-bit duration in ms capped at 12 days where 0 waits for a wakeup pin, a flags word with `backup` in bit 1 and `force` in bit 2, and a wakeup source word with `uartrx` in bit 3, `extint0` in bit 5, `extint1` in bit 6 and `spics` in bit 7 | IFD 3.16.6, page 116 | `lib/furble/protocol/GpsUbx.h:57`, `src/FurbleGPS.cpp` standby path | VERIFIED |
-| 8 | UBX-UPD-SOS is class 0x09, id 0x14, and carries five forms: poll backup restore status with no payload, create backup in flash and clear backup in flash with a one-byte command 0 and three reserved bytes, and the two receiver answers | IFD 3.19.1, page 122 | `lib/furble/protocol/GpsUbx.h:58`, `src/FurbleGPS.cpp` save-on-shutdown path | VERIFIED |
-| 9 | The configuration layers are RAM, BBR, flash and default, stacked by priority, and the VALSET `layers` byte selects them with bit 0 RAM, bit 1 BBR and bit 2 flash | IFD 4.3, page 125 and the `layers` field in IFD 3.10.5, page 55 | `lib/furble/protocol/GpsUbx.h:60` to `:63`, written as `LAYER_RAM \| LAYER_BBR` in `src/FurbleGPSUbx.cpp` | VERIFIED |
+| 1 | A UBX frame is 0xB5 0x62, a class, an id, a two-byte length and a payload | IFD 3.2 UBX frame structure | `lib/furble/protocol/GpsUbx.h:33`, `:27`, `:28` | VERIFIED |
+| 2 | The checksum is two bytes over class, id, length and payload | IFD 3.4 UBX checksum | `lib/furble/protocol/GpsUbx.h:36` | VERIFIED |
+| 3 | The message classes used are NAV 0x01, RXM 0x02, ACK 0x05, CFG 0x06, UPD 0x09 and MON 0x0A | IFD 3.8 UBX messages overview | `lib/furble/protocol/GpsUbx.h:49` to `:47` | VERIFIED |
+| 4 | UBX-ACK-ACK is class 0x05, id 0x01 and UBX-ACK-NAK is class 0x05, id 0x00 | IFD 3.9.1 and 3.9.2 | `lib/furble/protocol/GpsUbx.h:56`, `:50` | VERIFIED |
+| 5 | UBX-CFG-RST is 0x06 0x04, UBX-CFG-VALDEL 0x06 0x8C, UBX-CFG-VALGET 0x06 0x8B and UBX-CFG-VALSET 0x06 0x8A | IFD 3.10.2 to 3.10.5 | `lib/furble/protocol/GpsUbx.h:58` to `:54` | VERIFIED |
+| 6 | UBX-MON-VER is 0x0A 0x04, UBX-NAV-PVT is 0x01 0x07 and UBX-NAV-SAT is 0x01 0x35 | IFD 3.14.9, 3.15.11, 3.15.13 | `lib/furble/protocol/GpsUbx.h:62` to `:58` | VERIFIED |
+| 7 | UBX-RXM-PMREQ is class 0x02, id 0x41, the power management request used for standby. The payload is a version byte, a 32-bit duration in ms capped at 12 days where 0 waits for a wakeup pin, a flags word with `backup` in bit 1 and `force` in bit 2, and a wakeup source word with `uartrx` in bit 3, `extint0` in bit 5, `extint1` in bit 6 and `spics` in bit 7 | IFD 3.16.6, page 116 | `lib/furble/protocol/GpsUbx.h:64`, `src/FurbleGPS.cpp` standby path | VERIFIED |
+| 8 | UBX-UPD-SOS is class 0x09, id 0x14, and carries five forms: poll backup restore status with no payload, create backup in flash and clear backup in flash with a one-byte command 0 and three reserved bytes, and the two receiver answers | IFD 3.19.1, page 122 | `lib/furble/protocol/GpsUbx.h:65`, `src/FurbleGPS.cpp` save-on-shutdown path | VERIFIED |
+| 9 | The configuration layers are RAM, BBR, flash and default, stacked by priority, and the VALSET `layers` byte selects them with bit 0 RAM, bit 1 BBR and bit 2 flash | IFD 4.3, page 125 and the `layers` field in IFD 3.10.5, page 55 | `lib/furble/protocol/GpsUbx.h:67` to `:63`, written as `LAYER_RAM \| LAYER_BBR` in `src/FurbleGPSUbx.cpp` | VERIFIED |
 | 10 | A configuration that has to survive a rail cut cannot be stored in flash on this module. The integration manual's table of memories lists only RAM and BBR, and the IFD says the flash layer exists only where there is a usable external flash. No document asserts the absence of external flash, so this is an inference from the omission, not a quoted statement | IM-MAX Table 2 page 9; IFD 4.3 page 125 | `src/FurbleGPSUbx.cpp` configuration path | UNVERIFIED |
 | 11 | The module runs its UART at 9600 baud by default, which the integration manual calls different from the firmware default, kept for backwards compatibility with earlier MAX generations. The data sheet states the same in its default interface settings | IM-MAX 2.1.4 pages 11 to 12 and 3.2.1 pages 24 to 25, with Table 16 page 25; DS-MAX 5.3 page 16, Table 20 | `src/FurbleSettings.cpp` GPS baud default | VERIFIED |
-| 12 | The key `MSGOUT_NAV_PVT_UART1` is 0x20910007 and defaults to 0, so UBX-NAV-PVT is not sent on UART1 until furble enables it | IFD 4.9.11, Table 19 page 138 for the key, and the CFG-MSGOUT defaults in Table 69 page 166 with its caption on page 168 | `lib/furble/protocol/GpsUbx.h:106` | VERIFIED |
-| 13 | ROM SPG 5.10 refuses power save combined with BeiDou B1C: a PSM configuration, both cyclic tracking and on/off, that includes B1C is rejected by the receiver, which answers with an explanatory ERROR message. The workaround the note gives is B1I with PSM. The same section also records that the CS pin is not a wake-up source in PSM | RN-M10 section 7 page 15, and section 7.2 page 15 in particular | `lib/furble/protocol/GpsUbx.h:430` `psm_refused`, set in `GpsUbx.cpp` and reported at `src/FurbleGPSUbx.cpp:158` | VERIFIED |
+| 12 | The key `MSGOUT_NAV_PVT_UART1` is 0x20910007 and defaults to 0, so UBX-NAV-PVT is not sent on UART1 until furble enables it | IFD 4.9.11, Table 19 page 138 for the key, and the CFG-MSGOUT defaults in Table 69 page 166 with its caption on page 168 | `lib/furble/protocol/GpsUbx.h:117` | VERIFIED |
+| 13 | ROM SPG 5.10 refuses power save combined with BeiDou B1C: a PSM configuration, both cyclic tracking and on/off, that includes B1C is rejected by the receiver, which answers with an explanatory ERROR message. The workaround the note gives is B1I with PSM. The same section also records that the CS pin is not a wake-up source in PSM | RN-M10 section 7 page 15, and section 7.2 page 15 in particular | `lib/furble/protocol/GpsUbx.h:514` `psm_refused`, set in `GpsUbx.cpp` and reported at `src/FurbleGPSUbx.cpp:237` | VERIFIED |
+| 14 | The M10 firmware has no L5 signal key: its CFG-SIGNAL table ends at GLONASS L1. A request that names a key the firmware does not know is refused with UBX-ACK-NAK, and one unknown key refuses the whole VALSET it travels in. So furble asks the receiver which bands it has, with a CFG-VALGET at the default layer, before it builds any signal batch, and a receiver that does not answer is left on L1 | IFD 4.9.21 page 152, Table 42; IFD 3.10.4 page 53 for the refusal; IFD 3.10.5 page 55 for the whole-message rule | the four L5 ids at `lib/furble/protocol/GpsUbx.h:93`, `:98`, `:102` and `:106`; `Ubx::CapsProbe` at `lib/furble/protocol/GpsUbx.h:657`; `GPS::serviceCaps` at `src/FurbleGPSUbx.cpp:137` | VERIFIED |
 
 ## What the module adds over the protocol
 
@@ -57,11 +58,12 @@ constellation mask and the detection rule are protocol facts and live on the
 
 | Item | Value | Citation |
 | :--- | :--- | :--- |
-| Detection | A u-blox receiver answers MON-VER whatever its configuration, and a receiver that is not u-blox ignores the frame. After two unanswered polls, 1000 ms each, the receiver is treated as something else and keeps the NMEA path | `lib/furble/protocol/GpsUbx.h:456-486` |
-| Why a whole second per poll | The answer is about 190 bytes queued behind up to a second of NMEA at 9600 baud | `lib/furble/protocol/GpsUbx.h:459-465` |
-| Flash | The module has no external flash, so UPD-SOS create is expected to be refused and a configuration that must survive a power cycle has to live in the backup domain or be reapplied | `lib/furble/protocol/GpsUbx.h:270-274`, IFD 4.3 |
-| Power save and BeiDou B1C | PSM plus BeiDou B1C is rejected by the ROM, which is item 7.2 of the release notes and the reason `psm_refused` exists | RN-M10 section 7.2, page 15, `lib/furble/protocol/GpsUbx.h:401-405` |
+| Detection | A u-blox receiver answers MON-VER whatever its configuration, and a receiver that is not u-blox ignores the frame. After two unanswered polls, 1000 ms each, the receiver is treated as something else and keeps the NMEA path | `lib/furble/protocol/GpsUbx.h:565-614` |
+| Why a whole second per poll | The answer is about 190 bytes queued behind up to a second of NMEA at 9600 baud | `lib/furble/protocol/GpsUbx.h:568-574` |
+| Flash | The module has no external flash, so UPD-SOS create is expected to be refused and a configuration that must survive a power cycle has to live in the backup domain or be reapplied | `lib/furble/protocol/GpsUbx.h:281-285`, IFD 4.3 |
+| Power save and BeiDou B1C | PSM plus BeiDou B1C is rejected by the ROM, which is item 7.2 of the release notes and the reason `psm_refused` exists | RN-M10 section 7.2, page 15, `lib/furble/protocol/GpsUbx.h:412-416` |
 | Default baud | 9600 | IM-MAX 2.1.4 |
+| Signal bands | L1 only. The four L5 keys belong to the F10 firmware and are never written here, which is what the capability probe establishes before the first signal batch. The dual-band counterpart is [ublox-neo-f10n.md](ublox-neo-f10n.md) | `lib/furble/protocol/GpsUbx.h:93`, `:657`; IFD 4.9.21 page 152, Table 42 |
 
 ## Where the code implements it
 
@@ -69,8 +71,8 @@ constellation mask and the detection rule are protocol facts and live on the
   id with its IFD section.
 - `lib/furble/protocol/GpsUbx.cpp`: encoder and parser, and the power-save plan
   that mirrors the errata in row 13.
-- `src/FurbleGPSUbx.cpp:72`: the write path with a bounded transmit wait.
-- `src/FurbleGPSUbx.cpp:158`: the refusal log when the plan sets
+- `src/FurbleGPSUbx.cpp:79`: the write path with a bounded transmit wait.
+- `src/FurbleGPSUbx.cpp:237`: the refusal log when the plan sets
   `psm_refused`.
 - `tests/host/gps_ubx_m10_test.cpp`: the M10 specific cases.
 
@@ -114,6 +116,7 @@ constellation mask and the detection rule are protocol facts and live on the
 | C-28b | The acquisition, tracking and power-save current figures | DS-MAX UBX-20035208 current consumption tables | open, the datasheet was read for its revision only |
 | C-28c | The AssistNow Offline and Online sequences | IFD R03 AssistNow sections plus the AssistNow service description | open, only AssistNow Autonomous is used |
 | C-28d | Whether UPD-SOS create is refused on this module | DS-MAX flash file system section, and a bench attempt | open, recorded as an expectation |
+| C-28e | The capability probe on a real MAX-M10S: the NAK it returns for the four L5 keys, and that the driver then writes the L1 batch with no L5 key in it | IFD 3.10.4 page 53, plus a bench capture | open, the simulator covers it (`gps-ubx-l1-only-refuses-l5`) |
 
 ## Redistribution
 

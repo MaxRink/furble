@@ -164,6 +164,10 @@ void testKeys() {
       {Ubx::Key::NAVSPG_DYNMODEL,      1},
       {Ubx::Key::SIGNAL_GPS_ENA,       1},
       {Ubx::Key::SIGNAL_GPS_L1CA,      1},
+      {Ubx::Key::SIGNAL_GPS_L5,        1},
+      {Ubx::Key::SIGNAL_GAL_E5A,       1},
+      {Ubx::Key::SIGNAL_BDS_B2A,       1},
+      {Ubx::Key::SIGNAL_QZSS_L5,       1},
       {Ubx::Key::SIGNAL_SBAS_ENA,      1},
       {Ubx::Key::SIGNAL_SBAS_L1CA,     1},
       {Ubx::Key::SIGNAL_GAL_ENA,       1},
@@ -491,7 +495,7 @@ void testPlan() {
         "platform to dynamic model");
 
   // Nothing set: NAV-PVT, ANA and FULL power; everything else deleted from BBR.
-  Ubx::Request none = {0, 0xff, 0, 0, Ubx::PSM_OFF, 10, true};
+  Ubx::Request none = {0, 0xff, 0, 0, Ubx::PSM_OFF, 10, true, Ubx::CAPS_M10};
   Ubx::Plan plan = Ubx::plan(none);
   check(find(plan.base, Ubx::Key::MSGOUT_NAV_PVT_UART1) == 1
             && find(plan.base, Ubx::Key::ANA_USE_ANA) == 1 && plan.signals.empty()
@@ -504,7 +508,7 @@ void testPlan() {
   check(plan.power.back().key == Ubx::Key::PM_OPERATEMODE, "OPERATEMODE is last");
 
   // Four GNSS: B1C, QZSS and SBAS off, rate clamped to 4 Hz.
-  Ubx::Request four = {200, 3, 0x0f, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, false};
+  Ubx::Request four = {200, 3, 0x0f, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, false, Ubx::CAPS_M10};
   plan = Ubx::plan(four);
   check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1) == 0
             && find(plan.signals, Ubx::Key::SIGNAL_BDS_B1C) == 1
@@ -524,13 +528,13 @@ void testPlan() {
   check(plan.psm_refused && plan.psm == Ubx::PSM_OFF
             && find(plan.power, Ubx::Key::PM_OPERATEMODE) == 0,
         "PSM refused with B1C");
-  Ubx::Request cyclic = {200, 0xff, 0, 0, Ubx::PSM_CYCLIC, 10, true};
+  Ubx::Request cyclic = {200, 0xff, 0, 0, Ubx::PSM_CYCLIC, 10, true, Ubx::CAPS_M10};
   plan = Ubx::plan(cyclic);
   check(!plan.psm_refused && find(plan.power, Ubx::Key::PM_OPERATEMODE) == 2 && plan.rate_ms == 500,
         "PSMCT at 2 Hz from a fast request");
   cyclic.rate_ms = 0;
   check(Ubx::plan(cyclic).rate_ms == 1000, "PSMCT defaults to 1 Hz");
-  Ubx::Request onoff = {0, 0xff, 0, 0, Ubx::PSM_ON_OFF, 3, true};
+  Ubx::Request onoff = {0, 0xff, 0, 0, Ubx::PSM_ON_OFF, 3, true, Ubx::CAPS_M10};
   plan = Ubx::plan(onoff);
   check(find(plan.power, Ubx::Key::PM_POSUPDATEPERIOD) == 5
             && find(plan.power, Ubx::Key::PM_OPERATEMODE) == 1
@@ -540,7 +544,8 @@ void testPlan() {
   check(Ubx::plan(onoff).psm == Ubx::PSM_OFF, "unknown PSM value is off");
 
   // An invalid mask changes no signal and keeps the preset.
-  Ubx::Request bad = {0, 0xff, Ubx::GNSS_MASK_QZSS, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, true};
+  Ubx::Request bad = {0,  0xff, Ubx::GNSS_MASK_QZSS, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF,
+                      10, true, Ubx::CAPS_M10};
   plan = Ubx::plan(bad);
   check(plan.gnss_refused && plan.signals.empty() && !listed(plan.unset, Ubx::Key::SIGNAL_GPS_ENA),
         "invalid mask leaves the signals alone");
@@ -552,7 +557,8 @@ void testPlan() {
                         static_cast<uint8_t>(Ubx::GNSS_MASK_ALL & ~Ubx::GNSS_MASK_GAL),
                         Ubx::PSM_OFF,
                         10,
-                        true};
+                        true,
+                        Ubx::CAPS_M10};
   plan = Ubx::plan(casic);
   check(find(plan.signals, Ubx::Key::SIGNAL_GAL_ENA) == 99
             && listed(plan.unset, Ubx::Key::SIGNAL_GAL_ENA)
@@ -639,13 +645,224 @@ void testDemux() {
 
 }  // namespace
 
+/**
+ * The dual-band model: the L5 signal keys, what decides them, and what furble
+ * refuses on a receiver that cannot honor a request.
+ *
+ * Sources: the four L5 key ids and their owning constellations (u-blox F10 SPG
+ * 6.00 interface description UBX-23002975 R02, 4.9.20 pages 158 and 159, Table
+ * 46); the rule that both bands of a constellation run together (NEO-F10N
+ * integration manual UBXDOC-963802114-12193 R04, 2.1.3 page 10); the signals a
+ * NEO-F10N has, B1C and B2a with no B1I (data sheet UBX-23002117 R05, Table 4
+ * page 5); its rate ceiling, 20 Hz for one constellation and 10 Hz for more
+ * (data sheet Table 2 and Table 3 page 5); and its missing power save modes
+ * (integration manual, appendix migration table, page 64).
+ */
+void testDualBand() {
+  check(Ubx::l5Keys().size() == 4 && Ubx::l5Keys()[0] == 0x10310004
+            && Ubx::l5Keys()[1] == 0x10310009 && Ubx::l5Keys()[2] == 0x10310028
+            && Ubx::l5Keys()[3] == 0x10310017,
+        "the four L5 signal keys are the F10 Table 46 ids");
+  check(Ubx::isL5Key(Ubx::Key::SIGNAL_GPS_L5) && Ubx::isL5Key(Ubx::Key::SIGNAL_QZSS_L5)
+            && !Ubx::isL5Key(Ubx::Key::SIGNAL_GPS_L1CA) && !Ubx::isL5Key(Ubx::Key::SIGNAL_BDS_B1C),
+        "isL5Key names only the L5 band keys");
+
+  // MON-VER names the family: protocol 34.10 is the M10 firmware, 40.00 the
+  // F10 one (IFD 1.2 page 10, F10-IFD 1.2 page 10).
+  Ubx::MonVer ver;
+  ver.sw = "ROM SPG 5.10 (7b202e)";
+  ver.extensions = {"FWVER=SPG 5.10", "PROTVER=34.10", "MOD=MAX-M10S"};
+  Ubx::Caps caps = Ubx::capsFromVersion(ver);
+  check(caps.family == Ubx::FAMILY_M10 && caps.bands == Ubx::BAND_L1 && caps.psm && caps.glo,
+        "an M10 MON-VER names an L1 receiver with power save and GLONASS");
+  ver.sw = "ROM SPG 6.00 (0a1b2c)";
+  ver.extensions = {"FWVER=SPG 6.00", "PROTVER=40.00", "MOD=NEO-F10N"};
+  caps = Ubx::capsFromVersion(ver);
+  check(caps.family == Ubx::FAMILY_F10 && caps.dualBand() && !caps.psm && !caps.glo,
+        "an F10 MON-VER names a dual-band receiver without power save or GLONASS");
+  // The module name is enough when PROTVER is missing, and an unnamed part
+  // grants nothing new.
+  ver.extensions = {"FWVER=", "MOD=NEO-F10N"};
+  check(Ubx::capsFromVersion(ver).family == Ubx::FAMILY_F10, "MOD names the family");
+  ver.sw = "ROM SPG 4.04 (000000)";
+  ver.extensions = {"PROTVER=38.10", "MOD=NEO-M9N"};
+  caps = Ubx::capsFromVersion(ver);
+  check(caps.family == Ubx::FAMILY_UNKNOWN && caps.bands == Ubx::BAND_L1 && caps.psm && caps.glo,
+        "an unnamed firmware keeps the keys furble always wrote and gains no L5");
+
+  // A dual-band firmware has no GLONASS key, so the mask is refused before it
+  // is written rather than NAKed (F10-IFD 4.9.20 pages 158 and 159).
+  check(Ubx::gnssValid(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GLO, Ubx::CAPS_M10),
+        "GLONASS is valid on an M10");
+  check(!Ubx::gnssValid(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GLO, Ubx::CAPS_F10),
+        "GLONASS is refused on a dual-band receiver");
+  check(Ubx::gnssValid(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL, Ubx::CAPS_F10),
+        "GPS and Galileo stay valid on a dual-band receiver");
+
+  // The published ceilings: 20 Hz single, 10 Hz multi on the F10; the M10
+  // table is unchanged.
+  check(Ubx::maxRateHz(Ubx::GNSS_MASK_GPS, Ubx::CAPS_F10) == 20,
+        "one constellation on a dual-band receiver reaches 20 Hz");
+  check(Ubx::maxRateHz(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL, Ubx::CAPS_F10) == 10
+            && Ubx::maxRateHz(Ubx::GNSS_MASK_MODULE_DEFAULT, Ubx::CAPS_F10) == 10,
+        "a multi-GNSS dual-band set stops at 10 Hz");
+  check(Ubx::maxRateHz(Ubx::GNSS_MASK_GPS, Ubx::CAPS_M10) == 18
+            && Ubx::maxRateHz(Ubx::GNSS_MASK_MODULE_DEFAULT, Ubx::CAPS_M10) == 3,
+        "the M10 ceilings are unchanged");
+
+  // A dual-band plan writes both bands of each enabled constellation.
+  Ubx::Request dual = {0,
+                       0xff,
+                       Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL,
+                       Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL,
+                       Ubx::PSM_OFF,
+                       10,
+                       true,
+                       Ubx::CAPS_F10};
+  Ubx::Plan plan = Ubx::plan(dual);
+  check(plan.bands == (Ubx::BAND_L1 | Ubx::BAND_L5), "a dual-band plan reports both bands");
+  check(find(plan.signals, Ubx::Key::SIGNAL_GPS_L5) == 1
+            && find(plan.signals, Ubx::Key::SIGNAL_GAL_E5A) == 1,
+        "the enabled constellations get their L5 keys");
+  check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B2A) == 99
+            && listed(plan.unset, Ubx::Key::SIGNAL_BDS_B2A),
+        "an undecided constellation has its L5 keys deleted from BBR");
+  // The F10 firmware has the B1I key; the module has no B1I signal. Writing it
+  // off in the RAM|BBR batch removes the stale value an earlier furble left in
+  // RAM, which would otherwise sit beside B1C = 1 and get the batch refused for
+  // a BeiDou reason. A VALDEL alone would clear BBR only, and the driver sends
+  // deletes after writes, so the zero has to travel in `signals`.
+  check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1) == 0
+            && !listed(plan.unset, Ubx::Key::SIGNAL_BDS_B1),
+        "B1I is written off, not left to a BBR delete, on a dual-band receiver");
+  check(find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 99
+            && !listed(plan.unset, Ubx::Key::SIGNAL_GLO_ENA),
+        "no GLONASS key is named on a dual-band receiver");
+  check(plan.power.empty() && !listed(plan.unset, Ubx::Key::PM_OPERATEMODE)
+            && !listed(plan.unset, Ubx::Key::PM_POSUPDATEPERIOD),
+        "no power save key is written or deleted without a CFG-PM group");
+  check(!plan.b1i_refused, "a request that does not decide BeiDou is not a B1I refusal");
+  // A disabled constellation is switched off by its enable key; both signal
+  // keys stay one, which is how the L1 siblings have always worked.
+  dual.gnss = Ubx::GNSS_MASK_GAL;
+  dual.gnss_set = Ubx::GNSS_MASK_ALL;
+  plan = Ubx::plan(dual);
+  check(find(plan.signals, Ubx::Key::SIGNAL_GPS_ENA) == 0
+            && find(plan.signals, Ubx::Key::SIGNAL_GPS_L5) == 1
+            && find(plan.signals, Ubx::Key::SIGNAL_GPS_L1CA) == 1,
+        "a disabled constellation is switched off by its enable key");
+
+  // BeiDou on a dual-band part is B1C and B2a; asking for it reports B1I.
+  dual.gnss = Ubx::GNSS_MASK_BDS;
+  dual.gnss_set = Ubx::GNSS_MASK_ALL;
+  plan = Ubx::plan(dual);
+  check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1C) == 1
+            && find(plan.signals, Ubx::Key::SIGNAL_BDS_B2A) == 1 && plan.b1i_refused,
+        "BeiDou on a dual-band receiver is B1C and B2a");
+  // The M10 rule that B1C refuses AssistNow Autonomous is an SPG 5.10
+  // statement. The F10 documents state no such exclusion (DS-F10N Table 5 page
+  // 6 lists ANA for GPS and Galileo), so ANA is written as asked.
+  check(plan.ana && find(plan.base, Ubx::Key::ANA_USE_ANA) == 1,
+        "AssistNow Autonomous survives BeiDou on a dual-band receiver");
+
+  // Power save on a receiver that has none is reported, not written.
+  dual.gnss = Ubx::GNSS_MASK_GPS;
+  dual.psm = Ubx::PSM_CYCLIC;
+  plan = Ubx::plan(dual);
+  check(plan.psm_unsupported && plan.psm == Ubx::PSM_OFF && plan.power.empty(),
+        "power save is refused on a receiver without it");
+  dual.psm = Ubx::PSM_OFF;
+
+  // GLONASS on a dual-band part refuses the whole mask and leaves the signals
+  // alone, as any invalid mask does.
+  dual.gnss = Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GLO;
+  plan = Ubx::plan(dual);
+  check(plan.gnss_refused && plan.signals.empty() && plan.bands == 0,
+        "a GLONASS mask on a dual-band receiver configures nothing");
+
+  // The rate ceiling follows the bands, not the mask alone.
+  Ubx::Request fast = {50,
+                       0xff,
+                       Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL,
+                       Ubx::GNSS_MASK_ALL,
+                       Ubx::PSM_OFF,
+                       10,
+                       true,
+                       Ubx::CAPS_F10};
+  plan = Ubx::plan(fast);
+  check(plan.rate_clamped && plan.rate_ms == 100,
+        "20 Hz on a multi-GNSS dual-band set is clamped to 10 Hz");
+  fast.gnss = Ubx::GNSS_MASK_GPS;
+  plan = Ubx::plan(fast);
+  check(!plan.rate_clamped && plan.rate_ms == 50, "20 Hz on one dual-band constellation stands");
+
+  // A request that leaves every constellation alone writes one L1 key, the B1I
+  // off switch a dual-band receiver needs, so it reports L1 and never L5. That
+  // is the contract: bands is what was written.
+  Ubx::Request untouched = {0, 0xff, 0, 0, Ubx::PSM_OFF, 10, true, Ubx::CAPS_F10};
+  plan = Ubx::plan(untouched);
+  bool l5Written = false;
+  for (const auto &item : plan.signals) {
+    l5Written = l5Written || Ubx::isL5Key(item.key);
+  }
+  check(
+      plan.bands == Ubx::BAND_L1 && !l5Written && find(plan.signals, Ubx::Key::SIGNAL_BDS_B1) == 0,
+      "an undecided request writes only the B1I off switch and claims L1");
+  untouched.gnss = Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL;
+  untouched.gnss_set = Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL;
+  plan = Ubx::plan(untouched);
+  check(!plan.signals.empty() && plan.bands == (Ubx::BAND_L1 | Ubx::BAND_L5)
+            && find(plan.signals, Ubx::Key::SIGNAL_GPS_L5) == 1,
+        "a plan that writes signals reports the band it wrote");
+  // A refused mask writes nothing and claims nothing.
+  untouched.gnss = Ubx::GNSS_MASK_GLO;
+  plan = Ubx::plan(untouched);
+  check(plan.gnss_refused && plan.signals.empty() && plan.bands == 0,
+        "a refused mask claims no band");
+
+  // An L1 receiver is never sent an L5 key, not even as a delete.
+  Ubx::Request l1 = {0,  0xff, Ubx::GNSS_MASK_ALL, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF,
+                     10, true, Ubx::CAPS_M10};
+  plan = Ubx::plan(l1);
+  check(plan.bands == Ubx::BAND_L1, "an L1 plan reports L1");
+  bool anyL5 = false;
+  for (const auto &item : plan.signals) {
+    anyL5 = anyL5 || Ubx::isL5Key(item.key);
+  }
+  for (const uint32_t key : plan.unset) {
+    anyL5 = anyL5 || Ubx::isL5Key(key);
+  }
+  check(!anyL5, "an L1 receiver gets no L5 key, written or deleted");
+  check(find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 1 && !plan.power.empty(),
+        "an L1 receiver keeps GLONASS and power save");
+
+  // The capability probe: two polls, then the L1 answer when nothing arrives.
+  Ubx::CapsProbe probe;
+  bool poll = false;
+  check(probe.result() == Ubx::CapsProbe::Result::IDLE, "idle before begin");
+  probe.begin(100);
+  check(probe.service(1099, poll) == Ubx::CapsProbe::Result::WAITING && !poll, "probe waits");
+  check(probe.service(1100, poll) == Ubx::CapsProbe::Result::WAITING && poll, "probe repolls");
+  check(probe.attempts() == 2 && probe.deadline() == 2100, "probe deadline");
+  check(probe.service(2100, poll) == Ubx::CapsProbe::Result::L1 && !probe.l5(),
+        "a silent receiver is L1");
+  check(!probe.answered(), "a timeout is not an answer, so the band stays a guess");
+  probe.begin(0);
+  probe.answered(true);
+  check(probe.service(0, poll) == Ubx::CapsProbe::Result::L5 && probe.l5(),
+        "an answer with the keys is L5");
+  probe.begin(0);
+  probe.answered(false);
+  check(probe.service(0, poll) == Ubx::CapsProbe::Result::L1, "a refused poll is L1");
+}
+
 void testB1cRejections() {
   // BeiDou B1C is the costly case: the ROM release notes refuse AssistNow and
   // power save with it (RN 5.1.5 page 8, RN 7.2 page 15), and the M10Q data
   // sheet lists B1I, not B1C, for AssistNow Autonomous (DS-MIA table 5 page 6).
   // The codec decides B1C when BeiDou and GLONASS are both asked for, because
   // B1I cannot run beside GLONASS L1OF (DS-MIA table 4 note 13, RN 4.3.6).
-  Ubx::Request four = {200, 3, 0x0f, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, true};
+  Ubx::Request four = {200, 3, 0x0f, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, true, Ubx::CAPS_M10};
   Ubx::Plan plan = Ubx::plan(four);
   check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1C) == 1
             && find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 1,
@@ -662,9 +879,14 @@ void testB1cRejections() {
 
   // B1I keeps AssistNow Autonomous and the documented power-save-last order
   // (MAX-M10S integration manual 3.6.2.6).
-  Ubx::Request b1i = {
-      0,  0xff, Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_BDS, Ubx::GNSS_MASK_ALL, Ubx::PSM_CYCLIC,
-      10, true};
+  Ubx::Request b1i = {0,
+                      0xff,
+                      Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_BDS,
+                      Ubx::GNSS_MASK_ALL,
+                      Ubx::PSM_CYCLIC,
+                      10,
+                      true,
+                      Ubx::CAPS_M10};
   plan = Ubx::plan(b1i);
   check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1) == 1
             && find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 0,
@@ -701,6 +923,7 @@ int main() {
   testMonVer();
   testSosAndPmreq();
   testPlan();
+  testDualBand();
   testB1cRejections();
   testSettle();
   testDemux();

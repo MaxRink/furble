@@ -1501,6 +1501,10 @@ void testGPSDiagnostics(void) {
   // and the NAV-SAT wait gives up after its 1.5 s budget.
   gps.backend = Furble::GPS::backend_t::UBX;
   gps.ubx = {};
+  // The firmware starts at CAPS_UNKNOWN: L1 signals, power save and GLONASS
+  // still allowed, because those are the keys it has always written.
+  gps.ubx.bands = 1;
+  gps.ubx.psm_supported = true;
   gps.ubx.software = "ROM SPG 5.10 (7b202e)";
   gps.ubx.hardware = "000A0000";
   const Result bare = runDirect("gps ubx");
@@ -1512,6 +1516,13 @@ void testGPSDiagnostics(void) {
   checkContains(bare.out, "protocol: unknown", "an unreported protocol prints unknown");
   checkContains(bare.out, "pvt_fix: none", "no NAV-PVT prints no fix");
   checkContains(bare.out, "config_verified: pending", "an unread configuration is pending");
+  // The band capability is reported before the configuration, whichever way it
+  // is known, and a receiver that has not been asked says so.
+  checkContains(bare.out, "family: unidentified", "an unnamed firmware prints unidentified");
+  checkContains(bare.out, "bands: L1 (MON-VER only, no L5 key written)",
+                "a band no receiver confirmed is reported as a hint");
+  checkContains(bare.out, "power_save_supported: true",
+                "the pre-probe capability still allows power save");
   check(!contains(bare.out, "rate_ms:"), "an unconfigured receiver prints no plan");
   checkContains(bare.out, "sos_restore: unknown", "the restore state starts unknown");
   checkContains(bare.out, "sos_backup: not tried", "no backup was tried");
@@ -1536,6 +1547,11 @@ void testGPSDiagnostics(void) {
   gps.ubx.gnss = 0x0b;
   gps.ubx.gnss_refused = true;
   gps.ubx.rate_ms = 1000;
+  gps.ubx.bands = 3;
+  gps.ubx.bands_probed = true;
+  gps.ubx.family = 2;
+  gps.ubx.psm_supported = false;
+  gps.ubx.l5_written = true;
   gps.ubx.rate_clamped = true;
   gps.ubx.psm = Furble::Ubx::PSM_CYCLIC;
   gps.ubx.psm_refused = true;
@@ -1564,11 +1580,15 @@ void testGPSDiagnostics(void) {
   checkContains(full.out, "naks: 3", "the NAK count prints");
   checkContains(full.out, "gnss: 0x0b (refused, receiver default)",
                 "a refused constellation set says so");
-  checkContains(full.out, "rate_ms: 1000 (clamped to the constellation limit)",
+  checkContains(full.out, "rate_ms: 1000 (clamped to the receiver limit)",
                 "a clamped rate says so");
   checkContains(full.out, "power_save: cyclic (refused with BeiDou B1C)",
                 "a refused power save says so");
   checkContains(full.out, "assistnow_autonomous: true", "AssistNow Autonomous prints");
+  checkContains(full.out, "family: F10 (SPG 6.00, L1 and L5)", "the firmware family prints");
+  checkContains(full.out, "bands: L1 and L5 (asked the receiver)",
+                "a confirmed band names its source");
+  checkContains(full.out, "l5_signals: written", "a written L5 batch says so");
   checkContains(full.out, "backup_supply: true", "the backup supply prints");
   checkContains(full.out, "sos_restore: restored", "a restored backup prints");
   checkContains(full.out, "sos_backup: saved", "a saved backup prints");

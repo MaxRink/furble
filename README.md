@@ -613,8 +613,10 @@ location write in `lib/furble/NikonSmart.cpp`, and its row has Scanning ticked,
 but Pairing, Shutter Release, Focus and GPS are crossed, so it is not a
 supported model. Location tagging needs an M5Stack GPS unit on Grove Port A.
 The M5Stack units are the AT6668/CASIC family, so one set of $PCAS and NMEA
-support covers them all. u-blox M10 receivers are detected by a MON-VER poll
-and configured over UBX.
+support covers them all. u-blox receivers are detected by a MON-VER poll and
+configured over UBX. After detection furble asks the receiver which signal bands
+it implements: an L1-only M10 refuses the question and stays on L1, while a
+dual-band F10 answers and runs both bands of each constellation it enables.
 
 | Unit | Antenna | Status |
 | :--- | :--- | :--- |
@@ -623,6 +625,7 @@ and configured over UBX.
 | Module GPS v2.1 | SMA | Planned. Not yet in firmware, Core and Core2 only. |
 | [Mini GPS/BDS Unit](https://shop.m5stack.com/products/mini-gps-bds-unit) | Ceramic patch | End of life, 9600 baud. |
 | u-blox M10 (MAX-M10S, MIA-M10Q, M10 UART modules) | Module dependent | Simulator-tested, hardware-untested. Detected automatically; UBX configuration, NAV-PVT accuracy, power save, software standby and AssistNow Autonomous. |
+| u-blox dual-band (NEO-F10N and other F10 UART modules) | Dual-band L1/L5 | Simulator-tested, hardware-untested. L1 and L5 signals of GPS, Galileo, BeiDou and QZSS, no power save mode, no GLONASS. |
 
 See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera

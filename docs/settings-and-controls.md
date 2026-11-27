@@ -176,13 +176,37 @@ deadline. In both cases a silent receiver is reported as absent, the external
 rail is dropped, and furble retries once after 60 seconds. The AT6668 path has
 simulator coverage but has not yet been verified against a live unit.
 
-A u-blox M10 receiver (MAX-M10S, MIA-M10Q or another M10 module) is found by a
-MON-VER poll when GPS starts and configured over UBX instead of `$PCAS`:
-Update rate, Constellation, Platform, GPS Signals, GPS Power Save and GPS
-AssistNow become M10 configuration keys written to its RAM and backup memory
-and read back. Standby uses the receiver's software standby, and Hot restart is
-a UBX restart. Any other receiver keeps the CASIC path unchanged. The M10 path
-is simulator-tested and hardware-untested.
+A u-blox receiver (MAX-M10S, MIA-M10Q or another M10 module, or a dual-band
+NEO-F10N) is found by a MON-VER poll when GPS starts and configured over UBX
+instead of `$PCAS`: Update rate, Constellation, Platform, GPS Signals, GPS Power
+Save and GPS AssistNow become UBX configuration keys written to its RAM and
+backup memory and read back. Standby uses the receiver's software standby, and
+Hot restart is a UBX restart. Any other receiver keeps the CASIC path unchanged.
+The UBX path is simulator-tested and hardware-untested.
+
+Which signal bands the receiver implements comes from the receiver, not from a
+setting. After MON-VER names the firmware family, furble asks for the four L5
+signal keys with one read-only request. An L1-only M10 refuses it and stays on
+L1. A dual-band F10 answers, and the planner then runs both bands of every
+constellation it enables: the two bands of a constellation cannot be enabled
+apart on that firmware, so there is no L1-only option to offer.
+
+One build has no L5 support: `m5stack-core-debug` compiles the dual-band
+capability out to fit its 1.7 MB app slot (`FURBLE_GPS_L5` in
+`lib/furble/protocol/GpsUbx.h`). Its `gps ubx` report says
+`bands: L1 (no L5 support in this build)` and the receiver diagnostics page
+shows `ubx l1`. Every release build and every other debug profile has the
+feature.
+
+The GPS Power Save row is not exposed in the LVGL UI at all: it is set from the
+console or the companion app. Its refusal on a receiver without a CFG-PM group
+is reported there as `power_save: off (not implemented on this receiver)`. The
+GPS page's own power controls are a different thing and stay live on every
+receiver: `Power saving > Receiver` selects software standby (RXM-PMREQ, which
+the dual-band part supports, NEO-F10N integration manual appendix page 64) or
+furble's own rail cycling, and `Sleep between fixes` sets that interval. The
+receiver diagnostics page shows `ubx l1` or `ubx l1+l5`, with `(guess)` until
+the receiver has confirmed the band.
 
 ### Time
 

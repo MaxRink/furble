@@ -33,20 +33,21 @@ four.
 | # | Fact | Document and section | Code | State |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | The module runs the same ROM SPG 5.10 protocol, so the IFD is the reference for both modules | IFD front matter, protocol version 34.10 | `lib/furble/protocol/GpsUbx.h:6` to `:16` | VERIFIED |
-| 2 | UBX framing, checksum, message classes and ids are the IFD facts listed on the MAX-M10S page | IFD 3.2, 3.4, 3.8, 3.9.1, 3.9.2, 3.10.2 to 3.10.5, 3.14.9, 3.15.11, 3.15.13 | `lib/furble/protocol/GpsUbx.h:31` to `:58` | VERIFIED |
+| 2 | UBX framing, checksum, message classes and ids are the IFD facts listed on the MAX-M10S page | IFD 3.2, 3.4, 3.8, 3.9.1, 3.9.2, 3.10.2 to 3.10.5, 3.14.9, 3.15.11, 3.15.13 | `lib/furble/protocol/GpsUbx.h:38` to `:58` | VERIFIED |
 | 3 | The module runs its UART at 38400 baud by default, eight bits, no parity, one stop bit, four times the MAX-M10S default. Footnote 36 gives 9600 baud in safe boot mode, and the integration manual states the same 38400 default | DS-MIA 5.3 page 18, Table 21 with footnote 36; IM-MIA 3.2.1 page 26 | `src/FurbleSettings.cpp` GPS baud default | VERIFIED |
 | 4 | The default interface settings accept NMEA and UBX as input and emit only NMEA GGA, GLL, GSA, GSV, RMC, VTG and TXT, so UBX output has to be enabled by the host before a UBX-only parser sees anything | DS-MIA 5.3 page 18, Table 21 | `src/FurbleGPSUbx.cpp` configuration path, which enables `MSGOUT_NAV_PVT_UART1` | VERIFIED |
 | 5 | The module's default constellation set is concurrent GPS, Galileo and BeiDou B1I with QZSS and SBAS enabled, and the supported signals are GPS/QZSS L1C/A, Galileo E1, GLONASS L1OF and BeiDou B1I plus B1C. B1I cannot be enabled together with B1C or with GLONASS L1OF | DS-MIA section 1.3 page 6, the default sentence and Table 4, with footnote 13; IM-MIA 2.1.3 page 11 repeats both statements | `lib/furble/protocol/GpsUbx.h` signal key block | VERIFIED |
 | 6 | The ROM's own defaults are not the module default: the IFD disables the BeiDou constellation and B1I while leaving B1C enabled, and disables GLONASS while leaving GLO L1 enabled. So "B1I is off at the SPG 5.10 default" is true of the ROM defaults and false of the module as shipped | IFD configuration defaults, Table 79 page 171 against DS-MIA section 1.3 page 6 | `lib/furble/protocol/GpsUbx.h` signal key block | VERIFIED |
-| 7 | The constellation and signal enable keys are `CFG-SIGNAL-GPS_ENA` 0x1031001f, `GPS_L1CA_ENA` 0x10310001, `SBAS_ENA` 0x10310020, `SBAS_L1CA_ENA` 0x10310005, `GAL_ENA` 0x10310021, `GAL_E1_ENA` 0x10310007, `BDS_ENA` 0x10310022, `BDS_B1_ENA` 0x1031000d, `BDS_B1C_ENA` 0x1031000f, `QZSS_ENA` 0x10310024, `QZSS_L1CA_ENA` 0x10310012, `QZSS_L1S_ENA` 0x10310014, `GLO_ENA` 0x10310025 and `GLO_L1_ENA` 0x10310018 | IFD 4.9.21 page 152, Table 42 | `lib/furble/protocol/GpsUbx.h:84` to `:97` | VERIFIED |
-| 8 | Power save is refused with BeiDou B1C, so a configuration that enables B1C cannot also use PSM | RN-M10 7.2 page 15 | `lib/furble/protocol/GpsUbx.h:430` `psm_refused` | VERIFIED |
+| 7 | The constellation and signal enable keys are `CFG-SIGNAL-GPS_ENA` 0x1031001f, `GPS_L1CA_ENA` 0x10310001, `SBAS_ENA` 0x10310020, `SBAS_L1CA_ENA` 0x10310005, `GAL_ENA` 0x10310021, `GAL_E1_ENA` 0x10310007, `BDS_ENA` 0x10310022, `BDS_B1_ENA` 0x1031000d, `BDS_B1C_ENA` 0x1031000f, `QZSS_ENA` 0x10310024, `QZSS_L1CA_ENA` 0x10310012, `QZSS_L1S_ENA` 0x10310014, `GLO_ENA` 0x10310025 and `GLO_L1_ENA` 0x10310018 | IFD 4.9.21 page 152, Table 42 | `lib/furble/protocol/GpsUbx.h:91` to `:108` | VERIFIED |
+| 8 | Power save is refused with BeiDou B1C, so a configuration that enables B1C cannot also use PSM | RN-M10 7.2 page 15 | `lib/furble/protocol/GpsUbx.h:514` `psm_refused` | VERIFIED |
 | 9 | A configuration that has to survive a rail cut cannot be stored in flash on this module. The IFD says the flash layer exists only where there is a usable external flash and the module documents list no such memory. No document asserts the absence, so this is an inference from the omission | IFD 4.3 page 125 | `src/FurbleGPSUbx.cpp` configuration path | UNVERIFIED |
+| 10 | The module has no L5 signal key at all, because the M10 firmware does not implement the band: the CFG-SIGNAL table ends at GLONASS L1. furble therefore measures the band with a CFG-VALGET of the four L5 keys before writing anything, and an MIA-M10Q answers that poll with UBX-ACK-NAK. The dual-band counterpart is [ublox-neo-f10n.md](ublox-neo-f10n.md) | IFD 4.9.21 page 152, Table 42; IFD 3.10.4 page 53 | the four L5 ids at `lib/furble/protocol/GpsUbx.h:93`, `:98`, `:102` and `:106`; `Ubx::CapsProbe` at `lib/furble/protocol/GpsUbx.h:657` | VERIFIED |
 
 ## Where the code implements it
 
 - `lib/furble/protocol/GpsUbx.h:1` to `:16`: the header states that both modules
   run the same ROM and that the IFD governs.
-- `lib/furble/protocol/GpsUbx.h:84` to `:97`: the signal keys with their IFD
+- `lib/furble/protocol/GpsUbx.h:91` to `:97`: the signal keys with their IFD
   section.
 - `lib/furble/protocol/GpsUbx.cpp`: shared codec.
 - `tests/host/gps_ubx_m10_test.cpp`: covers the module detection and the baud

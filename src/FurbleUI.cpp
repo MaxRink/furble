@@ -5918,6 +5918,24 @@ std::string UI::simQueryState(const char *key) {
   }
 #endif
 
+  if (query == "disabled_rollers") {
+    // How many rollers the current page holds in the disabled state. A setting
+    // page whose controls a receiver capability must not remove stays at zero,
+    // so a scenario can prove the control is still live on that receiver.
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "0";
+    }
+    uint32_t disabled = 0;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
+      lv_obj_t *child = lv_obj_get_child(page, i);
+      if ((child != nullptr) && lv_obj_check_type(child, &lv_roller_class)
+          && lv_obj_has_state(child, LV_STATE_DISABLED)) {
+        disabled++;
+      }
+    }
+    return std::to_string(disabled);
+  }
   if (query == "page") {
     lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
     if (page == m_MainMenu.page) {
@@ -10407,6 +10425,20 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
             (unsigned long)gps.getDetectedBaud());
 
         std::string config;
+        // The receiver's signal bands belong on the page that reports the
+        // receiver rather than the navigation solution, and they are a
+        // capability rather than a setting: a dual-band firmware runs both
+        // bands of each enabled constellation together.
+        if (gps.getBackend() == GPS::backend_t::UBX) {
+#if FURBLE_GPS_L5
+          const auto ubx = gps.getUbxStatus();
+          config = ((ubx.bands & Ubx::BAND_L5) != 0) ? "ubx l1+l5" : "ubx l1";
+          config += ubx.bands_probed ? "" : " (guess)";
+#else
+          config = "ubx l1";
+#endif
+          config += '\n';
+        }
         for (const auto &entry : gps.getConfigStatus()) {
           char line[48];
           snprintf(line, sizeof(line), "cfg %02X/%02X %s x%u", entry.class_id, entry.message_id,

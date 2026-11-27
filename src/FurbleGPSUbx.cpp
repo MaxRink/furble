@@ -38,6 +38,11 @@ const char *GPS::backendName(backend_t backend) {
 void GPS::resetUbx(void) {
   m_Backend.store(static_cast<uint8_t>(backend_t::UNKNOWN));
   m_Detect = {};
+#if FURBLE_GPS_L5
+  m_CapsProbe = {};
+  m_CapsAnswered = false;
+  m_CapsAnswerL5 = false;
+#endif
   m_ConfigSettle.clear();
   m_UbxExpected.clear();
   {
@@ -47,6 +52,10 @@ void GPS::resetUbx(void) {
   const std::lock_guard<std::mutex> lock(m_UbxMutex);
   m_UbxHaveVersion = false;
   m_UbxVersion = {};
+  // Nothing is known about the bands of a receiver furble has not identified,
+  // so a new session starts at L1 and asks again.
+  m_UbxCaps = Ubx::CAPS_UNKNOWN;
+  m_UbxCapsProbed = false;
   m_UbxSosRestore = 0xff;
   // The save-on-shutdown refusal latch lasts one GPS enable: a flashless
   // receiver costs at most one refused save per session.
@@ -113,6 +122,80 @@ bool GPS::serviceDetect(uint32_t now) {
 }
 
 /**
+ * Ask the receiver which signal bands it implements.
+ *
+ * One CFG-VALGET of the four L5 keys at the default layer is the whole
+ * question: a firmware that has no L5 signal answers UBX-ACK-NAK because a key
+ * it does not know is refused (M10 SPG 5.10 IFD UBX-21035062 R03, 3.10.4 page
+ * 53; F10 SPG 6.00 IFD UBX-23002975 R02, 3.10.4 pages 54 and 55), and a
+ * firmware that has them answers with one item each (same sections). Nothing
+ * is written, so the receiver keeps its configuration whatever the answer.
+ *
+ * MON-VER already names a family, so that answer is what furble believes until
+ * the probe contradicts it. The probe only ever removes the L5 band: a signal
+ * VALSET carrying one unknown key is refused in full, which would take the
+ * rate, the dynamic model and the L1 signals down with it.
+ */
+bool GPS::serviceCaps(uint32_t now) {
+#if !FURBLE_GPS_L5
+  // The build has no L5 keys to ask for, so the receiver stays on L1 and the
+  // MON-VER hint is all the capability the console and the UI report.
+  (void)now;
+  return true;
+#else
+  if (m_CapsProbe.result() == Ubx::CapsProbe::Result::IDLE) {
+    m_CapsProbe.begin(now);
+    std::vector<uint32_t> keys;
+    for (const uint32_t key : Ubx::l5Keys()) {
+      keys.push_back(key);
+    }
+    sendUbx(Ubx::valGet(Ubx::GET_DEFAULT, keys));
+    return false;
+  }
+  if (m_CapsAnswered) {
+    m_CapsAnswered = false;
+    m_CapsProbe.answered(m_CapsAnswerL5);
+  }
+  bool poll = false;
+  const Ubx::CapsProbe::Result result = m_CapsProbe.service(now, poll);
+  if (poll) {
+    std::vector<uint32_t> keys;
+    for (const uint32_t key : Ubx::l5Keys()) {
+      keys.push_back(key);
+    }
+    sendUbx(Ubx::valGet(Ubx::GET_DEFAULT, keys));
+  }
+  if (result == Ubx::CapsProbe::Result::WAITING) {
+    return false;
+  }
+  const bool l5 = result == Ubx::CapsProbe::Result::L5;
+  const bool answered = m_CapsProbe.answered();
+  {
+    const std::lock_guard<std::mutex> lock(m_UbxMutex);
+    if (l5 && (m_UbxCaps.family != Ubx::FAMILY_F10)) {
+      // The four L5 keys exist only in the dual-band firmware (M10 IFD 4.9.21
+      // page 152 has none, F10-IFD 4.9.20 pages 158 and 159 has all four), so a
+      // receiver that answers with them is the F10 family whatever MON-VER
+      // said. Take the whole family, not just the band: the same firmware has
+      // no CFG-PM group and no GLONASS key (F10-IFD 4.9, and the module manual's
+      // appendix migration table page 64), and writing those would NAK.
+      m_UbxCaps = Ubx::CAPS_F10;
+    } else {
+      m_UbxCaps.bands = l5 ? static_cast<uint8_t>(Ubx::BAND_L1 | Ubx::BAND_L5) : Ubx::BAND_L1;
+    }
+    // Only a real answer counts as evidence. A timeout also resolves to L1, for
+    // safety, but the status says it is a guess.
+    m_UbxCapsProbed = answered;
+  }
+  ESP_LOGI(LOG_TAG, "GPS receiver bands: L1%s (%s)", l5 ? " and L5" : "",
+           !answered ? "the receiver did not answer, assuming L1"
+           : l5      ? "the L5 signal keys are implemented"
+                     : "no L5 signal key in the firmware");
+  return true;
+#endif
+}
+
+/**
  * Build the acknowledged UBX configuration queue.
  *
  * The settings become a Ubx::Plan: NAV-PVT output, rate, dynamic model and
@@ -151,16 +234,36 @@ void GPS::configureUbx(void) {
   request.psm = Settings::load<Settings::GPS_PSM>();
   request.period_s = (m_DutySeconds > 0) ? m_DutySeconds : 10;
   request.ana = Settings::load<Settings::GPS_ANA>();
+  {
+    const std::lock_guard<std::mutex> lock(m_UbxMutex);
+    request.caps = m_UbxCaps;
+  }
   const Ubx::Plan plan = Ubx::plan(request);
   if (plan.gnss_refused) {
-    ESP_LOGW(LOG_TAG, "GPS constellation mask 0x%02x is not valid on M10, left alone", plan.gnss);
+    ESP_LOGW(LOG_TAG, "GPS constellation mask 0x%02x is not valid on this receiver, left alone",
+             plan.gnss);
   }
   if (plan.psm_refused) {
     ESP_LOGW(LOG_TAG, "GPS power save is refused with BeiDou B1C, left at full power");
   }
+  if (plan.psm_unsupported) {
+    ESP_LOGW(LOG_TAG, "GPS power save is not implemented on this receiver, left at full power");
+  }
+#if FURBLE_GPS_L5
+  if (plan.b1i_refused) {
+    ESP_LOGI(LOG_TAG, "GPS BeiDou uses B1C and B2a on a dual-band receiver, B1I is not written");
+  }
+#endif
   if (request.ana && !plan.ana) {
     ESP_LOGW(LOG_TAG, "GPS AssistNow Autonomous is not supported with BeiDou B1C, left off");
   }
+#if FURBLE_GPS_L5
+  if (plan.bands != 0) {
+    ESP_LOGI(
+        LOG_TAG, "GPS signals: %s, %s", (plan.bands & Ubx::BAND_L5) != 0 ? "L1 and L5" : "L1",
+        (plan.bands & Ubx::BAND_L5) != 0 ? "both bands of each enabled constellation" : "L1 only");
+  }
+#endif
 
   constexpr uint8_t LAYERS = Ubx::LAYER_RAM | Ubx::LAYER_BBR;
   constexpr uint16_t SIGNAL_SETTLE_MS = 500;
@@ -176,13 +279,16 @@ void GPS::configureUbx(void) {
   // Entering power save keeps OPERATEMODE last, but leaving it for BeiDou B1C
   // has to come first: the receiver rejects a signal configuration that
   // includes B1C while a power save mode is active (RN 7.2 page 15).
-  if (plan.power_before_signals) {
+  if (plan.power_before_signals && !plan.power.empty()) {
     enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.power));
   }
   if (!plan.signals.empty()) {
     enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.signals), SIGNAL_SETTLE_MS);
   }
-  if (!plan.power_before_signals) {
+  if (!plan.power_before_signals && !plan.power.empty()) {
+    // A receiver without power save modes has an empty power list, and an
+    // empty CFG-VALSET payload is a poll for a message with no poll form. It is
+    // skipped rather than sent.
     enqueueUbxConfig(Ubx::ID_CFG_VALSET, Ubx::valSet(LAYERS, plan.power));
   }
   if (!plan.unset.empty()) {
@@ -356,11 +462,25 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       return;
     }
     if (!ack.ack) {
-      const std::lock_guard<std::mutex> lock(m_UbxMutex);
-      m_UbxNaks++;
-      if ((ack.cls == Ubx::CLASS_UPD) && (ack.id == Ubx::ID_UPD_SOS)) {
-        m_UbxSosBackup = 2;
+      {
+        const std::lock_guard<std::mutex> lock(m_UbxMutex);
+        m_UbxNaks++;
+        if ((ack.cls == Ubx::CLASS_UPD) && (ack.id == Ubx::ID_UPD_SOS)) {
+          m_UbxSosBackup = 2;
+        }
       }
+      // A refused CFG-VALGET while the capability probe is out is the L1
+      // answer: the firmware does not know one of the L5 keys (M10 IFD 3.10.4
+      // page 53, F10-IFD 3.10.4 pages 54 and 55).
+#if FURBLE_GPS_L5
+      if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING) && (ack.cls == Ubx::CLASS_CFG)
+          && (ack.id == Ubx::ID_CFG_VALGET)) {
+        m_CapsAnswerL5 = false;
+        m_CapsAnswered = true;
+        return;
+      }
+#endif
+      ESP_LOGW(LOG_TAG, "GPS UBX %02X/%02X was refused by the receiver", ack.cls, ack.id);
     }
     if (!m_ConfigInFlight.has_value() || !m_ConfigInFlight->ubx
         || (ack.cls != m_ConfigInFlight->class_id) || (ack.id != m_ConfigInFlight->message_id)) {
@@ -370,6 +490,33 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       // the data answers a VALGET, the acknowledgement only follows it
       return;
     }
+#if FURBLE_GPS_L5
+    if (!ack.ack) {
+      // A refused signal batch that carried an L5 key is the one case the probe
+      // did not catch: the firmware answered for the keys but refused to apply
+      // them. Keep the L1 signals for the rest of the session rather than
+      // retrying the same batch.
+      uint8_t layers = 0;
+      std::vector<Ubx::KeyValue> items;
+      bool l5 = false;
+      if (Ubx::parseValSet(m_ConfigInFlight->payload.data(), m_ConfigInFlight->payload.size(),
+                           layers, items)) {
+        for (const auto &item : items) {
+          l5 = l5 || Ubx::isL5Key(item.key);
+        }
+      }
+      if (l5) {
+        // The batch carried L5 keys, but the refusal may belong to another key
+        // in the same batch. Say what was observed, not what is guessed, and
+        // drop L5 for the rest of the session so the next attempt is L1 clean.
+        const std::lock_guard<std::mutex> lock(m_UbxMutex);
+        m_UbxCaps.bands = Ubx::BAND_L1;
+        m_UbxPlan.l5_refused = true;
+        ESP_LOGW(LOG_TAG,
+                 "GPS receiver refused a signal batch that carried L5 keys; L5 is off from here");
+      }
+    }
+#endif
     const uint16_t settle = m_ConfigInFlight->settle_ms;
     finishConfigCommand(ack.ack ? CONFIG_ACKED : CONFIG_NACKED);
     if (ack.ack && (settle != 0)) {
@@ -380,8 +527,27 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
 
   if ((cls == Ubx::CLASS_CFG) && (id == Ubx::ID_CFG_VALGET)) {
     Ubx::ValGet response;
-    if (!Ubx::parseValGet(payload, n, response) || !m_ConfigInFlight.has_value()
-        || !m_ConfigInFlight->ubx || (m_ConfigInFlight->message_id != Ubx::ID_CFG_VALGET)) {
+    if (!Ubx::parseValGet(payload, n, response)) {
+      return;
+    }
+#if FURBLE_GPS_L5
+    if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING)
+        && (response.layer == Ubx::GET_DEFAULT)) {
+      // The probe's answer: every L5 key present means the firmware implements
+      // the band. A partial answer is not a capability furble will write.
+      bool all = true;
+      for (const uint32_t key : Ubx::l5Keys()) {
+        all = all
+              && std::any_of(response.items.begin(), response.items.end(),
+                             [key](const Ubx::KeyValue &item) { return item.key == key; });
+      }
+      m_CapsAnswerL5 = all;
+      m_CapsAnswered = true;
+      return;
+    }
+#endif
+    if (!m_ConfigInFlight.has_value() || !m_ConfigInFlight->ubx
+        || (m_ConfigInFlight->message_id != Ubx::ID_CFG_VALGET)) {
       return;
     }
     bool match = response.items.size() == m_UbxExpected.size();
@@ -413,6 +579,16 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
         return;
       }
       m_UbxHaveVersion = true;
+      // MON-VER names the firmware family, which is what the capability line
+      // reports until the probe answers. The bands it grants are only a hint:
+      // serviceCaps() asks the receiver before any L5 key is written. Once the
+      // probe or a refused batch has decided the bands, a late MON-VER answer
+      // does not reopen them.
+#if FURBLE_GPS_L5
+      if (!m_UbxCapsProbed) {
+        m_UbxCaps = Ubx::capsFromVersion(m_UbxVersion);
+      }
+#endif
     }
     const backend_t backend = getBackend();
     if ((backend == backend_t::UBX) || (backend == backend_t::UNKNOWN)) {
@@ -535,13 +711,25 @@ GPS::ubx_status_t GPS::getUbxStatus(void) const {
     status.config_verified = m_UbxVerified;
     status.naks = m_UbxNaks;
     status.configured = m_UbxConfigured;
+#if FURBLE_GPS_L5
+    status.bands = m_UbxCaps.bands;
+    status.bands_probed = m_UbxCapsProbed;
+    status.family = m_UbxCaps.family;
+    status.psm_supported = m_UbxCaps.psm;
+#endif
     status.gnss = m_UbxPlan.gnss;
     status.psm = m_UbxPlan.psm;
     status.rate_ms = m_UbxPlan.rate_ms;
     status.ana = m_UbxAna;
     status.gnss_refused = m_UbxPlan.gnss_refused;
     status.psm_refused = m_UbxPlan.psm_refused;
+    status.psm_unsupported = m_UbxPlan.psm_unsupported;
     status.rate_clamped = m_UbxPlan.rate_clamped;
+#if FURBLE_GPS_L5
+    status.l5_written = (m_UbxPlan.bands & Ubx::BAND_L5) != 0;
+    status.b1i_refused = m_UbxPlan.b1i_refused;
+    status.l5_refused = m_UbxPlan.l5_refused;
+#endif
     status.have_sat = m_UbxHaveSat;
     status.sat_view = m_UbxSatView;
     status.sat_used = m_UbxSatUsed;

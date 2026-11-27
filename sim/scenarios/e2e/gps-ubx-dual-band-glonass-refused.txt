@@ -1,0 +1,25 @@
+# A dual-band receiver has no GLONASS signal key: the F10 CFG-SIGNAL table
+# lists GPS, SBAS, Galileo, BeiDou, QZSS and NavIC and stops there (u-blox F10
+# SPG 6.00 interface description UBX-23002975 R02, 4.9.20 pages 158 and 159,
+# Table 46). A mask that asks for GLONASS is refused before anything is
+# written, so the receiver keeps its preset and never sees the key.
+seed gps true
+seed gps_model f10
+seed gps_m10_hot true
+# GPS, GLONASS and SBAS: bit 0, bit 2 and bit 5.
+seed gps_gnss 37
+wait 8000
+assert gps.backend ubx
+assert gps.ubx.bands 3
+assert gps.ubx.gnss_refused 1
+assert-eventually 3000 gps.ubx.verified 1
+# Nothing was NAKed, because nothing invalid was sent.
+assert m10.naks 0
+assert gps.ubx.l5_written 0
+# The signals batch is empty, so the receiver keeps the module preset and no
+# GLONASS key is stored: m10.ram would read the preset's zero either way, while
+# BBR says whether furble ever wrote the key.
+assert m10.bbr.10310025 unset
+assert m10.bbr.10310018 unset
+assert-eventually 5000 gps.source uart
+exit

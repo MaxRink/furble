@@ -350,6 +350,55 @@ std::vector<uint8_t> encodeMonVer(const MonVer &ver) {
   return frameReceived(CLASS_MON, ID_MON_VER, p);
 }
 
+const std::array<uint32_t, 4> &l5Keys(void) {
+#if FURBLE_GPS_L5
+  static constexpr std::array<uint32_t, 4> KEYS = {
+      Key::SIGNAL_GPS_L5,
+      Key::SIGNAL_GAL_E5A,
+      Key::SIGNAL_BDS_B2A,
+      Key::SIGNAL_QZSS_L5,
+  };
+  return KEYS;
+#else
+  // No L5 key exists on this profile, so the probe has nothing to ask for and
+  // no plan can name one.
+  static constexpr std::array<uint32_t, 4> NONE = {0, 0, 0, 0};
+  return NONE;
+#endif
+}
+
+bool isL5Key(uint32_t key) {
+#if FURBLE_GPS_L5
+  const auto &keys = l5Keys();
+  return std::find(keys.begin(), keys.end(), key) != keys.end();
+#else
+  (void)key;
+  return false;
+#endif
+}
+
+Caps capsFromVersion(const MonVer &ver) {
+  // The protocol version names the firmware: 34.10 is M10 SPG 5.10 and 40.00
+  // is F10 SPG 6.00, each printed on its interface description's title page
+  // and repeated in the FWVER and PROTVER extensions (IFD 1.2 page 10,
+  // F10-IFD 1.2 page 10). The MOD extension carries the module name, which
+  // covers a receiver whose PROTVER is missing.
+  const std::string protocol = ver.field("PROTVER");
+  const std::string firmware = ver.field("FWVER");
+  const std::string module = ver.field("MOD");
+#if FURBLE_GPS_L5
+  if ((protocol == "40.00") || (firmware.compare(0, 8, "SPG 6.00") == 0) || (module == "NEO-F10N")
+      || (module == "MAX-F10S") || (module == "DAN-F10N")) {
+    return CAPS_F10;
+  }
+#endif
+  if ((protocol == "34.10") || (firmware.compare(0, 8, "SPG 5.10") == 0) || (module == "MAX-M10S")
+      || (module == "MIA-M10Q")) {
+    return CAPS_M10;
+  }
+  return CAPS_UNKNOWN;
+}
+
 bool parseSos(const uint8_t *p, size_t length, Sos &out) {
   if ((length != 8) || ((p[0] != SOS_ACK) && (p[0] != SOS_RESTORED))) {
     return false;
@@ -495,26 +544,61 @@ bool gnssValid(uint8_t mask) {
   return true;
 }
 
+bool gnssValid(uint8_t mask, const Caps &caps) {
+  if (!gnssValid(mask)) {
+    return false;
+  }
+  // The only documented dual-band firmware has no GLONASS signal keys (F10-IFD
+  // 4.9.20 pages 158 and 159, Table 46), so a GLONASS request would be NAKed.
+  if (!caps.glo && ((mask & GNSS_MASK_GLO) != 0)) {
+    return false;
+  }
+  return true;
+}
+
+namespace {
+
+/** Major constellations in a mask: GPS, Galileo, BeiDou, GLONASS. */
+int majors(uint8_t mask) {
+  return ((mask & GNSS_MASK_GPS) != 0) + ((mask & GNSS_MASK_GAL) != 0)
+         + ((mask & GNSS_MASK_BDS) != 0) + ((mask & GNSS_MASK_GLO) != 0);
+}
+
+}  // namespace
+
 uint8_t maxRateHz(uint8_t mask) {
   const bool bds = (mask & GNSS_MASK_BDS) != 0;
   const bool glo = (mask & GNSS_MASK_GLO) != 0;
-  const int majors = ((mask & GNSS_MASK_GPS) != 0) + ((mask & GNSS_MASK_GAL) != 0) + bds + glo;
+  const int count = majors(mask);
   // DS-MAX and DS-MIA Table 2 and 3: single GNSS 18 Hz, GPS+GAL 10 Hz,
   // GPS+GAL+GLO 6 Hz, GPS+GAL+B1C 8 Hz, four GNSS 4 Hz, the B1I default set
   // 3 Hz. Pairs other than GPS+GAL are not listed; they take the pair figure.
-  if (majors <= 1) {
+  if (count <= 1) {
     return 18;
   }
   if (bds && !glo) {
     return 3;  // B1I, the costly BeiDou signal
   }
-  if (majors == 2) {
+  if (count == 2) {
     return 10;
   }
-  if (majors == 3) {
+  if (count == 3) {
     return glo ? 6 : 8;
   }
   return 4;
+}
+
+uint8_t maxRateHz(uint8_t mask, const Caps &caps) {
+#if FURBLE_GPS_L5
+  if (caps.dualBand()) {
+    // NEO-F10N data sheet UBX-23002117 R05, Table 2 page 5: 10 Hz in every
+    // multi-GNSS set. Table 3 page 5: 20 Hz for one constellation. The
+    // dual-band firmware publishes no per-set table like the M10 one, so the
+    // two figures it does publish are the whole ceiling.
+    return (majors(mask) <= 1) ? 20 : 10;
+  }
+#endif
+  return maxRateHz(mask);
 }
 
 uint8_t dynModelForPlatform(uint8_t platform) {
@@ -525,17 +609,43 @@ uint8_t dynModelForPlatform(uint8_t platform) {
 
 Plan plan(const Request &request) {
   Plan out = {};
-  // Bits the request leaves alone keep the module preset (DS 1.3).
+#if FURBLE_GPS_L5
+  const Caps &caps = request.caps;
+#else
+  // A build without the band model has no way to learn anything but the M10
+  // preset, so the branches on `caps` fold away and the plan is the L1 one.
+  static constexpr Caps L1_CAPS = CAPS_M10;
+  const Caps &caps = L1_CAPS;
+#endif
+  // Bits the request leaves alone keep the module preset (DS-F10N 1.3 page 5).
   const uint8_t gnss = static_cast<uint8_t>((request.gnss & request.gnss_set)
                                             | (GNSS_MASK_MODULE_DEFAULT & ~request.gnss_set));
   out.gnss = gnss;
-  out.gnss_refused = (request.gnss_set != 0) && !gnssValid(gnss);
+  out.gnss_refused = (request.gnss_set != 0) && !gnssValid(gnss, caps);
   const uint8_t effective = out.gnss_refused ? GNSS_MASK_MODULE_DEFAULT : gnss;
   const bool bds = (effective & GNSS_MASK_BDS) != 0;
   const bool glo = (effective & GNSS_MASK_GLO) != 0;
-  const bool b1c = bds && glo;
+  // A dual-band firmware has no B1I signal (NEO-F10N data sheet UBX-23002117
+  // R05, Table 4 page 6), so B1C is the only L1-side BeiDou signal there and
+  // the B1I exclusion cannot apply.
+  const bool b1c = bds && (caps.dualBand() || glo);
+#if FURBLE_GPS_L5
+  // The band a plan reports is the band whose keys it actually queued, filled in
+  // as they are written below. A request that writes no key claims no band.
+  out.bands = 0;
+#endif
+#if FURBLE_GPS_L5
+  out.b1i_refused = caps.dualBand() && bds && ((request.gnss_set & GNSS_MASK_BDS) != 0);
+#endif
 
   uint8_t psm = (request.psm <= PSM_ON_OFF) ? request.psm : PSM_OFF;
+  if ((psm != PSM_OFF) && !caps.psm) {
+    // The F10 firmware has no CFG-PM group at all (F10-IFD 4.9) and its module
+    // manual states that power save is not supported (NEO-F10N integration
+    // manual UBXDOC-963802114-12193 R04, appendix migration table, page 64).
+    out.psm_unsupported = true;
+    psm = PSM_OFF;
+  }
   // Power save with BeiDou B1C is refused (RN 7.2, IM-MAX 3.6.2).
   if ((psm != PSM_OFF) && b1c) {
     out.psm_refused = true;
@@ -546,15 +656,18 @@ Plan plan(const Request &request) {
   // the receiver before the signals batch: a power save mode an earlier session
   // left behind would make the receiver reject a configuration that includes
   // B1C (RN 7.2 page 15, IFD 4.6 page 127).
-  out.power_before_signals = b1c && (psm == PSM_OFF);
-  // AssistNow is not supported with B1C either (RN 5.1.5 page 8). B1I is the
-  // signal the service covers (DS-MIA table 5 page 6).
-  out.ana = request.ana && !b1c;
+  out.power_before_signals = b1c && caps.psm && (psm == PSM_OFF);
+  // AssistNow is not supported with B1C on the M10 firmware (RN 5.1.5 page 8),
+  // whose service covers B1I (DS-MIA table 5 page 6). The F10 documents state
+  // no such exclusion: the NEO-F10N data sheet lists AssistNow Autonomous for
+  // GPS L1C/A and Galileo E1 and says nothing about BeiDou (DS-F10N Table 5
+  // page 6), so a dual-band plan leaves ANA alone.
+  out.ana = request.ana && !(b1c && !caps.dualBand());
 
   uint16_t rate = request.rate_ms;
   if (rate != 0) {
     const uint16_t floor =
-        static_cast<uint16_t>((1000 + maxRateHz(effective) - 1) / maxRateHz(effective));
+        static_cast<uint16_t>((1000 + maxRateHz(effective, caps) - 1) / maxRateHz(effective, caps));
     if (rate < floor) {
       rate = floor;
       out.rate_clamped = true;
@@ -595,7 +708,14 @@ Plan plan(const Request &request) {
       uint8_t clear;
     };
     constexpr uint8_t BDS_GLO = GNSS_MASK_BDS | GNSS_MASK_GLO;
-    static constexpr Signal SIGNALS[] = {
+    // The L1 set: every key the M10 firmware has (IFD 4.9.21 page 152, Table
+    // 42). The L5 set is the dual-band firmware's extra rows (F10-IFD 4.9.20
+    // pages 158 and 159, Table 46). Each L5 row needs its own constellation,
+    // which is the documented rule rather than a choice: a dual-band firmware
+    // enables and disables both bands of a constellation together and NAKs a
+    // combination that splits them (NEO-F10N integration manual
+    // UBXDOC-963802114-12193 R04, 2.1.3 page 10).
+    static constexpr Signal L1_SIGNALS[] = {
         {Key::SIGNAL_GPS_ENA,   GNSS_MASK_GPS,  GNSS_MASK_GPS,  0            },
         {Key::SIGNAL_GPS_L1CA,  GNSS_MASK_GPS,  0,              0            },
         {Key::SIGNAL_GAL_ENA,   GNSS_MASK_GAL,  GNSS_MASK_GAL,  0            },
@@ -611,16 +731,79 @@ Plan plan(const Request &request) {
         {Key::SIGNAL_SBAS_ENA,  GNSS_MASK_SBAS, GNSS_MASK_SBAS, 0            },
         {Key::SIGNAL_SBAS_L1CA, GNSS_MASK_SBAS, 0,              0            },
     };
-    for (const Signal &signal : SIGNALS) {
+#if FURBLE_GPS_L5
+    static constexpr Signal L5_SIGNALS[] = {
+        {Key::SIGNAL_GPS_L5,  GNSS_MASK_GPS,  0, 0},
+        {Key::SIGNAL_GAL_E5A, GNSS_MASK_GAL,  0, 0},
+        {Key::SIGNAL_BDS_B2A, GNSS_MASK_BDS,  0, 0},
+        {Key::SIGNAL_QZSS_L5, GNSS_MASK_QZSS, 0, 0},
+    };
+#endif
+    const bool dual = caps.dualBand();
+    // One writer for both band tables. A signal key's value is 1 unless a mask
+    // bit it clears is set: the constellation's own enable key carries off, and
+    // the signal keys say which signals that constellation may use (IFD 4.9.21
+    // page 152, F10-IFD 4.9.20 pages 158 and 159).
+    const auto writeSignal = [&](const Signal &signal) {
       if ((request.gnss_set & signal.group) == 0) {
         out.unset.push_back(signal.key);
-        continue;
+        return;
       }
       const bool value = ((gnss & signal.need) == signal.need) && ((gnss & signal.clear) == 0);
       out.signals.push_back({signal.key, value ? 1u : 0u});
+#if FURBLE_GPS_L5
+      out.bands = static_cast<uint8_t>(out.bands | (isL5Key(signal.key) ? BAND_L5 : BAND_L1));
+#endif
+    };
+    for (Signal signal : L1_SIGNALS) {
+      // A firmware without GLONASS keys is never told about them, because a
+      // VALDEL of an unknown key is NAKed as well (F10-IFD 3.10.3 page 52).
+      if (!caps.glo
+          && ((signal.key == Key::SIGNAL_GLO_ENA) || (signal.key == Key::SIGNAL_GLO_L1))) {
+        continue;
+      }
+#if FURBLE_GPS_L5
+      if (dual && (signal.key == Key::SIGNAL_BDS_B1)) {
+        // The F10 firmware does have this key (F10-IFD 4.9.20 page 158 lists
+        // CFG-SIGNAL-BDS_B1_ENA 0x1031000d); it is the NEO-F10N module that has
+        // no B1I signal (DS-F10N 1.3 Table 4 page 6). Write it off, in the same
+        // RAM|BBR batch as the other signal keys, because an earlier furble
+        // wrote B1I = 1 whenever BeiDou was on with GLONASS off: leaving that in
+        // RAM beside B1C = 1 is the combination the M10 data sheet forbids (note
+        // 13 page 6), and a refusal it caused would be blamed on the L5 keys in
+        // the same batch. A VALDEL would only clear BBR, and the driver sends
+        // the deletes after the writes, so the zero would not survive.
+        out.signals.push_back({signal.key, 0});
+        out.bands = static_cast<uint8_t>(out.bands | BAND_L1);
+        continue;
+      }
+#endif
+      if (dual && (signal.key == Key::SIGNAL_BDS_B1C)) {
+        // On a dual-band receiver BeiDou runs B1C beside B2a and the receiver
+        // has no B1I and no GLONASS at all, so B1C carries no dependency of its
+        // own: like every other signal key, it stays one and the constellation
+        // enable key switches it. The M10 rule, where B1C needs GLONASS because
+        // B1I cannot run beside it, stays the L1 row's (IM-MAX 2.1.3).
+        signal.need = 0;
+        signal.clear = 0;
+      }
+      writeSignal(signal);
     }
+#if FURBLE_GPS_L5
+    if (dual) {
+      for (const Signal &signal : L5_SIGNALS) {
+        writeSignal(signal);
+      }
+    }
+#endif
   }
 
+  if (!caps.psm) {
+    // No CFG-PM group on the firmware: neither the period nor the mode key is
+    // written or deleted, because a VALDEL of an unknown key is NAKed (F10-IFD
+    // 3.10.3 page 52).
+    return out;
+  }
   if (psm == PSM_ON_OFF) {
     // PSMOO update period at least 5 s (IFD 4.9.15).
     out.power.push_back({Key::PM_POSUPDATEPERIOD, std::max<uint32_t>(5, request.period_s)});
@@ -634,6 +817,39 @@ Plan plan(const Request &request) {
                                                                   : 0u});
   return out;
 }
+
+#if FURBLE_GPS_L5
+void CapsProbe::begin(uint32_t now) {
+  m_Result = Result::WAITING;
+  m_Answered = false;
+  m_Attempts = 1;
+  m_Deadline = now + ATTEMPT_MS;
+}
+
+void CapsProbe::answered(bool l5) {
+  // A NAK is the receiver saying the key is unknown to its firmware, which is
+  // the L1 answer. It ends the probe at once; there is nothing to wait for.
+  m_Result = l5 ? Result::L5 : Result::L1;
+  m_Answered = true;
+}
+
+CapsProbe::Result CapsProbe::service(uint32_t now, bool &poll) {
+  poll = false;
+  if ((m_Result != Result::WAITING) || (static_cast<int32_t>(now - m_Deadline) < 0)) {
+    return m_Result;
+  }
+  if (m_Attempts < ATTEMPTS) {
+    m_Attempts++;
+    m_Deadline = now + ATTEMPT_MS;
+    poll = true;
+    return m_Result;
+  }
+  // No answer at all. The receiver may be an L1 part that ignored the poll, or
+  // it may be busy. L1 is the answer that writes nothing it cannot verify.
+  m_Result = Result::L1;
+  return m_Result;
+}
+#endif  // FURBLE_GPS_L5
 
 void Detect::begin(uint32_t now) {
   m_Result = Result::WAITING;

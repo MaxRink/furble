@@ -16,8 +16,10 @@ assert-eventually 3000 gps.config.1.state ACKED
 assert-eventually 3000 gps.config.2.state ACKED
 assert-eventually 3000 gps.config.3.state NACKED
 assert gps.ubx.verified 0
-assert gps.ubx.naks 2
-assert m10.naks 2
+# Three NAKs: the L5 capability probe's expected refusal, then the two the
+# unknown key causes below.
+assert gps.ubx.naks 3
+assert m10.naks 3
 assert gps.source uart
 assert gps.from_pvt 0
 assert gps.hacc_mm none

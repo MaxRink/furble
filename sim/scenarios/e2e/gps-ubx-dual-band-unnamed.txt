@@ -1,0 +1,45 @@
+# A dual-band receiver whose MON-VER module string furble does not know. The
+# firmware is the F10 one: it answers the four L5 keys and has no CFG-PM group
+# and no GLONASS key (F10 SPG 6.00 interface description UBX-23002975 R02, 4.9
+# and 4.9.20 pages 158 and 159, Table 46; NEO-F10N integration manual
+# UBXDOC-963802114-12193 R04, appendix migration table, page 64).
+#
+# The family table cannot place it, so before the probe the driver has to assume
+# the permissive M10 capabilities. An L5 answer then has to take the whole F10
+# family, not just the band: a plan that only widened `bands` would still write
+# CFG-SIGNAL-GLO_* and CFG-PM-*, and the receiver would NAK both.
+seed gps true
+seed gps_model f10-unnamed
+seed gps_m10_hot true
+seed gps_gnss 9
+wait 8000
+assert gps.backend ubx
+assert gps.ubx.module NEO-F10X
+# The module string names no family, so the probe's answer is what sets it.
+assert gps.ubx.family 2
+assert gps.ubx.bands 3
+assert gps.ubx.band_probed 1
+assert gps.ubx.psm_supported 0
+assert m10.monver_polls 1
+assert-eventually 3000 gps.ubx.verified 1
+assert m10.naks 0
+assert gps.ubx.l5_written 1
+assert gps.ubx.l5_refused 0
+assert gps.ubx.psm 0
+# GPS and Galileo, both bands, in RAM and in BBR.
+assert m10.ram.1031001f 1
+assert m10.ram.10310001 1
+assert m10.ram.10310021 1
+assert m10.ram.10310007 1
+assert m10.bbr.10310004 1
+assert m10.bbr.10310009 1
+# No GLONASS key and no power save key is named, because the adopted family has
+# neither and an unknown key NAKs the VALSET that carries it (F10-IFD 3.10.3
+# page 52; F10-IFD 4.9 has no CFG-PM group). BBR holds a key only when an
+# accepted VALSET stored it.
+assert m10.bbr.10310025 unset
+assert m10.bbr.10310018 unset
+assert m10.bbr.20d00001 unset
+assert m10.bbr.40d00002 unset
+assert-eventually 5000 gps.source uart
+exit

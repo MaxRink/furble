@@ -497,11 +497,12 @@ second `GPS::update()` use) for that many milliseconds of host time. It models a
 reader overlapping the GPS task. Readers once held `m_CycleMutex` there and the
 task dropped a consumed UART event while they did; `e2e/gps-reader-hold.txt`
 seeds 30 and asserts the cycle never degrades.
-`gps_model` picks the receiver: `casic` (default), `m10`, `m10-mia` or `nmea`.
-The M10 options `gps_m10_backup` (V_BCKP keeps BBR over a rail cut),
+`gps_model` picks the receiver: `casic` (default), `m10`, `m10-mia`, `f10` or
+`nmea`.
+The u-blox options `gps_m10_backup` (V_BCKP keeps BBR over a rail cut),
 `gps_m10_flash` (UPD-SOS has a flash), `gps_m10_hot` (the first start is hot)
 and `gps_m10_unknown_key` (`20910007`, `10230001` or `20d00001`, a key the
-firmware refuses) are described under the virtual u-blox M10 below.
+firmware refuses) are described under the virtual u-blox receiver below.
 `gps_gnss` and `gps_psm` are byte seeds and `gps_ana` a boolean seed for the
 u-blox constellation mask, power save and AssistNow Autonomous settings.
 `rail_supply` selects what the modelled M5PM1 `PWR_SRC` register reports for the
@@ -1656,14 +1657,19 @@ MON-HW poll, optionally answered with a truncated payload) and
 cache, so the reload path has to refuse the whole blob rather than replay up to
 the damage).
 
-#### Virtual u-blox M10
+#### Virtual u-blox receiver
 
 `seed gps_model` selects what is on the port: `casic` (the default, the AT6668
 model above, so every older scenario is unchanged), `m10` (a virtual MAX-M10S),
-`m10-mia` (a virtual MIA-M10Q) or `nmea` (a receiver that prints NMEA and
-answers no binary protocol at all). The M10 model is `sim/ubx_m10.{h,cpp}`, a
+`m10-mia` (a virtual MIA-M10Q), `f10` (a virtual L1/L5 NEO-F10N) or `nmea`
+(a receiver that prints NMEA and answers no binary protocol at all). The
+model is `sim/ubx_m10.{h,cpp}`, a
 UBX state machine with no clock or UART of its own; `tests/host` drives the
-same object in `gps-ubx-m10`. It answers MON-VER, keeps a RAM, BBR and default
+same object in `gps-ubx-m10`. `f10` is the dual-band variant: it implements
+the four L5 signal keys, refuses a plan that splits one constellation's
+bands, has BeiDou B1C and B2a with no B1I, and has no GLONASS key and no
+CFG-PM key at all, so those writes NAK exactly as the documents say. It
+reports protocol 40.00 in MON-VER where the M10 variants report 34.10. It answers MON-VER, keeps a RAM, BBR and default
 configuration layer, applies the CFG-VALSET validity rules of the M10
 documents (at least one major GNSS, BeiDou B1I excludes B1C and GLONASS, no
 power save with B1C, rate at least 25 ms, PSMOO period at least 5 s, PSMCT at
@@ -1684,6 +1690,18 @@ which keeps scenarios short. `gps_m10_unknown_key` names a key the receiver firm
 save mode), so the VALSET and VALGET carrying it are
 refused. The firmware tells the fake when it switches the Port A rail, the one
 hardware boundary the host has no other way to see.
+
+Four scenarios cover the band model. `e2e/gps-ubx-dual-band.txt` puts an
+`f10` on the port and asserts the probe is answered, `gps.ubx.bands` is 3, and
+the four L5 keys are written beside their L1 siblings with no CFG-PM write.
+`e2e/gps-ubx-l1-only-refuses-l5.txt` puts an `m10` there and asserts the
+probe is refused with exactly one NAK, `gps.ubx.bands` stays 1, and the L1
+configuration still verifies. `e2e/gps-ubx-dual-band-glonass-refused.txt`
+seeds a GLONASS mask on the `f10` and asserts it is refused before anything
+is written, so nothing is NAKed and the receiver keeps its preset.
+`e2e/gps-ubx-dual-band-unnamed.txt` puts the same firmware behind a module
+string MON-VER does not name and asserts the L5 answer takes the whole F10
+capability set: no GLONASS key and no CFG-PM key is written.
 
 Queries: `m10.model`, `m10.state` (`off`, `on`, `stopped`, `standby`),
 `m10.start` (`cold`, `warm`, `hot`, `assisted`), `m10.fixed`, `m10.period_ms`,

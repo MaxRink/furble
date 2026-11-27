@@ -221,7 +221,16 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
 - `FurbleGPS` identifies the receiver once per session before configuring it:
   a UBX-MON-VER poll, two attempts a second apart (`Ubx::Detect`). A u-blox
   receiver gets the UBX backend in `src/FurbleGPSUbx.cpp`; anything else keeps
-  the NMEA backend, which is the CASIC/$PCAS path unchanged. Vendor-specific
+  the NMEA backend, which is the CASIC/$PCAS path unchanged.
+  Between the two, `GPS::serviceCaps()` asks a u-blox receiver which signal
+  bands it implements with one CFG-VALGET of the four L5 keys at the default
+  layer (`Ubx::CapsProbe`), and `applyConfiguration()` builds nothing until
+  that answers: a signal VALSET carrying one key the firmware does not know is
+  refused in full, so a wrong guess costs the rate and the L1 signals with it.
+  A receiver that ignores the poll stays on L1. The answer is a capability,
+  not a setting, and it gates the L5 rows, the GLONASS mask, the power-save
+  keys and the update-rate ceiling, so do not write an M10-only assumption back
+  into `configureUbx()`. Vendor-specific
   actions (configure, restart, standby, satellite capture, MON-HW, ephemeris)
   switch on `GPS::backend_t`; add a vendor as one more value and one more
   configure function. The `$PCAS` command set, its argument ranges and the

@@ -13,7 +13,10 @@
 //      encoders round trip through the decoders;
 //   4. GpsDemux::split covers the stream contiguously, its UBX and CASIC
 //      pieces are valid frames, and any chunking of the stream gives the same
-//      frames and the same NMEA text as one-shot delivery.
+//      frames and the same NMEA text as one-shot delivery;
+//   5. a configuration plan for a random request never names a key the
+//      receiver capability in that request says the firmware does not have,
+//      and its rate stays under the band ceiling.
 //
 // Usage: gps_ubx_fuzz --seed N --iterations N
 
@@ -164,6 +167,92 @@ void mutate(std::mt19937 &rng, std::vector<uint8_t> &bytes) {
 }
 
 /** Run every decoder on a yielded frame. Returns false on a broken invariant. */
+/**
+ * Invariants of a configuration plan built from random settings.
+ *
+ * The plan is what the driver sends, so a key it names on a receiver that does
+ * not implement it costs the whole VALSET: a signal batch carrying one unknown
+ * key is refused in full (M10 IFD UBX-21035062 R03, 3.10.5; F10 IFD
+ * UBX-23002975 R02, 3.10.5). Every band and power save rule below is therefore
+ * checked as "this key is absent", not as "this write fails".
+ */
+void planInvariants(std::mt19937 &rng, uint32_t seed, uint32_t iteration) {
+  Ubx::Request request = {};
+  request.rate_ms = static_cast<uint16_t>(rng() % 2001);
+  request.dyn_model = static_cast<uint8_t>((rng() & 1) ? 0xff : (rng() % 13));
+  request.gnss = static_cast<uint8_t>(rng() % 64);
+  request.gnss_set = static_cast<uint8_t>(rng() % 64);
+  request.psm = static_cast<uint8_t>(rng() % 4);
+  request.period_s = rng() % 60;
+  request.ana = (rng() & 1) != 0;
+  request.caps.bands =
+      static_cast<uint8_t>((rng() & 1) ? (Ubx::BAND_L1 | Ubx::BAND_L5) : Ubx::BAND_L1);
+  request.caps.psm = (rng() & 1) != 0;
+  request.caps.glo = (rng() & 1) != 0;
+  request.caps.family = static_cast<uint8_t>(rng() % 3);
+
+  const Ubx::Plan plan = Ubx::plan(request);
+  const bool dual = request.caps.dualBand();
+  for (const auto &item : plan.signals) {
+    if (!dual) {
+      check(!Ubx::isL5Key(item.key), "no L5 key is written to an L1 receiver", seed, iteration);
+    }
+    if (!request.caps.glo) {
+      check((item.key != Ubx::Key::SIGNAL_GLO_ENA) && (item.key != Ubx::Key::SIGNAL_GLO_L1),
+            "no GLONASS key is written without a GLONASS signal", seed, iteration);
+    }
+    if (!request.caps.psm) {
+      check((item.key != Ubx::Key::PM_OPERATEMODE) && (item.key != Ubx::Key::PM_POSUPDATEPERIOD),
+            "no power save key is written without power save", seed, iteration);
+    }
+  }
+  for (const uint32_t key : plan.unset) {
+    if (!dual) {
+      check(!Ubx::isL5Key(key), "no L5 key is deleted on an L1 receiver", seed, iteration);
+    }
+    if (!request.caps.glo) {
+      check((key != Ubx::Key::SIGNAL_GLO_ENA) && (key != Ubx::Key::SIGNAL_GLO_L1),
+            "no GLONASS key is deleted without a GLONASS signal", seed, iteration);
+    }
+    if (!request.caps.psm) {
+      check((key != Ubx::Key::PM_OPERATEMODE) && (key != Ubx::Key::PM_POSUPDATEPERIOD),
+            "no power save key is deleted without power save", seed, iteration);
+    }
+  }
+  check((plan.psm == Ubx::PSM_OFF) || (!plan.psm_refused && !plan.psm_unsupported),
+        "a power save mode the plan kept was not refused", seed, iteration);
+  // The clamp is applied to the mask the plan actually used, which is the
+  // module preset when the requested one was refused (GpsUbx.cpp plan()).
+  const uint8_t effective = plan.gnss_refused ? Ubx::GNSS_MASK_MODULE_DEFAULT : plan.gnss;
+  if (plan.rate_ms != 0) {
+    const uint8_t hz = Ubx::maxRateHz(effective, request.caps);
+    const uint16_t floor_ms = static_cast<uint16_t>((1000 + hz - 1) / hz);
+    check(plan.rate_ms >= floor_ms, "the planned rate stays under the band ceiling", seed,
+          iteration);
+  }
+  // Every L5 key moves with its constellation's L1 sibling, and no L5 key is
+  // written on a receiver that has no L5 band.
+  for (const auto &item : plan.signals) {
+    if (!Ubx::isL5Key(item.key)) {
+      continue;
+    }
+    const uint32_t partner = (item.key == Ubx::Key::SIGNAL_GPS_L5)    ? Ubx::Key::SIGNAL_GPS_L1CA
+                             : (item.key == Ubx::Key::SIGNAL_GAL_E5A) ? Ubx::Key::SIGNAL_GAL_E1
+                             : (item.key == Ubx::Key::SIGNAL_BDS_B2A) ? Ubx::Key::SIGNAL_BDS_B1C
+                                                                      : Ubx::Key::SIGNAL_QZSS_L1CA;
+    bool found = false;
+    for (const auto &other : plan.signals) {
+      found = found || ((other.key == partner) && (other.value == item.value));
+    }
+    check(found, "an L5 key matches its L1 sibling", seed, iteration);
+  }
+  check(!Ubx::valSet(Ubx::LAYER_RAM, plan.base).empty(), "the base batch encodes", seed, iteration);
+  check(plan.signals.empty() || !Ubx::valSet(Ubx::LAYER_RAM, plan.signals).empty(),
+        "the signal batch encodes", seed, iteration);
+  check(plan.unset.empty() || !Ubx::valDel(Ubx::LAYER_BBR, plan.unset).empty(),
+        "the delete batch encodes", seed, iteration);
+}
+
 bool decodeAll(const Ubx::Stream &stream) {
   const auto &frame = stream.frame();
   if (Ubx::scan(frame.data(), frame.size()).status != Ubx::Scan::FRAME) {
@@ -331,6 +420,9 @@ int main(int argc, char **argv) {
     // come, holding back the good frames after it. A receiver keeps talking,
     // so pad with quiet bytes longer than any frame to settle every decision.
     bytes.insert(bytes.end(), Ubx::FRAME_OVERHEAD + Ubx::MAX_PAYLOAD, 0);
+
+    // 5: the configuration plan obeys the band and power save rules.
+    planInvariants(rng, seed, iteration);
 
     // 1 and 3: the stream against the reference splitter.
     Ubx::Stream stream;
