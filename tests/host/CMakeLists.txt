@@ -2031,6 +2031,45 @@ target_compile_options(control_interleave_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_libraries(control_interleave_test PRIVATE Threads::Threads)
 
+# Release durability across a full per-target queue (plan 374). Same build
+# shape as control_interleave_test: FURBLE_TEST_SYNC makes the named points
+# live, and the barrier on "target_command_complete" parks the target task
+# after a delivered press so the queue fills behind it exactly as it does while
+# a gattWrite stalls on a peer that stopped answering. Compiles the production
+# Control against the Fujifilm virtual peer so the test reads the shutter value
+# the camera actually received, not a log line.
+add_executable(control_release_durability_test
+               control_release_durability_test.cpp
+               ${TESTSYNC_DIR}/TestSyncController.cpp
+               ${CONTROL_E2E_DIR}/doubles.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${FURBLE_ROOT}/lib/furble/Camera.cpp
+               ${FURBLE_ROOT}/lib/furble/Device.cpp
+               ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
+               ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp)
+target_include_directories(control_release_durability_test
+                           BEFORE PRIVATE
+                                  ${CMAKE_CURRENT_SOURCE_DIR}
+                                  ${TESTSYNC_DIR}
+                                  ${CONTROL_E2E_DIR}/doubles
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${FURBLE_ROOT}/lib/furble
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_definitions(control_release_durability_test PRIVATE
+                           FURBLE_TEST_SYNC
+                           FURBLE_HOST_REGISTRATION_TIMEOUT_MS=100)
+target_compile_options(control_release_durability_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_libraries(control_release_durability_test PRIVATE Threads::Threads)
+
 # Deterministic interleaving proof for the other half of the same window (plan
 # 169). Same build shape as control_interleave_test, plus FURBLE_CONSOLE for the
 # debug snapshot: the test waits for Control::getDebugState().reconnectAttempt
@@ -2795,6 +2834,12 @@ if(BUILD_TESTING)
   # than a sync point timeout.
   add_test(NAME control-interleave COMMAND control_interleave_test)
   set_tests_properties(control-interleave PROPERTIES TIMEOUT 120)
+
+  # Release durability across a full per-target queue (plan 374). The barrier
+  # carries its own 15 s timeout and the test releases it within a second, so
+  # this budget only covers a wedged control task.
+  add_test(NAME control-release-durability COMMAND control_release_durability_test)
+  set_tests_properties(control-release-durability PROPERTIES TIMEOUT 120)
 
   # Interleaving proof for the aborted-connect republish (plan 169). Waits out
   # two reconnect retries before it forces the window, so it is slower than the

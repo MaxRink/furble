@@ -52,6 +52,25 @@ class Control {
 
     std::shared_ptr<Camera> getCamera(void) const;
     cmd_t getCommand(void);
+
+    /**
+     * Send one command to this target's queue without blocking.
+     *
+     * Caller must hold Control::m_Mutex. Every producer of this queue does, and
+     * that lock, not the queue, is what makes the rules below atomic: the
+     * CMD_DISCONNECT drain and the m_DisconnectPending check sit in the same
+     * critical section as every other producer's check and send, and no producer
+     * can take a slot this side just freed. A caller that posts here without the
+     * lock voids both guarantees.
+     *
+     * Every request is bounded by the queue and refused when it is full. A
+     * shutter or focus release is not: it displaces the oldest waiting command
+     * instead, because the press it ends has already been delivered and no
+     * vendor driver times that hold out, so losing the release leaves the shutter
+     * held (plan 374). A queued release is never displaced, so the one command a
+     * full queue still refuses is a release that finds another release at the
+     * head of the queue (plan 546).
+     */
     BaseType_t sendCommand(cmd_t cmd);
 
     /**
@@ -61,7 +80,7 @@ class Control {
      * calls this in the same critical section, which is what keeps the target
      * alive across the call. That is a lifetime contract, not reader
      * synchronization: the target task reads both fields with no lock in the
-     * CMD_GPS_UPDATE case (FurbleControl.cpp:198), so that read stays the
+     * CMD_GPS_UPDATE case (FurbleControl.cpp:278), so that read stays the
      * handoff race recorded in plan 327. Pure member assignment, so it must
      * never grow a radio call, a heap allocation or a delay.
      */
@@ -80,6 +99,22 @@ class Control {
 
     QueueHandle_t m_Queue = NULL;
     std::atomic<uint32_t> m_InFlight {0};
+    // Set when CMD_DISCONNECT is queued and read by every other producer. Once
+    // the teardown is on the queue nothing may follow it: the target task exits
+    // on that command, it is the one the queue must never lose or delay, and a
+    // later release would otherwise be able to take its slot (sendCommand).
+    //
+    // It is only ever stored true, with no reset on a failed teardown or on a
+    // reconnect, and that is safe because the flag is terminal for the Target it
+    // is set on. Both call sites that post a teardown drop the Target from
+    // m_Targets in the same critical section: disconnect() moves every target to
+    // m_ZombieTargets and clears the vector, and retireCancelledTargetsLocked()
+    // moves the target into m_ZombieTargets and erases it. m_Targets is the only
+    // route sendCommand has, so no later producer can reach the flagged Target,
+    // and addActive() builds a fresh one next session. Anything that lets a
+    // Target outlive its teardown while staying in m_Targets would refuse every
+    // command forever while allConnectedLocked() still reports the camera up.
+    std::atomic<bool> m_DisconnectPending {false};
     // Owns a strong reference so the Camera outlives a CameraList::load() that
     // drops the list's reference while this target is still connecting or active.
     std::shared_ptr<Furble::Camera> m_Camera;

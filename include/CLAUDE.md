@@ -22,6 +22,25 @@ Public headers for the app layer in src/, one header per module
 - `FurbleControl::sendCameraCommand()` returns the complete target-set session
   generation captured with delivery. Expected-session releases must fail when
   the whole session has been replaced.
+- `Control::Target::sendCommand()` bounds every command by the per-target
+  queue, one of 8, except a shutter or focus release, which takes the oldest
+  waiting command's slot rather than being dropped, and only when that command is
+  a request. A queued release is never displaced, and the one command a full
+  queue still refuses is a release that arrives with another release at the head
+  of the queue (plans 374 and 546). The press a release ends has already been
+  delivered and no vendor driver times that hold out, so the loss leaves the
+  shutter held, and on Lumix, Sony, Canon EOS Smart, Nikon Remote, Ricoh and DJI
+  a focus release does not let go of the shutter, so one release kind never
+  stands in for the other. Both sends stay non-blocking and the queue never
+  grows, and an evicted request is answered by the release behind it with an up
+  the camera ignores. Every producer of that queue holds `Control::m_Mutex`, and
+  that lock, not the queue, is what keeps the check-and-send atomic; the
+  `sendCommand` comment states it. `CMD_DISCONNECT` sets
+  `Target::m_DisconnectPending` before it drains and every later command is
+  refused, so the eviction can never take the one command the queue must not
+  lose and `disconnect()` never waits out its cap on a lost teardown. That flag
+  is only ever set, which is safe because both teardown paths drop the `Target`
+  from `m_Targets` in the same critical section.
 - `Control::m_Targets` is owned by `m_Mutex`, and every reader takes it. The
   1 Hz GPS service is a fourth owner of that vector. It runs on the UI loop,
   never on `GPS::task()`: the LVGL `gps_service_timer` in display builds and

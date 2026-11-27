@@ -433,7 +433,7 @@ boot:
    component update.
 4. **Control task alive.** The task created at `src/main.cpp:517` is running and
    its queue accepts a no-op. `Control::sendCommand`
-   (`src/FurbleControl.cpp:605`) is a zero-timeout `xQueueSend`, so a full
+   (`src/FurbleControl.cpp:690`) is a zero-timeout `xQueueSend`, so a full
    queue means the control task is not draining, which means the shutter will
    not work.
 5. **UI loop ticking**, in a GUI build. `UI::task`

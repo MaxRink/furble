@@ -33,12 +33,12 @@ M; it ends the "button down" state.
 
 The configured value is also a floor on the gap, not the whole gap. Commands are
 queued per target and executed one at a time on the target task
-(`src/FurbleControl.cpp:169-199`), and every family with a separate release
+(`src/FurbleControl.cpp:240-303`), and every family with a separate release
 writes with response except Canon EOS Smart. On the rest the release therefore
 cannot reach the radio before the press write has returned.
 `Control::sendCommand` routes shutter and focus straight to the per-target queue
 and never reorders ordinary commands (`src/FurbleControl.cpp:102-129` puts
-`CMD_DISCONNECT` at the front and nothing else; `src/FurbleControl.cpp:600-608`
+`CMD_DISCONNECT` at the front and nothing else; `src/FurbleControl.cpp:680-688`
 does the routing).
 
 The delivery floor is set by the link. While the connection saver is off, which

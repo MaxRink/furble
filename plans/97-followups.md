@@ -79,7 +79,7 @@ remediation batches. The batch is named in each GATED-ON tag.
   `src/FurbleControl.cpp:42-47, 371-372`. READY-NOW.
   State: already fixed before this tranche, 633fd8f4 (#128). `disconnect()`
   moves the targets into the drain set under the mutex without running a
-  destructor, and `reapZombieTargets()` (`src/FurbleControl.cpp:1216`) frees
+  destructor, and `reapZombieTargets()` (`src/FurbleControl.cpp:1303`) frees
   only a target whose task has published m_Stopped, so the destructor skips
   its radio call while the lock is held. `control_zombie_cancel_test` and
   `control_reclaim_uaf_test` pin the drain and the reclaim.

@@ -477,6 +477,16 @@ with a calendar RTC chip still seed from it on every boot.
 - `focus press` half-presses focus and `focus release` ends. Ricoh cameras do
   not support this action over BLE, so both commands are no-ops. Their shutter
   command uses `OperationRequest {0x01, 0x01}` for capture with autofocus.
+- A full per-camera command queue makes room for a release instead of dropping
+  it, because a lost release leaves the camera holding the shutter. It displaces
+  the oldest waiting command, and only if that command is a press or another
+  request: a release already in the queue is never displaced, since on most
+  cameras the two release kinds are not interchangeable and a focus release does
+  not let go of the shutter. A press displaced that way fires nothing, and the
+  release behind it is harmless. The one command a full queue can still refuse
+  is a release that arrives with another release at the head of the queue, which
+  the queued release already covers; `shutter` and `focus` then report the
+  failure.
 
 These enqueue camera commands directly. They bypass the button-mode dispatch and
 the shutter-lock state, so use them to trigger the camera, not to test the
