@@ -1,3 +1,10 @@
+/*
+ * FURBLE_GPS_TEXT=0 drops the seam with the backend it serves: nothing in
+ * that build parses, frames or matches a vendor line, so the whole file
+ * compiles to nothing and the linker has no parser to keep.
+ */
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+
 #include "GpsText.h"
 
 #include <cstdio>
@@ -456,3 +463,5 @@ bool windowed(const Line &line) {
 
 }  // namespace GpsText
 }  // namespace Furble
+
+#endif  // FURBLE_GPS_TEXT

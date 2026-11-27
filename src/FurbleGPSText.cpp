@@ -55,6 +55,10 @@ bool GPS::ensureTextState(void) {
   if (m_TextState == nullptr) {
     // Before any gate measures free bytes: enable() calls this first, and the
     // UART task cannot reach a text path until enable() has published it.
+    // Owned by this singleton and released in freeTextState(), the same shape
+    // as the MQTT and OTA state stores; NOLINT because the analyzer wants a
+    // smart pointer for a lifetime that ends with the driver, not the scope.
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
     m_TextState = new (std::nothrow) text_state_t();
     if (m_TextState == nullptr) {
       ESP_LOGE(LOG_TAG, "GPS text backend state allocation failed, the text backends stay off");
@@ -74,6 +78,7 @@ void GPS::freeTextState(void) {
   // Outside the lock: a destructor may run while a reader waits, and a reader
   // that already copied the pointer cannot exist here, because disable() holds
   // the service mutex and the only other reader takes this mutex.
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
   delete state;
 }
 

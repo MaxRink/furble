@@ -10415,6 +10415,7 @@ namespace {
 std::string gpsConfigRefusals(GPS &gps) {
   std::string out;
   const auto backend = gps.getBackend();
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if ((backend == GPS::backend_t::QUECTEL) || (backend == GPS::backend_t::UNICORE)) {
     const auto text = gps.getTextStatus();
     if (text.gnss_refused) {
@@ -10432,7 +10433,9 @@ std::string gpsConfigRefusals(GPS &gps) {
     if (text.psm_refused) {
       out += "standby ";
     }
-  } else if (backend == GPS::backend_t::UBX) {
+  } else
+#endif
+      if (backend == GPS::backend_t::UBX) {
     const auto ubx = gps.getUbxStatus();
     if (ubx.gnss_refused) {
       out += "gnss ";
@@ -10527,13 +10530,16 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         }
         for (const auto &entry : gps.getConfigStatus()) {
           char line[48];
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
           if (entry.class_id == 0) {
             // A vendor text command has no class: the operation fills the
             // message column, so name it rather than print a bare number.
             snprintf(line, sizeof(line), "cfg %s %s x%u",
                      GpsText::opName(static_cast<GpsText::Op>(entry.message_id)),
                      GPS::configStateName(entry.state), static_cast<unsigned>(entry.attempts));
-          } else {
+          } else
+#endif
+          {
             snprintf(line, sizeof(line), "cfg %02X/%02X %s x%u", entry.class_id, entry.message_id,
                      GPS::configStateName(entry.state), static_cast<unsigned>(entry.attempts));
           }

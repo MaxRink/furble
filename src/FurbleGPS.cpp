@@ -1652,21 +1652,28 @@ void GPS::startConfigCommand(void) {
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
 
+  // One pointer, taken straight after the assignment, for everything below.
+  // .value() is the checked access clang-tidy understands; a member optional
+  // cannot be proven engaged after a call, and the text session and the status
+  // lock both count as calls.
+  binary_command_t *const command = &m_ConfigInFlight.value();
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
-    auto &status = m_ConfigStatus[m_ConfigInFlight->status_index];
+    auto &status = m_ConfigStatus[command->status_index];
     status.state = CONFIG_SENT;
     status.attempts = m_ConfigAttempts;
-    m_ConfigInFlightStatus = m_ConfigInFlight->status_index;
+    m_ConfigInFlightStatus = command->status_index;
   }
 
-  if (m_ConfigInFlight->text) {
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if (command->text) {
     // The vendor text layer owns the acknowledgement timeout and the retry, so
     // it starts with the first send rather than after it.
-    text().session.begin(m_ConfigInFlight->text_command, m_ConfigSent);
+    text().session.begin(command->text_command, m_ConfigSent);
   }
+#endif
 
-  if (!sendConfigFrame(*m_ConfigInFlight)) {
+  if (!sendConfigFrame(*command)) {
     ESP_LOGW(LOG_TAG, "GPS binary command write failed");
   }
 }
@@ -1681,9 +1688,11 @@ void GPS::finishConfigCommand(config_state_t state) {
   m_ConfigAttempts = 0;
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if (command.text) {
     text().session.clear();
   }
+#endif
 
   bool sendFallback = false;
   {
@@ -1834,7 +1843,11 @@ void GPS::serviceConfig(void) {
     return;
   }
 #endif
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if (m_ConfigInFlight.has_value() && m_ConfigInFlight->text) {
+    // As in startConfigCommand: one checked access, because the session call
+    // below is enough to make the checker distrust the optional.
+    binary_command_t *const command = &m_ConfigInFlight.value();
     const uint32_t now = Platform::getInstance().tick();
     switch (text().session.service(now)) {
       case GpsText::Session::Step::SEND:
@@ -1843,13 +1856,13 @@ void GPS::serviceConfig(void) {
           const std::lock_guard<std::mutex> lock(m_ConfigMutex);
           m_ConfigStatus[m_ConfigInFlightStatus].attempts = text().session.attempts();
         }
-        if (!sendConfigFrame(*m_ConfigInFlight)) {
+        if (!sendConfigFrame(*command)) {
           ESP_LOGW(LOG_TAG, "GPS text retry write failed");
         }
         return;
       case GpsText::Session::Step::ACKED:
       {
-        const uint16_t settle = m_ConfigInFlight->text_command.settle_ms;
+        const uint16_t settle = command->text_command.settle_ms;
         finishConfigCommand(CONFIG_ACKED);
         if (settle != 0) {
           m_ConfigSettle.arm(Platform::getInstance().tick(), settle);
@@ -1859,8 +1872,8 @@ void GPS::serviceConfig(void) {
       case GpsText::Session::Step::FAILED:
       {
         const GpsText::Verdict verdict = text().session.verdict();
-        const GpsText::Op op = m_ConfigInFlight->text_command.op;
-        const GpsText::Dialect dialect = m_ConfigInFlight->text_command.dialect;
+        const GpsText::Op op = command->text_command.op;
+        const GpsText::Dialect dialect = command->text_command.dialect;
         ESP_LOGW(LOG_TAG, "GPS %s refused: %s", GpsText::opName(op), GpsText::verdictName(verdict));
         {
           const std::lock_guard<std::mutex> lock(m_TextMutex);
@@ -1879,8 +1892,8 @@ void GPS::serviceConfig(void) {
       }
       case GpsText::Session::Step::TIMEOUT:
       {
-        const GpsText::Op op = m_ConfigInFlight->text_command.op;
-        const GpsText::Dialect dialect = m_ConfigInFlight->text_command.dialect;
+        const GpsText::Op op = command->text_command.op;
+        const GpsText::Dialect dialect = command->text_command.dialect;
         const GpsText::Verdict verdict = text().session.verdict();
         if (verdict == GpsText::Verdict::STALLED) {
           ESP_LOGW(LOG_TAG, "GPS %s stayed in processing, giving up", GpsText::opName(op));
@@ -1905,6 +1918,7 @@ void GPS::serviceConfig(void) {
     }
   }
 
+#endif  // FURBLE_GPS_TEXT
   if (m_ConfigInFlight.has_value()) {
     const uint32_t now = Platform::getInstance().tick();
     if ((now - m_ConfigSent) < configAckTimeout()) {
