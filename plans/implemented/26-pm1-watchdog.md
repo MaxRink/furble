@@ -200,8 +200,8 @@ change beyond the two declarations.
 
 ### Where to feed
 
-Feed from `Platform::update()` (`src/FurblePlatform.cpp:1557-1585`), rate limited
-to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:457-459`).
+Feed from `Platform::update()` (`src/FurblePlatform.cpp:1842-1902`), rate limited
+to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:647-649`).
 
 `Platform::update()` is called from `UI::task` at `src/FurbleUI.cpp:2125`, once
 every loop, and the loop delays 5 ms at line 2133. So the feed is attempted
