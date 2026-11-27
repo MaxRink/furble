@@ -365,9 +365,7 @@ struct alloc_fail_seed_t {
   std::exit(2);
 }
 
-uint32_t allocFailNumber(const std::string &value,
-                         const std::string &whole,
-                         const char *field) {
+uint32_t allocFailNumber(const std::string &value, const std::string &whole, const char *field) {
   try {
     if (value.empty() || value[0] == '+' || value[0] == '-') {
       throw std::invalid_argument("signed or empty");
@@ -2807,9 +2805,9 @@ void applyScenarioSettings(void) {
       requestExit(2);
       return;
     }
-    const size_t freeBytes =
-        (psramFreeSeed != scenarioSettings.end()) ? parseUnsigned(psramFreeSeed->second)
-                                                  : heapPsramFree();
+    const size_t freeBytes = (psramFreeSeed != scenarioSettings.end())
+                                 ? parseUnsigned(psramFreeSeed->second)
+                                 : heapPsramFree();
     const size_t largestBytes = (psramLargestSeed != scenarioSettings.end())
                                     ? parseUnsigned(psramLargestSeed->second)
                                     : freeBytes;

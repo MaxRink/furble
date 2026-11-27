@@ -446,33 +446,28 @@ int main(void) {
   // Under the board policy the failing calls abort. The window (64 * 4 = 256)
   // is the requested block; the fault probe reports the same total.
   checkAbortCase(AbortCase::CallocExhausted,
-                 {"task=heap-caps-test", "line=Mem alloc fail.", "size 0x0100",
-                  "caps 0x00000404"});
+                 {"task=heap-caps-test", "line=Mem alloc fail.", "size 0x0100", "caps 0x00000404"});
   checkAbortCase(AbortCase::CallocInjected,
                  {"task=heap_caps", "line=Mem alloc fail.", "size 0x0100", "caps 0x00000404"});
   checkAbortCase(AbortCase::ReallocExhausted,
-                 {"task=heap-caps-test", "line=Mem alloc fail.", "size 0x2000",
-                  "caps 0x00000404"});
+                 {"task=heap-caps-test", "line=Mem alloc fail.", "size 0x2000", "caps 0x00000404"});
   // A count that overflows the block size aborts before any pool is charged,
   // and the hook sees the wrapped total the device reports: the 32-bit
   // truncation of (SIZE_MAX / 2) * 4.
-  checkAbortCase(AbortCase::CallocOverflow,
-                 {"task=heap_caps_calloc", "line=Mem alloc fail.", "size 0xfffffffc",
-                  "caps 0x00000404"});
+  checkAbortCase(AbortCase::CallocOverflow, {"task=heap_caps_calloc", "line=Mem alloc fail.",
+                                             "size 0xfffffffc", "caps 0x00000404"});
   // The display buffer's prefer list fails on its last set, which is the
   // variadic path no host test reached before.
-  checkAbortCase(AbortCase::PreferExhausted,
-                 {"task=heap_caps_malloc_prefer", "line=Mem alloc fail.", "size 0x1000",
-                  "caps 0x00001000"});
+  checkAbortCase(
+      AbortCase::PreferExhausted,
+      {"task=heap_caps_malloc_prefer", "line=Mem alloc fail.", "size 0x1000", "caps 0x00001000"});
   // The plain malloc/new path aborts through the same probe, and reports the
   // MALLOC_CAP_DEFAULT pair a firmware `new` prints on the device.
   checkAbortCase(AbortCase::MallocInjected,
-                 {"task=heap-caps-test", "line=Mem alloc fail.", "size 0x0080",
-                  "caps 0x00001000"});
+                 {"task=heap-caps-test", "line=Mem alloc fail.", "size 0x0080", "caps 0x00001000"});
   // A block freed twice aborts like multi_heap_free does, and the record names
   // the modelled line instead of an allocation size.
-  checkAbortCase(AbortCase::DoubleFree,
-                 {"task=heap-caps-test", "line=Heap block freed twice"});
+  checkAbortCase(AbortCase::DoubleFree, {"task=heap-caps-test", "line=Heap block freed twice"});
 
   if (g_Failures != 0) {
     std::cerr << "FAIL: " << g_Failures << " heap_caps shim check(s)\n";

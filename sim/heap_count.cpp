@@ -80,8 +80,8 @@ using table_t = std::unordered_map<void *,
  */
 constexpr size_t FREED_HISTORY_BLOCKS = 4096;
 
-using freed_set_t = std::unordered_set<void *, std::hash<void *>, std::equal_to<void *>,
-                                       MallocAllocator<void *>>;
+using freed_set_t =
+    std::unordered_set<void *, std::hash<void *>, std::equal_to<void *>, MallocAllocator<void *>>;
 using freed_order_t = std::deque<void *, MallocAllocator<void *>>;
 
 struct registry_t {
