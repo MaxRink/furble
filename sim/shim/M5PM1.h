@@ -44,7 +44,10 @@ inline constexpr uint8_t M5PM1_CLEAN_ONCE = 0x01;
 inline constexpr uint8_t M5PM1_CLEAN_ALL = 0x02;
 // M5PM1.h m5pm1_wake_src_t: REG_WAKE_SRC 0x05 bit 0 is the timer wake.
 inline constexpr uint8_t M5PM1_WAKE_SRC_TIM = 0x01;
-// M5PM1.h REG_PWR_CFG 0x00 bit 4 enables the status LED level.
+// M5PM1.h REG_PWR_CFG 0x06 bit 4 enables the status LED level. Register 0x00
+// is DEVICE_ID, not PWR_CFG: the manual's register list and M5Unified 0.2.20
+// M5PM1_Class.cpp:15 and :18 give 0x00 as the identity and 0x06 as the power
+// configuration, and docs/components/m5pm1.md records both.
 inline constexpr uint8_t M5PM1_PWR_CFG_LED_CTRL = (1 << 4);
 // M5PM1.h REG_PWR_CFG 0x06 bit 3 is BOOST_EN, the BOOST/GROVE 5 V output that
 // is the StickS3 EXT_5V port.
@@ -117,7 +120,7 @@ class M5PM1 {
     bool timerArmed;
     uint8_t timerAction;
     uint32_t timerDeadline;
-    // REG_PWR_CFG 0x00: the LED_EN level in bit 4 and the rest of the byte.
+    // REG_PWR_CFG 0x06: the LED_EN level in bit 4 and the rest of the byte.
     uint8_t powerConfig;
     // The RTC RAM the timed-wake marker lives in. A reset keeps it; a power
     // cycle does not, which is the distinction a timed wake depends on.
@@ -494,7 +497,7 @@ class M5PM1 {
     });
   }
 
-  // ---- Power configuration: REG_PWR_CFG 0x00, LED_EN level in bit 4 ----
+  // ---- Power configuration: REG_PWR_CFG 0x06, LED_EN level in bit 4 ----
 
   int getPowerConfig(uint8_t *config) {
     return access([config]() {

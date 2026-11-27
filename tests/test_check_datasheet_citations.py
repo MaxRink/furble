@@ -301,7 +301,12 @@ class CitationGateTest(unittest.TestCase):
     """A coverage regression fails here, not silently in a page."""
     errors, checked, cited, tolerated = check(ROOT)
     self.assertEqual(errors, [])
-    self.assertEqual((checked, cited, tolerated), (34, 30, 4))
+    # Plan 367 added one timing token, BUSY_ASSERT_BUDGET_US in SX1262.h, and
+    # its comment carries the section 8.3.1 reference the SX1262 page cites. The
+    # block comment above that run also covers SLEEP_CONFIRM_BUDGET_US, which the
+    # gate now attributes to the run rather than reporting as a gap, so cited
+    # rises by two and tolerated falls by one.
+    self.assertEqual((checked, cited, tolerated), (35, 32, 3))
     counts = {
       "lib/hal/AXP2101.cpp": 15,
       "lib/hal/AXP2101.h": 1,
@@ -309,7 +314,7 @@ class CitationGateTest(unittest.TestCase):
       "lib/hal/BQ27220.h": 3,
       "lib/hal/HalBus.h": 0,
       "lib/hal/SX1262.cpp": 0,
-      "lib/hal/SX1262.h": 6,
+      "lib/hal/SX1262.h": 7,
       "lib/hal/XL9555.cpp": 3,
       "lib/hal/XL9555.h": 1,
     }

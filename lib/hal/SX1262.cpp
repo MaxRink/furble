@@ -27,7 +27,16 @@ bool SX1262::sleep(Port &port) {
   port.delayUs(RESET_PULSE_US);
   port.setReset(false);
 
-  // Step 2: BUSY drops once the post-reset calibration has run (8.3.1, 9.1).
+  // Step 2, first half: the chip raises BUSY as its calibration starts and
+  // drops it in STDBY_RC (8.3.1, 9.1). Wait for the rise before waiting for the
+  // fall, because the level is low between the reset release and the start of
+  // the calibration: a ready wait sampled only for low passes in that window
+  // and sends SetSleep from a state the command is not accepted in (13.1.1).
+  if (!waitBusy(port, true, BUSY_ASSERT_BUDGET_US)) {
+    return false;
+  }
+
+  // Step 2, second half: BUSY drops once the post-reset calibration has run.
   if (!waitBusy(port, false, READY_BUDGET_US)) {
     return false;
   }

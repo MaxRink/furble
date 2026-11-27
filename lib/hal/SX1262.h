@@ -15,12 +15,18 @@
  *  1. Pulse NRESET low for 200 us. Section 8.1 needs typically 100 us. A reset
  *     reaches STDBY_RC from any state, including a sleep or RX left behind by
  *     other firmware, and SetSleep is only accepted from STDBY (13.1.1).
- *  2. Wait for BUSY low. After reset the chip calibrates and drops BUSY in
- *     STDBY_RC (sections 8.3.1 and 9.1). Table 8-2, page 56, gives 3.5 ms
+ *  2. Wait for BUSY to rise, then for it to fall. After reset the chip
+ *     calibrates and drops BUSY in STDBY_RC (sections 8.3.1 and 9.1), so the
+ *     level goes high first and low when the part is ready. Both waits are
+ *     needed: BUSY is low for the moment between the reset release and the
+ *     start of the calibration, and sampling only for low there reports a part
+ *     that has not started yet as ready, then sends SetSleep while the
+ *     accepted-from state is still STDBY. Table 8-2, page 56, gives 3.5 ms
  *     typical for SLEEP to STDBY_RC, and the document has no reset-to-ready
- *     figure, so the 10 ms budget is an engineering margin. A BUSY timeout here
- *     leaves the radio in STDBY_RC at 0.6 mA (Table 3-5, page 17) rather than
- *     the sleep state, so the caller must retry or hold NRESET low.
+ *     figure, so the 10 ms ready budget is an engineering margin and the 1 ms
+ *     assert budget is a driver choice for a level no table bounds. A BUSY
+ *     timeout here leaves the radio in STDBY_RC at 0.6 mA (Table 3-5, page 17)
+ *     rather than the sleep state, so the caller must retry or hold NRESET low.
  *  3. SetSleep: opcode 0x84, sleepConfig 0x00 (Table 13-1, Table 13-2): cold
  *     start, RTC wake off. All blocks off, 160 nA (Table 3-5).
  *  4. Wait 500 us, the window in which the chip must not see SPI (13.1.1).
@@ -29,13 +35,14 @@
  *     standby-to-sleep time, so the driver waits for the level instead of
  *     sampling once: a part that asserts BUSY late is healthy, not broken.
  *
- * The whole sequence is bounded: 200 us of reset, 10,000 us waiting for the
- * post-reset calibration to finish, 500 us of no-SPI settle and 5,000 us
- * confirming sleep, so 15,700 us at worst. sleep() never spins without a
- * budget. The host test sums these four constants against this total, so a
- * changed step that leaves this paragraph behind fails there. A stuck BUSY
- * spends only the reset pulse and the ready budget, 10,200 us, and returns
- * before SetSleep.
+ * The whole sequence is bounded: 200 us of reset, 1,000 us waiting for BUSY to
+ * rise, 10,000 us waiting for the post-reset calibration to finish, 500 us of
+ * no-SPI settle and 5,000 us confirming sleep, so 16,700 us at worst. sleep()
+ * never spins without a budget. The host test sums these five constants against
+ * this total, so a changed step that leaves this paragraph behind fails there.
+ * A BUSY that never rises spends the reset pulse and the assert budget, 1,200
+ * us, and returns before SetSleep; a BUSY stuck high spends 11,200 us of reset
+ * and waits and also returns before SetSleep.
  *
  * Any falling edge on NSS wakes the chip (9.3). The board adapter must keep
  * NSS high through MCU light and deep sleep.
@@ -72,6 +79,13 @@ class SX1262 {
   static constexpr uint32_t SLEEP_SETTLE_US = 500;
   /** No tabulated value exists, so bound the wait for BUSY high (step 5). */
   static constexpr uint32_t SLEEP_CONFIRM_BUDGET_US = 5000;
+  /**
+   * No tabulated value exists, so bound the wait for BUSY high after the reset
+   * release (step 2). Section 8.3.1 documents the level going high during the
+   * calibration and low when the part reaches STDBY_RC, and no table gives the
+   * rise time, so this is a driver choice like SLEEP_CONFIRM_BUDGET_US.
+   */
+  static constexpr uint32_t BUSY_ASSERT_BUDGET_US = 1000;
 
   // Driver choice, not a datasheet figure: how often BUSY is sampled inside
   // the READY_BUDGET_US window.
@@ -80,11 +94,12 @@ class SX1262 {
   /**
    * Run the sequence above.
    *
-   * @return false if BUSY never dropped within READY_BUDGET_US (no SetSleep
-   * was sent), the SPI write failed, or BUSY did not go high within
-   * SLEEP_CONFIRM_BUDGET_US. Worst case the call spends RESET_PULSE_US +
-   * READY_BUDGET_US + SLEEP_SETTLE_US + SLEEP_CONFIRM_BUDGET_US = 15,700 us
-   * in delays.
+   * @return false if BUSY never rose within BUSY_ASSERT_BUDGET_US or never
+   * dropped within READY_BUDGET_US (no SetSleep was sent in either case), the
+   * SPI write failed, or BUSY did not go high within SLEEP_CONFIRM_BUDGET_US.
+   * Worst case the call spends RESET_PULSE_US + BUSY_ASSERT_BUDGET_US +
+   * READY_BUDGET_US + SLEEP_SETTLE_US + SLEEP_CONFIRM_BUDGET_US = 16,700 us in
+   * delays.
    */
   static bool sleep(Port &port);
 };
