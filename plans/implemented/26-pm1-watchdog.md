@@ -200,7 +200,7 @@ change beyond the two declarations.
 
 ### Where to feed
 
-Feed from `Platform::update()` (`src/FurblePlatform.cpp:1503-1531`), rate limited
+Feed from `Platform::update()` (`src/FurblePlatform.cpp:1516-1544`), rate limited
 to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:421-423`).
 
 `Platform::update()` is called from `UI::task` at `src/FurbleUI.cpp:2125`, once

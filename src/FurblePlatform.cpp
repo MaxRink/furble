@@ -959,22 +959,35 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     uint8_t prediction[TimeKeeperPolicy::RECORD_BYTES] = {};
     const size_t predictionLength =
         TimeKeeper::getInstance().prepareTimedWake(seconds, prediction, sizeof(prediction));
+    // The marker is written by now, so the record region has to end this call in
+    // a state that cannot be read as this shutdown's interval. Clearing it is the
+    // only answer that leaves the boot fail-closed: a marker with no record is
+    // refused outright, while a marker paired with someone else's interval is the
+    // one outcome that would add a wrong number to the clock.
+    const auto clearRecordRegion = [this]() {
+      uint8_t cleared[TimeKeeperPolicy::RECORD_BYTES] = {};
+      (void)m5pm1Access([this, &cleared]() {
+        return m_M5PM1.writeRtcRAM(TIMED_WAKE_RECORD_OFFSET, cleared, sizeof(cleared));
+      });
+    };
     if (predictionLength > 0) {
       if (!m5pm1Access([this, &prediction, predictionLength]() {
             return m_M5PM1.writeRtcRAM(TIMED_WAKE_RECORD_OFFSET, prediction,
                                        static_cast<uint8_t>(predictionLength));
           })) {
         ESP_LOGW(LOG_TAG, "Failed to save the timed wake clock prediction");
+        // The write did not land, so the region may still hold the interval of an
+        // earlier shutdown. Best effort by construction: a bus that refuses this
+        // write usually refuses the clear too, and then there is nothing left to
+        // do but leave the marker without a record for the boot to refuse.
+        clearRecordRegion();
       }
     } else {
       // No prediction this time. Clear the record region anyway: a boot that
       // failed between the marker write and consumeTimedWake()'s clear can have
       // left an older record here, and the marker just written must never be
       // paired with an interval from an earlier shutdown.
-      uint8_t cleared[TimeKeeperPolicy::RECORD_BYTES] = {};
-      (void)m5pm1Access([this, &cleared]() {
-        return m_M5PM1.writeRtcRAM(TIMED_WAKE_RECORD_OFFSET, cleared, sizeof(cleared));
-      });
+      clearRecordRegion();
     }
 
     if (!m5pm1Access([this]() { return m_M5PM1.shutdown(); })) {
