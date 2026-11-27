@@ -171,12 +171,21 @@ comment above it is now true rather than aspirational.
 ### DRAM
 
 The review's correction is right and the PR text is fixed: `m_TextSaveQueue` is a
-`std::vector` on the heap and does not count against `.dram0`. The PR now quotes
-the measured pair, 47,840 bytes against a 48,128 byte budget, which left 288
-bytes of headroom, below the 512 the size tool enforces, so the budget was set to
-49,152 by the tool itself. The fixed growth is the two sessions, the status
-struct and the text command the in-flight optional now carries; this round adds
-one `bool` and one `uint8_t`, which the same headroom covers several times over.
+`std::vector` on the heap and does not count against `.dram0`.
+
+The size pass after that correction went further than the review could see: the
+classic ESP32 boards were 108 bytes over their 55,296 byte budget, because the
+text backend's fixed state was in `.bss`. It is now one heap allocation,
+`GPS::text_state_t`, created by `enable()` before the UART task is woken and
+freed by `disable()` after the save path, with every text entry point null-safe
+and `getTextStatus()` answering an empty record while it is absent. That removed
+232 bytes of `.bss` on every board. The S3 budget raise is reverted, since the
+S3 now measures 47,608 against the original 48,128 with 520 bytes of headroom,
+and `tools/size_budget.json` is unchanged by this PR. Measured with
+`check_size_budget.py` on this head: `m5stick-c` 55,172/55,296, `m5stick-c-plus`
+55,148/55,296, `m5stick-s3` 47,608/48,128. The in-flight command stays in `.bss`;
+moving it would touch the UBX and CASIC paths for about 150 bytes and is not
+needed to pass.
 
 ## B. The review as posted
 

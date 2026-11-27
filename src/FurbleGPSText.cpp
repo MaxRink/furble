@@ -13,6 +13,7 @@
  */
 #include <algorithm>
 #include <array>
+#include <new>
 #include <string>
 
 #include <esp_log.h>
@@ -41,24 +42,61 @@ GpsText::Dialect GPS::textIdentity(void) const {
   return static_cast<GpsText::Dialect>(m_TextIdentity.load());
 }
 
+bool GPS::ensureTextState(void) {
+  const std::lock_guard<std::mutex> lock(m_TextMutex);
+  if (m_TextState == nullptr) {
+    // Before any gate measures free bytes: enable() calls this first, and the
+    // UART task cannot reach a text path until enable() has published it.
+    m_TextState = new (std::nothrow) text_state_t();
+    if (m_TextState == nullptr) {
+      ESP_LOGE(LOG_TAG, "GPS text backend state allocation failed, the text backends stay off");
+      return false;
+    }
+  }
+  return true;
+}
+
+void GPS::freeTextState(void) {
+  text_state_t *state = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(m_TextMutex);
+    state = m_TextState;
+    m_TextState = nullptr;
+  }
+  // Outside the lock: a destructor may run while a reader waits, and a reader
+  // that already copied the pointer cannot exist here, because disable() holds
+  // the service mutex and the only other reader takes this mutex.
+  delete state;
+}
+
 void GPS::resetText(void) {
   m_TextIdentity.store(static_cast<uint8_t>(GpsText::Dialect::NONE));
-  m_Text.clear();
-  m_TextStopped = false;
-  m_TextSave.clear();
-  m_TextSaveQueue.clear();
-  m_TextSaveNext = 0;
-  m_TextSaveRefused = false;
+  if (m_TextState == nullptr) {
+    return;
+  }
+  text().session.clear();
+  text().stopped = false;
+  text().save_session.clear();
+  text().save_queue.clear();
+  text().save_next = 0;
+  text().save_refused = false;
   const std::lock_guard<std::mutex> lock(m_TextMutex);
-  m_TextStatus = {};
+  text().status = {};
 }
 
 GPS::text_status_t GPS::getTextStatus(void) const {
   const std::lock_guard<std::mutex> lock(m_TextMutex);
-  return m_TextStatus;
+  if (m_TextState == nullptr) {
+    return text_status_t();
+  }
+  return m_TextState->status;
 }
 
 bool GPS::sendText(const GpsText::Command &command) {
+  if (m_TextState == nullptr) {
+    // no allocation, no text backend: the receiver keeps the NMEA path
+    return false;
+  }
   const std::string frame = GpsText::frame(command.body);
   if (frame.empty()) {
     ESP_LOGW(LOG_TAG, "GPS text command %s has no frame", GpsText::opName(command.op));
@@ -85,6 +123,9 @@ void GPS::sendIdentifyProbes(void) {
 }
 
 void GPS::serviceText(const uint8_t *data, size_t length) {
+  if (m_TextState == nullptr) {
+    return;
+  }
   GpsText::Line line;
   if (!GpsText::parse(reinterpret_cast<const char *>(data), length, line)) {
     return;
@@ -138,9 +179,9 @@ void GPS::serviceText(const uint8_t *data, size_t length) {
   if (identified) {
     {
       const std::lock_guard<std::mutex> lock(m_TextMutex);
-      m_TextStatus.have_version = !model.empty();
-      m_TextStatus.model = model;
-      m_TextStatus.firmware = firmware;
+      text().status.have_version = !model.empty();
+      text().status.model = model;
+      text().status.firmware = firmware;
     }
     m_TextIdentity.store(static_cast<uint8_t>(identity));
     if (!model.empty()) {
@@ -165,26 +206,26 @@ void GPS::serviceText(const uint8_t *data, size_t length) {
     }
   }
 
-  const GpsText::Verdict verdict = m_Text.accept(line);
+  const GpsText::Verdict verdict = text().session.accept(line);
   if (verdict != GpsText::Verdict::NONE) {
     const std::lock_guard<std::mutex> lock(m_TextMutex);
-    m_TextStatus.last_op = opByte(m_Text.command().op);
-    m_TextStatus.last_verdict = verdictByte(verdict);
+    text().status.last_op = opByte(text().session.command().op);
+    text().status.last_verdict = verdictByte(verdict);
     if (verdict == GpsText::Verdict::ACKED) {
-      m_TextStatus.acks++;
+      text().status.acks++;
     } else if (GpsText::refused(verdict)) {
       // a "being processed" answer is neither an acknowledgement nor a refusal
-      m_TextStatus.naks++;
+      text().status.naks++;
     }
     // The line belongs to the configuration session, so it does not also go to
     // the save session: one bare $OK must not be counted twice.
     return;
   }
-  if (m_TextSave.active()) {
-    const GpsText::Verdict saved = m_TextSave.accept(line);
+  if (text().save_session.active()) {
+    const GpsText::Verdict saved = text().save_session.accept(line);
     if (saved == GpsText::Verdict::ACKED) {
       const std::lock_guard<std::mutex> lock(m_TextMutex);
-      m_TextStatus.acks++;
+      text().status.acks++;
     }
   }
 }
@@ -230,18 +271,18 @@ void GPS::publishTextPlan(const GpsText::Request &request,
                           bool rate_refused,
                           bool psm_refused) {
   const std::lock_guard<std::mutex> lock(m_TextMutex);
-  m_TextStatus.configured = true;
-  m_TextStatus.rate_ms = rate_ms;
-  m_TextStatus.gnss = gnss;
-  m_TextStatus.gnss_refused = gnss_refused;
-  m_TextStatus.sbas = sbas;
-  m_TextStatus.sbas_refused = sbas_refused;
-  m_TextStatus.platform = platform;
-  m_TextStatus.platform_refused = platform_refused;
-  m_TextStatus.rate_refused = rate_refused;
-  m_TextStatus.psm_refused = psm_refused;
-  m_TextStatus.sentences_set = request.sentences_set;
-  m_TextStatus.sentences = static_cast<uint8_t>(request.sentences);
+  text().status.configured = true;
+  text().status.rate_ms = rate_ms;
+  text().status.gnss = gnss;
+  text().status.gnss_refused = gnss_refused;
+  text().status.sbas = sbas;
+  text().status.sbas_refused = sbas_refused;
+  text().status.platform = platform;
+  text().status.platform_refused = platform_refused;
+  text().status.rate_refused = rate_refused;
+  text().status.psm_refused = psm_refused;
+  text().status.sentences_set = request.sentences_set;
+  text().status.sentences = static_cast<uint8_t>(request.sentences);
 }
 
 void GPS::enqueueTextConfig(const GpsText::Command &command) {
@@ -272,9 +313,12 @@ void GPS::enqueueTextConfig(const GpsText::Command &command) {
 }
 
 void GPS::configureQuectel(void) {
+  if (m_TextState == nullptr) {
+    return;
+  }
   m_ConfigQueue.clear();
   m_ConfigInFlight.reset();
-  m_Text.clear();
+  text().session.clear();
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
     m_ConfigStatusCount = 0;
@@ -326,9 +370,12 @@ void GPS::configureQuectel(void) {
 }
 
 void GPS::configureUnicore(void) {
+  if (m_TextState == nullptr) {
+    return;
+  }
   m_ConfigQueue.clear();
   m_ConfigInFlight.reset();
-  m_Text.clear();
+  text().session.clear();
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
     m_ConfigStatusCount = 0;
@@ -365,6 +412,9 @@ void GPS::configureUnicore(void) {
 
 bool GPS::textStandby(uint32_t now) {
   (void)now;
+  if (m_TextState == nullptr) {
+    return false;
+  }
   const backend_t backend = getBackend();
   GpsText::Command command;
   bool supported = false;
@@ -387,7 +437,7 @@ bool GPS::textStandby(uint32_t now) {
 
   {
     const std::lock_guard<std::mutex> lock(m_TextMutex);
-    m_TextStatus.standby = supported ? 1 : 2;
+    text().status.standby = supported ? 1 : 2;
   }
   if (!supported) {
     return false;
@@ -398,34 +448,37 @@ bool GPS::textStandby(uint32_t now) {
 }
 
 void GPS::textSaveQueueBuild(void) {
-  m_TextSaveQueue.clear();
-  m_TextSaveNext = 0;
-  m_TextSaveRefused = false;
+  text().save_queue.clear();
+  text().save_next = 0;
+  text().save_refused = false;
   if (getBackend() == backend_t::QUECTEL) {
     // A fix rate above 1 Hz needs the GNSS engine off before it saves, and the
     // lock is what keeps the port answering a command after PAIR003 (Q76
     // 2.3.30 page 56, 2.3.45 note 2 page 69). Sent in that order whatever the
     // rate, because the cost is three short frames and the rail is going away.
-    m_TextSaveQueue.push_back(Quectel::lockSleep());
-    m_TextSaveQueue.push_back(Quectel::powerOff());
+    text().save_queue.push_back(Quectel::lockSleep());
+    text().save_queue.push_back(Quectel::powerOff());
     // PAIR003 powers the GNSS engine off (Q76 2.3.3 page 34). If the rail cut
     // that follows is refused, railOffOrRestart() is the only path that can
     // bring it back, so the state is carried until it does.
-    m_TextStopped = true;
-    m_TextSaveQueue.push_back(Quectel::saveSettings());
-    m_TextSaveQueue.push_back(Quectel::saveParameters());
+    text().stopped = true;
+    text().save_queue.push_back(Quectel::saveSettings());
+    text().save_queue.push_back(Quectel::saveParameters());
     if (!Platform::hasGpsBackupSupply()) {
       // "If the backup domain cannot be powered ... this command needs to be
       // sent every time the parameters are modified" (Q76 2.3.44 note 1 page
       // 68).
-      m_TextSaveQueue.push_back(Quectel::saveNavigation());
+      text().save_queue.push_back(Quectel::saveNavigation());
     }
     return;
   }
-  m_TextSaveQueue.push_back(Unicore::save());
+  text().save_queue.push_back(Unicore::save());
 }
 
 bool GPS::textSave(uint32_t now) {
+  if (m_TextState == nullptr) {
+    return false;
+  }
   const backend_t backend = getBackend();
   // A rail that is already off has nothing left to save, and a rail the board
   // cannot cut must not lose a running receiver to a GNSS stop nothing undoes.
@@ -436,15 +489,15 @@ bool GPS::textSave(uint32_t now) {
   }
   {
     const std::lock_guard<std::mutex> lock(m_TextMutex);
-    if (m_TextStatus.save == 2) {
+    if (text().status.save == 2) {
       // refused once this session: do not retry on every duty cycle
       return false;
     }
-    m_TextStatus.save = 0;
+    text().status.save = 0;
   }
 
   textSaveQueueBuild();
-  m_TextSave.clear();
+  text().save_session.clear();
   m_RailOffPending = true;
   m_RailOffDeadline = now + TEXT_SAVE_BUDGET_MS;
   // The first frame goes out now; the rest follow on the cycle passes.
@@ -453,40 +506,40 @@ bool GPS::textSave(uint32_t now) {
 }
 
 bool GPS::textSaveService(uint32_t now) {
-  if (m_TextSaveQueue.empty()) {
+  if ((m_TextState == nullptr) || text().save_queue.empty()) {
     return true;
   }
 
-  if (!m_TextSave.active()) {
-    if (m_TextSaveNext >= m_TextSaveQueue.size()) {
+  if (!text().save_session.active()) {
+    if (text().save_next >= text().save_queue.size()) {
       return true;
     }
-    m_TextSave.begin(m_TextSaveQueue[m_TextSaveNext], now);
-    m_TextSaveNext++;
-    if (!sendText(m_TextSave.command())) {
-      m_TextSaveRefused = true;
+    text().save_session.begin(text().save_queue[text().save_next], now);
+    text().save_next++;
+    if (!sendText(text().save_session.command())) {
+      text().save_refused = true;
       return true;
     }
     return false;
   }
 
-  switch (m_TextSave.service(now)) {
+  switch (text().save_session.service(now)) {
     case GpsText::Session::Step::SEND:
-      if (!sendText(m_TextSave.command())) {
-        m_TextSaveRefused = true;
+      if (!sendText(text().save_session.command())) {
+        text().save_refused = true;
         return true;
       }
       return false;
     case GpsText::Session::Step::WAIT:
       return false;
     case GpsText::Session::Step::ACKED:
-      m_TextSave.clear();
+      text().save_session.clear();
       // the next command starts on the next pass, which gives the receiver a
       // moment between a save and the frame that follows it
-      return m_TextSaveNext >= m_TextSaveQueue.size();
+      return text().save_next >= text().save_queue.size();
     case GpsText::Session::Step::FAILED:
     case GpsText::Session::Step::TIMEOUT:
-      m_TextSaveRefused = true;
+      text().save_refused = true;
       return true;
     case GpsText::Session::Step::IDLE:
       return true;
@@ -521,28 +574,29 @@ void GPS::textSaveBlocking(void) {
       }
       GpsText::Line line;
       if (GpsText::parse(pending.data(), pending.size(), line) && line.checksum_ok) {
-        (void)m_TextSave.accept(line);
+        (void)text().save_session.accept(line);
       }
       pending.clear();
     }
 
-    switch (m_TextSave.service(Platform::getInstance().tick())) {
+    switch (text().save_session.service(Platform::getInstance().tick())) {
       case GpsText::Session::Step::SEND:
-        (void)sendText(m_TextSave.command());
+        (void)sendText(text().save_session.command());
         break;
       case GpsText::Session::Step::ACKED:
-        m_TextSave.clear();
-        if (m_TextSaveNext >= m_TextSaveQueue.size()) {
+        text().save_session.clear();
+        if (text().save_next >= text().save_queue.size()) {
           done = true;
         } else {
-          m_TextSave.begin(m_TextSaveQueue[m_TextSaveNext], Platform::getInstance().tick());
-          m_TextSaveNext++;
-          (void)sendText(m_TextSave.command());
+          text().save_session.begin(text().save_queue[text().save_next],
+                                    Platform::getInstance().tick());
+          text().save_next++;
+          (void)sendText(text().save_session.command());
         }
         break;
       case GpsText::Session::Step::FAILED:
       case GpsText::Session::Step::TIMEOUT:
-        m_TextSaveRefused = true;
+        text().save_refused = true;
         done = true;
         break;
       case GpsText::Session::Step::IDLE:
@@ -555,34 +609,34 @@ void GPS::textSaveBlocking(void) {
     }
   }
   if (!done) {
-    m_TextSaveRefused = true;
+    text().save_refused = true;
   }
   // the verdict before the session is cleared, so a refusal the receiver stated
   // is reported as that refusal rather than as an unanswered frame
-  const GpsText::Verdict result = m_TextSave.verdict();
-  m_TextSave.clear();
-  m_TextSaveQueue.clear();
+  const GpsText::Verdict result = text().save_session.verdict();
+  text().save_session.clear();
+  text().save_queue.clear();
   m_RailOffPending = false;
   {
     const std::lock_guard<std::mutex> lock(m_TextMutex);
-    m_TextStatus.save = m_TextSaveRefused ? 2 : 1;
-    m_TextStatus.last_op = opByte(GpsText::Op::SAVE);
-    m_TextStatus.last_verdict =
-        verdictByte(m_TextSaveRefused
+    text().status.save = text().save_refused ? 2 : 1;
+    text().status.last_op = opByte(GpsText::Op::SAVE);
+    text().status.last_verdict =
+        verdictByte(text().save_refused
                         ? ((result != GpsText::Verdict::NONE) ? result : GpsText::Verdict::TIMEOUT)
                         : GpsText::Verdict::ACKED);
   }
 }
 
 void GPS::textPowerBackOn(void) {
-  if (!m_TextStopped) {
+  if ((m_TextState == nullptr) || !text().stopped) {
     return;
   }
   // The save powered the GNSS engine off and the cut that was supposed to
   // follow did not happen, so the receiver is powered with no GNSS. On a
   // Quectel part that is PAIR002 (Q76 2.3.2 page 34) or, where that command
   // does not exist, a hot start (Q76 2.3.4 page 34).
-  m_TextStopped = false;
+  text().stopped = false;
   if (getBackend() != backend_t::QUECTEL) {
     return;
   }

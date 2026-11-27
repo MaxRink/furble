@@ -286,14 +286,30 @@ produce.
 
 ## 9. Size
 
-The `m5stick-s3` release build measures flash 1,881,664 of 3,145,728 and static
-DRAM 47,840 of 49,152. The DRAM budget was raised from 48,128 with
-`tools/check_size_budget.py --env m5stick-s3 --write` in this PR: the vendor text
-backend adds the configuration session, the save session, the status snapshot
-and the save queue, which left 288 bytes of headroom under the old number and
-would have made the next small addition fail. The stated reason is this
-paragraph. The other S3 environments share the budget value and are measured by
-firmware CI.
+Measured with `python3 tools/check_size_budget.py --env m5stick-c
+--env m5stick-c-plus --env m5stick-s3` after the branch's own builds:
+
+| Env | Flash | Static DRAM | IRAM |
+| :--- | :--- | :--- | :--- |
+| `m5stick-c` | 1,525,056 of 1,740,800 | 55,172 of 55,296 | 114,024 of 114,688 |
+| `m5stick-c-plus` | 1,574,816 of 1,740,800 | 55,148 of 55,296 | 114,024 of 114,688 |
+| `m5stick-s3` | 1,884,352 of 3,145,728 | 47,608 of 48,128 | 114,944 of 115,712 |
+
+**No budget is raised.** The first version of this branch put the text backend's
+fixed state in `.bss` and needed the S3 budget lifted to 49,152; the review's
+size pass then showed the classic ESP32 boards over their 55,296 byte budget
+(55,404, 108 over, 512 bytes short of the headroom the budget was written with).
+`text_state_t` now lives on the heap instead: `enable()` allocates it before the
+UART task is woken, `disable()` frees it after the save path, a failed allocation
+leaves the text backends off, and `getTextStatus()` answers an empty record while
+it is absent. That removed 232 bytes of `.bss` on every board, which puts all
+three under their existing budgets, so `tools/size_budget.json` is unchanged and
+the S3 value goes back to 48,128 with 520 bytes of headroom.
+
+What stays in `.bss` is the identity byte, the status mutex and one pointer. The
+in-flight configuration command is still an in-DRAM `std::optional` for every
+backend; moving it would touch the UBX and CASIC paths for about 150 bytes, which
+this PR does not need once the text state is out.
 
 ## 10. Deviations from the request, and why
 
@@ -429,7 +445,8 @@ every finding.
 
 Gates run before the PR: the host suite, the four GPS suites, the GPS fuzz
 target, `check_sim_scenarios.py`, `pre_review.py`, the doc token check and both
-citation gates, plus one `m5stick-s3` firmware build and the size budget.
+citation gates, plus `m5stick-c`, `m5stick-c-plus` and `m5stick-s3` firmware
+builds and `check_size_budget.py` on all three.
 
 Not done, and not claimed: any run on Quectel or Unicore hardware. Every row of
 section 12 needs a device.

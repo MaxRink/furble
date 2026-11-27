@@ -576,6 +576,8 @@ class GPS {
   static constexpr uint32_t FRESH_FIX_MS = 30 * 1000;
 
  private:
+  /** The vendor text backend's heap state; defined with the members below. */
+  struct text_state_t;
   GPS() {};
 
   static constexpr const size_t BUFFER_SIZE = 256;
@@ -835,6 +837,12 @@ class GPS {
   void textPowerBackOn(void);
   /** Drop the text identity, plan and counters. */
   void resetText(void);
+  /** Allocate the text backend's fixed state. enable() calls this once. */
+  bool ensureTextState(void);
+  /** Free it, after the save path has run. disable() calls this once. */
+  void freeTextState(void);
+  /** The allocated state. Only call while it is known to be up. */
+  text_state_t &text(void) { return *m_TextState; }
   /** Which vendor answered the identification probes, if any. */
   GpsText::Dialect textIdentity(void) const;
 
@@ -1179,19 +1187,29 @@ class GPS {
   // enable() and disable() with the task parked; everything under m_TextMutex
   // is read by the console through getTextStatus().
   std::atomic<uint8_t> m_TextIdentity {static_cast<uint8_t>(GpsText::Dialect::NONE)};
-  GpsText::Session m_Text;
   mutable std::mutex m_TextMutex;
-  text_status_t m_TextStatus = {};
-  // PAIR003 powered the GNSS engine off and no rail cut followed. GPS task
-  // only, cleared by the power-on or restart that brings the engine back.
-  bool m_TextStopped = false;
-  // The configuration save in flight on the shutdown path. Its own session, so
-  // a save never disturbs the configuration session; the GPS task is the only
-  // writer and disable() runs with that task parked.
-  std::vector<GpsText::Command> m_TextSaveQueue;
-  GpsText::Session m_TextSave;
-  size_t m_TextSaveNext = 0;
-  bool m_TextSaveRefused = false;
+  /**
+   * The vendor text backend's fixed state, allocated on the heap.
+   *
+   * It is about 300 bytes of two sessions, a status snapshot, a command queue
+   * and one session's command, which on the classic ESP32 boards comes out of a
+   * DRAM budget with 512 bytes of headroom by design (tools/size_budget.json).
+   * enable() allocates it before the UART task configures anything, and
+   * disable() frees it after the save path has run, so a GPS-off board does not
+   * carry it. Null means the text backend is not up: every entry point checks,
+   * and getTextStatus() answers an empty record.
+   */
+  struct text_state_t {
+    GpsText::Session session;      /**< the configuration command in flight */
+    GpsText::Session save_session; /**< the shutdown save sequence */
+    std::vector<GpsText::Command> save_queue;
+    text_status_t status = {};
+    size_t save_next = 0;
+    bool save_refused = false;
+    /** PAIR003 powered the GNSS off and no rail cut followed. */
+    bool stopped = false;
+  };
+  text_state_t *m_TextState = nullptr;
 
   // MON-HW interference snapshot, hardware-tuning-pending
   std::atomic<bool> m_MonHwPending = false;

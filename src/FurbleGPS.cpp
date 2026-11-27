@@ -426,6 +426,13 @@ void GPS::enable(void) {
   wakeGPSService(m_Queue);
   const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
 
+  // The vendor text backend's fixed state lives on the heap, not in .bss: about
+  // 300 bytes that the classic ESP32 DRAM budget cannot spare. It is allocated
+  // here, before the UART task is woken and before any gate measures free bytes,
+  // and released at the end of disable(). A failed allocation leaves the text
+  // backends off and the NMEA and UBX paths untouched.
+  (void)ensureTextState();
+
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
   loadAidCache();
   loadEphemerisCache();
@@ -781,12 +788,12 @@ void GPS::serviceCycle(void) {
 
   if (m_RailOffPending) {
     bool answered = false;
-    if (m_TextSave.active() || !m_TextSaveQueue.empty()) {
+    if (text().save_session.active() || !text().save_queue.empty()) {
       // A vendor text save in flight steps its own sequence.
       answered = textSaveService(now);
       if (answered) {
         const std::lock_guard<std::mutex> save(m_TextMutex);
-        m_TextStatus.save = m_TextSaveRefused ? 2 : 1;
+        text().status.save = text().save_refused ? 2 : 1;
       }
     } else {
       const std::lock_guard<std::mutex> ubx(m_UbxMutex);
@@ -794,17 +801,17 @@ void GPS::serviceCycle(void) {
     }
     if (answered || tickReached(now, m_RailOffDeadline)) {
       if (!answered) {
-        if (m_TextSaveQueue.empty()) {
+        if (text().save_queue.empty()) {
           const std::lock_guard<std::mutex> ubx(m_UbxMutex);
           m_UbxSosBackup = 2;
         } else {
-          m_TextSaveRefused = true;
+          text().save_refused = true;
           const std::lock_guard<std::mutex> save(m_TextMutex);
-          m_TextStatus.save = 2;
+          text().status.save = 2;
         }
       }
-      m_TextSave.clear();
-      m_TextSaveQueue.clear();
+      text().save_session.clear();
+      text().save_queue.clear();
       m_RailOffPending = false;
       enterRailOff(now);
     }
@@ -1160,7 +1167,7 @@ void GPS::railOffOrRestart(void) {
     // turns it back on.
     textPowerBackOn();
   }
-  m_TextStopped = false;
+  text().stopped = false;
 }
 
 void GPS::beginResync(uint32_t now) {
@@ -1646,7 +1653,7 @@ void GPS::startConfigCommand(void) {
   if (m_ConfigInFlight->text) {
     // The vendor text layer owns the acknowledgement timeout and the retry, so
     // it starts with the first send rather than after it.
-    m_Text.begin(m_ConfigInFlight->text_command, m_ConfigSent);
+    text().session.begin(m_ConfigInFlight->text_command, m_ConfigSent);
   }
 
   if (!sendConfigFrame(*m_ConfigInFlight)) {
@@ -1665,7 +1672,7 @@ void GPS::finishConfigCommand(config_state_t state) {
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
   if (command.text) {
-    m_Text.clear();
+    text().session.clear();
   }
 
   bool sendFallback = false;
@@ -1819,12 +1826,12 @@ void GPS::serviceConfig(void) {
 #endif
   if (m_ConfigInFlight.has_value() && m_ConfigInFlight->text) {
     const uint32_t now = Platform::getInstance().tick();
-    switch (m_Text.service(now)) {
+    switch (text().session.service(now)) {
       case GpsText::Session::Step::SEND:
         m_ConfigSent = now;
         {
           const std::lock_guard<std::mutex> lock(m_ConfigMutex);
-          m_ConfigStatus[m_ConfigInFlightStatus].attempts = m_Text.attempts();
+          m_ConfigStatus[m_ConfigInFlightStatus].attempts = text().session.attempts();
         }
         if (!sendConfigFrame(*m_ConfigInFlight)) {
           ESP_LOGW(LOG_TAG, "GPS text retry write failed");
@@ -1841,15 +1848,15 @@ void GPS::serviceConfig(void) {
       }
       case GpsText::Session::Step::FAILED:
       {
-        const GpsText::Verdict verdict = m_Text.verdict();
+        const GpsText::Verdict verdict = text().session.verdict();
         const GpsText::Op op = m_ConfigInFlight->text_command.op;
         const GpsText::Dialect dialect = m_ConfigInFlight->text_command.dialect;
         ESP_LOGW(LOG_TAG, "GPS %s refused: %s", GpsText::opName(op), GpsText::verdictName(verdict));
         {
           const std::lock_guard<std::mutex> lock(m_TextMutex);
-          m_TextStatus.last_op = static_cast<uint8_t>(op);
-          m_TextStatus.last_verdict = static_cast<uint8_t>(verdict);
-          m_TextStatus.naks++;
+          text().status.last_op = static_cast<uint8_t>(op);
+          text().status.last_verdict = static_cast<uint8_t>(verdict);
+          text().status.naks++;
         }
         finishConfigCommand(CONFIG_NACKED);
         // A Unicore $OK names no command (UC 3.2 page 30), so the failure
@@ -1864,7 +1871,7 @@ void GPS::serviceConfig(void) {
       {
         const GpsText::Op op = m_ConfigInFlight->text_command.op;
         const GpsText::Dialect dialect = m_ConfigInFlight->text_command.dialect;
-        const GpsText::Verdict verdict = m_Text.verdict();
+        const GpsText::Verdict verdict = text().session.verdict();
         if (verdict == GpsText::Verdict::STALLED) {
           ESP_LOGW(LOG_TAG, "GPS %s stayed in processing, giving up", GpsText::opName(op));
         } else {
@@ -1872,9 +1879,9 @@ void GPS::serviceConfig(void) {
         }
         {
           const std::lock_guard<std::mutex> lock(m_TextMutex);
-          m_TextStatus.last_op = static_cast<uint8_t>(op);
-          m_TextStatus.last_verdict = static_cast<uint8_t>(verdict);
-          m_TextStatus.timeouts++;
+          text().status.last_op = static_cast<uint8_t>(op);
+          text().status.last_verdict = static_cast<uint8_t>(verdict);
+          text().status.timeouts++;
         }
         finishConfigCommand(CONFIG_TIMEOUT);
         if (dialect == GpsText::Dialect::UNICORE) {
@@ -2557,6 +2564,11 @@ void GPS::disable(void) {
   m_Fix.store(static_cast<uint8_t>(Fix::NONE));
   m_Source.store(SOURCE_NONE);
   m_Satellites.store(0);
+
+  // Everything that reads the text state has finished: the save path above, the
+  // rail restart, resetText() and the console, which sees an empty record from
+  // here on. Give the bytes back while GPS is off.
+  freeTextState();
 }
 
 bool GPS::setRailPower(bool enable) {

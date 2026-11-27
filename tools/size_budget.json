@@ -28,7 +28,7 @@
     "m5stick-s3": {
       "partitions": "partitions_two_ota_8m.csv",
       "flash_slot": 3145728,
-      "dram_bytes": 49152,
+      "dram_bytes": 48128,
       "iram_bytes": 115712
     },
     "waveshare-s3-eth": {
