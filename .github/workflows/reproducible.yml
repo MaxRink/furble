@@ -82,6 +82,10 @@ jobs:
           # no device run yet, so it is built here with both budgets rather
           # than published.
           - lilygo-tbeam-supreme
+          # The debug variant of the same board: tools/size_budget.json pins its
+          # flash, DRAM and IRAM figures, so a budget nobody builds is a budget
+          # nobody checks.
+          - lilygo-tbeam-supreme-debug
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

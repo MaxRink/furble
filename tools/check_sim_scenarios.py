@@ -23,7 +23,11 @@ SUITE_BOARDS = {"power-gate": {"m5stick-s3"},
 REQUIRED_SELECTIONS = {
   "power-gate": {"m5stick-s3"},
   "bughunt": {"m5stick-s3", "m5stick-c", "m5stack-core"},
-  "e2e": {"m5stick-s3", "m5stick-c", "m5stack-core"},
+  # The T-Beam Supreme is a bench board, but the two scenarios that cover the
+  # runtime receiver choice are the only executable proof that the row's GPS
+  # pins and panel geometry reach the firmware, so it is required rather than
+  # optional.
+  "e2e": {"m5stick-s3", "m5stick-c", "m5stack-core", "lilygo-tbeam-supreme"},
   "invalid": {"m5stick-s3"},
 }
 EXACT_BOARDS = {

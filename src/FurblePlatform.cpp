@@ -179,9 +179,12 @@ namespace {
  * left off because nothing on furble's side uses the socket and DCDC4's
  * XPOWERS_AXP2101_DCDC4_VOL2_MAX value has no meaning in millivolts here.
  *
- * ALDO1 is never switched off: it feeds the OLED (FPC pin 6), the BME280 with
- * its 4.7K I2C pull-ups and the magnetometer, so a cut blanks the panel and
- * takes the bus pull-ups with it (plans/322 verification pass, finding 1).
+ * ALDO1 feeds the OLED (FPC pin 6), the BME280 with its 4.7K I2C pull-ups and
+ * the magnetometer, so it is never switched off at runtime: a cut blanks the
+ * panel and takes the bus pull-ups with it (plans/322 verification pass,
+ * finding 1). The one exception is the vendor's cold-boot bus reset above,
+ * which cuts ALDO1, ALDO2 and BLDO1 for 250 ms and then restores them before
+ * anything is drawn.
  */
 class AxpBus: public HAL::RegisterBus {
  public:
@@ -256,7 +259,18 @@ bool axpBringUp(void) {
     ESP_LOGE(LOG_TAG, "AXP2101 bus did not start");
     return false;
   }
-  if (!g_Axp.probe()) {
+  // The first transaction after an idle bus wakes the PMIC and can be the one
+  // that fails, the same failure mode the M5PM1 path retries. Three attempts,
+  // because losing this read disables the rails, the gauge and power off while
+  // the board row still advertises a power-off path.
+  bool identified = false;
+  for (uint8_t attempt = 0; (attempt < 3) && !identified; ++attempt) {
+    identified = g_Axp.probe();
+    if (!identified) {
+      vTaskDelay(pdMS_TO_TICKS(2));
+    }
+  }
+  if (!identified) {
     ESP_LOGE(LOG_TAG, "AXP2101 did not answer at 0x34");
     return false;
   }

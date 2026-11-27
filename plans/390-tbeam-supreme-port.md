@@ -104,9 +104,15 @@ Facts the documents do not settle, and what the code does about each:
   Both parts are battery backed, which is why the row's false is a code fact
   rather than a hardware claim.
 - **The OLED address and the panel's column offset.** The address is strapped by
-  R51 and R52 per radio band; the driver probes 0x3C and then 0x3D and refuses
-  to draw when neither answers. The column offset is handled by
-  `Panel_SH110x::setWindow()` and a measured offset is a bench check.
+  R51 and R52 per radio band. The driver probes both 0x3C and 0x3D, always, and
+  reads the acknowledgement from the transaction's stop condition, because
+  M5GFX reports a NACK there rather than at the start. Both addresses answering
+  selects 0x3D: the board cannot carry two devices at one address and the
+  magnetometer is the one that also answers 0x3C, so a panel at 0x3C and a
+  magnetometer at 0x3C cannot both exist. Neither answering leaves the display
+  unready and nothing is drawn. The column offset is `_cfg.offset_x`, applied by
+  `Panel_SH110x::display()`; M5GFX 0.2.27 has no `setWindow()` on this class, so
+  it is left at 0 and the measured value is a bench check.
 
 ## The board row
 
@@ -146,15 +152,25 @@ detected value is a lie about the hardware and must never pick a row.
 2. `include/FurbleDisplay.h` and `src/FurbleDisplay.cpp`: the display seam the
    UI now draws through. On the M5 boards it forwards to `M5.Display` from
    `src/FurblePlatform.cpp`, byte for byte the object the UI used before. On the
-   T-Beam it owns a `lgfx::LGFX_Device` with `Panel_SH110x` over `Bus_I2C` on
-   port 0 at SDA 17 and SCL 18, probes 0x3C and then 0x3D with an address-only
-   transaction, and reports not ready when neither answers. The UI's touch
+   T-Beam it owns an `LGFX_Device` with a 128x64 class derived from
+   `Panel_SH110x` over `Bus_I2C` on port 0 at SDA 17 and SCL 18. It probes both
+   strapped addresses with an address-only transaction and takes the
+   acknowledgement from the stop condition, where M5GFX reports the NACK, then
+   configures 64 rows and multiplex 0x3F to match the module. Both addresses
+   answering selects 0x3D because the magnetometer owns 0x3C on that variant;
+   neither answering leaves the display unready and nothing is drawn. That
+   decision is `Display::Detail::choosePanelAddress()` in the header, and
+   `display-probe` drives it with a bus double that NACKs. The UI's touch
    calibration call is a compile-time absence on this panel.
 3. `src/FurblePlatform.cpp`: the T-Beam power backend under
    `FURBLE_HAS_AXP2101_HAL`. It opens I2C port 1 at SDA 42 and SCL 41, probes the
-   AXP2101 at 0x34, brings the rails up in the vendor order, enables the power
-   key interrupt, and reports battery level, voltage and charge direction from
-   the driver. `setRail()` maps `Rail::EXT_5V`, the only rail, to ALDO4 with a
+   AXP2101 at 0x34 three times before giving up, brings the rails up in the
+   vendor order, enables the power key interrupt, and reports battery level,
+   voltage and charge direction from the driver. The retry matters because a
+   failed identity read disables the rails, the gauge and power off while the
+   row still advertises a power-off path, and the 0x4A identity value is
+   inferred rather than documented (`docs/components/axp2101.md` row 17,
+   C-19a). `setRail()` maps `Rail::EXT_5V`, the only rail, to ALDO4 with a
    readback and one retry. `powerOff()` is the driver's soft power off.
    `Platform::update()` polls the PMIC key at 50 Hz into `M5.BtnPWR` and
    `getPWRClickCount()`, and samples BOOT on GPIO0 into `M5.BtnA`.
@@ -231,6 +247,48 @@ detected value is a lie about the hardware and must never pick a row.
 - The 128x64 panel's measured column offset, and both OLED addresses on real
   band variants.
 
+## Review feedback
+
+`plans/551-review-feedback.md` records an independent adversarial review at head
+`8691165a`. Every hardware fact in the port matched the vendors, and three
+blockers were in the parts no test exercised. Each is answered here.
+
+1. **The probe could not fail.** The address probe treated
+   `beginTransaction().has_value()` as the acknowledgement, but M5GFX raises the
+   NACK inside `i2c_wait()` and reports it through `endTransaction()`, whose
+   result was discarded. 0x3C was therefore always taken, 0x3D was never tried,
+   and the init sequence could land in the magnetometer that also answers 0x3C.
+   The probe now reads the stop condition's result, always probes both
+   addresses, and the address decision is `Display::Detail::choosePanelAddress()`
+   in the header. `display-probe` drives it with a bus double whose NACK is a
+   real `false`: a panel at 0x3D with 0x3C NACKing selects 0x3D, a NACK on both
+   selects nothing, and both addresses are probed before the decision.
+2. **The panel was 128x128 while the model was 128x64.** `Panel_SH110x` defaults
+   to 128 rows and programs multiplex 0x7F, which a 64-common module decodes as
+   pages 0 to 15 collapsed onto pages 0 to 7. The image now derives a 128x64
+   class, sets panel and memory height to 64 and sends multiplex 0x3F, and the
+   value is `Display::Detail::sh1106MuxRatio(TBEAM_PANEL_HEIGHT)`, derived from
+   the same constant the simulator builds its window with. `display-probe`
+   asserts both. The SH1106's 2-column RAM offset is `_cfg.offset_x`, applied by
+   `Panel_SH110x::display()`; the earlier claim that `setWindow()` handled it was
+   wrong, M5GFX 0.2.27 has no such method, so the offset is 0 and a bench check.
+3. **One identity read cost the whole power path.** A failed AXP2101 identity
+   read disabled the rails, the gauge and power off while the row still
+   advertised `canPowerOff`. The probe now makes three attempts, the same
+   treatment the M5PM1 path gives its first transaction, and the 0x4A value is
+   recorded in `lib/hal/AXP2101.cpp` and
+   [axp2101](../docs/components/axp2101.md) as inferred rather than documented:
+   it comes from the X-Powers reference library, M5Unified compares against the
+   same value, and the datasheet revisions the driver cites do not define
+   register 0x03 at all.
+
+The non-blocking items are also closed: the ALDO1 comment now describes the
+cold-boot cycle that does cut it, the boot splash gets a mid contrast at the end
+of `Display::begin()` because the init list leaves the panel at 0x00 and the UI
+applies the stored brightness only once it exists, the `-debug` environment is
+in the reproducible matrix instead of being a pinned budget nothing built, and
+`REQUIRED_SELECTIONS` lists the board so the two scenarios cannot be dropped.
+
 ## Verification
 
 Recorded on this branch, macOS host, no device attached:
@@ -239,18 +297,22 @@ Recorded on this branch, macOS host, no device attached:
   SUCCESS. `-e lilygo-tbeam-supreme-debug` also builds, with the console and
   the debug fragments.
 - `python3 tools/check_size_budget.py --env lilygo-tbeam-supreme`: PASS, flash
-  1,816,480 of 3,145,728 bytes, DRAM 47,308 of 48,128, IRAM 110,848 of 111,616.
-  The `-debug` env records flash 2,214,912, DRAM 52,404 and IRAM 129,792
-  against the same slot, rebuilt on this commit rather than carried over from
-  the pre-rebase tree.
+  1,817,328 of 3,145,728 bytes, DRAM 47,308 of 48,128, IRAM 110,848 of 111,616.
+  The `-debug` env records flash 2,215,360, DRAM 52,404 and IRAM 129,792
+  against the same slot, rebuilt on this head rather than carried over from the
+  pre-rebase tree.
 - `python3 tools/stack_budget.py --env lilygo-tbeam-supreme` and the `-debug`
   env: PASS, every task under its stack, and no new entry was needed in
   `tools/stack_budget.json`.
 - `python3 tools/derive_sim_heap.py --env lilygo-tbeam-supreme` records the
   boot heap in `sim/coverage/board_heap.json`: 47,312 static DRAM, 284,208 bytes
   at app start, 86,944 attributable and 197,264 derived free.
-- Host suite: `ctest` 224 of 224 pass on the rebased tree, including
-  `board-profile` and `board-profile-tbeam`.
+- Host suite: `ctest` 225 of 225 pass, including `board-profile`,
+  `board-profile-tbeam` and the new `display-probe`.
+- The 1-bit model is measured, not assumed: a splash capture from the T-Beam
+  build is 128x64 and contains exactly two colours, black and white. Before the
+  direct draws were thresholded as well as `push()`, the same capture held six
+  colours because the splash draws with the panel primitives.
 - The two simulator scenarios named above pass on a build made with
   `FURBLE_SIM_FURBLE_BOARD=FURBLE_LILYGO_TBEAM_SUPREME`, run through
   `sim/scripts/run-e2e.sh` with `FURBLE_SIM_BOARD_ID=lilygo-tbeam-supreme`.
