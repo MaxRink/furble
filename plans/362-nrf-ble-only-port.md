@@ -359,7 +359,7 @@ The good news is that the seam is small. All display access goes through a
 handful of calls in one file `[tree]`:
 
 - 32 `M5.Display` call sites in `src/FurbleUI.cpp`, of which the load-bearing
-  ones are `pushImageDMA` at `src/FurbleUI.cpp:1967`, `waitDMA` at `:1862`,
+  ones are `pushImageDMA` at `src/FurbleUI.cpp:2096`, `waitDMA` at `:1862`,
   `setBrightness` at `:527`, `sleep` at `:1863` and `wakeup` at `:1901`.
 - 6 `M5.getBoard()` switches in the same file, four of them geometry and two
   input wiring, as plan 322 records.

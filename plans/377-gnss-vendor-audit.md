@@ -34,7 +34,7 @@ file. Both CASIC revisions print `$PCAS10` as a restart and nothing else.
 - The driver sends it in exactly one place, `GPS::restart()`
   (`src/FurbleGPS.cpp:1267`, the write at `:1279`), and the comment above it says
   the same. It is reached from the diagnostics "Hot restart" button
-  (`src/FurbleUI.cpp:10215`, mode 0) and from the simulator driver's restart
+  (`src/FurbleUI.cpp:10355`, mode 0) and from the simulator driver's restart
   step. No configuration path sends it, so no configuration write can be lost
   behind a reboot.
 - `restart()` refuses mode 3 even though both revisions define it. That is

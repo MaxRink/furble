@@ -72,6 +72,45 @@ Reading notes from the comment block above the table:
   and no rail, so `M5.Power.powerOff()` would deep sleep with no wake source
   armed.
 
+## LilyGO boards
+
+The two LilyGO images have no `m5::board_t` value and no `profileFor()` arm:
+M5Unified detects neither board, so `Board::compiledProfile()` answers from the
+build macro (`src/FurbleBoard.cpp`, `include/FurbleBoard.h`). Their wiring is a
+separate facts table, `include/FurbleLilyGo.h` and `src/FurbleLilyGo.cpp`, which
+is the only place a LilyGO pin number appears.
+
+| Fact | T-Deck / T-Deck Plus | T-Watch Ultra |
+| :--- | :--- | :--- |
+| SPI host | `SPI2_HOST` (1) | `SPI2_HOST` (1) |
+| SPI SCLK / MISO / MOSI | 40 / 38 / 41, shared by panel, microSD and LoRa | 35 / 33 / 34, shared by microSD, LoRa and NFC |
+| Panel controller | `lgfx::Panel_ST7789`, SPI | `lgfx::Panel_CO5300`, quad SPI |
+| Panel CS / DC / RST / backlight | 12 / 11 / none / 42 | 41 / none / 37 / none (brightness is command 0x51) |
+| Panel geometry, native | 240x320 | 410x502 |
+| Panel geometry, driven | 320x240 at rotation 1 | 502x410 at rotation 1 |
+| Panel offset | 0, 0 | `offset_x` 22, `offset_y` 0, swapped to `offset_y` by rotation 1 |
+| Panel invert | yes (IPS) | no |
+| I2C SDA / SCL | 18 / 8 | 3 / 2 |
+| I2C devices | keyboard 0x55 (INT 46) | AXP2101 0x34, XL9555 0x20 |
+| SD card select | 39 | 21 |
+| Speaker I2S BCLK / WS / DOUT | 7 / 5 / 6 | 9 / 10 / 11 |
+| Input | trackball right 2, up 3, left 1, down 15, click 0 | BOOT on 0 |
+| Peripheral gate | GPIO10, driven high before any peripheral | none; the AXP2101 rails are switched |
+| Battery sense | GPIO4, divider, not driven by this port | AXP2101, not read by this port |
+| Panel quad-SPI SCLK / D0-D3 | none | 40 / 38, 39, 42, 45 |
+| Keyboard interrupt | 46, active low, used to gate the I2C read | none |
+
+The display path is `include/FurbleDisplay.h`: on an M5 board `screen()` returns
+`M5.Display` from src/FurbleUI.cpp, and on a LilyGO board it builds an
+`lgfx::LGFX_Device` from the facts row. `src/FurbleDisplay.cpp` is the only file
+that names a panel class for these boards, and `Furble::LilyGo::powerOn()` is the
+only file that programs the AXP2101 rails: ALDO2 display, ALDO1 SD, BLDO2
+speaker, BLDO1 GNSS, then XL9555 pin 7 high for the panel supply.
+
+The backlight is a limitation, not a driver: the T-Deck's AW9364 takes a pulse
+train on GPIO42, so `LightDigital` drives the pin on or off and the brightness
+slider switches rather than dims.
+
 ## Motion wake wiring
 
 - StickC family: the MPU6886 INT pin is GPIO 35, shared with the BM8563 on the
@@ -140,7 +179,7 @@ image: it has no M5GFX probe, so no probe can drive GPIO 9 to 14
 The slot shares the display SPI bus and is driven by the SDSPI host at 10 MHz
 (`src/FurbleSD.cpp:46,959-969`). It is mounted at
 `FURBLE_SD_MOUNT_POINT` with settings under `/furble`
-(`src/FurbleSD.cpp:43-46`). The writer task is 6144 bytes, priority 1, with an
+(`src/FurbleSD.cpp:76-79`). The writer task is 6144 bytes, priority 1, with an
 8 entry queue, a 100 ms enqueue timeout, a 3000 ms power-off drain and a
 three-failure limit (`src/FurbleSD.cpp:47-56`).
 

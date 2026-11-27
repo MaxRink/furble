@@ -12,9 +12,23 @@ furble runs on these M5Stack ESP32 boards:
 - M5Stack Core2 (320x240, touch)
 - M5Tough (320x240, touch, untested)
 
-furble builds five release images. M5Unified detects the exact board at runtime,
-so one image covers a board family. See [Supported Hardware](Supported-Hardware)
-for the board to environment matrix.
+and on these LilyGO ESP32-S3 handhelds:
+
+- LilyGO T-Deck (320x240, trackball and keyboard)
+- LilyGO T-Deck Plus (the same board plus an onboard MIA-M10Q GNSS)
+- LilyGO T-Watch Ultra (502x410 AMOLED, one button, onboard GNSS)
+
+On the T-Deck the trackball moves the focus and its center switch activates the
+focused row; the keyboard's Enter activates and Backspace goes back, because the
+keyboard has no arrow keys. On the T-Watch Ultra the touch panel has no driver
+yet, so the single BOOT button can activate the focused row but cannot move the
+focus.
+
+furble defines eight firmware environments. Six are the release images;
+M5Unified detects the exact M5 board at runtime, so one image covers an M5 board
+family. Each LilyGO board has its own image and those two are new: they are not
+in the release matrix or the web installer yet. See
+[Supported Hardware](Supported-Hardware) for the board to environment matrix.
 
 ## Flashing
 

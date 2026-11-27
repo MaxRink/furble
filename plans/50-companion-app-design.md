@@ -254,7 +254,7 @@ cannot silently change the protocol.
 
 Battery values come from the same source as the status bar
 (`M5.Power.getBatteryLevel()`, `M5.Power.getBatteryCurrent()`,
-`src/FurbleUI.cpp:161-170`). PR02 promotes this into a proper battery module, so
+`src/FurbleUI.cpp:165-174`). PR02 promotes this into a proper battery module, so
 the companion service should consume that module rather than call M5Unified
 directly.
 

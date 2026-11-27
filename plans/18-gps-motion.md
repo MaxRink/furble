@@ -90,7 +90,7 @@ Settings
 ```
 
 The entry is greyed out when `IMU` is false or when `GPS` is false. Follow the
-existing hide logic: the GPS switch callback at `src/FurbleUI.cpp:733-748` already
+existing hide logic: the GPS switch callback at `src/FurbleUI.cpp:746-761` already
 shows and hides `m_Status.gpsBaud` and `m_Status.gpsData`. Add the motion entry to
 the same list. Add a second gate on `Settings::IMU`.
 
@@ -205,7 +205,7 @@ On device, M5StickS3 with GPS/BDS Unit v1.1 over USB:
    period and the receiver returns to full rate.
 7. Measure time from motion to first valid fix after each stationary duration:
    1 minute, 10 minutes, 60 minutes. Record all three.
-8. Confirm the GPS Data page (`src/FurbleUI.cpp:1548-1603`) shows a sensible age
+8. Confirm the GPS Data page (`src/FurbleUI.cpp:1561-1722`) shows a sensible age
    value in both states and does not show garbage while stationary.
 
 Camera checks, Fujifilm only:

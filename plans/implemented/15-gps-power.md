@@ -58,7 +58,7 @@ light sleep change is not a setting. It is a correctness fix and applies always.
 Settings -> GPS -> Power saving, a subpage added by this PR to the nested GPS
 menu created in PR14. Two rollers, "Receiver" and "Sleep between fixes". Hidden
 when GPS is disabled, following the existing hide logic at
-`src/FurbleUI.cpp:1550-1553`.
+`src/FurbleUI.cpp:1563-1566`.
 
 ## Implementation notes
 

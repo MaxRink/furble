@@ -45,10 +45,10 @@ Verified current state:
 - `lib/furble/Scan.cpp:47-50` is a second overload used only during pairing
   reconnect: `lib/furble/Nikon.cpp:82` and `lib/furble/FujifilmSecure.cpp:82`,
   both with `SCAN_TIME_MS = 60000` (`Nikon.h:58`, `FujifilmSecure.h:103`).
-- `src/FurbleUI.cpp:939-947` starts the discovery scan when the Scan page loads.
-  `src/FurbleUI.cpp:911` and `:957` stop it on the main and Connected pages.
-- `src/FurbleUI.cpp:1253` stops it on disconnect.
-- `src/FurbleUI.cpp:2073-2079` builds the Settings page children in this order:
+- `src/FurbleUI.cpp:952-960` starts the discovery scan when the Scan page loads.
+  `src/FurbleUI.cpp:924` and `:957` stop it on the main and Connected pages.
+- `src/FurbleUI.cpp:1266` stops it on disconnect.
+- `src/FurbleUI.cpp:2213-2219` builds the Settings page children in this order:
   Display, Features, GPS, Timer, Theme, TX Power, About.
 
 ## New settings
@@ -168,7 +168,7 @@ Camera testing:
 
 - Only Fujifilm cameras are available. Run steps 3, 4 and 6 on Fujifilm.
 - FauxNY (`Settings > Features > FauxNY`) injects a fake camera into the Scan
-  list at `src/FurbleUI.cpp:933-936` and exercises the list and connect paths
+  list at `src/FurbleUI.cpp:946-949` and exercises the list and connect paths
   without a radio.
 - Sony, Nikon, Canon and Ricoh are not hardware tested. Nikon shares the pairing
   rescan path with `FujifilmSecure`, so the Fujifilm result in step 6 is the

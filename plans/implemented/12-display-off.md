@@ -79,7 +79,7 @@ Out of scope:
 | `DISPLAY_OFF` | `display_off` (11 chars) | `FURBLE_STR` | `uint8_t` | 0 dim only, 1 off, 2 off with remote active | 0 |
 
 `INACTIVITY` is unchanged. It stays `uint8_t` and still means multiples of 30
-seconds (`src/FurbleUI.cpp:2090-2092`). Stored values 0, 1 and 2 keep their
+seconds (`src/FurbleUI.cpp:2230-2232`). Stored values 0, 1 and 2 keep their
 current meaning. New roller entries map to larger multiples, so old NVS content
 stays valid.
 
@@ -95,16 +95,16 @@ Roller index to stored value table:
 | 5 | 10 mins | 20 | 600 s |
 
 The current code writes the roller index straight into NVS
-(`src/FurbleUI.cpp:1929-1931`). That must become an index to value lookup, plus
+(`src/FurbleUI.cpp:2049-2051`). That must become an index to value lookup, plus
 the reverse lookup when the page is built. Unknown stored values select the
 closest entry.
 
 ## Menu placement
 
 Settings -> Display, under the existing Inactivity timeout roller
-(`src/FurbleUI.cpp:1911-1933`). New roller labelled "Screen off" with options
+(`src/FurbleUI.cpp:2030-2053`). New roller labelled "Screen off" with options
 `Dim\nOff\nOff, remote on`. No new menu page and no change to the Core grid map
-at `src/FurbleUI.cpp:53-76`.
+at `src/FurbleUI.cpp:57-80`.
 
 ## Implementation notes
 
@@ -124,26 +124,26 @@ at `src/FurbleUI.cpp:53-76`.
   a tap wakes the screen on Core2 and Tough. Its idle draw is small compared to
   the backlight.
 - Wake and swallow. Add `bool m_DisplayOff`. The indev read callbacks at
-  `src/FurbleUI.cpp:313-369` check the flag first. If set, call
+  `src/FurbleUI.cpp:317-373` check the flag first. If set, call
   `M5.Display.wakeup()`, clear the flag, call `lv_display_trigger_activity()`,
   and report `LV_INDEV_STATE_RELEASED` until the button reports released again.
   This prevents the waking press from clicking whatever widget has focus.
-- `buttonPEKRead` (`src/FurbleUI.cpp:1600-1619`) reads a click count from
+- `buttonPEKRead` (`src/FurbleUI.cpp:1695-1714`) reads a click count from
   `Platform::getPWRClickCount()`. Swallowing there means consuming the count so
   it is not replayed.
 - Blind remote. With `DISPLAY_OFF == 2` and `m_ControlMode == ControlMode::SHUTTER`
-  (`include/FurbleUI.h:24`, set in `src/FurbleUI.cpp:1027-1032`), the shutter and
+  (`include/FurbleUI.h:24`, set in `src/FurbleUI.cpp:1040-1045`), the shutter and
   focus buttons are not swallowed and the display stays asleep. They go straight
-  to the existing handlers (`src/FurbleUI.cpp:540-616`). Every other input wakes
+  to the existing handlers (`src/FurbleUI.cpp:553-629`). Every other input wakes
   the screen and is swallowed. Shutter lock keeps working because it runs off the
-  same event path (`src/FurbleUI.cpp:506-538`, `:590-616`).
+  same event path (`src/FurbleUI.cpp:510-551`, `:590-616`).
 - Blind remote does not change the touch boards. On Core2 and Tough there is no
   physical shutter button, so mode 2 behaves like mode 1 there. Hide or grey the
   third roller entry when `M5.Touch.isEnabled()`.
-- The header icon timer at `src/FurbleUI.cpp:156-190` keeps running while the
+- The header icon timer at `src/FurbleUI.cpp:160-194` keeps running while the
   panel sleeps. Pause it when the display is off to avoid pointless LVGL redraws,
   and resume it on wake.
-- Screen lock handling (`src/FurbleUI.cpp:2114-2121`) is untouched.
+- Screen lock handling (`src/FurbleUI.cpp:2254-2261`) is untouched.
 
 ## Dependencies
 
@@ -162,7 +162,7 @@ under Display.
 - Swallowing input can drop a legitimate press if the state flag is wrong.
   Keep the flag write in one place.
 - LVGL inactivity is measured per display with `lv_disp_get_inactive_time`
-  (`src/FurbleUI.cpp:2098`). Waking without calling `lv_display_trigger_activity`
+  (`src/FurbleUI.cpp:2238`). Waking without calling `lv_display_trigger_activity`
   would put the screen straight back to sleep.
 
 ## Verification
@@ -190,7 +190,7 @@ meter:
 
 - Log battery percent and voltage every 30 s to the console for 30 to 60 minutes
   per state. On AXP192 boards also log `M5.Power.getBatteryCurrent()` with the
-  same EWMA used by the debug path at `src/FurbleUI.cpp:160-167`.
+  same EWMA used by the debug path at `src/FurbleUI.cpp:164-171`.
 - States: menu idle dim, menu idle off, connected idle dim, connected idle off.
 - Compare against the same runs on master. USB power reflects charging, so runs
   happen on battery and the log is read afterwards.

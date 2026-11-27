@@ -24,16 +24,16 @@ because the trap covers both families (`CLAUDE.md`, hardware traps).
 
 | # | Fact | Document and section | Code | State |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | Enter Sleep Mode is command 10h | ILI9342C-DS section 8.2.11, page 100 | Reached through `M5.Display.sleep()` at `src/FurbleUI.cpp:1863` | VERIFIED |
-| 2 | Sleep Out is command 11h | ILI9342C-DS section 8.2.12, page 101 | Reached through `M5.Display.wakeup()` at `src/FurbleUI.cpp:1897` | VERIFIED |
-| 3 | Sleep Out requires 120 ms before the next Sleep In, and 5 ms after Sleep Out before any other command. The rule is one way, from Sleep Out to the next Sleep In | ILI9342C-DS sections 8.2.11 Sleep In (10h) and 8.2.12 Sleep Out (11h), pages 100 and 101 | `src/FurbleUI.cpp:1888` to `:1897` enforces the wait | VERIFIED |
+| 1 | Enter Sleep Mode is command 10h | ILI9342C-DS section 8.2.11, page 100 | Reached through `M5.Display.sleep()` at `src/FurbleUI.cpp:1982` | VERIFIED |
+| 2 | Sleep Out is command 11h | ILI9342C-DS section 8.2.12, page 101 | Reached through `M5.Display.wakeup()` at `src/FurbleUI.cpp:2016` | VERIFIED |
+| 3 | Sleep Out requires 120 ms before the next Sleep In, and 5 ms after Sleep Out before any other command. The rule is one way, from Sleep Out to the next Sleep In | ILI9342C-DS sections 8.2.11 Sleep In (10h) and 8.2.12 Sleep Out (11h), pages 100 and 101 | `src/FurbleUI.cpp:2007` to `:1897` enforces the wait | VERIFIED |
 | 4 | The datasheet has no supply current table at all, so every current figure for this panel is a proxy and none is a datasheet value | ILI9342C-DS, checked page by page: the only current figure is the ILEA leakage of about 0.1 uA | `tools/power-model/board-currents.yaml` | VERIFIED |
 | 5 | The ILI9342C has no supply current table, so the power model uses an ST7789V analogy for operating current | `docs/power/datasheet-register.md` section 2 | `tools/power-model/board-currents.yaml` | CITED |
 
 ## Where the code implements it
 
-- `src/FurbleUI.cpp:1860` to `:1863`: waits for the DMA queue, then Sleep In.
-- `src/FurbleUI.cpp:1888` to `:1897`: dwell, APB lock, Sleep Out.
+- `src/FurbleUI.cpp:1979` to `:1863`: waits for the DMA queue, then Sleep In.
+- `src/FurbleUI.cpp:2007` to `:1897`: dwell, APB lock, Sleep Out.
 - `include/FurbleUI.h:1136`: the dwell constant.
 
 ## Citation gaps

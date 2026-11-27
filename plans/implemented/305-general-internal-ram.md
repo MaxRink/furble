@@ -83,7 +83,7 @@ bytes used in brackets. This plan first read it as bytes used; the
 | HTTPS worker | 8,192 | not measured | `include/FurbleWebUIMemory.h` |
 | TLS identity | 12,288, transient | not measured | `include/FurbleWebUI.h` |
 | GPS worker | 4,096 | not measured | `src/FurbleGPS.cpp:185` |
-| SD writer | 6,144 | not measured | `src/FurbleSD.cpp:40`, Core boards only |
+| SD writer | 6,144 | not measured | `src/FurbleSD.cpp:80`, Core boards only |
 
 The GPS worker writes the fix cache and ephemeris to NVS, so it must stay on an
 internal stack. The companion worker calls `Settings::save` for companion

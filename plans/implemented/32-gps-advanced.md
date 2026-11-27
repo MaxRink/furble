@@ -517,7 +517,7 @@ Setup is manual and the default is wrong. `Settings::GPS_BAUD` defaults to
 `BAUD_9600` (`src/FurbleSettings.cpp:741`). The M5Stack Unit GPS v1.1 ships
 at 115200 8N1. So a fresh NVS boot with the unit attached produces no fix at
 all, and the only fix is for the user to find Settings, GPS, and flip a switch
-labelled "GPS baud 115200" (`src/FurbleUI.cpp:1521-1546`). There is nothing on
+labelled "GPS baud 115200" (`src/FurbleUI.cpp:1534-1559`). There is nothing on
 screen that says why there is no fix. A user who does not know the module's
 baud rate has no path to a working device.
 
@@ -627,7 +627,7 @@ so the ladder runs after that, not instead of it.
 
 Where it runs: in the GPS task (`src/FurbleGPS.cpp:73-109`), not in `enable()`.
 `enable()` is called from `reloadSetting()` which is called from an LVGL event
-callback (`src/FurbleUI.cpp:733-748`). Blocking for 10 s there freezes the UI.
+callback (`src/FurbleUI.cpp:746-761`). Blocking for 10 s there freezes the UI.
 Follow the pattern feat/14 already established with `m_ConfigPending` and
 `serviceConfig()`: `enable()` arms the probe, the task runs it.
 
@@ -989,7 +989,7 @@ the wire value; map it in code so the wire values for `dyModel` and `$PCAS11`
 can differ if the device proves they do.
 
 Hidden when GPS is off, using the existing show and hide list at
-`src/FurbleUI.cpp:733-748`.
+`src/FurbleUI.cpp:746-761`.
 
 ### Implementation notes
 
@@ -1396,7 +1396,7 @@ because those are acknowledged and the restore is verifiable.
 The un-prune is why this page must not be left open by accident. It raises the
 sentence load, which is the opposite of what PR14 and PR15 are for. Close it on
 inactivity, the same way the existing GPS Data timer pauses at
-`src/FurbleUI.cpp:1606-1611`.
+`src/FurbleUI.cpp:1725-1730`.
 
 GSV assembly. Track `TotalNumSen` and `SenNum` per talker. Build into a shadow
 table and swap it in when `SenNum == TotalNumSen`. Without that, a page refresh

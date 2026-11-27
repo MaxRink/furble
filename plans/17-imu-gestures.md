@@ -46,7 +46,7 @@ Verified anchors against the current tree.
 
 The shutter path is `Control::sendCommand(Control::CMD_SHUTTER_PRESS)` and
 `CMD_SHUTTER_RELEASE`, as used by the intervalometer at
-`src/FurbleUI.cpp:1200` and `src/FurbleUI.cpp:1207`.
+`src/FurbleUI.cpp:1213` and `src/FurbleUI.cpp:1220`.
 
 ## New settings
 
@@ -59,7 +59,7 @@ Name strings: `"Wake Gesture"` and `"Double-Tap Shutter"`.
 
 Both settings are ignored when `IMU` (PR16) is false. Grey out both menu entries
 in that case, matching how the GPS baud and GPS Data entries are hidden when GPS
-is off (`src/FurbleUI.cpp:1550-1553`, `src/FurbleUI.cpp:733-748`).
+is off (`src/FurbleUI.cpp:1563-1566`, `src/FurbleUI.cpp:746-761`).
 
 ## Menu placement
 
@@ -108,7 +108,7 @@ Wake behaviour:
 - On a gesture matching `IMU_WAKE`, call the display sleep/wake state machine
   already integrated from PR12,
   and reset the LVGL inactivity counter so `processInactivity()`
-  (`src/FurbleUI.cpp:2094-2112`) does not immediately dim again.
+  (`src/FurbleUI.cpp:2234-2252`) does not immediately dim again.
 - A wake gesture must never also fire the shutter. Gate `IMU_TRIG` on the display
   being awake, and swallow the gesture that caused the wake.
 
@@ -164,7 +164,7 @@ from our own on-board measurement.
   loop is bounded, but it drains the battery. Note it in the PR body.
 - A gesture that fires the shutter while the intervalometer is running would
   corrupt a sequence. Block `IMU_TRIG` while the intervalometer timer is not
-  paused (`src/FurbleUI.cpp:1169-1227`).
+  paused (`src/FurbleUI.cpp:1182-1240`).
 
 ## Verification
 

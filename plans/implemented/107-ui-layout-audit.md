@@ -100,7 +100,7 @@ Needs per-board validation: yes, worse at 80x160, check 320x240 is unaffected.
 ### A2. Timer row label truncates ("Shutter count" to "Shutter c") (low-medium)
 
 Evidence: `docs/img/settings-timer.png`, row reads `Shutter  c   30`. In
-`addSpinItem` (`src/FurbleUI.cpp:10524-10580`) the row is `LV_FLEX_FLOW_ROW_WRAP`
+`addSpinItem` (`src/FurbleUI.cpp:10625-10681`) the row is `LV_FLEX_FLOW_ROW_WRAP`
 with `spinner.m_Label` carrying no long-mode and, on non-CoreX boards, no
 `flex_grow`, while `spinner.m_Value` has `flex_grow` 1 and circular scroll
 (lines 3928-3938). The value expands and squeezes the plain label, which then
@@ -114,7 +114,7 @@ Needs per-board validation: yes, tightest at 80x160.
 Evidence: `docs/img/settings-gps.png` (`Baud 115200`),
 `docs/img/settings-power.png` (`Sleep when...`),
 `docs/img/settings-bluetooth.png` (`Active Connection`). These toggle rows are
-built by `addSettingItem` (`src/FurbleUI.cpp:2889-3122`) with the label in
+built by `addSettingItem` (`src/FurbleUI.cpp:2998-3231`) with the label in
 `LV_LABEL_LONG_SCROLL_CIRCULAR` (line 1486) and a switch beside it. At 135px the
 labels are wider than their column, so they marquee-scroll continuously. This is
 by-design and readable, but constant scrolling on several rows is distracting on

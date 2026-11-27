@@ -142,7 +142,7 @@ Connected
 └─ IR                (hidden when IR off or board has no emitter)
 ```
 
-The main menu grid at `src/FurbleUI.cpp:53-76` has Connect `{0,0}`, Scan `{1,0}`,
+The main menu grid at `src/FurbleUI.cpp:57-80` has Connect `{0,0}`, Scan `{1,0}`,
 Delete `{2,0}`, Settings `{3,0}` and Off `{3,1}`. Put IR at `{0,1}`.
 
 The Settings grid is contested by PR01 (Power), PR05 (Diagnostics), PR08
@@ -251,7 +251,7 @@ queue of one so a double press cannot overlap frames.
 
 `IR::isSupported()` returns whether `M5.getBoard()` maps to a pin. Every menu
 entry checks it and stays hidden when false. No `#ifdef` is used, matching the
-runtime board switch style at `src/FurbleUI.cpp:95-109`.
+runtime board switch style at `src/FurbleUI.cpp:99-113`.
 
 BLE is untouched. The Connected menu IR entry is a navigation link to the
 shared IR page, not a trigger. Firing IR is always an explicit press of the
