@@ -533,10 +533,10 @@ This is a documentation and build consistency item, not a separate power lever.
 ### OS-02 Lengthen the control task queue timeout
 
 - **Change:** Implemented at 250 ms. `Control::task()` blocks in `xQueueReceive`
-  for 250 ms (`src/FurbleControl.cpp:484`) instead of 50 ms, unconditionally
+  for 250 ms (`src/FurbleControl.cpp:505`) instead of 50 ms, unconditionally
   rather than only when the state machine is idle; commands still wake the queue
   immediately.
-- **Current behavior:** 250 ms (`src/FurbleControl.cpp:484`), which is 4 wakes
+- **Current behavior:** 250 ms (`src/FurbleControl.cpp:505`), which is 4 wakes
   per second used for `reapZombieTargets()`, `sampleAdaptivePower()`, and
   liveness checks. Commands themselves wake the queue immediately.
 - **Evidence:** inferred (code-read). `sampleAdaptivePower()` is rate limited to 5 s
