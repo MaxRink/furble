@@ -2,6 +2,7 @@
 #define FURBLE_HOST_RICOH_VIRTUAL_CAMERA_H
 
 #include <array>
+#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -327,7 +328,12 @@ class RicohVirtualCamera final: public NimBLEMockPeer {
   // one is the reconnect the wake path performs. m_WakePending is set when a
   // fresh link is up on a body that wakes on reconnect, and m_WakeAtMs is when
   // it starts reporting CAPTURE.
-  size_t m_LinkSessions = 0;
+  //
+  // Atomic: acceptConnection() runs on the target task while a test helper
+  // thread polls reconnectCount() to decide when the probe has started, so a
+  // plain size_t would be a data race that ASan and UBSan cannot see and that
+  // the binaries in this file are not in the TSAN set to catch either.
+  std::atomic<size_t> m_LinkSessions {0};
   size_t m_OperationModeReads = 0;
   size_t m_CaptureRequestsWhileAsleep = 0;
   bool m_WakePending = false;

@@ -455,11 +455,12 @@ bool RicohVirtualCamera::sleeping() const {
 }
 
 size_t RicohVirtualCamera::linkSessions() const {
-  return m_LinkSessions;
+  return m_LinkSessions.load();
 }
 
 size_t RicohVirtualCamera::reconnectCount() const {
-  return m_LinkSessions > 0 ? m_LinkSessions - 1 : 0;
+  const size_t sessions = m_LinkSessions.load();
+  return sessions > 0 ? sessions - 1 : 0;
 }
 
 size_t RicohVirtualCamera::operationModeReadCount() const {
@@ -476,12 +477,12 @@ bool RicohVirtualCamera::acceptConnection(NimBLEClient &client, const NimBLEAddr
   }
   m_Client = &client;
   m_Connected = true;
-  m_LinkSessions++;
+  const size_t sessions = ++m_LinkSessions;
   // A sleeping body leaves BLE standby only on a fresh link, and only when the
   // model says it does. The first link is the ordinary connect to an already
   // sleeping camera, which stays asleep; every later link is a reconnect the
   // wake path performed.
-  if (m_Config.wake_on_reconnect && (m_LinkSessions > 1) && sleeping()) {
+  if (m_Config.wake_on_reconnect && (sessions > 1) && sleeping()) {
     m_WakePending = true;
     m_WakeAtMs = nowMs() + m_Config.wake_delay_ms;
   }

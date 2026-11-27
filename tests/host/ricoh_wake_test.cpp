@@ -98,8 +98,14 @@ bool checkWakeNotification(const Peer &peer) {
       camera_power = true;
     }
   }
-  return check(operation_mode, "wake announces OperationMode CAPTURE on the notification stream")
-         && check(camera_power, "wake announces CameraPower ON on the notification stream");
+  // Both assertions always run. A plain && would hide the CameraPower line
+  // behind a failed OperationMode line, so a red run would under-report what the
+  // wake stopped announcing.
+  const bool operation_announced =
+      check(operation_mode, "wake announces OperationMode CAPTURE on the notification stream");
+  const bool power_announced =
+      check(camera_power, "wake announces CameraPower ON on the notification stream");
+  return operation_announced && power_announced;
 }
 
 // State for the probe-time cancel. The host build compiles Ricoh.cpp's wait on
@@ -288,8 +294,10 @@ int main() {
   }
 
   // A cancel that lands after the relink still has to stop the probe instead of
-  // burning the whole budget. The delay hook fires on the production wake's own
-  // pause, so the token arrives with the new link already up.
+  // burning the whole budget. The host build compiles Ricoh.cpp's wait on the
+  // wall clock, so the delay hook cannot reach it; cancelDuringProbe() delivers
+  // the token from a helper thread once the peer has accepted the reconnect the
+  // wake performed, which is the PROBE state.
   {
     Peer peer(makeConfig(0x22334455cc11ULL));
     peer.setSleepingBody(false, 0);
@@ -320,6 +328,62 @@ int main() {
     passed &= check(elapsed < WAKE_PROBE_TIMEOUT_MS,
                     "a probe-time cancel stops in the probe instead of spending the budget");
     camera.clearConnectCancel();
+    camera.disconnect();
+    NimBLEDevice::setMockPeer(nullptr);
+  }
+
+  // The wake holds Camera::m_Mutex for the relink: the settle, the reconnect and
+  // its handshake, all inside reconnectInPlace(). The probe that follows runs
+  // without it. Control samples Camera::getRssi() from state active, which is the
+  // only state a wake runs in, so getRssi() try_locks and reports the "no
+  // reading" 0 instead of waiting for that relink, exactly as updateConnStats()
+  // does. Reverting the try_lock makes the sampler wait the relink out and never
+  // see a contended read at all, which is the control-task stall this case pins.
+  // A body that never wakes keeps the case on the full-budget path.
+  {
+    Peer peer(makeConfig(0x22334455bb22ULL));
+    peer.setSleepingBody(false, 0);
+    NimBLEDevice::setMockPeer(&peer);
+    const auto advertisement = peer.advertisement();
+    Furble::Ricoh camera(&advertisement);
+    if (!check(camera.connect(Furble::TxPower::P3, 1000),
+               "rssi sampler test reaches the connected production path")) {
+      return 1;
+    }
+    peer.clearEvents();
+    // The live-link value is the control: skipped can only be non-zero while the
+    // wake holds the lock, because an idle sampler reads this.
+    passed &= check(camera.getRssi() != 0, "the sampler case starts on a live link");
+    std::atomic<bool> sampling {true};
+    std::atomic<uint32_t> samples {0};
+    std::atomic<uint32_t> skipped {0};
+    std::thread sampler([&camera, &sampling, &samples, &skipped] {
+      while (sampling.load()) {
+        if (camera.getRssi() == 0) {
+          skipped.fetch_add(1);
+        }
+        samples.fetch_add(1);
+      }
+    });
+    // Barrier: a sampler thread that has not been scheduled yet would report no
+    // skips for a reason that has nothing to do with the lock. Bounded so a
+    // broken harness fails instead of hanging.
+    const uint32_t samplerDeadline = nowMs() + 2000;
+    while ((samples.load() == 0) && (nowMs() < samplerDeadline)) {
+      std::this_thread::yield();
+    }
+    passed &= check(samples.load() > 0, "the RSSI sampler ran before the wake");
+    const uint32_t started = nowMs();
+    camera.shutterPress();
+    const uint32_t elapsed = nowMs() - started;
+    sampling = false;
+    sampler.join();
+    passed &= check(peer.reconnectCount() == 1, "the sampler case relinks exactly once");
+    passed &=
+        check(skipped.load() > 50, "the RSSI sampler skips the contended read instead of waiting");
+    passed &= check(captureWrites(peer.writes()).empty(), "the sampler case writes no capture");
+    std::cout << "  (rssi sampler: " << samples.load() << " samples, " << skipped.load()
+              << " skipped, " << elapsed << " ms)\n";
     camera.disconnect();
     NimBLEDevice::setMockPeer(nullptr);
   }

@@ -1633,7 +1633,18 @@ uint8_t Camera::getConnectProgress(void) const {
 }
 
 int8_t Camera::getRssi(void) const {
-  const std::lock_guard<connect_mutex_t> lock(m_Mutex);
+  // m_Mutex guards m_Client against the connect, disconnect and in-place
+  // reconnect paths, each of which holds it for a whole attempt. Try it instead
+  // of waiting: the control task calls this from state active, which is the only
+  // state a Ricoh wake runs in, so a blocking acquisition would stall the control
+  // task for the length of the wake. 0 is already the "no reading" value and
+  // sampleAdaptivePower() skips it, so a skipped sample leaves the last filtered
+  // value in place. Same rule as updateConnStats() above.
+  const std::unique_lock<connect_mutex_t> lock(m_Mutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    return 0;
+  }
+
   if ((m_Type == Type::FAUXNY) || !m_Connected || (m_Client == nullptr)
       || !m_Client->isConnected()) {
     return 0;

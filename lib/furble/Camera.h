@@ -557,13 +557,24 @@ class Camera: public NimBLEClientCallbacks {
    * re-derived through the vendor _connect() after the reconnect instead of
    * surviving it. The session flags are untouched: the user's selection and the
    * Control target's ownership stay as they are, so a wake is not a connect
-   * cycle and does not publish progress 0.
+   * cycle and publishes no connect state of its own.
+   *
+   * Connect progress does blip, and that is accepted rather than suppressed.
+   * The vendor _connect() this re-runs resets m_Progress to 0 on its way back
+   * up, and the companion and MQTT publishers send getConnectProgress()
+   * unconditionally, so a status reader sampling across the relink sees the
+   * reset to 0 and then the climb back to 100. The link really is down for the
+   * settle, so a reader that reports the camera disconnected there is already
+   * correct, and preserving the previous value would be a no-op: a completed
+   * _connect() ends at exactly 100.
    *
    * Call it from a vendor command path that holds no other Camera lock. It takes
    * m_Mutex for the whole sequence, exactly as connect() does, which keeps the
-   * control task's teardown out of the client while it is in use, and it
-   * publishes m_CancelClient for the duration so abortBlockingConnect() can
-   * reach a reconnect blocked inside NimBLE.
+   * control task's teardown out of the client while it is in use. getRssi() and
+   * updateConnStats() try_lock rather than wait, so the sampler skips a slice
+   * instead of stalling Control behind the wake. It publishes m_CancelClient for
+   * the duration so abortBlockingConnect() can reach a reconnect blocked inside
+   * NimBLE.
    *
    * @param[in] timeout Connection timeout in milliseconds for the new link.
    * @param[in] settleMs How long the link stays down before reconnecting. The
