@@ -494,6 +494,20 @@ reads `mqtt.retry_delay`.
   UI, so a hardware-model action must never reuse a UI action name. The
   hardware `companion-reject` once shadowed the pairing dialog's Reject and
   stopped the docs capture; it is now `companion-reject-central` (plan 316).
+  `rtc-countdown SECONDS` is a typed action that probes the modeled BM8563
+  through the same helpers `Platform::powerOffUntil()` uses, and `ir-frame` plus
+  `feedback-light` are the lowest-level pin injectors for the IR/LED model. The
+  board facts a panel build cannot carry are read from `Board::profileFor()`
+  through the seeded profile (plan 351): sound, battery capacity, RTC backing,
+  motion wake and timed wake. Never copy one of those into the simulator's own
+  capability table; a second copy is what let the model claim sound on a
+  speakerless StickC. The cited non-profile hardware facts (IR and LED pins and
+  polarity, the shared Plus2 G19, button pins, the Plus2 part, the rail level at
+  boot) live in `board_extra_t` in `sim/hardware_model.cpp` with their source in
+  the comment, and `include/FurbleRtcCountdown.h` plus
+  `include/FurbleIMUMotionScale.h` hold the conversions production also uses.
+  `hw.psram` stays the compiled heap model while `hw.part_psram` is the fitted
+  part, so the Plus2 reports no PSRAM in the image and quad on the board.
   The valid root aliases
   `page main` and `page menu` both dispatch to the root page. Signed pixel
   scrolling accepts -2147483647 through 2147483647 (plus `top`, `bottom`, and

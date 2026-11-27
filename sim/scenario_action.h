@@ -24,6 +24,7 @@ enum class scenario_action_kind_t {
   PAGE,
   CONSOLE,
   SECURE_STALL,
+  RTC_COUNTDOWN,
   SCAN_ROW,
   PAIRING_REQUEST,
   MEMORY_DUMP,

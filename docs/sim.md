@@ -163,8 +163,27 @@ modeled device and places the buttons where the physical device has them:
 
 | Modeled board | Window title | A | B | Third button |
 | --- | --- | --- | --- | --- |
-| M5StickC / M5StickS3 | `... - Stick: B top, A front, PWR left` | front/bottom edge, GPIO 39 | top edge, GPIO 38 | PWR on the left side, GPIO 36 |
-| M5Stack Core (`FURBLE_M5COREX`) | `... - Core front: A B C` | front edge, GPIO 39 | front edge, GPIO 38 | C on the front edge, GPIO 37 |
+| M5StickC / M5StickS3 | `... - Stick: B top, A front, PWR left` | front/bottom edge, host pin 39 | top edge, host pin 38 | PWR on the left side, host pin 36 |
+| M5Stack Core (`FURBLE_M5COREX`) | `... - Core front: A B C` | front edge, host pin 39 | front edge, host pin 38 | C on the front edge, host pin 37 |
+
+The pins in that table are the host convention, not the board's wiring.
+M5Unified's `M5UNIFIED_PC_BUILD` path reads emulated pins 39, 38, 37 and 36 for
+BtnA, BtnB, BtnC and BtnPWR on every modeled board, so a click has to land there
+for `M5.BtnA` to see it. The physical pins are board facts and are modeled, and
+asserted, separately:
+
+| Board | BtnA | BtnB | Power | Query values |
+| --- | --- | --- | --- | --- |
+| M5StickC | GPIO 37 | GPIO 39 | AXP192 PEK key, no GPIO | `hw.button_a 37`, `hw.button_b 39`, `hw.button_pwr none`, `hw.button_pwr_source axp192-key` |
+| M5StickC Plus | GPIO 37 | GPIO 39 | AXP192 PEK key, no GPIO | same as StickC |
+| M5StickC Plus2 | GPIO 37 | GPIO 39 | GPIO 35 | `hw.button_pwr 35`, `hw.button_pwr_source gpio35` |
+| M5StickS3 | GPIO 11 | GPIO 12 | M5PM1 key | `hw.button_pwr_source m5pm1` |
+| M5Stack Core | GPIO 39 | GPIO 38 | IP5306 key | `hw.button_pwr none` |
+
+Source: M5Unified `src/M5Unified.cpp` `_update()` board switch, pinned copy under
+`.pio/libdeps`. The earlier table claimed the StickC front button was GPIO 39
+and the power key GPIO 36, which is the host convention leaking into the board
+description.
 
 StickS3 top view beside the panel, with B on the top edge:
 
@@ -995,6 +1014,8 @@ action ir-transmit-end
 action hw-rtc-mismatch
 action pmic-irq-5vin
 action pmic-irq-clear
+action ir-frame
+action feedback-light
 action sd-present
 action sd-absent
 action sd-error
@@ -1041,8 +1062,26 @@ action imu.accel X Y Z
 action imu.gyro X Y Z
 action imu.roll DEGREES
 action imu.pitch DEGREES
+action rtc-countdown SECONDS
 action memory-dump PATH
 ```
+
+`rtc-countdown SECONDS` probes the modeled BM8563 countdown with the same entry
+points `Platform::powerOffUntil()` uses: it programs the timer, records the
+firmware verdict in `rtc.plan.SECONDS` as
+`accepted|rejected:ok|late|early:seconds|minutes:PROGRAMMED`, and clears the
+countdown when the request is rejected. The selection arithmetic and the
+60 s early-wake window come from `include/FurbleRtcCountdown.h`, which the
+production RTC branch also uses, so a scenario pins the 270 s mode switch, the
+255 count clamp and the window edge without a power cycle. Driver source:
+M5Unified `PCF8563_Class::setTimerIRQ()`; the BM8563 datasheet is cited, not
+opened, in `docs/power/datasheet-register.md`.
+
+`ir-frame` and `feedback-light` are lowest-level pin-level injections: one IR
+frame window (190 ms, the Nikon train) and one feedback-LED pulse. They exist so
+a scenario can check the Plus2 shared G19 hazard without the RMT peripheral the
+host does not have. `ir.led_conflicts` counts a pulse that lands on the emitter
+pin while a frame is in flight.
 
 `memory-dump PATH` writes the static budget, heap state, owner totals, leak list,
 task stacks and timeline as JSON. `sim/scripts/run-memory-profile.py` generates
@@ -1303,9 +1342,11 @@ The other namespaces are:
   `gps`, `ir`, `gps+ir`) and `rail.refusals` counts requests the board could not
   honour. `ir.state` is `absent`, `idle`, `transmitting`, `unpowered` or
   `timeout`, with `ir.transmits` and `ir.failures` beside it.
+
   `hw.ir`, `hw.sd`, `hw.audio` and `hw.touch` are the capabilities the firmware
   reads, so a scenario can hold each against the `Board::profile()` row:
-  `hw.audio` is a speaker or amplifier the firmware drives for feedback sound,
+  `hw.audio` is the firmware's own `feedbackSound` column, so the model cannot
+  claim a speaker path production does not drive,
   `hw.rtc_backed` is the profile's battery-backed column next to `hw.rtc`,
   `hw.can_power_off` is the UI policy gate, and `hw.rtc_on_bus`,
   `hw.led_active_low`, `hw.ir_mark_low`, `hw.gps_pin_source`, `hw.gps_rx_pin`
@@ -1323,6 +1364,33 @@ The other namespaces are:
   report the IP5306 light-load model, and `pmic.light_load_field` the bits 3:2
   selector those milliseconds decode from, so a scenario can assert the decode
   and not a bare number.
+- The board-row facts the panel build cannot carry: `hw.battery_mah`,
+  `hw.motion_wake` (`direct`, `pmic-gpio` or `none`),
+  `hw.motion_wake_pin`, `hw.timed_wake` (`pmic-timer`, `rtc-alarm` or `none`),
+  `hw.rtc_backed`, `hw.rtc_irq_armed`, `hw.ir_pin`, `hw.ir_mark_low`,
+  `hw.led_pin`, `hw.led_active_low`, `hw.led_shared_with_ir`, `hw.button_a`,
+  `hw.button_b`, `hw.button_pwr`, `hw.button_pwr_source` and `hw.rail_boot`.
+  `hw.ir_mark_level` is the same `irMarkLow` column in pin terms, reported as
+  the level the emitter pin holds during a mark: `low` on the StickC and Plus,
+  which drive the cathode from the pin, and `high` on the Plus2. The encoded
+  mark is always a mark; the inversion is `src/FurbleIR.cpp`'s `invert_out`.
+- `hw.part_psram` is the fitted PSRAM. `hw.build_flash_kb`,
+  `hw.build_flash_mode` and `hw.build_psram` are the firmware image. The two
+  disagree on the Plus2: the part has 8 MB QIO flash and 2 MB quad PSRAM
+  (`hw.flash_kb 8192`, `hw.part_psram quad`) while the shared image is 4 MB DIO
+  with PSRAM off (`hw.build_flash_kb 4096`, `hw.build_psram absent`). `hw.psram`
+  stays the compiled heap model, so it reports `absent` there, and
+  `mem.psram_total` follows the image budget.
+- `pmic.hold_latch` is the GPIO power-hold latch (`none`, `low`, `asserted` or
+  `released`), separate from `pmic.power_latch`, which is the PMIC's own latch.
+  The Plus2 has no PMIC latch and does have the G4 hold latch.
+  `pmic.hold_order` is `before-ready`, `late`, `unset` or `none`: `before-ready`
+  proves the pin went high inside `Platform::getInstance()`.
+- `rtc.*` reports the modeled BM8563: `rtc.enabled`, `rtc.backed`,
+  `rtc.countdown_mode` (`disabled`, `seconds` or `minutes`), `rtc.count`,
+  `rtc.programmed_seconds`, `rtc.irq_armed`, `rtc.irq` (`latched` or `clear`)
+  and the `rtc.plan.<seconds>` journal described under the `rtc-countdown`
+  action.
 - `power.*` reports the button state machine and one-event counters:
   `power.state`, `power.clicks`, `power.double_clicks`, `power.long_presses`,
   `power.resets`, `power.offs`, `power.downloads` and `power.recoveries`.
@@ -1361,6 +1429,9 @@ The other namespaces are:
   `companion.gate` is `memory` after the start gate refused the last enable
   and `none` otherwise.
 - `audio.*`, `ir.*`, `sd.*` and `alloc.icon` report peripheral fault states.
+  `ir.frames`, `ir.busy`, `ir.led_pulses` and `ir.led_conflicts` report the
+  modeled emitter: a frame opens a 190 ms window, and a light pulse inside it on
+  a board that shares the pin (Plus2, G19) counts as a conflict.
   `ota.slot`, `ota.rollback`, `ota.updates` and `ota.commits` report the OTA
   slot model.
 - `mem.*` is the memory profiler: `mem.profile`, `mem.internal_total`,
@@ -1587,7 +1658,16 @@ names lose characters, which must be 0. A page with no spin row reports 0 and
 - `platform.pmic_irq`: `asserted` or `idle`. `platform.pmic_irq_status` reports
   both latched status registers as `<status1>,<status2>` in decimal.
 - `platform.timed_wake`: `yes` when the simulated board can schedule a timed
-  power-on, otherwise `no`.
+  power-on, otherwise `no`. It follows the board row, not the build: the Plus2
+  `RTC_ALARM` row reports `yes` on any panel, and `hw_profile sticks3` reports
+  `no` outside the M5PM1 image.
+- `platform.rail`: `on` or `off` for the modeled Port A 5 V rail, the same
+  answer `Platform::getRail()` gives. The board row seeds the boot level: the
+  StickC and StickC Plus start on, because M5GFX enables AXP192 EXTEN during
+  `M5.begin()`, and the StickS3 starts off because M5Unified drives M5PM1 GPIO3
+  low. The firmware's own acquire and release move it from there. The fake
+  receiver keeps answering after a cut so GPS fixtures stay hot, so its own flag
+  is not this answer.
 
 GPS simulator queries also include `gps.sats_in_view`, `gps.sats_used`,
 `gps.sats_fix` and `gps.sats_capture`; the `gps-satellite-page` end-to-end

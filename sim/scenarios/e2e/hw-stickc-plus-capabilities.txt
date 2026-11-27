@@ -1,0 +1,61 @@
+# M5StickC Plus capability facts.
+#
+# The Plus is the first StickC with a buzzer (passive, G2), a 120 mAh cell and
+# the same GPIO35 IMU interrupt as the base board. #505 gave its row the BM8563
+# alarm wake: the AXP192 shutdown is its sleep and the alarm coupled into the
+# power key is its wake. Numbers come from the board row in src/FurbleBoard.cpp.
+#
+# Sources: plans/implemented/23-feedback-outputs.md (passive buzzer on G2, red
+# LED on G10, https://docs.m5stack.com/en/core/m5stickc_plus),
+# plans/implemented/20-imu-hw-motion.md, plans/implemented/139-persistent-time.md.
+#
+# Teeth: drop the buzzer column from the profile and hw.audio fails; copy the
+# StickC 95 mAh capacity and battery_mah fails; drop the alarm wake from the row
+# and hw.timed_wake and platform.timed_wake fail.
+seed hw_profile stickc-plus
+seed imu true
+seed imu_chip mpu6886
+seed hw_motion 2
+wait 300
+
+# Audio: passive buzzer on G2, so sound feedback exists.
+assert hw.audio yes
+
+# Battery: 120 mAh.
+assert hw.battery_mah 120
+
+# Motion wake: MPU6886 INT on GPIO35.
+assert hw.motion_wake direct
+assert hw.motion_wake_pin 35
+assert ui.motion_wake yes
+
+# Timed wake: the BM8563 alarm is the wake path on this row, and the AXP192 power
+# key is what the INT reaches.
+assert hw.timed_wake rtc-alarm
+assert platform.timed_wake yes
+
+# RTC: BM8563 on the AXP192 rail, so it stays backed while the cell is present.
+assert hw.rtc yes
+assert hw.rtc_backed yes
+assert hw.rtc_irq_armed no
+
+# IR and LED are separate pins.
+assert hw.ir_pin 9
+assert hw.ir_mark_low yes
+assert hw.ir_mark_level low
+assert hw.led_pin 10
+assert hw.led_active_low yes
+assert hw.led_shared_with_ir no
+
+# Buttons: A 37, B 39, power on the AXP192 key.
+assert hw.button_a 37
+assert hw.button_b 39
+assert hw.button_pwr none
+assert hw.button_pwr_source axp192-key
+
+# Flash: 4 MB part and 4 MB DIO image, no PSRAM in either.
+assert hw.flash_kb 4096
+assert hw.build_flash_kb 4096
+assert hw.build_flash_mode dio
+assert hw.build_psram absent
+exit

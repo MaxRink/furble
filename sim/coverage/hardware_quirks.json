@@ -2707,6 +2707,38 @@
       "status": "modeled"
     },
     {
+      "id": "board.stickc.flash",
+      "profile": "stickc",
+      "category": "memory",
+      "feature": "4 MB flash, DIO image, no PSRAM",
+      "source": "src/FurbleBoard.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-capabilities.txt",
+      "assertions": [
+        "hw.flash_kb",
+        "hw.build_flash_kb",
+        "hw.build_flash_mode",
+        "hw.build_psram"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.part",
+      "profile": "stickc-plus2",
+      "category": "memory",
+      "feature": "8 MB QIO flash and 2 MB quad PSRAM part, 4 MB DIO image",
+      "source": "M5Stack M5StickC Plus2 product page",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus2-capabilities.txt",
+      "assertions": [
+        "hw.flash_kb",
+        "hw.psram",
+        "mem.psram_total",
+        "hw.build_flash_kb"
+      ],
+      "status": "modeled"
+    },
+    {
       "id": "peripheral.gps-ubx-detect",
       "profile": "sticks3",
       "category": "peripheral",
@@ -2883,6 +2915,111 @@
       "status": "modeled"
     },
     {
+      "id": "board.stickc.audio_battery",
+      "profile": "stickc",
+      "category": "peripheral",
+      "feature": "No buzzer or speaker, 95 mAh cell",
+      "source": "plans/implemented/23-feedback-outputs.md, https://docs.m5stack.com/en/core/m5stickc",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-capabilities.txt",
+      "assertions": [
+        "hw.audio",
+        "hw.battery_mah"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc.ir_led",
+      "profile": "stickc",
+      "category": "peripheral",
+      "feature": "IR on G9 and the red LED on G10 are separate pins",
+      "source": "plans/implemented/22-ir-remote-trigger.md, plans/implemented/23-feedback-outputs.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-capabilities.txt",
+      "assertions": [
+        "hw.ir_pin",
+        "hw.led_pin",
+        "hw.led_shared_with_ir",
+        "ir.led_conflicts"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.audio_battery",
+      "profile": "stickc-plus",
+      "category": "peripheral",
+      "feature": "Passive buzzer on G2, 120 mAh cell",
+      "source": "plans/implemented/23-feedback-outputs.md, https://docs.m5stack.com/en/core/m5stickc_plus",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus-capabilities.txt",
+      "assertions": [
+        "hw.audio",
+        "hw.battery_mah"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.ir_led",
+      "profile": "stickc-plus",
+      "category": "peripheral",
+      "feature": "IR on G9 and the red LED on G10 are separate pins",
+      "source": "plans/implemented/22-ir-remote-trigger.md, plans/implemented/23-feedback-outputs.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus-capabilities.txt",
+      "assertions": [
+        "hw.ir_pin",
+        "hw.led_pin",
+        "hw.led_shared_with_ir"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.audio_battery",
+      "profile": "stickc-plus2",
+      "category": "peripheral",
+      "feature": "Passive buzzer on G2, 200 mAh cell on an ADC divider",
+      "source": "plans/implemented/23-feedback-outputs.md, src/FurbleBoard.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus2-capabilities.txt",
+      "assertions": [
+        "hw.audio",
+        "hw.battery_mah",
+        "hw.gauge"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.shared_pin",
+      "profile": "stickc-plus2",
+      "category": "peripheral",
+      "feature": "IR emitter and red LED share G19",
+      "source": "plans/implemented/22-ir-remote-trigger.md, plans/implemented/23-feedback-outputs.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus2-capabilities.txt",
+      "assertions": [
+        "hw.ir_pin",
+        "hw.led_pin",
+        "hw.led_shared_with_ir"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "peripheral.plus2_shared_led_ir",
+      "profile": "stickc-plus2",
+      "category": "peripheral",
+      "feature": "A light pulse during an IR frame keys the emitter again",
+      "source": "plans/implemented/22-ir-remote-trigger.md, plans/implemented/23-feedback-outputs.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-plus2-shared-led-ir.txt",
+      "assertions": [
+        "hw.ir_mark_level",
+        "ir.led_pulses",
+        "ir.led_conflicts",
+        "ir.frames"
+      ],
+      "status": "modeled"
+    },
+    {
       "id": "power.pmic_irq_latch",
       "profile": "sticks3",
       "category": "power",
@@ -2943,6 +3080,50 @@
       "status": "modeled"
     },
     {
+      "id": "board.stickc.rtc",
+      "profile": "stickc",
+      "category": "board",
+      "feature": "BM8563 calendar RTC on the PMU rail",
+      "source": "plans/implemented/139-persistent-time.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-capabilities.txt",
+      "assertions": [
+        "hw.rtc_backed",
+        "hw.rtc_irq_armed",
+        "rtc.enabled"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.rtc",
+      "profile": "stickc-plus",
+      "category": "board",
+      "feature": "BM8563 calendar RTC on the PMU rail",
+      "source": "plans/implemented/139-persistent-time.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus-capabilities.txt",
+      "assertions": [
+        "hw.rtc_backed",
+        "hw.rtc_irq_armed"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.rtc",
+      "profile": "stickc-plus2",
+      "category": "board",
+      "feature": "BM8563 present, not battery backed in the firmware row",
+      "source": "plans/implemented/139-persistent-time.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus2-capabilities.txt",
+      "assertions": [
+        "hw.rtc_backed",
+        "rtc.backed",
+        "rtc.countdown_mode"
+      ],
+      "status": "modeled"
+    },
+    {
       "id": "rtc.plus2.power-cycle",
       "profile": "stickc-plus2",
       "category": "power",
@@ -2954,6 +3135,163 @@
         "hw.rtc_epoch",
         "hw.rtc_clock",
         "time.source"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc.wake",
+      "profile": "stickc",
+      "category": "power",
+      "feature": "MPU6886 INT on GPIO35, no timed wake",
+      "source": "src/FurbleBoard.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-capabilities.txt",
+      "assertions": [
+        "hw.motion_wake",
+        "hw.motion_wake_pin",
+        "hw.timed_wake",
+        "ui.motion_wake"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.wake",
+      "profile": "stickc-plus",
+      "category": "power",
+      "feature": "MPU6886 INT on GPIO35, no timed wake",
+      "source": "src/FurbleBoard.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus-capabilities.txt",
+      "assertions": [
+        "hw.motion_wake",
+        "hw.motion_wake_pin",
+        "hw.timed_wake",
+        "platform.timed_wake"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.motion",
+      "profile": "stickc-plus2",
+      "category": "power",
+      "feature": "MotionWake::NONE, the IMU interrupt is not routed",
+      "source": "src/FurbleBoard.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus2-capabilities.txt",
+      "assertions": [
+        "hw.motion_wake",
+        "ui.motion_wake",
+        "ui.motion_backend"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.timed_wake",
+      "profile": "stickc-plus2",
+      "category": "power",
+      "feature": "BM8563 countdown is the only self-wake path",
+      "source": "src/FurbleBoard.cpp",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus2-capabilities.txt",
+      "assertions": [
+        "hw.timed_wake",
+        "platform.timed_wake"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.plus2_hold_latch",
+      "profile": "stickc-plus2",
+      "category": "power",
+      "feature": "GPIO HOLD latch on G4, separate from any PMIC latch",
+      "source": "plans/implemented/19-interval-deep-sleep.md",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus2-capabilities.txt",
+      "assertions": [
+        "pmic.power_latch",
+        "pmic.hold_latch",
+        "pmic.hold_order"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.plus2_rtc_countdown",
+      "profile": "stickc-plus2",
+      "category": "power",
+      "feature": "BM8563 second/minute mode switch, 255 clamp and early-wake window",
+      "source": "M5Unified src/utility/rtc/PCF8563_Class.cpp setTimerIRQ()",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-plus2-rtc-wake.txt",
+      "assertions": [
+        "rtc.plan.100",
+        "rtc.plan.269",
+        "rtc.plan.270",
+        "rtc.plan.300",
+        "rtc.plan.815",
+        "rtc.plan.15360",
+        "rtc.plan.15361",
+        "rtc.countdown_mode"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "power.stickc_rail_boot",
+      "profile": "stickc",
+      "category": "power",
+      "feature": "Port A 5 V rail already enabled by M5GFX before furble runs",
+      "source": "M5GFX src/M5GFX.cpp Light_M5StickC::init",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-gps-rail-boot.txt",
+      "assertions": [
+        "hw.rail_boot",
+        "platform.rail"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc.buttons",
+      "profile": "stickc",
+      "category": "input",
+      "feature": "BtnA G37, BtnB G39, power on the AXP192 key",
+      "source": "M5Unified src/M5Unified.cpp (pinned 0.2.x copy under .pio/libdeps)",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-capabilities.txt",
+      "assertions": [
+        "hw.button_a",
+        "hw.button_b",
+        "hw.button_pwr",
+        "hw.button_pwr_source"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus.buttons",
+      "profile": "stickc-plus",
+      "category": "input",
+      "feature": "BtnA G37, BtnB G39, power on the AXP192 key",
+      "source": "M5Unified src/M5Unified.cpp (pinned 0.2.x copy under .pio/libdeps)",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus-capabilities.txt",
+      "assertions": [
+        "hw.button_a",
+        "hw.button_b",
+        "hw.button_pwr"
+      ],
+      "status": "modeled"
+    },
+    {
+      "id": "board.stickc-plus2.buttons",
+      "profile": "stickc-plus2",
+      "category": "input",
+      "feature": "BtnA G37, BtnB G39, power on G35",
+      "source": "M5Unified src/M5Unified.cpp (pinned 0.2.x copy under .pio/libdeps)",
+      "model": "sim/hardware_model.cpp",
+      "scenario": "sim/scenarios/e2e/hw-stickc-plus2-capabilities.txt",
+      "assertions": [
+        "hw.button_a",
+        "hw.button_b",
+        "hw.button_pwr",
+        "hw.button_pwr_source"
       ],
       "status": "modeled"
     }

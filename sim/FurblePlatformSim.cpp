@@ -18,6 +18,7 @@
 #include "FurblePlatform.h"
 #include "FurblePlatformPolicy.h"
 #include "FurblePower.h"
+#include "FurbleRtcCountdown.h"
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
 #include "FurbleWatchdog.h"
@@ -69,6 +70,27 @@ Platform &Platform::getInstance(void) {
     config.internal_mic = false;
     config.pmic_button = true;
     M5.begin(config);
+
+    // The board's own facts, established by M5GFX/M5Unified inside M5.begin(),
+    // before furble runs:
+    //  - the Plus2 GPIO HOLD latch must go high here or the device dies mid
+    //    boot, exactly as production does right after M5.begin();
+    //  - the Port A 5 V rail is already enabled on the StickC and StickC Plus,
+    //    because M5GFX's backlight init writes AXP192 0x12 = 0x4D (EXTEN on);
+    //  - a latched BM8563 alarm flag survives the power cut, so a boot with the
+    //    timed-wake marker present sees the flag set.
+    if (Sim::hwBoardProfile().powerHoldPin >= 0) {
+      Sim::hwAssertHoldLatch();
+    }
+    if (Sim::hwBoardProfile().timedWake == Board::TimedWake::RTC_ALARM) {
+      Preferences wake;
+      wake.begin(FURBLE_STR, true);
+      const bool timedWake = wake.get<bool>("sim_timed_wake", false);
+      wake.end();
+      if (timedWake) {
+        Sim::hwRtcLatchIrq();
+      }
+    }
 
 #if defined(FURBLE_M5STICKS3)
     instance.m_M5PM1.begin(nullptr);
@@ -124,6 +146,7 @@ Platform &Platform::getInstance(void) {
     lgfx::Panel_sdl::addKeyCodeMapping(SDLK_c, 37);  // BtnC (Core only)
     lgfx::Panel_sdl::addKeyCodeMapping(SDLK_p, 36);  // BtnPWR (Stick only)
 
+    Sim::hwMarkPlatformReady();
     instance.m_Init = true;
   }
 
@@ -292,15 +315,18 @@ void Platform::setDisplayOff(bool off) {
 
 // The IMU interrupt reaches an ESP32 pin only on the boards whose schematic
 // routes it there: GPIO35 on the StickC family, and M5PM1 GPIO4 chained to
-// GPIO13 on the StickS3. Model the same board answer here so a scenario can
-// tell a wake-capable board from one that has to poll.
+// GPIO13 on the StickS3. The answer is the board row, not the build: the Plus2
+// row is MotionWake::NONE and production returns false there, so a build-wide
+// true would claim a wake pin the part does not have.
 bool Platform::armMotionWake(void) {
-#if defined(FURBLE_M5COREX)
-  return false;
-#else
-  m_MotionWakeArmed = true;
-  return true;
-#endif
+  const auto kind = Sim::hwBoardProfile().motionWake;
+  if ((kind == Board::MotionWake::PMIC_GPIO) && !static_cast<bool>(FURBLE_HAS_M5PM1)) {
+    // Same guard as motionWakeKind(): the M5PM1 chain only exists in its image.
+    m_MotionWakeArmed = false;
+    return false;
+  }
+  m_MotionWakeArmed = (kind != Board::MotionWake::NONE);
+  return m_MotionWakeArmed;
 }
 
 void Platform::disarmMotionWake(void) {
@@ -327,20 +353,17 @@ uint32_t Platform::getM5PM1RetryCount(void) const {
 }
 
 bool Platform::canTimedWake(void) {
-  // The S3 build models the M5PM1 timed power-on rail. Other board builds
-  // retain the production capability gate and cannot self-wake after power
-  // off. The marker is persisted through the same host NVS file as resume
-  // state, so a second simulator process is a deterministic virtual boot.
-#if defined(FURBLE_M5STICKS3)
-  if (M5.getBoard() == m5::board_t::board_M5StickS3) {
-    return true;
+  // Same switch as production: the M5PM1 timer needs its driver, which only
+  // its image carries, and the BM8563 alarm needs a detected RTC. The row comes
+  // from the seeded profile, so the Plus2 path runs on any panel build.
+  switch (Sim::hwBoardProfile().timedWake) {
+    case Board::TimedWake::PMIC_TIMER:
+      return FURBLE_HAS_M5PM1 != 0;
+    case Board::TimedWake::RTC_ALARM:
+      return Sim::hwRtcEnabled();
+    default:
+      return false;
   }
-#endif
-  // A modelled RTC-alarm board, the StickC Plus2 row, wakes through its
-  // BM8563 alarm. This is the production gate: the profile's timed wake plus a
-  // chip that can be programmed. Without a modelled chip nothing can wake the
-  // device, exactly as on hardware.
-  return Sim::hwRtcTimedAlarmBoard() && Sim::hwRtcPresent();
 }
 
 bool Platform::powerOffUntil(uint32_t seconds) {
@@ -353,6 +376,46 @@ bool Platform::powerOffUntil(uint32_t seconds) {
   // clear the resume record and continue the run while awake.
   if (Sim::scenarioSettingIsTrue("timed_poweroff_fail")
       || Sim::scenarioSettingIsTrue("timed_wake_write_fail")) {
+    return false;
+  }
+
+  // The BM8563 branch of the production block, in the same order: require the
+  // RTC, clear the old flag, program the countdown, apply the late/early rule,
+  // then sleep the panel and drop the GPIO HOLD latch. The countdown arithmetic
+  // and the acceptance rule come from FurbleRtcCountdown.h, which production
+  // verifyBm8563Timer() and its guard also use.
+  if (Sim::hwBoardProfile().timedWake == Board::TimedWake::RTC_ALARM) {
+    if (!Sim::hwRtcEnabled()) {
+      ESP_LOGW("platform", "StickC Plus2 RTC is unavailable, staying awake");
+      return false;
+    }
+
+    Sim::hwRtcDisableIrq();
+    Sim::hwRtcClearIrq();
+    const int requested_seconds = static_cast<int>(seconds);
+    const int programmed_seconds = Sim::hwRtcProgram(requested_seconds);
+    Sim::hwRtcNotePlan(requested_seconds, TIMED_WAKE_MAX_EARLY_S);
+    if (!RtcCountdown::accepted(requested_seconds, programmed_seconds, TIMED_WAKE_MAX_EARLY_S)) {
+      ESP_LOGW("platform",
+               "StickC Plus2 RTC could not program %d seconds within the resume window (got %d)",
+               requested_seconds, programmed_seconds);
+      Sim::hwRtcClearTimer();
+      Sim::hwRtcDisableIrq();
+      return false;
+    }
+
+    if (programmed_seconds != requested_seconds) {
+      ESP_LOGI("platform", "StickC Plus2 RTC will wake %d seconds early",
+               requested_seconds - programmed_seconds);
+    }
+
+    // M5.Display.sleep() in production. The host records the request so a
+    // scenario can see the panel was put to sleep before the power cut.
+    Sim::hwSetDisplayOff(true);
+    Sim::hwReleaseHoldLatch();
+  } else if (!canTimedWake()) {
+    // Production logs and stays awake when the board has no timed wake path.
+    ESP_LOGW("platform", "Timed wake is unsupported on this board");
     return false;
   }
 
@@ -415,8 +478,8 @@ bool Platform::consumeTimedWake(void) {
 
   Preferences prefs;
   prefs.begin(FURBLE_STR, false);
-  const bool timedWake = prefs.get<bool>("sim_timed_wake", false);
-  if (timedWake) {
+  const bool marker = prefs.get<bool>("sim_timed_wake", false);
+  if (marker) {
     prefs.remove("sim_timed_wake");
   }
   // The record is consumed on every boot, exactly as the PM1 RTC buffer is
@@ -431,6 +494,16 @@ bool Platform::consumeTimedWake(void) {
     prefs.remove(TIMED_WAKE_RECORD_KEY);
   }
   prefs.end();
+  // Production reads the BM8563 flag, which lives in the RTC and survives the
+  // power cut. The host has no RTC, so the boot latched that flag from the same
+  // persisted marker. UNVERIFIED on hardware: the flag survives a cut only
+  // while the RTC keeps its rail.
+  bool timedWake = marker;
+  if (Sim::hwBoardProfile().timedWake == Board::TimedWake::RTC_ALARM) {
+    timedWake = Sim::hwRtcEnabled() && Sim::hwRtcIrq();
+    Sim::hwRtcDisableIrq();
+    Sim::hwRtcClearIrq();
+  }
   if (timedWake && (predictionLength == sizeof(prediction))) {
     (void)TimeKeeper::getInstance().adoptTimedWake(prediction, predictionLength);
   }
@@ -461,10 +534,11 @@ Platform::pm_config_t Platform::getPMConfig(void) {
 void Platform::dumpPMLocks(void) {}
 
 bool Platform::canCutGpsRail(void) {
-  // Firmware reads the board profile. The 320x240 build models the Core
-  // Basic, whose profile has no GPS rail. A scenario can also fix the rail on
-  // (`seed gps_rail_fixed`) to model a Core or Waveshare board on a Stick.
-  return Board::profile().gpsRail && !Sim::hwRailFixed();
+  // Firmware reads the modelled row, not the panel build, so a seeded profile
+  // answers for itself: the Core row has no GPS rail. A scenario can also fix
+  // the rail on (`seed gps_rail_fixed`) to model a Core or Waveshare board on a
+  // Stick.
+  return Sim::hwBoardProfile().gpsRail && !Sim::hwRailFixed();
 }
 
 bool Platform::canTurnDisplayOff(void) {

@@ -5,6 +5,15 @@
 #include <cstdint>
 #include <string>
 
+// Declared, not included: the row is only dereferenced by callers that already
+// include FurbleBoard.h, and this header is reachable from simulator
+// translation units that must not pull M5Unified in.
+namespace Furble {
+namespace Board {
+struct Profile;
+}  // namespace Board
+}  // namespace Furble
+
 namespace Furble::Sim {
 
 /*
@@ -20,6 +29,17 @@ namespace Furble::Sim {
 
 /** Select a profile. Unknown names are rejected at scenario parse time. */
 void hwSetProfile(const std::string &profile);
+
+/**
+ * The `Board::Profile` row the seeded profile models.
+ *
+ * The simulator compiles one panel, but a scenario may model any supported
+ * board. Firmware facts that live in `Board::Profile` are read through this
+ * row, so a scenario cannot assert a value the firmware does not own.
+ */
+const Board::Profile &hwBoardProfile(void);
+
+/** Battery capacity of the modelled row, 0 when unknown. */
 const char *hwProfile(void);
 const char *hwMcu(void);
 const char *hwPmicVariant(void);
@@ -221,7 +241,6 @@ bool hwRtcRead(uint64_t &epoch_us, bool &volt_low);
 /** Record a calendar write, as M5.Rtc.setDateTime() would. */
 void hwRtcWrite(uint64_t epoch_us);
 /** True when the modelled profile wakes through the RTC alarm. */
-bool hwRtcTimedAlarmBoard(void);
 /** The chip kept counting through a simulated power-off. Persists the
  *  reading so the next process boots from the same chip state. */
 void hwRtcPowerOff(uint32_t seconds);
@@ -273,6 +292,48 @@ std::string hwRailSupplyName(void);
  */
 void hwSetIrBurstMs(uint32_t milliseconds);
 uint32_t hwIrBurstMs(void);
+
+/**
+ * The modelled calendar RTC (BM8563) countdown.
+ *
+ * `hwRtcProgram()` returns the seconds the driver would have programmed, the
+ * same value `M5.Rtc.setAlarmIRQ(int)` returns, so a caller can apply the
+ * firmware acceptance rule from FurbleRtcCountdown.h. The register arithmetic
+ * is UNVERIFIED against the BM8563 datasheet; see that header.
+ */
+bool hwRtcEnabled(void);
+int hwRtcProgram(int seconds);
+/**
+ * Record the firmware verdict for a request in the `rtc.plan.<seconds>` journal.
+ *
+ * `maxEarlySeconds` is `Platform::TIMED_WAKE_MAX_EARLY_S` from the caller, so
+ * the model applies the same window the firmware does rather than a copy.
+ */
+void hwRtcNotePlan(int seconds, uint32_t maxEarlySeconds);
+void hwRtcDisableIrq(void);
+void hwRtcClearIrq(void);
+void hwRtcClearTimer(void);
+bool hwRtcIrq(void);
+/** Latch the alarm flag, as a wake from the RTC's own power domain would. */
+void hwRtcLatchIrq(void);
+
+/**
+ * The Plus2 GPIO HOLD power latch, separate from any PMIC latch.
+ *
+ * Production drives the pin high immediately after `M5.begin()` and drops it
+ * to power off for a timed wake. `hwMarkPlatformReady()` records the end of
+ * `Platform::getInstance()`, so `pmic.hold_order` can distinguish a latch
+ * asserted inside that window from one asserted later.
+ */
+void hwAssertHoldLatch(void);
+void hwReleaseHoldLatch(void);
+void hwMarkPlatformReady(void);
+
+/** IR and feedback LED pin model, including the Plus2 shared G19. */
+void hwIrFrame(void);
+void hwLightPulse(void);
+
+/** True when the modelled board's Port A 5 V rail is on at boot. */
 
 /** Platform/P MIC state changed by production calls. */
 void hwSetWatchdogEnabled(bool enabled);

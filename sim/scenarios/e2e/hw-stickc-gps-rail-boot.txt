@@ -1,0 +1,38 @@
+# Port A 5 V rail is already on when furble starts on the StickC and StickC Plus.
+#
+# M5GFX's backlight init for the StickC family writes AXP192 register 0x12 = 0x4D
+# before furble runs (M5GFX src/M5GFX.cpp Light_M5StickC::init), and bit 0 of
+# that register is EXTEN, the Port A rail the GPS unit uses. So the firmware
+# never observes the rail off at boot, and the GPS path must not assume it does:
+# it has to drive the rail itself and read back every cut.
+#
+# The StickS3 is the opposite case: M5Unified sets M5PM1 GPIO3 low during
+# M5::begin(), so its rail starts off. hw-psram-octal-sticks3.txt asserts that
+# half, and both read the same row columns, so a flipped railBoot fails there.
+#
+# Teeth: set the StickC row's railBoot to off and rail_boot and platform.rail
+# both fail here; have the model seed the rail to a constant and the StickS3 half
+# fails instead; make the GPS driver skip its own rail request and the rail-cycle
+# leg below never sees the rail go off.
+#
+# Limit: the fake CASIC receiver keeps answering after a rail cut, so this
+# scenario stops at "the firmware drove the cut itself". The re-power half of
+# the cycle is not modeled yet and is recorded in plans/351-stickc-sim-align.md.
+seed hw_profile stickc
+seed gps true
+seed gps_power 2
+seed gps_duty 5
+seed gps_rate 1
+seed gps_uart_mode ack
+wait 300
+
+# Board fact: the rail is on at boot, before the GPS driver asks for anything.
+assert hw.rail_boot on
+assert platform.rail on
+
+# The rail-cycle policy still cuts the rail itself, so the firmware is not
+# relying on the boot level. assert-eventually-virtual advances the virtual
+# clock; the wall-clock form would never see a duty cycle.
+assert-eventually-virtual 15000 platform.rail off
+assert platform.rail off
+exit

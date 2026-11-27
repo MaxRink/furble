@@ -193,6 +193,8 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
                                      "hw-rtc-mismatch",
                                      "pmic-irq-5vin",
                                      "pmic-irq-clear",
+                                     "ir-frame",
+                                     "feedback-light",
                                      "sd-present",
                                      "sd-absent",
                                      "sd-error",
@@ -261,6 +263,15 @@ bool validateScenarioAction(const scenario_action_t &action, std::string *error)
           || action.batteryCharging || action.values[0] != 0.0F || action.values[1] != 0.0F
           || action.values[2] != 0.0F || action.index > SECURE_STALL_MAX_MS) {
         return fail(error, "noncanonical secure stall action");
+      }
+      return true;
+    case scenario_action_kind_t::RTC_COUNTDOWN:
+      if (!action.name.empty() || !action.mode.empty() || action.integer != 0
+          || action.batteryLevel != 0 || action.batteryVoltage != 0 || action.batteryCurrent != 0
+          || action.batteryCharging || action.values[0] != 0.0F || action.values[1] != 0.0F
+          || action.values[2] != 0.0F
+          || action.index > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+        return fail(error, "noncanonical rtc countdown action");
       }
       return true;
     case scenario_action_kind_t::IMU_VECTOR:
@@ -497,6 +508,8 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
 
   const std::initializer_list<const char *> simple = {
       "blind",
+      "ir-frame",
+      "feedback-light",
       "blind-shutter",
       "indicator-click-focus",
       "focus-lock",
@@ -756,6 +769,23 @@ bool parseScenarioAction(const std::string &text, scenario_action_t *action, std
     }
     action->kind = scenario_action_kind_t::IMU_ANGLE;
     action->name = args[0];
+    return accept();
+  }
+
+  if (args[0] == "rtc-countdown") {
+    // One numeric operand: the requested delay the platform hands the BM8563.
+    // Bounded by the same int the platform casts to, so a scenario cannot ask
+    // for a value the driver could not receive.
+    if (args.size() != 2) {
+      return fail(error, "rtc-countdown requires exactly one delay in seconds");
+    }
+    uint64_t seconds = 0;
+    if (!parseUnsigned(args[1], static_cast<uint64_t>(std::numeric_limits<int32_t>::max()),
+                       &seconds)) {
+      return fail(error, "rtc-countdown delay is out of range");
+    }
+    action->kind = scenario_action_kind_t::RTC_COUNTDOWN;
+    action->index = static_cast<uint32_t>(seconds);
     return accept();
   }
 

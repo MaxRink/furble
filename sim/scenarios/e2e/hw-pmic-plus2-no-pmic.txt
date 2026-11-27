@@ -1,19 +1,27 @@
 # M5StickC Plus2 no-PMIC profile.
 #
 # Plus2 shares the m5stick-c-plus image but has no PMIC. The battery is an ADC
-# divider and only voltage is available. The HOLD pin is the power latch.
+# divider and only voltage is available. Power is held by the GPIO HOLD latch on
+# G4, which is a pin furble drives, not a PMIC latch.
+#
+# The part carries 8 MB of QIO flash and 2 MB of quad PSRAM while the shared
+# image is built for 4 MB DIO without PSRAM, so the two rows are asserted
+# separately and the divergence is visible.
 seed hw_profile stickc-plus2
 wait 100
 
 assert hw.profile stickc-plus2
 assert hw.mcu esp32
-assert hw.flash_kb 4096
+assert hw.flash_kb 8192
+assert hw.part_psram quad
 assert hw.psram absent
 assert hw.pmic none
 assert hw.gauge voltage
 assert hw.display 135x240
 assert hw.touch no
 assert pmic.power_latch none
+assert pmic.hold_latch asserted
+assert pmic.hold_order before-ready
 assert pmic.watchdog unavailable
 assert platform.battery.present yes
 assert platform.battery.current -1

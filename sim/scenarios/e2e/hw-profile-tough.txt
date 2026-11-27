@@ -8,6 +8,11 @@ assert hw.pmic axp192
 assert hw.display 320x240
 assert hw.touch yes
 assert hw.sd yes
+# The model reports the firmware's own feedbackSound column. The Tough row sets
+# it, M5Unified's board_M5Tough speaker setup configures the Core2 codec path with
+# a higher magnification for the waterproof case, and
+# tests/host/board_profile_test.cpp asserts the NS4168 1 W speaker. The branch's
+# claim that this board has no sound was wrong.
 assert hw.audio yes
 assert hw.rtc yes
 # The Tough's BM8563 carries the BT1 backup cell and its alarm is the wake path

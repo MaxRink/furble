@@ -62,8 +62,9 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   remains uncertified until its clear-on-read race with M5Unified is measured.
   Every motion count and its documented mg, ms and g value lives in
   `FurbleIMUMotionScale.h`; the three backends here read it and never convert a
-  count by hand. The MPU-6886 count size is this project's assumption until a
-  measured tilt test settles it, see plan 332.
+  count by hand. The simulator derives the same thresholds from it, and the
+  `imu-motion-encoding` host test pins both sides. The MPU-6886 count size is
+  this project's assumption until a measured tilt test settles it, see plan 332.
 - `FurbleTimeKeeper`: owns one versioned CRC-protected wall-clock blob. Normal
   synchronization writes are limited to four per day and shutdown checkpoints
   without a backed RTC use a separate three-and-a-half-hour age budget. The

@@ -25,6 +25,7 @@
 #include "FurblePmicIrq.h"
 #include "FurblePower.h"
 #include "FurblePowerPolicy.h"
+#include "FurbleRtcCountdown.h"
 #include "FurbleSD.h"
 #include "FurbleSettings.h"
 #include "FurbleTimeKeeper.h"
@@ -101,15 +102,13 @@ void clearBm8563Timer(void) {
 }
 
 bool verifyBm8563Timer(int requested_seconds, int programmed_seconds) {
-  // Mirror setTimerIRQ()'s selection: second resolution below 270 s, minute
-  // resolution above it, both clamped to the 8-bit countdown register.
-  const bool minute_mode = requested_seconds >= 270;
-  const uint32_t divisor = minute_mode ? 60U : 1U;
-  const uint32_t raw_count = minute_mode ? (static_cast<uint32_t>(requested_seconds) + 30U) / 60U
-                                         : static_cast<uint32_t>(requested_seconds);
-  const uint8_t expected_count = static_cast<uint8_t>(std::min<uint32_t>(raw_count, 255U));
-  const uint8_t expected_control = minute_mode ? 0x83 : 0x82;
-  const int expected_programmed = static_cast<int>(expected_count) * static_cast<int>(divisor);
+  // RtcCountdown mirrors setTimerIRQ()'s selection: second resolution below
+  // 270 s, minute resolution above it, both clamped to the 8-bit countdown
+  // register. The simulator models the same selection from that header.
+  const auto expected = RtcCountdown::select(requested_seconds);
+  const uint8_t expected_count = expected.count;
+  const uint8_t expected_control = expected.control;
+  const int expected_programmed = expected.programmedSeconds;
 
   const uint8_t control =
       M5.In_I2C.readRegister8(PCF8563_ADDRESS, PCF8563_TIMER_CONTROL, PCF8563_I2C_FREQ);
@@ -1052,10 +1051,9 @@ bool Platform::powerOffUntil(uint32_t seconds) {
     // resolution above that. A late wake would miss the saved shot deadline,
     // so reject anything above the request. An early wake is safe only within
     // the resume window: the 255-minute clamp can otherwise wake hours before
-    // the deadline and the resume validation clears the run.
-    const int early_seconds = requested_seconds - programmed_seconds;
-    if ((programmed_seconds <= 0) || (early_seconds < 0)
-        || (early_seconds > static_cast<int>(TIMED_WAKE_MAX_EARLY_S))
+    // the deadline and the resume validation clears the run. RtcCountdown
+    // holds that rule, and the simulator models this block from it.
+    if (!RtcCountdown::accepted(requested_seconds, programmed_seconds, TIMED_WAKE_MAX_EARLY_S)
         || !verifyBm8563Timer(requested_seconds, programmed_seconds)) {
       ESP_LOGW(LOG_TAG, "%s RTC could not program %d seconds within the resume window (got %d)",
                Board::profile().name, requested_seconds, programmed_seconds);

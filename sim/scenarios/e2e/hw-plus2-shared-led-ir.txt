@@ -1,0 +1,50 @@
+# Plus2 shared G19: an LED pulse during an IR frame keys the emitter again.
+#
+# The Plus2 routes the red LED and the IR emitter to the same pin, so any
+# feedback blink that lands inside a frame adds a mark to the train. Production
+# Feedback does not consult the IR driver before driving the pin (there is no
+# IR::isBusy() to consult yet), which is the product gap plans/implemented/
+# 22-ir-remote-trigger.md and 23-feedback-outputs.md both call out. The
+# xassert below records the fix that is owed: when a guard lands the conflict
+# count goes to zero, the plain assert above it fails first, and the xassert
+# must be promoted to an assert in the same change.
+#
+# The frame window is the 190 ms Nikon train; the modelled board facts are in
+# sim/hardware_model.cpp. `hw.ir_mark_level` is the level the emitter pin holds
+# during a mark, from the row's `irMarkLow`: the Plus2 drives the emitter from
+# the anode side and holds it high, while the StickC and Plus invert the output
+# and hold it low.
+#
+# Teeth: remove the shared-pin check from the model and led_conflicts fails;
+# move the LED to its own pin and the conflict count drops to zero; flip this
+# row's `irMarkLow` and the mark-level assert below fails on its own, because
+# this scenario pins the level without the boolean beside it.
+# hw-stickc-capabilities.txt is the separate-pin twin: the same two actions
+# there must not conflict.
+seed hw_profile stickc-plus2
+wait 300
+
+assert hw.ir_pin 19
+assert hw.led_pin 19
+assert hw.led_shared_with_ir yes
+assert hw.ir_mark_level high
+
+# A frame, then a light pulse inside its window: the emitter is keyed again.
+action ir-frame
+assert ir.frames 1
+assert ir.busy yes
+action feedback-light
+assert ir.led_pulses 1
+assert ir.led_conflicts 1
+
+# The hazard is the shared pin, not feedback in general. Once the frame has
+# finished the same pulse is harmless.
+advance 200
+assert ir.busy no
+action feedback-light
+assert ir.led_pulses 2
+assert ir.led_conflicts 1
+
+# The wanted end state: zero keyed pulses. XFAIL until the guard lands.
+xassert ir.led_conflicts 0
+exit

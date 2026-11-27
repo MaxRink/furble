@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -13,9 +14,12 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "FurbleBoard.h"
+#include "FurbleBoardCaps.h"
 #include "FurbleCompanionMemory.h"
 #include "FurbleIP5306.h"
 #include "FurbleMQTTMemory.h"
+#include "FurbleRtcCountdown.h"
 #include "clock.h"
 #include "crash_log_sim.h"
 #include "driver.h"
@@ -58,13 +62,15 @@ constexpr rtc_fact_t RTC_FACTS[] = {
 /*
  * One modelled board row.
  *
- * `ir`, `sd`, `audio` and `touch` are the capabilities the firmware reads, not
- * raw silicon inventory, so a scenario can hold the row against
- * `Board::profile()`:
+ * `ir`, `sd` and `touch` are the capabilities the firmware reads, not raw
+ * silicon inventory, so a scenario can hold the row against `Board::profile()`:
  *   ir     an IR emitter the firmware can drive (a GPIO and a DIO-mode flash)
  *   sd     a microSD slot on the display SPI bus that the firmware can mount
- *   audio  a speaker or amplifier the firmware drives for feedback sound
  *   touch  a touch panel
+ * Sound is deliberately absent: `hw.audio` reads the firmware's own
+ * `Profile::feedbackSound`, so the model cannot claim a speaker path production
+ * does not drive. A copy of that column here is what let the model report sound
+ * on the speakerless StickC.
  * `rtc` is a calendar chip at all and `rtcBatteryBacked` is whether it keeps
  * time with the main cell out; RTC_FACTS is the per-row evidence for the first
  * and docs/power/board-power.md section 2 for the second. A buzzer without a
@@ -90,21 +96,16 @@ struct board_caps_t {
   bool ble;
   bool ir;
   bool sd;
-  bool audio;
+  // A calendar RTC chip is fitted. The backing and the wake path are not
+  // repeated here: Board::profileFor() owns both, and every query and model
+  // path reads that row.
   bool rtc;
-  // The board profile's own columns, mirroring include/FurbleBoard.h in
-  // src/FurbleBoard.cpp: whether a cell keeps the calendar through a power
-  // off, and which wake path the board has.
-  bool rtcBatteryBacked;
-  const char *timedWake;  // "none", "pmic-timer" or "rtc-alarm"
   bool vbus;
   bool poe;
   // The columns the firmware row carries that the model now checks beside its
   // own capabilities, so `board-row-*` can pin each pair to one literal.
   bool rtcOnBus;
   bool canPowerOff;
-  bool ledActiveLow;
-  bool irMarkLow;
   const char *gpsPinSource;  // "board-support", "profile" or "none"
   int8_t gpsRxPin;           // PROFILE source, -1 when none
   int8_t gpsTxPin;           // PROFILE source, -1 when none
@@ -138,16 +139,11 @@ const board_caps_t TDECK = {.mcu = "esp32s3",
                             .ble = true,
                             .ir = false,
                             .sd = true,
-                            .audio = true,
                             .rtc = false,
-                            .rtcBatteryBacked = false,
-                            .timedWake = "none",
                             .vbus = false,
                             .poe = false,
                             .rtcOnBus = false,
                             .canPowerOff = false,
-                            .ledActiveLow = false,
-                            .irMarkLow = false,
                             .gpsPinSource = "profile",
                             .gpsRxPin = 44,
                             .gpsTxPin = 43,
@@ -175,22 +171,56 @@ const board_caps_t TWATCH_ULTRA = {.mcu = "esp32s3",
                                    .ble = true,
                                    .ir = false,
                                    .sd = true,
-                                   .audio = true,
                                    .rtc = true,
-                                   .rtcBatteryBacked = false,
-                                   .timedWake = "none",
                                    .vbus = false,
                                    .poe = false,
                                    .rtcOnBus = false,
                                    .canPowerOff = false,
-                                   .ledActiveLow = false,
-                                   .irMarkLow = false,
                                    .gpsPinSource = "profile",
                                    .gpsRxPin = 44,
                                    .gpsTxPin = 43,
                                    .powerOff = "none",
                                    .powerOffPath = false,
                                    .ext5vShared = false};
+/*
+ * Facts the firmware owns per board and the panel build cannot carry.
+ *
+ * Sources, all opened in this tree unless marked otherwise:
+ *   IR pin and the Plus2 shared pin  plans/implemented/22-ir-remote-trigger.md
+ *   LED pin and active-low polarity plans/implemented/23-feedback-outputs.md
+ *   Button pins                      M5Unified M5Unified.cpp _update()
+ *                                    (pinned 0.2.x copy under .pio/libdeps)
+ *   Flash, PSRAM and mode            the part, plus the build facts from each
+ *                                    committed sdkconfig. Every image leaves
+ *                                    CONFIG_ESPTOOLPY_FLASHMODE at "dio"; five
+ *                                    of the sdkconfigs also select QIO under
+ *                                    FLASH_MODE_AUTO_DETECT, so the bootloader
+ *                                    may bring the part up quad while the image
+ *                                    stays dio. The Plus2 part is 8 MB QIO with
+ *                                    2 MB of quad PSRAM while the shared image is
+ *                                    4 MB without PSRAM, so the two are recorded
+ *                                    separately below.
+ *   Rail level at boot               M5GFX Light_M5StickC::init() writes AXP192
+ *                                    register 0x12 = 0x4D, which enables EXTEN,
+ *                                    the Port A 5 V rail, before furble runs.
+ *                                    M5Unified sets M5PM1 GPIO3 low on the
+ *                                    StickS3, so its rail starts off.
+ *
+ * 255 means "no such GPIO on this board".
+ */
+struct board_extra_t {
+  // The IR and LED pins and both polarity columns are firmware row facts
+  // (include/FurbleBoard.h `irPin`, `ledPin`, `ledActiveLow`, `irMarkLow`), so
+  // they are read from Board::profileFor() and not repeated here.
+  uint8_t buttonA;
+  uint8_t buttonB;
+  uint8_t buttonPwr;  // 255 when the power key is not a GPIO
+  const char *buttonPwrSource;
+  uint32_t buildFlashKb;       // flash size the firmware image is built for
+  const char *buildFlashMode;  // build flash mode
+  const char *buildPsram;      // PSRAM the firmware image enables
+  const char *railBoot;        // "on", "off", "unknown" or "none"
+};
 const board_caps_t STICKC = {.mcu = "esp32",
                              .flashKb = 4096,
                              .pmic = "axp192",
@@ -207,16 +237,11 @@ const board_caps_t STICKC = {.mcu = "esp32",
                              .ble = true,
                              .ir = true,
                              .sd = false,
-                             .audio = false,
                              .rtc = true,
-                             .rtcBatteryBacked = true,
-                             .timedWake = "none",
                              .vbus = true,
                              .poe = false,
                              .rtcOnBus = true,
                              .canPowerOff = true,
-                             .ledActiveLow = true,
-                             .irMarkLow = true,
                              .gpsPinSource = "board-support",
                              .gpsRxPin = -1,
                              .gpsTxPin = -1,
@@ -239,18 +264,13 @@ const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .ble = true,
                                   .ir = true,
                                   .sd = false,
-                                  .audio = true,
                                   .rtc = true,
-                                  .rtcBatteryBacked = true,
                                   // The BM8563 INT reaches the AXP192 power key, so the
                                   // alarm is the wake path (plan 350).
-                                  .timedWake = "rtc-alarm",
                                   .vbus = true,
                                   .poe = false,
                                   .rtcOnBus = true,
                                   .canPowerOff = true,
-                                  .ledActiveLow = true,
-                                  .irMarkLow = true,
                                   .gpsPinSource = "board-support",
                                   .gpsRxPin = -1,
                                   .gpsTxPin = -1,
@@ -258,10 +278,10 @@ const board_caps_t STICKC_PLUS = {.mcu = "esp32",
                                   .powerOffPath = true,
                                   .ext5vShared = false};
 const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
-                                   .flashKb = 4096,
+                                   .flashKb = 8192,
                                    .pmic = "none",
                                    .gauge = "voltage",
-                                   .psram = "absent",
+                                   .psram = "quad",
                                    .usb = "uart",
                                    .display = "135x240",
                                    .width = 135,
@@ -273,19 +293,13 @@ const board_caps_t STICKC_PLUS2 = {.mcu = "esp32",
                                    .ble = true,
                                    .ir = true,
                                    .sd = false,
-                                   .audio = true,
                                    .rtc = true,
                                    // The BM8563 stays powered across the HOLD power-off
                                    // the timed wake uses, so the calendar is the retention
-                                   // mechanism (plan 350).
-                                   .rtcBatteryBacked = true,
-                                   .timedWake = "rtc-alarm",
                                    .vbus = true,
                                    .poe = false,
                                    .rtcOnBus = true,
                                    .canPowerOff = true,
-                                   .ledActiveLow = false,
-                                   .irMarkLow = false,
                                    .gpsPinSource = "board-support",
                                    .gpsRxPin = -1,
                                    .gpsTxPin = -1,
@@ -308,18 +322,13 @@ const board_caps_t STICKS3 = {.mcu = "esp32s3",
                               .ble = true,
                               .ir = true,
                               .sd = false,
-                              .audio = true,
                               // The board has no RTC chip. Keep this in step with
                               // RTC_FACTS; hwRtcCapability() asserts the pair.
                               .rtc = false,
-                              .rtcBatteryBacked = false,
-                              .timedWake = "pmic-timer",
                               .vbus = true,
                               .poe = false,
                               .rtcOnBus = false,
                               .canPowerOff = true,
-                              .ledActiveLow = false,
-                              .irMarkLow = false,
                               .gpsPinSource = "board-support",
                               .gpsRxPin = -1,
                               .gpsTxPin = -1,
@@ -342,16 +351,11 @@ const board_caps_t CORE = {.mcu = "esp32",
                            .ble = true,
                            .ir = false,
                            .sd = true,
-                           .audio = true,
                            .rtc = false,
-                           .rtcBatteryBacked = false,
-                           .timedWake = "none",
                            .vbus = true,
                            .poe = false,
                            .rtcOnBus = false,
                            .canPowerOff = false,
-                           .ledActiveLow = false,
-                           .irMarkLow = false,
                            .gpsPinSource = "none",
                            .gpsRxPin = -1,
                            .gpsTxPin = -1,
@@ -377,16 +381,11 @@ const board_caps_t CORE_16MB = {.mcu = "esp32",
                                 .ble = true,
                                 .ir = false,
                                 .sd = true,
-                                .audio = true,
                                 .rtc = false,
-                                .rtcBatteryBacked = false,
-                                .timedWake = "none",
                                 .vbus = true,
                                 .poe = false,
                                 .rtcOnBus = false,
                                 .canPowerOff = false,
-                                .ledActiveLow = false,
-                                .irMarkLow = false,
                                 .gpsPinSource = "none",
                                 .gpsRxPin = -1,
                                 .gpsTxPin = -1,
@@ -409,16 +408,11 @@ const board_caps_t CORE2 = {.mcu = "esp32",
                             .ble = true,
                             .ir = false,
                             .sd = true,
-                            .audio = true,
                             .rtc = true,
-                            .rtcBatteryBacked = true,
-                            .timedWake = "none",
                             .vbus = true,
                             .poe = false,
                             .rtcOnBus = true,
                             .canPowerOff = true,
-                            .ledActiveLow = false,
-                            .irMarkLow = false,
                             .gpsPinSource = "board-support",
                             .gpsRxPin = -1,
                             .gpsTxPin = -1,
@@ -441,16 +435,11 @@ const board_caps_t TOUGH = {.mcu = "esp32",
                             .ble = true,
                             .ir = false,
                             .sd = true,
-                            .audio = true,
                             .rtc = true,
-                            .rtcBatteryBacked = true,
-                            .timedWake = "rtc-alarm",
                             .vbus = true,
                             .poe = false,
                             .rtcOnBus = true,
                             .canPowerOff = true,
-                            .ledActiveLow = false,
-                            .irMarkLow = false,
                             .gpsPinSource = "board-support",
                             .gpsRxPin = -1,
                             .gpsTxPin = -1,
@@ -473,16 +462,11 @@ const board_caps_t HEADLESS = {.mcu = "esp32s3",
                                .ble = true,
                                .ir = false,
                                .sd = false,
-                               .audio = false,
                                .rtc = false,
-                               .rtcBatteryBacked = false,
-                               .timedWake = "none",
                                .vbus = true,
                                .poe = false,
                                .rtcOnBus = false,
                                .canPowerOff = true,
-                               .ledActiveLow = true,
-                               .irMarkLow = false,
                                .gpsPinSource = "none",
                                .gpsRxPin = -1,
                                .gpsTxPin = -1,
@@ -505,16 +489,11 @@ const board_caps_t WAVESHARE = {.mcu = "esp32s3",
                                 .ble = true,
                                 .ir = false,
                                 .sd = false,
-                                .audio = false,
                                 .rtc = false,
-                                .rtcBatteryBacked = false,
-                                .timedWake = "none",
                                 .vbus = false,
                                 .poe = false,
                                 .rtcOnBus = false,
                                 .canPowerOff = false,
-                                .ledActiveLow = false,
-                                .irMarkLow = false,
                                 .gpsPinSource = "none",
                                 .gpsRxPin = -1,
                                 .gpsTxPin = -1,
@@ -703,6 +682,20 @@ struct peripheral_state_t {
   uint32_t audioOvercurrents = 0;
   uint32_t irTimeouts = 0;
   uint32_t sdErrors = 0;
+  // IR emitter and feedback LED. The Plus2 puts both on G19, so the model has
+  // to know whether a light pulse can key the emitter.
+  uint32_t irFrames = 0;
+  uint32_t irBusyUntilMs = 0;
+  uint32_t ledPulses = 0;
+  uint32_t ledConflicts = 0;
+};
+
+// The GPIO power-hold latch. Only the Plus2 has one, and it is not a PMIC
+// latch: it is a pin furble drives.
+struct hold_state_t {
+  std::string state = "none";
+  bool platformReady = false;
+  bool beforeReady = false;
 };
 
 struct mqtt_model_state_t {
@@ -742,6 +735,20 @@ struct rtc_state_t {
   bool restored = false;  // a sidecar reading outranks the scenario seed
   uint64_t epochS = 0;    // register reading at anchorUs
   uint64_t anchorUs = 0;  // virtual clock when that reading was taken
+  // The BM8563 countdown, as M5Unified's driver programs it. Separate from the
+  // calendar above: this is the alarm a timed wake arms, not the wall clock.
+  // Whether the board carries a chip and whether the calendar is backed are
+  // the caps row and the firmware row, so they are not repeated here.
+  // UNVERIFIED against the BM8563 datasheet, see FurbleRtcCountdown.h.
+  std::string countdownMode = "disabled";  // disabled, seconds or minutes
+  uint8_t countdownCount = 0;
+  int programmedSeconds = 0;
+  bool irqArmed = false;
+  bool irqLatched = false;
+  // Requested seconds -> "accepted:seconds:100" or "rejected:late:300". The
+  // journal is what a scenario asserts, so several requests can be checked in
+  // one run without re-programming the chip.
+  std::map<int, std::string> plans;
 };
 
 constexpr const char *RTC_SIDECAR_MAGIC = "furble-sim-rtc";
@@ -859,6 +866,7 @@ struct hardware_state_t {
   ble_state_t ble;
   peripheral_state_t peripheral;
   rail_state_t rail;
+  hold_state_t hold;
   mqtt_model_state_t mqtt;
   rtc_state_t rtc;
   system_clock_t system;
@@ -963,6 +971,121 @@ const board_caps_t &capsFor(const std::string &profile) {
     return TWATCH_ULTRA;
   }
   return STICKS3;
+}
+
+constexpr uint8_t NO_PIN = 255;
+
+// clang-format off
+const board_extra_t STICKC_EXTRA = {
+    37, 39, NO_PIN, "axp192-key", 4096, "dio", "absent", "on"};
+const board_extra_t STICKC_PLUS_EXTRA = {
+    37, 39, NO_PIN, "axp192-key", 4096, "dio", "absent", "on"};
+// G19 is both the IR emitter and the red LED, so a blink keys the emitter.
+const board_extra_t STICKC_PLUS2_EXTRA = {
+    37, 39, 35, "gpio35", 4096, "dio", "absent", "none"};
+// G46 TX and G42 RX. The green LED is a download indicator with no documented
+// GPIO, so the model claims no simple LED. The PM1 drives the Port A rail.
+const board_extra_t STICKS3_EXTRA = {
+    11, 12, NO_PIN, "m5pm1", 8192, "dio", "octal", "off"};
+const board_extra_t CORE_EXTRA = {
+    39, 38, NO_PIN, "ip5306-key", 4096, "dio", "absent", "none"};
+// CORE2 and TOUGH are AXP192 boards with no IR emitter and touch buttons. The
+// AXP192 GPIO0 rail level at boot is not in the tree, so it stays unknown
+// rather than guessed.
+const board_extra_t CORE2_EXTRA = {
+    NO_PIN, NO_PIN, NO_PIN, "axp192-key", 16384, "dio", "quad", "unknown"};
+const board_extra_t TOUGH_EXTRA = {
+    NO_PIN, NO_PIN, NO_PIN, "axp192-key", 16384, "dio", "quad", "unknown"};
+// Not M5 boards, so the board row is the unknown one. The build facts still
+// come from their committed sdkconfigs: both enable octal PSRAM and no GPIO
+// drives a Port A rail.
+const board_extra_t HEADLESS_EXTRA = {
+    NO_PIN, NO_PIN, NO_PIN, "none", 8192, "dio", "octal", "none"};
+// LilyGO T-Deck and T-Watch Ultra: 16 MB DIO flash with octal PSRAM, no M5
+// button pins (the T-Deck has a keyboard and the Ultra one BOOT switch) and no
+// GPIO-driven Port A rail. sdkconfig.lilygo-tdeck and sdkconfig.lilygo-twatch-ultra
+// are the build facts.
+const board_extra_t TDECK_EXTRA = {
+    NO_PIN, NO_PIN, NO_PIN, "none", 16384, "dio", "octal", "none"};
+const board_extra_t TWATCH_ULTRA_EXTRA = {
+    NO_PIN, NO_PIN, NO_PIN, "none", 16384, "dio", "octal", "none"};
+const board_extra_t WAVESHARE_EXTRA = {
+    NO_PIN, NO_PIN, NO_PIN, "none", 16384, "dio", "octal", "none"};
+const board_extra_t UNKNOWN_EXTRA = {
+    NO_PIN, NO_PIN, NO_PIN, "none", 0, "dio", "absent", "none"};
+// clang-format on
+
+const board_extra_t &extraForProfile(const std::string &profile) {
+  if (profile == "stickc") {
+    return STICKC_EXTRA;
+  }
+  if (profile == "stickc-plus") {
+    return STICKC_PLUS_EXTRA;
+  }
+  if (profile == "stickc-plus2") {
+    return STICKC_PLUS2_EXTRA;
+  }
+  if (profile == "sticks3") {
+    return STICKS3_EXTRA;
+  }
+  if ((profile == "core-4mb") || (profile == "core-16mb")) {
+    return CORE_EXTRA;
+  }
+  if (profile == "core2") {
+    return CORE2_EXTRA;
+  }
+  if (profile == "tough") {
+    return TOUGH_EXTRA;
+  }
+  if (profile == "headless-s3") {
+    return HEADLESS_EXTRA;
+  }
+  if (profile == "waveshare-s3-eth") {
+    return WAVESHARE_EXTRA;
+  }
+  if (profile == "tdeck") {
+    return TDECK_EXTRA;
+  }
+  if (profile == "twatch-ultra") {
+    return TWATCH_ULTRA_EXTRA;
+  }
+  return UNKNOWN_EXTRA;
+}
+
+/** True when the cited board fact says the Port A rail is up after M5.begin(). */
+bool railBootOnFor(const std::string &profile) {
+  return std::string(extraForProfile(profile).railBoot) == "on";
+}
+
+/** The board row a profile models, for facts `Board::Profile` owns. */
+m5::board_t boardForProfile(const std::string &profile) {
+  if (profile == "stickc") {
+    return m5::board_t::board_M5StickC;
+  }
+  if (profile == "stickc-plus") {
+    return m5::board_t::board_M5StickCPlus;
+  }
+  if (profile == "stickc-plus2") {
+    return m5::board_t::board_M5StickCPlus2;
+  }
+  if (profile == "sticks3") {
+    return m5::board_t::board_M5StickS3;
+  }
+  // Master split the Core row in two: both are the Core Basic wire map, and the
+  // flash size is the caps row's own column.
+  if ((profile == "core-4mb") || (profile == "core-16mb")) {
+    return m5::board_t::board_M5Stack;
+  }
+  if (profile == "core2") {
+    return m5::board_t::board_M5StackCore2;
+  }
+  if (profile == "tough") {
+    return m5::board_t::board_M5Tough;
+  }
+  // The headless and Waveshare models are not marketed M5 boards, so they get
+  // the no-hardware row production gives an unrecognized board. The Core
+  // USB-debug fallback shares the Core row.
+  return m5::board_t::board_unknown;
 }
 
 std::string defaultProfile(void) {
@@ -1519,16 +1642,205 @@ void psramProbeTask(void *) {
 
 namespace Furble::Sim {
 
+namespace {
+
+/** The profile row for a selected name. Never takes the model mutex. */
+const Board::Profile &rowFor(const std::string &profile) {
+#if FURBLE_LILYGO_BOARD
+  // A LilyGO image compiles exactly one row and has no m5::board_t value for it,
+  // so the only profile this build can answer from the detected board is the one
+  // it was built for. The sibling family member still reads the no-hardware row.
+  if (profile == defaultProfile()) {
+    return Board::profile();
+  }
+#endif
+  return Board::profileFor(boardForProfile(profile));
+}
+
+/**
+ * Put the profile-derived state back to its power-on values.
+ *
+ * Called with the model mutex held, from the profile seed and from the default
+ * profile in hwStart(). `Platform::getInstance()` runs before hwStart() and
+ * asserts the HOLD latch there, so hwStart must not re-run this for a seeded
+ * profile or it would erase what the boot just recorded.
+ */
+void resetDerivedLocked(hardware_state_t &hw) {
+  const auto &row = rowFor(hw.profile);
+  hw.rtc.countdownMode = "disabled";
+  hw.rtc.countdownCount = 0;
+  hw.rtc.programmedSeconds = 0;
+  hw.rtc.irqArmed = false;
+  hw.rtc.irqLatched = false;
+  hw.rtc.plans.clear();
+  hw.hold.state = row.powerHoldPin >= 0 ? "low" : "none";
+  hw.hold.platformReady = false;
+  hw.hold.beforeReady = false;
+  hw.peripheral.irFrames = 0;
+  hw.peripheral.irBusyUntilMs = 0;
+  hw.peripheral.ledPulses = 0;
+  hw.peripheral.ledConflicts = 0;
+  // M5GFX leaves the AXP192 rail on before furble runs, and the M5PM1 boards
+  // start with it off. Nothing is holding it yet, so the row decides.
+  hw.rail.on = railBootOnFor(hw.profile);
+}
+
+/**
+ * One feedback-LED pulse on the modelled board.
+ *
+ * Called with the model mutex held. The Plus2 puts the LED and the IR emitter
+ * on G19, and production Feedback does not consult the IR driver before driving
+ * the pin, so a pulse inside a frame keys the emitter. The model records that
+ * rather than hiding it: the guard is a product fix, tracked by an xassert.
+ */
+void lightPulseLocked(hardware_state_t &hw) {
+  hw.peripheral.ledPulses++;
+  const auto &row = rowFor(hw.profile);
+  if ((row.ledPin >= 0) && (row.ledPin == row.irPin)
+      && (clockMillis() < hw.peripheral.irBusyUntilMs)) {
+    hw.peripheral.ledConflicts++;
+  }
+}
+
+}  // namespace
+
 void hwSetProfile(const std::string &profile) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   state().profile = profile;
   state().caps = capsFor(profile);
   (void)rtcCapabilityMatchesLocked(state());
+  // The RTC countdown, hold latch and IR/LED pin facts are per board, so a
+  // profile seed must not inherit the previous model's answers.
+  resetDerivedLocked(state());
 }
 
 const char *hwProfile(void) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   return state().profile.c_str();
+}
+
+const Board::Profile &hwBoardProfile(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return rowFor(state().profile);
+}
+
+bool hwRtcEnabled(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  // Whether the modelled board carries a calendar chip: the caps row decides,
+  // which is the question the RTC_ALARM wake path asks. It is deliberately not
+  // `M5.Rtc.isEnabled()`, which is the profile's `rtcOnBus` column and can
+  // differ from the caps row (the T-Watch Ultra has a PCF85063A that this port
+  // does not drive). It is also not the runtime chip the `rtc.*` model installs;
+  // that state is `hwRtcPresent()`.
+  return state().caps.rtc;
+}
+
+int hwRtcProgram(int seconds) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  rtc_state_t &rtc = state().rtc;
+  const RtcCountdown::Selection selection = RtcCountdown::select(seconds);
+  rtc.countdownCount = selection.count;
+  rtc.programmedSeconds = selection.programmedSeconds;
+  rtc.countdownMode =
+      selection.disabled ? "disabled" : (selection.minuteMode ? "minutes" : "seconds");
+  rtc.irqArmed = !selection.disabled;
+  if (selection.disabled) {
+    rtc.irqLatched = false;
+  }
+  // The same value M5.Rtc.setAlarmIRQ(int) returns: what the chip will count.
+  return selection.programmedSeconds;
+}
+
+void hwRtcNotePlan(int seconds, uint32_t maxEarlySeconds) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  rtc_state_t &rtc = state().rtc;
+  const RtcCountdown::Selection selection = RtcCountdown::select(seconds);
+  const bool accepted =
+      !selection.disabled
+      && RtcCountdown::accepted(seconds, selection.programmedSeconds, maxEarlySeconds);
+  const int early = seconds - selection.programmedSeconds;
+  std::string reason;
+  if (selection.disabled) {
+    reason = "off";
+  } else if (early < 0) {
+    // The driver rounded the request to a later minute boundary.
+    reason = "late";
+  } else if (early > static_cast<int>(maxEarlySeconds)) {
+    // A clamp inside the chip would wake before the resume window.
+    reason = "early";
+  } else {
+    reason = "ok";
+  }
+  const char *mode = selection.disabled ? "none" : (selection.minuteMode ? "minutes" : "seconds");
+  rtc.plans[seconds] = std::string(accepted ? "accepted" : "rejected") + ":" + reason + ":" + mode
+                       + ":" + std::to_string(selection.programmedSeconds);
+}
+
+void hwRtcDisableIrq(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().rtc.irqArmed = false;
+}
+
+void hwRtcClearIrq(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().rtc.irqLatched = false;
+}
+
+void hwRtcClearTimer(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  rtc_state_t &rtc = state().rtc;
+  rtc.countdownMode = "disabled";
+  rtc.countdownCount = 0;
+  rtc.programmedSeconds = 0;
+  rtc.irqArmed = false;
+}
+
+bool hwRtcIrq(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  return state().rtc.irqLatched;
+}
+
+void hwRtcLatchIrq(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().rtc.irqLatched = true;
+}
+
+void hwAssertHoldLatch(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  hardware_state_t &hw = state();
+  if (rowFor(hw.profile).powerHoldPin < 0) {
+    hw.hold.state = "none";
+    return;
+  }
+  hw.hold.state = "asserted";
+  hw.hold.beforeReady = !hw.hold.platformReady;
+}
+
+void hwReleaseHoldLatch(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  if (rowFor(state().profile).powerHoldPin >= 0) {
+    state().hold.state = "released";
+  }
+}
+
+void hwMarkPlatformReady(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  state().hold.platformReady = true;
+}
+
+void hwIrFrame(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  hardware_state_t &hw = state();
+  hw.peripheral.irFrames++;
+  // Worst case frame: the Nikon train is about 190 ms across three repeats
+  // (plans/implemented/22-ir-remote-trigger.md). A light pulse inside that
+  // window shares the Plus2 pin with the emitter.
+  hw.peripheral.irBusyUntilMs = clockMillis() + 190;
+}
+
+void hwLightPulse(void) {
+  const std::lock_guard<std::mutex> lock(state().mutex);
+  lightPulseLocked(state());
 }
 
 const char *hwMcu(void) {
@@ -1852,11 +2164,6 @@ void hwRtcWrite(uint64_t epoch_us) {
   persistRtcSidecar(rtc);
 }
 
-bool hwRtcTimedAlarmBoard(void) {
-  const std::lock_guard<std::mutex> lock(state().mutex);
-  return std::strcmp(state().caps.timedWake, "rtc-alarm") == 0;
-}
-
 void hwRtcPowerOff(uint32_t seconds) {
   const std::lock_guard<std::mutex> lock(state().mutex);
   rtc_state_t &rtc = state().rtc;
@@ -1931,9 +2238,11 @@ void hwStart(void) {
     return;
   }
   hw.started = true;
+  bool choseDefault = false;
   if (hw.profile.empty()) {
     hw.profile = defaultProfile();
     hw.caps = capsFor(hw.profile);
+    choseDefault = true;
   }
   if (hw.pmic.variant.empty()) {
     hw.pmic.variant = hw.caps.pmic;
@@ -1942,10 +2251,18 @@ void hwStart(void) {
     hw.pmic.gauge = hw.caps.gauge;
   }
   hw.pmic.batteryPresent = hw.caps.battery;
+  // A PMIC latch and the Plus2 GPIO HOLD latch are different mechanisms. The
+  // Plus2 has no PMIC latch and still stays powered through G4.
   hw.pmic.powerLatch = hw.caps.pmic[0] != 'n';
+
   // The vendor init block, per part. The register bytes it leaves behind are
   // what a scenario reads back with pmic.reg.<addr>.
   pmicInitLocked(hw);
+  // Platform::init() already ran, so a seeded profile's HOLD assertion and RTC
+  // state are live. Only a default profile chosen here has to be initialized.
+  if (choseDefault) {
+    resetDerivedLocked(hw);
+  }
   hw.power.state = power_state_t::ON;
   hw.usb.mode = usb_mode_t::APP;
 
@@ -1956,15 +2273,23 @@ void hwStart(void) {
   hw.pmic.pwrCfg = PWR_CFG_RESET;
   applyRailFromPwrCfgLocked(hw);
   hw.pmic.pwrCfgSnapshot = hw.pmic.pwrCfg;
+  // The byte above is the M5PM1's own reset value. The rail the board presents
+  // at boot is the row's fact: M5GFX has already enabled EXTEN on the StickC and
+  // Plus, and the StickS3 starts with it off.
+  hw.rail.on = railBootOnFor(hw.profile);
 
   // The RTC capability is a board-level fact, so check the pair at boot as well
   // as when a profile is selected.
   (void)rtcCapabilityMatchesLocked(hw);
 
   if (!hw.psramExplicit) {
-    const std::string mode = hw.caps.psram;
+    // The heap model is the compiled image, so it follows the build row. The
+    // Plus2 part has 2 MiB of quad PSRAM and the shared image disables it, which
+    // is why hw.part_psram and hw.psram disagree there.
+    const std::string mode = extraForProfile(hw.profile).buildPsram;
     if (mode == "octal" || mode == "quad") {
-      const size_t bytes = 8u * 1024u * 1024u;
+      const size_t bytes =
+          (hw.profile == "stickc-plus2") ? (2u * 1024u * 1024u) : (8u * 1024u * 1024u);
       heapSetPsram(mode, bytes, bytes / 2);
     }
   }
@@ -2618,6 +2943,11 @@ std::string hwQuery(const std::string &key) {
     if (sub == "psram_state") {
       return heapPsramState();
     }
+    if (sub == "part_psram") {
+      // The fitted part. `hw.psram` reports the compiled heap model, which is
+      // the image: on the Plus2 the part is quad and the image has none.
+      return hw.caps.psram;
+    }
     if (sub == "pmic") {
       return hw.pmic.variant;
     }
@@ -2649,7 +2979,97 @@ std::string hwQuery(const std::string &key) {
       return hw.caps.sd ? "yes" : "no";
     }
     if (sub == "audio") {
-      return hw.caps.audio ? "yes" : "no";
+      // Sound capability is the firmware's own row, not a table copy: the
+      // original StickC has no buzzer or speaker (plans/implemented/
+      // 23-feedback-outputs.md, https://docs.m5stack.com/en/core/m5stickc).
+      return rowFor(hw.profile).feedbackSound ? "yes" : "no";
+    }
+    if (sub == "battery_mah") {
+      return std::to_string(rowFor(hw.profile).batteryCapacityMah);
+    }
+    if (sub == "build_flash_kb") {
+      return std::to_string(extraForProfile(hw.profile).buildFlashKb);
+    }
+    if (sub == "build_flash_mode") {
+      return extraForProfile(hw.profile).buildFlashMode;
+    }
+    if (sub == "build_psram") {
+      return extraForProfile(hw.profile).buildPsram;
+    }
+    if (sub == "rail_boot") {
+      return extraForProfile(hw.profile).railBoot;
+    }
+    if (sub == "motion_wake") {
+      switch (rowFor(hw.profile).motionWake) {
+        case Board::MotionWake::DIRECT:
+          return "direct";
+        case Board::MotionWake::PMIC_GPIO:
+          return "pmic-gpio";
+        case Board::MotionWake::NONE:
+          break;
+      }
+      return "none";
+    }
+    if (sub == "motion_wake_pin") {
+      const int8_t pin = rowFor(hw.profile).motionWakePin;
+      return pin < 0 ? "none" : std::to_string(pin);
+    }
+    if (sub == "timed_wake") {
+      switch (rowFor(hw.profile).timedWake) {
+        case Board::TimedWake::PMIC_TIMER:
+          return "pmic-timer";
+        case Board::TimedWake::RTC_ALARM:
+          return "rtc-alarm";
+        case Board::TimedWake::NONE:
+          break;
+      }
+      return "none";
+    }
+    if (sub == "rtc_backed") {
+      return rowFor(hw.profile).rtcBatteryBacked ? "yes" : "no";
+    }
+    if (sub == "rtc_irq_armed") {
+      return hw.rtc.irqArmed ? "yes" : "no";
+    }
+    if (sub == "ir_pin") {
+      const int8_t pin = rowFor(hw.profile).irPin;
+      return pin < 0 ? "none" : std::to_string(pin);
+    }
+    if (sub == "ir_mark_level") {
+      // The level the emitter pin holds during a mark. The encoded mark is
+      // always a mark; `irMarkLow` is the cathode-driven boards inverting the
+      // output (src/FurbleIR.cpp sets `invert_out`), so the pin goes low there
+      // and stays high on the Plus2. A constant here would pass on every row.
+      return rowFor(hw.profile).irMarkLow ? "low" : "high";
+    }
+    if (sub == "led_pin") {
+      const int8_t pin = rowFor(hw.profile).ledPin;
+      return pin < 0 ? "none" : std::to_string(pin);
+    }
+    if (sub == "led_active_low") {
+      return rowFor(hw.profile).ledActiveLow ? "yes" : "no";
+    }
+    if (sub == "ir_mark_low") {
+      return rowFor(hw.profile).irMarkLow ? "yes" : "no";
+    }
+    if (sub == "led_shared_with_ir") {
+      const auto &row = rowFor(hw.profile);
+      return ((row.ledPin >= 0) && (row.ledPin == row.irPin)) ? "yes" : "no";
+    }
+    if (sub == "button_a") {
+      const uint8_t pin = extraForProfile(hw.profile).buttonA;
+      return pin == NO_PIN ? "none" : std::to_string(pin);
+    }
+    if (sub == "button_b") {
+      const uint8_t pin = extraForProfile(hw.profile).buttonB;
+      return pin == NO_PIN ? "none" : std::to_string(pin);
+    }
+    if (sub == "button_pwr") {
+      const uint8_t pin = extraForProfile(hw.profile).buttonPwr;
+      return pin == NO_PIN ? "none" : std::to_string(pin);
+    }
+    if (sub == "button_pwr_source") {
+      return extraForProfile(hw.profile).buttonPwrSource;
     }
     if (sub == "rtc") {
       return hw.caps.rtc ? "yes" : "no";
@@ -2661,12 +3081,7 @@ std::string hwQuery(const std::string &key) {
     if (sub == "rtc_on_bus") {
       return hw.caps.rtcOnBus ? "yes" : "no";
     }
-    if (sub == "led_active_low") {
-      return hw.caps.ledActiveLow ? "yes" : "no";
-    }
-    if (sub == "ir_mark_low") {
-      return hw.caps.irMarkLow ? "yes" : "no";
-    }
+
     if (sub == "gps_pin_source") {
       return hw.caps.gpsPinSource == nullptr ? "none" : hw.caps.gpsPinSource;
     }
@@ -2675,11 +3090,6 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "gps_tx_pin") {
       return std::to_string(hw.caps.gpsTxPin);
-    }
-    if (sub == "rtc_backed") {
-      // The profile column itself, not the runtime RTC mode `hw.rtc_battery`
-      // seeds: a scenario compares this against Board::profile().
-      return hw.caps.rtcBatteryBacked ? "yes" : "no";
     }
     if (sub == "rtc_capability") {
       const rtc_fact_t *fact = rtcFactFor(hw.profile);
@@ -2708,9 +3118,6 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "rtc_epoch") {
       return std::to_string(hw.rtc.mode == rtc_mode_t::OFF ? 0 : rtcReadingLocked(hw.rtc));
-    }
-    if (sub == "timed_wake") {
-      return hw.caps.timedWake;
     }
     // Supply sense. The Waveshare node has none: POE_5V and VBUS are one net,
     // so a scenario can assert that no later change invents a sense pin.
@@ -2755,6 +3162,18 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "power_latch") {
       return hw.pmic.powerLatch ? "latched" : "none";
+    }
+    if (sub == "hold_latch") {
+      return hw.hold.state;
+    }
+    if (sub == "hold_order") {
+      if (hw.hold.state == "none") {
+        return "none";
+      }
+      if (hw.hold.state != "asserted") {
+        return "unset";
+      }
+      return hw.hold.beforeReady ? "before-ready" : "late";
     }
     if (sub == "brownouts") {
       return std::to_string(hw.pmic.brownouts);
@@ -3029,6 +3448,55 @@ std::string hwQuery(const std::string &key) {
     }
     if (sub == "failures") {
       return std::to_string(hw.rail.irFailures);
+    }
+    if (sub == "frames") {
+      return std::to_string(hw.peripheral.irFrames);
+    }
+    if (sub == "busy") {
+      return (clockMillis() < hw.peripheral.irBusyUntilMs) ? "yes" : "no";
+    }
+    if (sub == "led_pulses") {
+      return std::to_string(hw.peripheral.ledPulses);
+    }
+    if (sub == "led_conflicts") {
+      return std::to_string(hw.peripheral.ledConflicts);
+    }
+  }
+  if (prefixed("rtc.")) {
+    const std::string sub = key.substr(4);
+    if (sub == "enabled") {
+      return hw.caps.rtc ? "yes" : "no";
+    }
+    if (sub == "backed") {
+      return rowFor(hw.profile).rtcBatteryBacked ? "yes" : "no";
+    }
+    if (sub == "countdown_mode") {
+      return hw.rtc.countdownMode;
+    }
+    if (sub == "count") {
+      return std::to_string(hw.rtc.countdownCount);
+    }
+    if (sub == "programmed_seconds") {
+      return std::to_string(hw.rtc.programmedSeconds);
+    }
+    if (sub == "irq_armed") {
+      return hw.rtc.irqArmed ? "yes" : "no";
+    }
+    if (sub == "irq") {
+      return hw.rtc.irqLatched ? "latched" : "clear";
+    }
+    if (sub.rfind("plan.", 0) == 0) {
+      const std::string requested = sub.substr(5);
+      try {
+        const int seconds = std::stoi(requested);
+        const auto found = hw.rtc.plans.find(seconds);
+        if (found != hw.rtc.plans.end()) {
+          return found->second;
+        }
+      } catch (const std::exception &) {
+        return "";
+      }
+      return "";
     }
   }
   if (prefixed("sd.")) {
