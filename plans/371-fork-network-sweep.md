@@ -9,19 +9,23 @@ unmerged issue branches and the Lumix PR, but no fork branch.
 
 ## Why sweep the forks at all
 
-Upstream has 41 forks. Twenty-five are byte mirrors of gkoh master and carry no
-work. The remaining fifteen hold 123 commits that are absent from our master by
-SHA. Of those, 54 already exist in our tree under the same subject (our history
-was rebased, so the SHAs differ), one is the single upstream-only commit, and 68
-needed a per-commit verdict.
+Upstream has 41 forks. Twenty-five carry no commits of their own, and twenty-four
+of those are behind gkoh master rather than identical to it: only `daozhao` is
+byte for byte master. Fifteen forks hold work, and the forty-first entry is our
+own fork. Across every branch of every fork, 123 commits are absent from our
+master by SHA. Of those, 54 already exist in our tree under the same subject
+(our history was rebased, so the SHAs differ), one is the single upstream-only
+commit, and 68 needed a per-commit verdict. The ahead column in the table below
+counts each fork's best branch and sums to 118, because nine forks keep work on
+more than one branch.
 
 A commit was only called missing after three checks: `git cherry` patch-id
 against our master, an exact-subject match against both our master and gkoh
 master, and a content check for the symbol, UUID or constant the commit
 introduces. No verdict here rests on a timestamp, because `pushed_at` is
-unreliable in this network: six forks carry gkoh master's own push time, and
-`daozhao` reports a `pushed_at` earlier than its `created_at` while being
-identical to gkoh master.
+unreliable in this network: twenty-two of the forty-one forks report a
+`pushed_at` earlier than their own `created_at`, and only `daozhao` carries gkoh
+master's push time while also being identical to it.
 
 ## Verdicts by fork
 
@@ -32,16 +36,16 @@ identical to gkoh master.
 | `sentrybottale/furble` | `245-support-the-new-m5sticks3`, 9 | Already present: upstream #250. |
 | `sky18Dragon/furble` | `feature/ricoh-*`, 5 | Already present: upstream #268 and #270. |
 | `herrfrei/furble` | `nikon-smart-mode`, 1 | Already present: upstream #211. |
-| `zhuimeng2026-hub/furble` | `master`, 9 | Two new commits worth taking, seven already present. Newest work in the network. |
+| `zhuimeng2026-hub/furble` | `master`, 9 | Two new commits worth taking (`78a9a7b5` shutter hold, `d72f0662` wired remote channel), two already present in a stronger form (`3c58f1f8` hardening, `338c353f` Windows flash script), five already upstream. |
 | `slgray/furble` | `master`, 2 | Interesting hardware: the only AMOLED 1.8 bring-up in the network. |
-| `LittleBidet/xteink_x3_furble_port` | `master`, 2 | Interesting for one shared-layer claim, not for the board. Upstream PR #313, closed unmerged. |
+| `LittleBidet/xteink_x3_furble_port` | `master` and `feat/xteink-x3-port`, 2 | Interesting for one shared-layer claim, not for the board. Upstream PR #313, closed unmerged. |
 | `nariox/furble` | `moviemode`, 6 | Feature idea only: the branch ends in a save-state commit and never became a PR. |
 | `ediiiiiiii/furble` | `master`, 1 | Minor: a fourth intervalometer roller. |
 | `filovre/furble` | `devin/...nikon-ble-linux-script`, 5 | Out of tree: a Python Nikon remote. Documentation value only. |
-| `sbstjn/furble` | 9 | Dead: the 2023 Arduino Core2 port, upstream PR #50 closed. |
-| `Cronkan/furble` | 6 | Dead: 2021 pre-ESP-IDF code. |
-| `wolcano/furble` | 4 | Dead: 2022 Canon support, later rewritten upstream. |
-| `petabyt/furble-glued` | 8 | Skip: 6,966 lines vendoring NimBLE headers and forking the camera library. |
+| `sbstjn/furble` | `add-interval`, `update-platform`, `add-support-for-m5-core2`, 9 | Dead: the 2023 Arduino Core2 port, upstream PR #50 closed. |
+| `Cronkan/furble` | `master`, 6 | Dead: 2021 pre-ESP-IDF code. |
+| `wolcano/furble` | `master`, `25-refactor-canon-eos-support`, 4 | Dead: 2022 Canon support, later rewritten upstream. |
+| `petabyt/furble-glued` | `master` and `more-slop`, 8 | Skip: 6,966 lines vendoring NimBLE headers and forking the camera library. |
 
 ## What is worth taking
 
@@ -51,16 +55,30 @@ identical to gkoh master.
    `web-installer/generate-manifest.py` only substitutes the platform, version
    and asset base. A published S3 image therefore also offers an ESP32 entry
    pointing at S3 binaries, and choosing it flashes a bootloader at the wrong
-   offset. Tracked in plan 372.
+   offset. Two things kept it green: `tools/verify_web_installer.py` requires
+   exactly one build for each chip family, and `.github/workflows/pages.yml`
+   runs that verifier on the published site, so dropping the wrong-family entry
+   breaks a mandated gate and the verifier has to change in the same PR. The
+   entry is also only reachable by loading a board's own manifest while the
+   other family is connected, since ESP Web Tools selects by detected family.
+   Tracked in plan 372.
 2. Intervalometer shutter hold, from `zhuimeng2026-hub/furble`
    (`78a9a7b5`). Upstream ships 30 ms; the fork raises it to 400 ms with a
    settings migration for stored values. 30 ms is plausibly below what a body
    needs for autofocus plus shutter start. Tracked in plan 373, and it must be
    decided per camera family rather than by copying the number.
-3. Shutter release durability on queue overflow, from `LittleBidet` PR #313.
-   The only item in that PR's list that we do not obviously already have:
-   `Control::sendCommand` drops a command when the queue is full and only logs
-   it, so a release queued behind a press can be lost. Tracked in plan 374.
+3. Shutter release durability, from `LittleBidet` PR #313. The only item in that
+   PR's list that we do not obviously already have. Two drop points, and the
+   second is the harder one. `Control::Target::sendCommand`
+   (`src/FurbleControl.cpp:131-136`) fails `xQueueSend` with a zero timeout and
+   only logs, so a release can be lost when a target queue of eight entries
+   (`include/FurbleControl.h:79`) is full. `Control::sendCommand`
+   (`src/FurbleControl.cpp:581-606`) routes camera commands per target, and
+   `Control::sendCameraCommand` drops a camera command for a target whose link
+   is not active and logs at debug level, by design, to stop a press replaying
+   after a reconnect. A press accepted just before a link drop therefore loses
+   its release, which is the durable-hold case worth testing. Tracked in plan
+   374.
 4. Camera photo and movie mode, from `nariox/furble`. Our `Camera` has no mode
    concept and `CanonEOSRemote` hard-codes its control byte. Worth a design
    note before any code, since the branch is unfinished.
@@ -69,8 +87,8 @@ identical to gkoh master.
 
 ## Cleared, so nobody re-ports them
 
-These look like fixes and are already in our tree, each verified by symbol or
-file:
+These six look like fixes and are already in our tree, each verified by symbol
+or file:
 
 - BLE IRK and identity-key distribution for persistent resolvable private
   addresses (`ac876625`), ours in `lib/furble/Device.cpp`.
@@ -104,9 +122,24 @@ Every verdict is static: diff reads, symbol and file presence checks, and
 cherry-pick conflict counts. No candidate was built or run. Forks were not
 modified and nothing was posted to any fork.
 
+## Review
+
+Reviewed by an independent subagent against the GitHub API and the code. Nine
+findings, all in the numbers around the table rather than in the table itself;
+the record is in `539-review-feedback.md` with the re-derived figures and the
+disposition of each finding.
+
 ## Follow-up: state
 
 The three action items are dispatched as separate PRs, each with its own plan
 doc and independent review: 372 web installer chip family, 373 intervalometer
-shutter hold, 374 control release durability. Items 4 and 5 above need a
-decision before code.
+shutter hold, 374 control release durability.
+
+Plan 373 came back as a decision record rather than a change: the 30 ms default
+stays, because the fork's 400 ms cites an upstream issue about pairing that says
+nothing about shutter timing, and because the settings record has no version
+field, so a migration cannot tell a deliberate 30 ms from a default. It turned
+up a separate defect on the way, that a configured shutter of 0 leaves the
+release timer at the previous period, which is plan 376.
+
+Items 4 and 5 above need a decision before any code.
