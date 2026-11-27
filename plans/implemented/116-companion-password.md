@@ -239,7 +239,7 @@ firmware builds only.
 
 - `plans/50-companion-app-design.md` companion GATT: **landed** (FurbleCompanion,
   FurbleCompanionService on fork master). **Startable NOW.**
-- `plans/114-flasher-provisioning.md`: the flasher is the intended way to set the
+- `plans/implemented/114-flasher-provisioning.md`: the flasher is the intended way to set the
   password at flash time. 114 and 116 share the settings `wire_id` table.
 - `plans/implemented/119-companion-gatt-sim.md`: adds the host assertions for this gate; 119's
   password-gate slice depends on 116.

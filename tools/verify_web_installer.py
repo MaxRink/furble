@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 import sys
 
@@ -28,6 +29,12 @@ RELEASE_PLATFORMS = (
   "m5stick-s3",
   "waveshare-s3-eth",
 )
+
+# The page loads its own scripts with a local "./name.js" source. The Pages
+# deploy copies each one by hand, so a missing copy is caught here rather than
+# in a broken install page.
+LOCAL_PAGE_SCRIPT_RE = re.compile(r'<script[^>]*\bsrc="\./([^"]+)"')
+
 
 # Derived from the one layout table, so a manifest cannot pass here with a
 # bootloader offset the generator does not use.
@@ -112,12 +119,28 @@ def flash_offset_error(build, expected_family: str | None = None):
   return None
 
 
+def page_script_errors(site: Path):
+  """Return an error for every page script the deploy did not copy."""
+  index = site / "index.html"
+  if not index.is_file():
+    return ["index.html is missing from the site"]
+  references = sorted(set(LOCAL_PAGE_SCRIPT_RE.findall(index.read_text(encoding="utf-8"))))
+  errors = []
+  if not references:
+    errors.append("index.html loads no local scripts")
+  for reference in references:
+    asset = site / reference
+    if not asset.is_file() or asset.stat().st_size == 0:
+      errors.append(f"missing or empty page script {reference}")
+  return errors
+
+
 def validate(site: Path):
   manifests = sorted(site.glob("manifest_*.json"))
   actual_names = {manifest.name for manifest in manifests}
   missing = expected_manifests() - actual_names
   unexpected = actual_names - expected_manifests()
-  errors = []
+  errors = page_script_errors(site)
   if missing:
     errors.append("missing manifests: " + ", ".join(sorted(missing)))
   if unexpected:

@@ -8,6 +8,7 @@
 #include "FurbleTimezone.h"
 #if defined(ESP_PLATFORM)
 #include "FurbleWiFi.h"
+#include "esp_log.h"
 #endif
 #include "interval.h"
 
@@ -15,6 +16,10 @@ namespace Furble {
 namespace Provision {
 
 namespace {
+
+#if defined(ESP_PLATFORM)
+constexpr const char *LOG_TAG = "furble-provision";
+#endif
 
 struct __attribute__((packed)) interval_wire_field_t {
   uint16_t value;
@@ -228,6 +233,15 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         report.message = "text size setting is out of range";
         return false;
       }
+      if ((setting.type == Settings::TX_POWER) && (field.value[0] > Settings::TX_POWER_MAX)) {
+        // The settings load maps anything outside 0 to 2 to P3, so an
+        // out-of-range value would be stored and silently ignored. Refuse it
+        // instead of clamping it.
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "TX power must be 0 (P3), 1 (P6) or 2 (P9)";
+        return false;
+      }
       if ((setting.type == Settings::LEGEND) && (field.value[0] > Settings::LEGEND_OFF)) {
         report.error = ApplyError::BAD_SETTING;
         report.failedSettingId = field.wireId;
@@ -310,6 +324,12 @@ bool validateSetting(const ProvisionTLV::SettingValue &field,
         return false;
       }
 #endif
+      if ((setting.type == Settings::THEME) && !Settings::validTheme(value)) {
+        report.error = ApplyError::BAD_SETTING;
+        report.failedSettingId = field.wireId;
+        report.message = "theme must be Dark, Default or Mono Furble";
+        return false;
+      }
       if ((setting.type == Settings::BUTTON_MODE)
           && (value != Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
           && (value != Settings::BUTTON_MODE_ONE_BUTTON_VALUE)) {
@@ -366,6 +386,25 @@ bool saveSetting(const ProvisionTLV::SettingValue &field, Settings::type_t type)
     } break;
   }
   return true;
+}
+
+/**
+ * Write one WiFi credential and confirm it landed.
+ *
+ * Settings::save() returns void, so a failed NVS write would otherwise be
+ * counted as applied and the browser would report success for a device that
+ * cannot associate. Read the value back, the same check cmdCompanion makes for
+ * the companion password.
+ */
+bool saveNetworkString(Settings::type_t type, const std::string &value) {
+  Settings::save<std::string>(type, value);
+  if (Settings::load<std::string>(type) == value) {
+    return true;
+  }
+#if defined(ESP_PLATFORM)
+  ESP_LOGE(LOG_TAG, "%s persistence failed", Settings::get(type).key);
+#endif
+  return false;
 }
 
 size_t deferredFieldCount(const ProvisionTLV::ProvisionBundle &bundle) {
@@ -523,16 +562,26 @@ bool apply(const ProvisionTLV::ProvisionBundle &bundle,
 
   report.fieldsApplied = report.settingsApplied;
   if (bundle.wifiSsid.has_value()) {
-    Settings::save<std::string>(Settings::WIFI_SSID,
-                                std::string(bundle.wifiSsid->begin(), bundle.wifiSsid->end()));
+    if (!saveNetworkString(Settings::WIFI_SSID,
+                           std::string(bundle.wifiSsid->begin(), bundle.wifiSsid->end()))) {
+      report.error = ApplyError::STORAGE_FAILURE;
+      report.failedSettingId = Settings::get(Settings::WIFI_SSID).wire_id;
+      report.message = "wifi_ssid persistence failed";
+      return false;
+    }
 #if defined(ESP_PLATFORM)
     WiFi::clearRememberedAccessPoint();
 #endif
     report.fieldsApplied++;
   }
   if (bundle.wifiPsk.has_value()) {
-    Settings::save<std::string>(Settings::WIFI_PSK,
-                                std::string(bundle.wifiPsk->begin(), bundle.wifiPsk->end()));
+    if (!saveNetworkString(Settings::WIFI_PSK,
+                           std::string(bundle.wifiPsk->begin(), bundle.wifiPsk->end()))) {
+      report.error = ApplyError::STORAGE_FAILURE;
+      report.failedSettingId = Settings::get(Settings::WIFI_PSK).wire_id;
+      report.message = "wifi_psk persistence failed";
+      return false;
+    }
     report.fieldsApplied++;
   }
   report.ok = true;

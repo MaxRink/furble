@@ -261,6 +261,20 @@ lock from making a serial upload unsafe.
 If the installer offers to erase the device, decline to keep existing settings
 and paired cameras. Accept the erase when starting from a clean device.
 
+### Browser provisioning
+
+The installer's "WiFi and settings provisioning" step sets the WiFi credentials,
+the companion password, the theme, TX power and, on the 8 MB and 16 MB boards,
+the MQTT broker settings. Tick "Debug build" before installing, because the step
+drives the debug console and a release image has no console. Fill in the form,
+then click "Send provisioning" and approve the serial port. The page encodes one
+provisioning blob and sends it as a single console command, so the firmware
+validates every field exactly as it does for a typed command.
+
+The step writes settings and never erases NVS, so running it again is the way to
+retry or to change a value. A field the firmware cannot apply on that board is
+reported as deferred instead of as applied.
+
 ### PlatformIO
 
 PlatformIO does everything assuming things are installed and connected properly.

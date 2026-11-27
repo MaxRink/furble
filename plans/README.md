@@ -318,7 +318,8 @@ the bench work.
 | [69-flasher-bt-dump.md](implemented/69-flasher-bt-dump.md) | Web Serial Capture BT debug dump panel, depends on 68 and PR #76 |
 | [113-per-board-ota-slots.md](implemented/113-per-board-ota-slots.md) | Per-flash-size OTA slots, implemented by PR #167 |
 | [114-provision-parser.md](implemented/114-provision-parser.md) | One-shot provisioning parser and console apply; staged browser transport deferred |
-| [114-flasher-provisioning.md](114-flasher-provisioning.md) | Follow-up browser transport for the landed provisioning parser |
+| [114-flasher-provisioning.md](implemented/114-flasher-provisioning.md) | Browser WebSerial transport and settings step for the landed provisioning parser |
+| [537-review-feedback.md](537-review-feedback.md) | Review-feedback record for the WebSerial provisioning step, PR #537 |
 | [115-ota-engine.md](implemented/115-ota-engine.md) | Transport-independent OTA lifecycle, implemented by PR #168 |
 | [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | HTTPS delivery and OTA-over-MQTT follow-up |
 | [130-ota-mqtt-contract.md](implemented/130-ota-mqtt-contract.md) | Signed, replay-safe OTA-over-MQTT envelope and chunk policy |

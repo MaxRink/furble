@@ -1,0 +1,20 @@
+{
+  "comment": "One provisioning bundle encoded by both codecs. The browser encoder in web-installer/provision.js must emit expectedHex for fields, and the production codec in lib/furble/protocol/ProvisionTLV.cpp must emit the same bytes for the same bundle. tests/web-installer/provision.test.cjs checks the browser side and tests/host/provision_tlv_test.cpp checks the firmware side, so a format change has to move this file.",
+  "fields": {
+    "wifiSsid": "furble-net",
+    "wifiPsk": "correct horse battery",
+    "companionPassword": "companion-secret",
+    "mqttUri": "mqtt://192.0.2.10:1883",
+    "mqttUsername": "furble",
+    "mqttPassword": "broker-secret",
+    "mqttBaseTopic": "furble/studio",
+    "settings": [
+      { "wireId": 3, "type": 3, "value": "Dark" },
+      { "wireId": 4, "type": 1, "value": 2 }
+    ]
+  },
+  "expectedByteCount": 135,
+  "expectedHex": "81030a667572626c652d6e6574820315636f727265637420686f7273652062617474657279840310636f6d70616e696f6e2d7365637265748503166d7174743a2f2f3139322e302e322e31303a31383833860306667572626c6587030d62726f6b65722d73656372657488030d667572626c652f73747564696f830305034461726b8301020402",
+  "expectedBase64": "gQMKZnVyYmxlLW5ldIIDFWNvcnJlY3QgaG9yc2UgYmF0dGVyeYQDEGNvbXBhbmlvbi1zZWNyZXSFAxZtcXR0Oi8vMTkyLjAuMi4xMDoxODgzhgMGZnVyYmxlhwMNYnJva2VyLXNlY3JldIgDDWZ1cmJsZS9zdHVkaW+DAwUDRGFya4MBAgQC",
+  "expectedCommandChars": 197
+}

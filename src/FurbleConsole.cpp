@@ -76,7 +76,11 @@ namespace Furble {
 namespace {
 
 constexpr const char *PROMPT = "furble> ";
+// esp_console allocates this many bytes for its own copy of the command line
+// and esp_console_run() copies the line in with strlcpy(), so the longest line
+// that survives that copy is MAX_LINE - 1 characters.
 constexpr size_t MAX_LINE = 256;
+constexpr size_t MAX_COMMAND = MAX_LINE - 1;
 // The deepest console command is `perf tasks`, which used to hold two
 // 24-entry TaskStatus_t snapshots (about 2 KiB) on this stack. The snapshots
 // now come from the heap. The pre-change image left 5,504 of 8,192 bytes free,
@@ -740,6 +744,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     } break;
 
     case Settings::THEME:
+      if (!Settings::validTheme(std::string(text))) {
+        return fail("theme must be Dark, Default or Mono Furble");
+      }
       Settings::save<std::string>(setting.type, std::string(text));
       break;
 
@@ -764,7 +771,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 
     case Settings::WIFI_PSK:
       if (!Settings::validNetworkString(setting.type, std::string(text))) {
-        return fail("passphrase must be 63 characters or fewer");
+        return fail("passphrase must be empty or 8 to 63 characters");
       }
       Settings::save<std::string>(setting.type, std::string(text));
       break;
@@ -1199,6 +1206,14 @@ int cmdProvision(int argc, char **argv) {
       printf(": %s", report.message.c_str());
     }
     printf("\n");
+    if (report.error == Provision::ApplyError::STORAGE_FAILURE) {
+      // The batch stopped at a refused write, so the counts are partial. Print
+      // the summary anyway with an explicit failure count: no field is claimed
+      // as applied unless it landed.
+      printf("provision: %u field(s) applied, %u field(s) deferred, 1 field(s) failed\n",
+             static_cast<unsigned>(report.fieldsApplied),
+             static_cast<unsigned>(report.deferredFields));
+    }
     return 1;
   }
 
@@ -3760,6 +3775,9 @@ void run(const std::string &line) {
 
 void task(void) {
   std::string line;
+  // Set when a printable byte arrives after MAX_COMMAND characters. The line
+  // editor keeps the accepted prefix for the echo but refuses to run it.
+  bool overflow = false;
 
   printf("\nfurble console ready, type 'help'\n%s", PROMPT);
   fflush(stdout);
@@ -3777,20 +3795,31 @@ void task(void) {
 
     if ((byte == '\r') || (byte == '\n')) {
       printf("\n");
-      if (!line.empty()) {
+      if (overflow) {
+        // Never hand a clipped line to a command. The provisioning blob is one
+        // base64 line, so a silent clip could apply a shorter bundle than the
+        // host sent and still report success.
+        printf("error: line longer than %u bytes, command not run\n",
+               static_cast<unsigned>(MAX_COMMAND));
+      } else if (!line.empty()) {
         run(line);
-        line.clear();
       }
+      line.clear();
+      overflow = false;
       printf("%s", PROMPT);
     } else if ((byte == '\b') || (byte == 0x7f)) {
       if (!line.empty()) {
         line.pop_back();
         printf("\b \b");
       }
-    } else if ((byte >= ' ') && (byte < 0x7f) && (line.size() < MAX_LINE)) {
-      line.push_back(static_cast<char>(byte));
-      // No linenoise, so echo what was typed.
-      printf("%c", byte);
+    } else if ((byte >= ' ') && (byte < 0x7f)) {
+      if (line.size() < MAX_COMMAND) {
+        line.push_back(static_cast<char>(byte));
+        // No linenoise, so echo what was typed.
+        printf("%c", byte);
+      } else {
+        overflow = true;
+      }
     }
 
     Camera::gattJournalDrain();

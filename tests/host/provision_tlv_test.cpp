@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -232,14 +234,99 @@ void testSettingSchemas(void) {
         "an unknown setting id has no schema");
 }
 
+std::string hexString(const Bytes &bytes) {
+  static const char *HEX = "0123456789abcdef";
+  std::string out;
+  for (const uint8_t byte : bytes) {
+    out.push_back(HEX[byte >> 4]);
+    out.push_back(HEX[byte & 0x0f]);
+  }
+  return out;
+}
+
+// Read one quoted string value from the shared fixture without a JSON parser.
+std::string fixtureValue(const std::string &document, const std::string &key) {
+  const size_t keyPos = document.find("\"" + key + "\"");
+  if (keyPos == std::string::npos) {
+    return {};
+  }
+  const size_t colon = document.find(':', keyPos);
+  if (colon == std::string::npos) {
+    return {};
+  }
+  const size_t open = document.find('"', colon);
+  if (open == std::string::npos) {
+    return {};
+  }
+  const size_t close = document.find('"', open + 1);
+  if (close == std::string::npos) {
+    return {};
+  }
+  return document.substr(open + 1, close - open - 1);
+}
+
+// The web installer encodes the same bundle in the browser with
+// web-installer/provision.js. Both codecs are checked against the one committed
+// fixture, so a format change cannot land on one side only. The browser half is
+// tests/web-installer/provision.test.cjs.
+void testSharedBrowserFixture(const char *path) {
+  std::ifstream file(path);
+  if (!file) {
+    check(false, std::string("the shared browser fixture opens: ") + path);
+    return;
+  }
+  const std::string document((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
+  const std::string expected = fixtureValue(document, "expectedHex");
+  check(!expected.empty(), "the fixture carries expectedHex");
+  if (expected.empty()) {
+    return;
+  }
+
+  // Keep these values equal to the "fields" object in the fixture.
+  ProvisionBundle bundle;
+  bundle.wifiSsid = text("furble-net");
+  bundle.wifiPsk = text("correct horse battery");
+  bundle.companionPassword = text("companion-secret");
+  bundle.mqttUri = text("mqtt://192.0.2.10:1883");
+  bundle.mqttUsername = text("furble");
+  bundle.mqttPassword = text("broker-secret");
+  bundle.mqttBaseTopic = text("furble/studio");
+  SettingValue theme;
+  theme.wireId = 3;
+  theme.type = ValueType::STRING;
+  theme.value = text("Dark");
+  bundle.settings.push_back(theme);
+  SettingValue power;
+  power.wireId = 4;
+  power.type = ValueType::U8;
+  power.value = {2};
+  bundle.settings.push_back(power);
+
+  std::vector<uint8_t> encoded;
+  Error error;
+  check(Furble::ProvisionTLV::encode(bundle, encoded, &error), "the shared fixture bundle encodes");
+  check(hexString(encoded) == expected,
+        "the production codec emits the bytes the browser fixture pins");
+
+  std::vector<uint8_t> fromText;
+  check(Furble::ProvisionTLV::decodeText(expected.c_str(), fromText, nullptr, &error),
+        "the fixture hex decodes as console text");
+  ProvisionBundle decoded;
+  check(Furble::ProvisionTLV::decode(fromText.data(), fromText.size(), decoded, &error),
+        "the fixture bytes decode");
+  check(decoded == bundle, "the fixture round-trips to the same bundle");
+}
+
 }  // namespace
 
-int main() {
+int main(int argc, char **argv) {
   testRoundTrip();
   testMalformedAndTruncated();
   testEncoderValidation();
   testTextDecoding();
   testSettingSchemas();
+  testSharedBrowserFixture((argc > 1) ? argv[1] : FURBLE_PROVISION_FIXTURE);
 
   if (g_failures != 0) {
     std::cerr << "provision tlv tests: " << g_failures << " FAILED\n";

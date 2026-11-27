@@ -51,6 +51,60 @@ committed.
 - Keep the browser protocol and the terminal helper behaviorally equivalent.
   Update `tests/test_tooling_versions.py` when either acknowledgement changes.
 
+## WiFi and settings provisioning
+
+- `provision.js` is the browser half of
+  `plans/implemented/114-flasher-provisioning.md`. The `provisionPanel` block in
+  `index.html` collects the WiFi SSID and passphrase, the companion password,
+  the theme, TX power and, on MQTT builds, the broker URI, base topic and
+  credentials. It encodes one `ProvisionTLV` blob and sends
+  `provision base64:<blob>` over Web Serial. There is no second settings writer:
+  the firmware `provision` console command stays the one validated path, and the
+  page reports success only from that command's result lines.
+- The panel needs the debug build. `FURBLE_CONSOLE` is what provides the
+  console, and no release image contains it, so the panel hides its controls
+  until the "Debug build" box is ticked instead of pretending to provision.
+- Field limits, the tag numbers and the record order mirror
+  `lib/furble/protocol/ProvisionTLV.h`. `MAX_COMMAND_CHARS = 255` mirrors
+  `src/FurbleConsole.cpp`: `esp_console_run()` copies the line into a 256-byte
+  buffer with `strlcpy()`, and the console refuses a longer line rather than
+  clipping it. `buildCommand()` rejects an oversized or invalid bundle before
+  the port is opened, and the error names the limit.
+- A blank passphrase is sent as an empty `WIFI_PSK` record, which clears a saved
+  passphrase for an open network. Anything between 1 and 7 characters is
+  refused: WPA2-PSK and WPA3-SAE both need 8 to 63 characters, and
+  `Settings::validNetworkString()` applies the same rule on the device. A blank
+  optional field is not sent at all.
+- The theme select offers exactly the closed set
+  `Settings::validTheme()` accepts, `Dark`, `Default` and `Mono Furble`, and the
+  encoder refuses anything else. TX power is 0, 1 or 2 (P3, P6, P9); an
+  out-of-range value is refused instead of being stored and clamped to P3.
+  `tests/test_web_installer.py` pins all three sets to the firmware source.
+- MQTT settings are omitted on `m5stick-c`, `m5stick-c-plus` and
+  `m5stack-core`, which do not compile the MQTT backend. `BOARD_HAS_MQTT` is
+  checked against `platformio.ini` by `tests/test_web_installer.py`, so a new
+  MQTT profile or a new board row has to update it.
+- The response parser fails closed. A missing `furble> ` prompt, a timeout, an
+  `error:` or `failed:` line, a decoded byte count that differs from the sent
+  blob, a deferred field, or a summary that never arrives is a failed step. The
+  console echo of the command is dropped, so no credential is ever rendered.
+  The firmware verifies the SSID and passphrase writes with a read-back, so a
+  refused NVS write becomes a `storage failure` error line instead of an
+  applied field.
+- The panel prefers a port already granted to the page and retries `port.open()`
+  for about two seconds, because ESP Web Tools holds the port until its dialog
+  closes. That reopen timing has not been verified on hardware; see the residual
+  list in the plan.
+- `tests/web-installer/provision-fixture.json` is one bundle both codecs encode.
+  `tests/host/provision_tlv_test.cpp` checks the production codec against it and
+  `tests/web-installer/provision.test.cjs` checks the browser codec against it.
+  Run the browser test with `node tests/web-installer/provision.test.cjs`, or
+  through `python3 -m unittest tests.test_web_installer`, which also pins the
+  mirrored limits and wire ids to their firmware sources.
+- The Pages deploy copies `provision.js` next to `index.html`, and
+  `tools/verify_web_installer.py` fails when a local page script is missing from
+  the site directory.
+
 ## Debug variant
 
 - Each publishable board ships a debug build from the matching PlatformIO

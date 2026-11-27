@@ -225,7 +225,10 @@ challenge as a failed proof, so a malformed retry cannot reuse one nonce
 ## Provisioning TLV
 
 The console `provision` command and the app share one blob format. A batch is a
-sequence of records (`lib/furble/protocol/ProvisionTLV.h:12-23`).
+sequence of records (`lib/furble/protocol/ProvisionTLV.h:12-23`). The wire
+format allows a 0 to 63 byte `WIFI_PSK`; the apply step then enforces the WPA2
+and WPA3-SAE rule, so an empty value (open network) or 8 to 63 bytes is
+accepted and 1 to 7 bytes is refused before any write.
 
 | Offset | Size | Field |
 | ---: | ---: | :--- |
@@ -237,7 +240,7 @@ sequence of records (`lib/furble/protocol/ProvisionTLV.h:12-23`).
 | Tag | Name | Value layout |
 | ---: | :--- | :--- |
 | 0x01 | `WIFI_SSID` | UTF-8, at most 32 bytes |
-| 0x02 | `WIFI_PSK` | at most 63 bytes |
+| 0x02 | `WIFI_PSK` | empty (open network) or 8 to 63 bytes |
 | 0x03 | `SETTING` | first byte is the stable wire id, then the value |
 | 0x04 | `COMPANION_PASSWORD` | at most 63 bytes, wire id 47 |
 | 0x05 | `MQTT_URI` | at most 255 bytes |
@@ -256,6 +259,12 @@ allowed. Without a prefix an even all-hex string is read as hex and anything els
 as padded or unpadded standard base64
 (`lib/furble/protocol/ProvisionTLV.h:104-112`,
 `docs/console-commands.md#settings`).
+
+The web installer builds the same batches in `web-installer/provision.js` and
+sends one `provision base64:` line over Web Serial. The console line limit of 255
+characters caps one bundle at about 178 bytes, and both ends refuse the overflow
+rather than clipping it. The browser and firmware codecs are pinned to one
+shared fixture, `tests/web-installer/provision-fixture.json`.
 
 ## Camera list blob
 

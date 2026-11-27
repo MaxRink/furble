@@ -107,7 +107,7 @@ entry fails the release job rather than shipping an image with no usable build.
 `tools/verify_web_installer.py` derives `EXPECTED_FLASH_OFFSETS` from the same
 two tables and requires exactly one build per manifest whose family matches the
 board in the file name. `build_family_error` at
-`tools/verify_web_installer.py:39` is where the count is enforced, and
+`tools/verify_web_installer.py:46` is where the count is enforced, and
 `validate` at `tools/verify_web_installer.py:115` also compares the declared
 family with `expected_chip_family`, so a manifest named for an S3 board that
 declares `ESP32` fails even if its offsets happen to be self-consistent.

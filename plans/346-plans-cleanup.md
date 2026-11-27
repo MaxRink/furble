@@ -176,7 +176,7 @@ their state. Neither this plan nor its review record is listed against itself.
 | [108-upstream-issue-mapping.md](108-upstream-issue-mapping.md) | Dated snapshot from 2026-08-22 whose own rows include OPEN upstream issues. |
 | [111-power-recommendations.md](111-power-recommendations.md) | Three maintainer policy questions at the top are unanswered, and N5 is skipped rather than done. |
 | [111-review-feedback.md](111-review-feedback.md) | Its reviewed branch merged as #454 (`4ca92c52`), but it stays with plan 111, which is still open. |
-| [114-flasher-provisioning.md](114-flasher-provisioning.md) | Design only. Only the settings parser landed, as `plans/implemented/114-provision-parser.md` in #165; the browser transport and the WiFi application step are still designs. |
+| [114-flasher-provisioning.md](implemented/114-flasher-provisioning.md) | Design only. Only the settings parser landed, as `plans/implemented/114-provision-parser.md` in #165; the browser transport and the WiFi application step were still designs at this cleanup; the browser step landed afterwards. |
 | [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | Design only. Only the OTA engine landed, as `plans/implemented/115-ota-engine.md` in #168; the HTTPS download and the Home Assistant end to end flow are unrun. |
 | [125-esp-optimization-program.md](125-esp-optimization-program.md) | Verified open: `evaluateBootHealth()` has no production caller, only `tests/host/ota_state_machine_test.cpp`, and there is no `esp_ota_mark_app_*` call in `src/`, `include/` or `lib/`. |
 | [126-esp-optimization-audit.md](126-esp-optimization-audit.md) | Historical research snapshot. Research stays in the parent directory. |
