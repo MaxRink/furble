@@ -462,9 +462,10 @@ void testCompanionSecretRedaction(void) {
 }
 
 // The broker password is the second secret over this link, and the only one
-// whose redaction is compiled out unless FURBLE_MQTT is defined. The
-// companion-gatt target defines it now, so this case runs the code every
-// shipped image builds (PR 534 review F3). Deliberately unguarded: if the
+// whose redaction is compiled out unless FURBLE_MQTT is defined. No host target
+// defined it, so the arm and its fixture were both untested; companion_gatt_test
+// defines it now, which is the configuration the Core2, StickS3, headless and
+// Waveshare images build (PR 534 review F3). Deliberately unguarded: if the
 // target ever drops FURBLE_MQTT, Settings::MQTT_PASS stops existing and this
 // file stops compiling, rather than the coverage disappearing quietly.
 void testCompanionMqttPassRedaction(void) {
