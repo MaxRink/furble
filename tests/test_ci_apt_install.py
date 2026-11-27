@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -112,7 +113,7 @@ class CiaptInstallTest(unittest.TestCase):
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertTrue(kept.exists())
     self.assertEqual(kept.read_text(encoding="utf-8"), UBUNTU_SOURCES)
-    self.assertIn("disabled 0 unrelated source(s)", result.stderr)
+    self.assertIn("dropped 0 third-party source file(s)", result.stderr)
 
   def test_legacy_sources_list_keeps_the_archive_and_drops_the_ppa(self):
     sources_list = self.root / "etc" / "apt" / "sources.list"
@@ -164,7 +165,7 @@ class CiaptInstallTest(unittest.TestCase):
                      "the scheme must never be read as a host")
     self.assertNotIn("priority", result.stderr,
                      "the preference must never be read as a host")
-    self.assertIn("disabled 0 unrelated source(s)", result.stderr)
+    self.assertIn("dropped 0 third-party source file(s)", result.stderr)
 
   def test_unreadable_mirror_indirection_is_left_enabled(self):
     kept = self.add_source(
@@ -179,7 +180,8 @@ class CiaptInstallTest(unittest.TestCase):
     self.assertTrue(kept.exists(),
                     "a source the helper cannot read must not be disabled")
     self.assertIn("does not exist", result.stderr)
-    self.assertIn("cannot resolve the mirror list", result.stderr)
+    self.assertIn("mirror+file:/etc/apt/apt-mirrors-absent.txt", result.stderr)
+    self.assertIn("leaving the stanza enabled", result.stderr)
 
   def test_remote_mirror_list_is_left_enabled(self):
     kept = self.add_source(
@@ -192,7 +194,8 @@ class CiaptInstallTest(unittest.TestCase):
 
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertTrue(kept.exists())
-    self.assertIn("cannot resolve the mirror list", result.stderr)
+    self.assertIn("mirror+https://example.test/mirrors.txt", result.stderr)
+    self.assertIn("leaving the stanza enabled", result.stderr)
 
   def test_mirror_list_without_a_readable_uri_is_left_enabled(self):
     (self.root / "etc" / "apt" / "apt-mirrors.txt").write_text(
@@ -208,6 +211,63 @@ class CiaptInstallTest(unittest.TestCase):
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertTrue(kept.exists())
     self.assertIn("names no mirror this script can read", result.stderr)
+    # one report per problem, not one per pass
+    self.assertEqual(
+        result.stderr.count("names no mirror this script can read"), 1,
+        result.stderr,
+    )
+
+  def test_mixed_deb822_file_keeps_its_archive_stanza(self):
+    # The review of PR 545 reproduced this: a .sources file carrying an archive
+    # stanza plus a third-party stanza, beside a clean archive list, used to
+    # lose the archive stanza while the step reported success.
+    self.add_source("archive.list",
+                    "deb http://archive.ubuntu.com/ubuntu resolute main universe\n")
+    mixed = self.add_source(
+        "ubuntu.sources",
+        "Types: deb\n"
+        "URIs: http://archive.ubuntu.com/ubuntu/\n"
+        "Suites: resolute\n"
+        "Components: main universe\n"
+        "\n"
+        "Types: deb\n"
+        "URIs: https://packages.microsoft.com/ubuntu/26.04/prod\n"
+        "Suites: resolute\n"
+        "Components: main\n",
+    )
+
+    result = self.run_install("clang")
+
+    self.assertEqual(result.returncode, 0, result.stderr)
+    rewritten = mixed.read_text(encoding="utf-8")
+    self.assertIn("URIs: http://archive.ubuntu.com/ubuntu/", rewritten,
+                  "the archive stanza must survive in the same file")
+    self.assertIn("#URIs: https://packages.microsoft.com/ubuntu/26.04/prod",
+                  rewritten)
+    enabled = [line for line in rewritten.splitlines()
+               if line.strip() and not line.lstrip().startswith("#")]
+    self.assertNotIn("packages.microsoft.com", "".join(enabled))
+    self.assertIn("packages.microsoft.com", result.stderr)
+
+  def test_a_deb822_file_of_only_third_party_stanzas_is_disabled(self):
+    only = self.add_source(
+        "microsoft.sources",
+        "Types: deb\n"
+        "URIs: https://packages.microsoft.com/ubuntu/26.04/prod\n"
+        "Suites: resolute\n"
+        "Components: main\n",
+    )
+    self.add_source("archive.list",
+                    "deb http://archive.ubuntu.com/ubuntu resolute main\n")
+
+    result = self.run_install("clang")
+
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertFalse(
+        [line for line in only.read_text(encoding="utf-8").splitlines()
+         if line.strip() and not line.lstrip().startswith("#")],
+        "every stanza of a third-party only file must be disabled",
+    )
 
   def test_runner_with_no_archive_source_fails_before_any_update(self):
     self.add_source("microsoft-prod.list", MICROSOFT_LIST)
@@ -215,7 +275,7 @@ class CiaptInstallTest(unittest.TestCase):
     result = self.run_install("clang")
 
     self.assertNotEqual(result.returncode, 0)
-    self.assertIn("no Ubuntu archive source is enabled", result.stderr)
+    self.assertIn("no enabled apt source is left", result.stderr)
     self.assertEqual(self.apt_calls(), [],
                      "a package index with no archive must not be updated")
 
@@ -324,6 +384,19 @@ class ScriptInvariantsTest(unittest.TestCase):
 
   def test_script_is_posix_sh(self):
     self.assertTrue(self.text.startswith("#!/bin/sh\n"))
+
+  def test_the_archive_rule_is_implemented_once(self):
+    # The review of PR 545 found the allowlist implemented twice, once in shell
+    # and once inside filter_one_line_file, with nothing keeping them equal. The
+    # rule may appear in the shell function and in comments, never inside an awk
+    # program, so the two rewrite paths cannot classify differently.
+    self.assertEqual(self.text.count("*.ubuntu.com) return 0"), 1)
+    awk_blocks = re.findall(r"awk '([\s\S]*?)'", self.text)
+    self.assertTrue(awk_blocks, "the script still parses with awk")
+    for block in awk_blocks:
+      self.assertNotIn("ubuntu.com", block,
+                       "the archive rule must live only in is_archive_host")
+      self.assertNotIn("ARCHIVE_HOSTS", block)
 
 
 if __name__ == "__main__":

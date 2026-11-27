@@ -53,24 +53,35 @@ cover.
 What the helper does, in order:
 
 1. Reads every enabled source entry in `/etc/apt/sources.list` and
-   `/etc/apt/sources.list.d/*.{list,sources}` (`tools/ci-apt-install.sh:214`).
-2. Treats a source as Ubuntu archive when every URI in it has a host under
+   `/etc/apt/sources.list.d/*.{list,sources}` (`tools/ci-apt-install.sh:265`),
+   following the `mirror+file:` indirection that Ubuntu cloud images use in
+   place of a hostname (`tools/ci-apt-install.sh:164`).
+2. Treats a source entry as Ubuntu archive when every URI in it has a host under
    `ubuntu.com`. This covers `archive.`, `security.`, `ports.` and the cloud
    mirrors such as `azure.archive.ubuntu.com`. Everything else is third party
    for this purpose: `packages.microsoft.com`, `dl.google.com`,
    `apt.postgresql.org`, `cli.github.com` and Canonical-hosted PPAs on
-   `ppa.launchpadcontent.net` (`tools/ci-apt-install.sh:136`).
-3. Comments out the offending entries of one-line files, so an archive entry
-   that shares the file survives (`tools/ci-apt-install.sh:247`). A deb822
-   `.sources` file has the offending file moved out of the apt configuration
-   rather than edited, because its stanzas cannot be dropped entry by entry.
-4. Fails when no archive source is left, instead of continuing to an install
-   that cannot be satisfied (`tools/ci-apt-install.sh:372`).
+   `ppa.launchpadcontent.net` (`tools/ci-apt-install.sh:145`). That function is
+   the only implementation of the rule: both rewrite paths ask it
+   (`tools/ci-apt-install.sh:233`), and a test fails if the rule reappears
+   anywhere else.
+3. Comments out only the entries that point away from the archive. A one-line
+   file is filtered entry by entry (`tools/ci-apt-install.sh:299`). A deb822
+   `.sources` file is filtered stanza by stanza, because a stanza is one
+   repository, so an archive stanza beside a third-party stanza keeps working
+   and no file is ever removed whole (`tools/ci-apt-install.sh:351`). Neither
+   path drops an entry it cannot classify; it leaves that one enabled and says
+   so.
+4. Reads the files back and fails when no enabled source is left, instead of
+   continuing to an install that cannot be satisfied
+   (`tools/ci-apt-install.sh:447`). When the sources that remain are ones the
+   script cannot classify, it says that instead of claiming the archive is
+   there.
 5. Runs `apt-get update` with no suppression and `Acquire::Retries=3`
-   (`tools/ci-apt-install.sh:381`).
+   (`tools/ci-apt-install.sh:460`).
 6. Runs `apt-get install --no-install-recommends -y` with no suppression.
 7. Asks `dpkg-query` whether every named package reports `install ok installed`
-   and fails the step when one does not (`tools/ci-apt-install.sh:391`).
+   and fails the step when one does not (`tools/ci-apt-install.sh:470`).
 
 The allowlist can be widened with `CI_APT_ARCHIVE_HOSTS`, which is additive
 only. Widening it re-enables a fetch that is allowed to fail the step, so the
@@ -98,7 +109,7 @@ is the literal string `mirror+file` and the archive looked third party.
 
 Two things changed because of it, and both are tested now:
 
-- `expand_uri` (`tools/ci-apt-install.sh:153`) reads the `mirror+file:` list and
+- `expand_uri` (`tools/ci-apt-install.sh:164`) reads the `mirror+file:` list and
   classifies the hosts it names. A `mirror+` indirection this script cannot
   read, such as a remote list, leaves the source enabled with a warning instead
   of dropping a source the job may need.
@@ -109,7 +120,7 @@ The second push read the list but reported `third-party host(s) priority
 priority priority priority priority priority`: each line of `apt-mirrors.txt` is
 a preference followed by the URI, not a bare URI, so the first token was being
 taken as a host. The reader now takes the first token that is a URI
-(`tools/ci-apt-install.sh:153`), which covers both forms, and every run logs the
+(`tools/ci-apt-install.sh:164`), which covers both forms, and every run logs the
 mirror list it resolved, so the next image shape is visible in the log instead
 of a guessing game.
 
@@ -157,20 +168,24 @@ this branch after it.
 
 | Workflow | Job | Before | After | Packages |
 | --- | --- | --- | --- | --- |
-| `.github/workflows/power-gate.yml` | `power-gate` ("Simulator power regression") | `power-gate.yml:51` | `.github/workflows/power-gate.yml:53` | `clang libsdl2-dev` |
-| `.github/workflows/ui-screenshots.yml` | `ui-screenshots` | `ui-screenshots.yml:51` | `.github/workflows/ui-screenshots.yml:53` | `clang libsdl2-dev xvfb` |
-| `.github/workflows/sim-e2e.yml` | `sim-e2e` | `sim-e2e.yml:79` | `.github/workflows/sim-e2e.yml:82` | `clang libsdl2-dev libmosquitto-dev libcjson-dev` |
-| `.github/workflows/sim-e2e.yml` | `sim-sanitizers` (sanitizer job) | `sim-e2e.yml:636` | `.github/workflows/sim-e2e.yml:641` | `clang libclang-rt-dev llvm libsdl2-dev` |
-| `.github/workflows/coverage.yml` | `coverage` | `coverage.yml:100` | `.github/workflows/coverage.yml:105` | `clang-18 llvm-18 libclang-rt-18-dev libsdl2-dev libmosquitto-dev libcjson-dev` |
-| `.github/workflows/static-analysis.yml` | `static-analysis` | `static-analysis.yml:40` | `.github/workflows/static-analysis.yml:43` | `clang-tidy cppcheck cmake ninja-build clang libsdl2-dev` |
+| `.github/workflows/power-gate.yml` | `power-gate` ("Simulator power regression") | `power-gate.yml:49` | `.github/workflows/power-gate.yml:53` | `clang libsdl2-dev` |
+| `.github/workflows/ui-screenshots.yml` | `ui-screenshots` | `ui-screenshots.yml:49` | `.github/workflows/ui-screenshots.yml:53` | `clang libsdl2-dev xvfb` |
+| `.github/workflows/sim-e2e.yml` | `sim-e2e` | `sim-e2e.yml:77` | `.github/workflows/sim-e2e.yml:82` | `clang libsdl2-dev libmosquitto-dev libcjson-dev` |
+| `.github/workflows/sim-e2e.yml` | `sim-sanitizers` (sanitizer job) | `sim-e2e.yml:634` | `.github/workflows/sim-e2e.yml:641` | `clang libclang-rt-dev llvm libsdl2-dev` |
+| `.github/workflows/coverage.yml` | `coverage` | `coverage.yml:98` | `.github/workflows/coverage.yml:105` | `clang-18 llvm-18 libclang-rt-18-dev libsdl2-dev libmosquitto-dev libcjson-dev` |
+| `.github/workflows/static-analysis.yml` | `static-analysis` | `static-analysis.yml:38` | `.github/workflows/static-analysis.yml:43` | `clang-tidy cppcheck cmake ninja-build clang libsdl2-dev` |
 
 Six steps in five workflows, which is every `sudo apt-get update` in
 `.github/workflows`. `coverage.yml` keeps its post-install assertions
 (`clang-18 -print-file-name`, `pkg-config --exists libmosquitto`, version
 prints) inside the same step, after the helper returns.
 
-The helper is also added to the `pull_request` and `push` path filters of all
-five workflows, so a change to it re-runs the jobs that depend on it.
+The helper is also added to every path filter those five workflows have, so a
+change to it re-runs the jobs that depend on it. That is two filters in
+`coverage.yml` and `sim-e2e.yml`, one in `power-gate.yml`, `ui-screenshots.yml`
+and `static-analysis.yml`; only `coverage.yml` and `sim-e2e.yml` have a push
+path filter at all, `power-gate.yml` pushes without one and the other two have
+no push trigger.
 `tests/test_sim_ci_contract.py` asserts that the two `sim-e2e.yml` path lists
 are exact and identical, so its expected list gained the same entry in this
 change.
@@ -203,7 +218,7 @@ Three, at different levels:
 1. `apt-get install` itself, with no `|| true` above it. A package that is not
    in the archive makes apt exit 100 and the helper re-exits non-zero.
 2. `dpkg-query` after the install, which fails the step even if apt exits 0
-   without the package being configured (`tools/ci-apt-install.sh:391`).
+   without the package being configured (`tools/ci-apt-install.sh:470`).
 3. `tests/test_ci_apt_install.py` pins both, plus the broken-archive case, so
    a future edit to the helper that starts suppressing failures fails the test
    job instead of quietly weakening every workflow:
@@ -230,7 +245,7 @@ that shape, not for transient network failure, which retries already cover.
 
 | Provider | Where | Real exposure | Change |
 | --- | --- | --- | --- |
-| pip | `python -m pip install -r requirements.txt` in 6 workflows, `-r .github/workflows/*-requirements.txt` in 3 | None. `requirements.txt` names `platformio==6.1.19` and `pyserial==3.5`. No `pip.conf`, no `PIP_EXTRA_INDEX_URL`, no `--index-url` or `--extra-index-url` anywhere in the repository, so pip talks only to PyPI, which every step needs. The runner can set no global source that the job does not use. | None, and `|| true` would be the only alternative, which is what this plan rejects. |
+| pip | `python -m pip install -r requirements.txt` in 5 workflows, `-r .github/workflows/*-requirements.txt` in 2 | None. `requirements.txt` names `platformio==6.1.19` and `pyserial==3.5`. No `pip.conf`, no `PIP_EXTRA_INDEX_URL`, no `--index-url` or `--extra-index-url` anywhere in the repository, so pip talks only to PyPI, which every step needs. The runner can set no global source that the job does not use. | None, and `|| true` would be the only alternative, which is what this plan rejects. |
 | npm | none | No `npm`, `yarn` or `npx` invocation in any workflow, so there is no registry to be broken. | None. |
 | PlatformIO | `platformio run` in `main.yml`, `release.yml`, `pages.yml`, `reproducible.yml`, `static-analysis.yml` | The registry, GitHub and Espressif are the sources the build needs. `platformio.ini` sets no `board_manager.additional_urls` and no extra package index. A broken registry must fail the build. | None. |
 | Homebrew | none | No `brew` invocation in any workflow. `apple.yml` runs `sudo xcode-select` and `swift test`, and the Swift package dependencies are the ones the package needs. | None. |
@@ -248,12 +263,37 @@ limited to CI action provenance and SHA pinning, and this change adds no
 action reference: the helper is a script invoked from a `run:` block. The
 documented setup steps are described here instead.
 
+## Review round on PR 545
+
+The review asked for two changes and confirmed the rest:
+
+1. A mixed deb822 `.sources` file lost its archive stanzas. The file was
+   removed whole on any third-party URI, and the step still exited 0 and said
+   it kept the archive, because the archive check only fired when nothing was
+   left at all. Fixed by filtering `.sources` stanza by stanza
+   (`tools/ci-apt-install.sh:351`), the same way one-line files were already
+   filtered entry by entry. A stanza that carries an entry the script cannot
+   classify is left enabled and reported, never dropped.
+2. The allowlist was implemented twice, once in shell and once inside the
+   one-line awk filter, against a comment that claimed one place. Fixed by
+   deleting that awk copy: the rule now exists once, in
+   `tools/ci-apt-install.sh:145`, and both rewrite paths ask it through
+   `tools/ci-apt-install.sh:233`. `tests/test_ci_apt_install.py` fails if the
+   rule reappears inside any awk program.
+
+Three minors were corrected in this document: the pip counts in the audit table
+now match the enumeration table, the path filter paragraph says which filters
+exist instead of claiming two per workflow, and the per-workflow table's Before
+column now cites the `run:` line rather than the install line. The mirror list
+log line is now printed once per list instead of once per stanza that points at
+it.
+
 ## Gates run
 
 | Gate | Result |
 | --- | --- |
 | `python3 tools/check_ci_workflows.py` | pass, 13 workflows |
-| `python3 -m unittest tests.test_ci_apt_install` | pass, 18 tests |
+| `python3 -m unittest tests.test_ci_apt_install` | pass, 21 tests |
 | `python3 -m unittest tests.test_check_ci_workflows` | pass, 34 tests |
 | `python3 tools/check_doc_citations.py` | pass |
 | `shellcheck -s sh -S style tools/ci-apt-install.sh` | pass, no findings |
