@@ -2,6 +2,7 @@
 #define FURBLE_PLATFORM_SHIM_M5PM1_H
 
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -14,6 +15,13 @@
 // register-bus fake in the style of lib/hal/AXP2101.h and
 // tests/host/hal_drivers_test.cpp: every write is recorded, so a test can assert
 // that a refused transition wrote nothing at all.
+//
+// The timed wake needs two more pieces of the part, and both are modelled
+// rather than stubbed to a constant: WAKE_SRC 0x05, which is read-to-clear, and
+// the 32-byte RTC buffer the wake marker and the predicted-clock record live
+// in. The buffer is the store the PM1 keeps while it stays powered, so bytes
+// written before a shutdown are still readable after one. `platform-timed-wake`
+// drives the production Platform against both.
 
 inline constexpr int M5PM1_OK = 0;
 inline constexpr int M5PM1_ERROR = -1;
@@ -148,21 +156,53 @@ class M5PM1 {
     }
     return M5PM1_OK;
   }
-  int getWakeSource(uint8_t *source, int) {
-    if (source != nullptr) {
-      *source = 0;
+  int getWakeSource(uint8_t *source, int clean) {
+    if (source == nullptr) {
+      return M5PM1_ERROR;
+    }
+    if (!accessOk()) {
+      return M5PM1_ERROR;
+    }
+    *source = m_WakeSource;
+    // M5PM1_CLEAN_ONCE latches the vendor behaviour the production boot relies
+    // on: the register is read and cleared, so a second boot cannot see the
+    // wake source of the first.
+    if (clean == M5PM1_CLEAN_ONCE) {
+      m_WakeSource = 0;
     }
     return M5PM1_OK;
   }
-  int writeRtcRAM(uint8_t, const uint8_t *, uint8_t) { return M5PM1_OK; }
-  int readRtcRAM(uint8_t, uint8_t *data, uint8_t len) {
-    for (uint8_t i = 0; i < len; i++) {
-      data[i] = 0;
+  int writeRtcRAM(uint8_t offset, const uint8_t *data, uint8_t len) {
+    if ((data == nullptr) || (static_cast<unsigned>(offset) + len > sizeof(m_RtcRam))) {
+      return M5PM1_ERROR;
     }
+    if ((m_RtcRamWriteFailures > 0) && (offset == m_RtcRamWriteFailOffset)) {
+      m_RtcRamWriteFailures--;
+      return M5PM1_ERROR;
+    }
+    std::memcpy(&m_RtcRam[offset], data, len);
+    m_RtcRamWrites.push_back({offset, len});
     return M5PM1_OK;
   }
-  int timerSet(uint32_t, int) { return M5PM1_OK; }
-  int timerClear(void) { return M5PM1_OK; }
+  int readRtcRAM(uint8_t offset, uint8_t *data, uint8_t len) {
+    if ((data == nullptr) || (static_cast<unsigned>(offset) + len > sizeof(m_RtcRam))) {
+      return M5PM1_ERROR;
+    }
+    if ((m_RtcRamReadFailures > 0) && (offset == m_RtcRamReadFailOffset)) {
+      m_RtcRamReadFailures--;
+      return M5PM1_ERROR;
+    }
+    std::memcpy(data, &m_RtcRam[offset], len);
+    return M5PM1_OK;
+  }
+  int timerSet(uint32_t seconds, int) {
+    m_TimerSeconds = seconds;
+    return M5PM1_OK;
+  }
+  int timerClear(void) {
+    m_TimerSeconds = 0;
+    return M5PM1_OK;
+  }
   int btnGetState(bool *pressed) {
     if (pressed != nullptr) {
       *pressed = false;
@@ -235,6 +275,64 @@ class M5PM1 {
     m_RegisterWrites.clear();
   }
 
+  /**
+   * Set WAKE_SRC 0x05 as the next boot would report it.
+   *
+   * The vendor register reports every source that brought the rail back, so a
+   * test sets the whole byte rather than a flag.
+   */
+  void setWakeSourceRaw(uint8_t value) { m_WakeSource = value; }
+  uint8_t wakeSource(void) const { return m_WakeSource; }
+
+  /**
+   * The 32-byte RTC buffer, as M5PM1 v1.0.6 documents it.
+   *
+   * A plain array is the faithful model here for the one property the gate
+   * depends on: the PM1 keeps this buffer while it stays powered, and it is the
+   * PM1 that powers the ESP32 off and back on. A host process outlives the
+   * simulated power-off exactly as the PM1 does, so bytes written before the
+   * shutdown are still here after it. The buffer is *not* a model of retention
+   * across a PM1 power loss (a battery pull), which no host test can show.
+   */
+  const uint8_t *rtcRam(void) const { return m_RtcRam; }
+  void clearRtcRam(void) {
+    std::memset(m_RtcRam, 0, sizeof(m_RtcRam));
+    m_RtcRamWrites.clear();
+  }
+  /** Every RTC buffer write the platform made, as (offset, length). */
+  const std::vector<std::pair<uint8_t, uint8_t>> &rtcRamWrites(void) const {
+    return m_RtcRamWrites;
+  }
+  /**
+   * Fail the next `failures` reads of the RTC buffer at `offset`.
+   *
+   * Offset-scoped because the boot reads two regions of the same buffer, the
+   * four-byte marker at 0 and the record at 4, and the case worth testing is the
+   * marker readable while the record is not. Production retries once per
+   * transaction, so a test that wants a failed read asks for two.
+   */
+  void failRtcRamReadsAt(uint8_t offset, unsigned failures) {
+    m_RtcRamReadFailOffset = offset;
+    m_RtcRamReadFailures = failures;
+  }
+
+  /**
+   * Fail the next `failures` writes of the RTC buffer at `offset`.
+   *
+   * Scoped the same way as the read failures. Two models one transaction that
+   * fails and then succeeds, which is what separates "the write did not land" from
+   * "the bus is gone": the first is the case the shutdown has to answer for.
+   */
+  void failRtcRamWritesAt(uint8_t offset, unsigned failures) {
+    m_RtcRamWriteFailOffset = offset;
+    m_RtcRamWriteFailures = failures;
+  }
+
+  /** The interval the last timerSet() armed, in seconds. */
+  uint32_t timerSeconds(void) const { return m_TimerSeconds; }
+  /** Forget the armed interval, as a part that has just powered up would. */
+  void clearTimer(void) { m_TimerSeconds = 0; }
+
  private:
   bool accessOk(void) {
     if (m_FailAllAccess) {
@@ -253,6 +351,14 @@ class M5PM1 {
   bool m_PowerSourceUnreadable = false;
   std::vector<uint8_t> m_PowerConfigWrites;
   std::vector<std::pair<uint8_t, uint8_t>> m_RegisterWrites;
+  uint8_t m_WakeSource = 0;
+  uint8_t m_RtcRam[32] = {};
+  std::vector<std::pair<uint8_t, uint8_t>> m_RtcRamWrites;
+  uint8_t m_RtcRamWriteFailOffset = 0;
+  unsigned m_RtcRamWriteFailures = 0;
+  uint8_t m_RtcRamReadFailOffset = 0;
+  unsigned m_RtcRamReadFailures = 0;
+  uint32_t m_TimerSeconds = 0;
 };
 
 #endif

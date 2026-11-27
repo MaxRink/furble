@@ -3251,6 +3251,38 @@ target_compile_options(boundary_platform_rail_test PRIVATE
                        -Wall -Wextra -Wno-unused-parameter -Wno-format)
 target_link_libraries(boundary_platform_rail_test PRIVATE Threads::Threads)
 
+# Gate 3 of plan 320 C2: the timed-wake marker check in the production
+# Platform::consumeTimedWake(). TimeKeeper::adoptTimedWake() has exactly one
+# caller, that method, and the call is gated on the board's own wake marker, so
+# the gate needs the M5PM1 and not an ESP32. This target compiles the same
+# production file as boundary-platform-rail against the same M5PM1 double, now
+# with WAKE_SRC 0x05 and the 32-byte RTC buffer modelled, and drives the real
+# powerOffUntil()/consumeTimedWake() pair across a simulated power cycle: the
+# shutdown writes the marker and the prediction, the boot either adopts the
+# record or clears it. It also covers the buffer discipline that keeps a record
+# from outliving its boot.
+add_executable(boundary_platform_timed_wake_test
+               ${BOUNDARY_DIR}/platform_timed_wake_test.cpp
+               ${BOUNDARY_DIR}/platform_rail_support.cpp
+               ${BOUNDARY_DIR}/m5_stub.cpp
+               ${FURBLE_ROOT}/src/FurblePlatform.cpp
+               ${FURBLE_ROOT}/src/FurbleBoard.cpp
+               ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/boot_timeline_host_stub.cpp)
+target_include_directories(boundary_platform_timed_wake_test BEFORE PRIVATE
+                           ${PLATFORM_SHIM_DIR}
+                           ${BOUNDARY_DIR}
+                           ${BOUNDARY_SHIM_DIR}
+                           ${FURBLE_ROOT}/include)
+target_compile_definitions(boundary_platform_timed_wake_test PRIVATE
+                           FURBLE_M5STICKS3
+                           FURBLE_BOUNDARY_M5UNIFIED_TIMER
+                           FURBLE_BOOT_TIMELINE_HOST_TEST=1
+                           FURBLE_VERSION="boundary")
+target_compile_options(boundary_platform_timed_wake_test PRIVATE
+                       -Wall -Wextra -Wno-unused-parameter -Wno-format)
+target_link_libraries(boundary_platform_timed_wake_test PRIVATE Threads::Threads)
+
 # Board::Profile rows against the values of the board switches they replaced,
 # compiled against the boundary M5Unified shim, which declares every board.
 add_executable(board_profile_test
@@ -3303,6 +3335,7 @@ if(BUILD_TESTING)
   endforeach()
   add_test(NAME boundary-ethernet-w5500 COMMAND boundary_ethernet_test)
   add_test(NAME boundary-platform-rail COMMAND boundary_platform_rail_test)
+  add_test(NAME boundary-platform-timed-wake COMMAND boundary_platform_timed_wake_test)
   add_test(NAME boundary-companion-gatt COMMAND boundary_companion_test)
   set_tests_properties(boundary-companion-gatt PROPERTIES ENVIRONMENT
                        "FURBLE_SIM_PREFS=${CMAKE_CURRENT_BINARY_DIR}/boundary-companion-prefs.bin")
