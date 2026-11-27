@@ -302,7 +302,7 @@ happened once.
 `M5PM1_GPIO_FUNC_IRQ`. The M5PM1 documentation for `gpioGetInput` says only
 "read GPIO input level" for pins 0 to 4 and does not state whether the pad level
 remains readable once the pin is switched to the IRQ function
-(`M5PM1.h:1327-1337` and `M5PM1.h:1287-1299`). If it does not, `pin` is a
+(`M5PM1.h:1433-1443` and `M5PM1.h:1393-1405`). If it does not, `pin` is a
 constant and gate steps 1 and 2 are vacuous.
 
 So step 2 proves the readout before it trusts it: shake, confirm `pin` reads

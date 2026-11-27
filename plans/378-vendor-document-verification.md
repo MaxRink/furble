@@ -229,13 +229,13 @@ Yes, on every access that goes through the helper, and no on two paths.
   any result other than `M5PM1_OK` it increments a retry counter and runs the
   same access a second time. Two failures increment the failure counter.
   The comment states the vendor rule, so the helper exists for exactly this.
-- `src/FurblePlatform.cpp:278-283`: `wakeM5PM1()` reads the battery voltage and
+- `src/FurblePlatform.cpp:289-294`: `wakeM5PM1()` reads the battery voltage and
   discards the value, so the wake itself is the retried transaction.
-- `src/FurblePlatform.cpp:439-441`: the power-off path notes that the first
+- `src/FurblePlatform.cpp:450-452`: the power-off path notes that the first
   access only wakes the PMIC and goes through the helper for that reason.
-- Not retried: `btnGetState()` in `Platform::update()` (`src/FurblePlatform.cpp:991`)
+- Not retried: `btnGetState()` in `Platform::update()` (`src/FurblePlatform.cpp:1038`)
   calls the library directly, and so do `begin()`, `setSingleResetDisable()` and
-  `setDoubleOffDisable()` at `src/FurblePlatform.cpp:125-127`. A failed button
+  `setDoubleOffDisable()` at `src/FurblePlatform.cpp:136-138`. A failed button
   read costs one 20 ms poll, because `PlatformPolicy::pm1PollDue` already limits
   the poll to `PM1_POLL_MS = 20` (`include/FurblePlatformPolicy.h:19-24`). A
   failed init call is logged by the library path, and `begin()` has to run

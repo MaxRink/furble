@@ -87,12 +87,12 @@ against the code and did not reopen the PDF.
 
 | Fact | Document | Code | State |
 | :--- | :--- | :--- | :--- |
-| `0x82` is ADC enable 1, `0x83` is ADC enable 2, `0x84` is the ADC sample rate | section 9.11, REG 82H to REG 84H, page 41 | `src/FurblePlatform.cpp:185-188` | VERIFIED |
+| `0x82` is ADC enable 1, `0x83` is ADC enable 2, `0x84` is the ADC sample rate | section 9.11, REG 82H to REG 84H, page 41 | `src/FurblePlatform.cpp:196-199` | VERIFIED |
 | `0x82` bit 7 battery voltage, bit 6 battery current, bit 5 ACIN voltage, bit 4 ACIN current, bit 3 VBUS voltage, bit 2 VBUS current, bit 1 APS voltage, bit 0 TS pin, reset value 0x83 | section 9.11, REG 82H, page 41 | `include/FurblePlatformPolicy.h:47-48` | VERIFIED |
 | Writing `0x82` = 0xCC keeps battery voltage, battery current, VBUS voltage and VBUS current and clears the rest | section 9.11, REG 82H, page 41 | `include/FurblePlatformPolicy.h:44-50` | VERIFIED |
 | `0x83` reset value 0x80: bit 7 internal temperature monitoring, bits 3 to 0 GPIO0 to GPIO3 | section 9.11, REG 83H, page 41 | `include/FurblePlatformPolicy.h:48` | VERIFIED |
-| The 7-bit address is 0x34 and the two writes name it | section 9.10 page 28 (TWSI) | `src/FurblePlatform.cpp:186-187` | VERIFIED |
-| The write is gated on the detected PMIC being an AXP192, because Core2 v1.1 keeps the board ID while carrying an AXP2101 whose `0x82` and `0x83` are regulator controls | board fact, `docs/components/axp2101.md` | `src/FurblePlatform.cpp:185` | VERIFIED |
+| The 7-bit address is 0x34 and the two writes name it | section 9.10 page 28 (TWSI) | `src/FurblePlatform.cpp:197-198` | VERIFIED |
+| The write is gated on the detected PMIC being an AXP192, because Core2 v1.1 keeps the board ID while carrying an AXP2101 whose `0x82` and `0x83` are regulator controls | board fact, `docs/components/axp2101.md` | `src/FurblePlatform.cpp:196` | VERIFIED |
 
 Two consequences this pass records rather than changes:
 
@@ -269,14 +269,14 @@ recorded in `docs/components/m5pm1.md`; M5Unified 0.2.20 `M5PM1_Class.cpp`.
 
 | Fact | Document | Code | State |
 | :--- | :--- | :--- | :--- |
-| `DEVICE_ID` is 0x00 and `PWR_CFG` is 0x06, reset 0x17 with the 5 V boost off | register list page 6 to 11, section 2 register (7) page 13 | `sim/hardware_model.cpp:870-889` | VERIFIED, and `M5PM1_Class.cpp` line 15 and line 18 name the same two addresses. The simulator shim comment that named 0x00 is defect 3 above |
-| `PWR_CFG` bit 0 charge, bit 1 DCDC, bit 2 LDO, bit 3 boost, bit 4 LED | section 2 register (7), page 13 | `sim/hardware_model.cpp:874-878` | VERIFIED, and `M5PM1_Class.cpp` lines 40 to 44 name the same five bits |
+| `DEVICE_ID` is 0x00 and `PWR_CFG` is 0x06, reset 0x17 with the 5 V boost off | register list page 6 to 11, section 2 register (7) page 13 | `sim/hardware_model.cpp:906-925` | VERIFIED, and `M5PM1_Class.cpp` line 15 and line 18 name the same two addresses. The simulator shim comment that named 0x00 is defect 3 above |
+| `PWR_CFG` bit 0 charge, bit 1 DCDC, bit 2 LDO, bit 3 boost, bit 4 LED | section 2 register (7), page 13 | `sim/hardware_model.cpp:910-914` | VERIFIED, and `M5PM1_Class.cpp` lines 40 to 44 name the same five bits |
 | `I2C_CFG` 0x09, `SLP_TO` bits 3:0 with 0 disabling idle sleep | section 2 register (10), page 15 | `M5PM1_Class.cpp` line 64 | VERIFIED |
-| The first I2C transaction after idle sleep fails and must be retried once | section 2 register (10) note 2, page 15 | `src/FurblePlatform.cpp:685-697` and the `m5pm1Access` wrapper | VERIFIED |
-| `WDT_CNT` 0x0A seconds, `WDT_KEY` 0x0B fed 0xA5 | section 2 registers (11) and (12), page 15 | `src/FurblePlatform.cpp:320-357` | VERIFIED |
+| The first I2C transaction after idle sleep fails and must be retried once | section 2 register (10) note 2, page 15 | `src/FurblePlatform.cpp:696-708` and the `m5pm1Access` wrapper | VERIFIED |
+| `WDT_CNT` 0x0A seconds, `WDT_KEY` 0x0B fed 0xA5 | section 2 registers (11) and (12), page 15 | `src/FurblePlatform.cpp:331-368` | VERIFIED |
 | `SYS_CMD` 0x0C, key 0xA in bits 7:4, 0xA1 power off | section 2 register (13), page 15 | `src/FurblePlatform.cpp` power-off path | VERIFIED |
-| `WAKE_SRC` 0x05 is read-clear only | section 2 register (6), page 13 | `src/FurblePlatform.cpp:1050-1060` | VERIFIED |
-| IRQ Status 1 0x40 and Status 2 0x41 are latches, and the clear is a write through the library's `irqClearSysAll`/`irqClearGpioAll`, not a mask write | section 2 pages 19 to 21, and `CLAUDE.md` hardware traps | `src/FurblePlatform.cpp:263-273` | VERIFIED, and `M5PM1_Class.cpp` lines 187 to 197 implements the clear as a write of 0x00 to 0x40, 0x41 and 0x42 |
+| `WAKE_SRC` 0x05 is read-clear only | section 2 register (6), page 13 | `src/FurblePlatform.cpp:1097-1107` | VERIFIED |
+| IRQ Status 1 0x40 and Status 2 0x41 are latches, and the clear is a write through the library's `irqClearSysAll`/`irqClearGpioAll`, not a mask write | section 2 pages 19 to 21, and `CLAUDE.md` hardware traps | `src/FurblePlatform.cpp:274-284` | VERIFIED, and `M5PM1_Class.cpp` lines 187 to 197 implements the clear as a write of 0x00 to 0x40, 0x41 and 0x42 |
 
 ### TI TCA8418 (no driver)
 

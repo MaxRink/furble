@@ -80,10 +80,10 @@ Out of scope:
   `Platform::getInstance()`. Line 35 is `m_M5PM1.begin(&M5.In_I2C)`, which must
   happen before any watchdog register access. Lines 36-38 are the three gesture
   disables. Arm the watchdog immediately after line 38.
-- `src/FurblePlatform.cpp:74-80`, `Platform::powerOff()`. Under
+- `src/FurblePlatform.cpp:85-91`, `Platform::powerOff()`. Under
   `FURBLE_M5STICKS3` it calls `m_M5PM1.shutdown()` at line 76. Disarm the
   watchdog before that call.
-- `src/FurblePlatform.cpp:82-101`, `Platform::update()`. It runs every UI loop
+- `src/FurblePlatform.cpp:93-112`, `Platform::update()`. It runs every UI loop
   iteration and already talks to the PM1 over I2C at line 86
   (`m_M5PM1.btnGetState`). This is the natural place for the feed, since it is
   already the one function that touches the PM1 on every pass.
@@ -200,8 +200,8 @@ change beyond the two declarations.
 
 ### Where to feed
 
-Feed from `Platform::update()` (`src/FurblePlatform.cpp:1452-1480`), rate limited
-to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:410-412`).
+Feed from `Platform::update()` (`src/FurblePlatform.cpp:1516-1544`), rate limited
+to once per second using `Platform::tick()` (`src/FurblePlatform.cpp:421-423`).
 
 `Platform::update()` is called from `UI::task` at `src/FurbleUI.cpp:2125`, once
 every loop, and the loop delays 5 ms at line 2133. So the feed is attempted
@@ -270,7 +270,7 @@ easy to get wrong:
 Disarm before anything that intentionally stops the firmware, otherwise the PM1
 resets a device the user asked to switch off:
 
-- `Platform::powerOff()` (`src/FurblePlatform.cpp:553-598`). Call
+- `Platform::powerOff()` (`src/FurblePlatform.cpp:564-609`). Call
   `watchdogEnable(false)` before `m_M5PM1.shutdown()` at line 76.
 - The Theme page restart button, which calls `esp_restart()` at
   `src/FurbleUI.cpp:1990`. A reset re-runs `Platform::getInstance()` and
@@ -429,7 +429,7 @@ On device, M5StickS3 over USB:
     step 5.
 
 Battery drain: the feed adds one I2C register write per second on a bus that is
-already polled every loop for the button state (`src/FurblePlatform.cpp:84-88`).
+already polled every loop for the button state (`src/FurblePlatform.cpp:95-99`).
 Measure idle current with the watchdog on and off over ten minutes each and
 report both numbers. If the difference is not in the noise, investigate the PM1
 I2C idle sleep interaction before merging.

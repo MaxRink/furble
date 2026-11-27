@@ -102,7 +102,7 @@ The inventory is the audit artifact and it omits a called API:
 `src/FurbleUI.cpp:123`. It has a coverage row at :73 and an abort case
 (`prefer-exhausted`), so only the inventory table is short. Add the row.
 
-## 6. The heap-trace allocation is unreachable and not listed as a limit (src/FurbleConsole.cpp:2156, 2181)
+## 6. The heap-trace allocation is unreachable and not listed as a limit (src/FurbleConsole.cpp:2158, 2181)
 
 The fifth `heap_caps_malloc` site allocates the trace buffer behind
 `#if defined(CONFIG_HEAP_TRACING_STANDALONE)`. The modelled board turns tracing
@@ -112,7 +112,7 @@ tracing on for a build where `heap_trace_init_standalone()` and
 the 5 call sites therefore has no failure injection in either configuration.
 Add it to Known limits next to the `esp_get_free_heap_size` entry.
 
-## 7. Optional: `psram_free` has no ceiling (sim/driver.cpp:2792-2820)
+## 7. Optional: `psram_free` has no ceiling (sim/driver.cpp:2805-2833)
 
 The new block rejects `psram_largest > psram_free` and a missing `psram_mode`.
 It does not reject `psram_free` above the modelled module, and `heapSetPsram()`

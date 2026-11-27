@@ -74,7 +74,7 @@ Row `src/FurbleBoard.cpp:139`.
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Battery capacity | 95 mAh | M5C "Battery 95mAh@3.7V", and the version-change table records 80 to 95 mAh in 2020.3 | VERIFIED |
 | 2 | Charging path and current | AXP192 on VBUS. No charge-current value is set by furble; M5Unified's AXP192 init table selects one | M5C "when VBUS is powered, the built-in battery is charged through the AXP192 PMU". The exact current is UNVERIFIED: the AXP192 register document in the tree has no revision string ([axp192.md](axp192.md)) | CITED |
-| 3 | Power-off mechanism and `powerOffPath` | AXP192 shutdown through `M5.Power.powerOff()`, which cuts the rail and does not return. `powerOffPath` true | UNI `Power_Class::_powerOff()` AXP192 branch; `src/FurblePlatform.cpp:557` | VERIFIED |
+| 3 | Power-off mechanism and `powerOffPath` | AXP192 shutdown through `M5.Power.powerOff()`, which cuts the rail and does not return. `powerOffPath` true | UNI `Power_Class::_powerOff()` AXP192 branch; `src/FurblePlatform.cpp:568` | VERIFIED |
 | 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | BM8563 at 0x51. Shipped `rtcOnBus` true and `rtcBatteryBacked` true: the main cell keeps the part counting across an AXP192 cut, so no coin cell is needed. `timedWake` NONE | M5C pin map `AXP192 & RTC (BM8563)` on G21/G22 with IRQ on G35; [bm8563.md](bm8563.md) 0x51; the backing is the row's own definition of the column, and the page shows no separate cell | VERIFIED (chip and pins), REPORTED (retention across a full cell removal) |
 | 5 | Display controller and sleep-timing class | ST7735SV, one-direction 120 ms class | M5C "0.96 inch 80 x 160 ST7735SV"; GFX `Panel_M5StickC : Panel_ST7735S`; [st7735.md](st7735.md) row 3 is UNVERIFIED for the dwell, so the firmware applies the wider both-direction rule | VERIFIED (part), UNVERIFIED (ST7735 dwell) |
 | 6 | Touch controller and address | none | M5C pin map lists no touch controller | VERIFIED |
@@ -97,7 +97,7 @@ Row `src/FurbleBoard.cpp:143`.
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Battery capacity | 120 mAh | M5CP "Battery 120mAh@3.7V" | VERIFIED |
 | 2 | Charging path and current | AXP192 on VBUS, same as the StickC | M5CP "When powered by VBUS, the AXP192 power management will charge the internal battery" | VERIFIED (path), UNVERIFIED (current) |
-| 3 | Power-off mechanism and `powerOffPath` | AXP192 cut plus the BM8563 alarm as wake. `powerOffPath` true | UNI `_powerOff()`; `src/FurblePlatform.cpp:557` | VERIFIED |
+| 3 | Power-off mechanism and `powerOffPath` | AXP192 cut plus the BM8563 alarm as wake. `powerOffPath` true | UNI `_powerOff()`; `src/FurblePlatform.cpp:568` | VERIFIED |
 | 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | BM8563 at 0x51, `timedWake` RTC_ALARM. The part sits on the same G21/G22 bus as the IMU and the PMU, which the page shows, and the chip row is in its specification table | M5CP specification table `RTC: BM8563` and the `6-Axis IMU (MPU6886) & Power Management Chip (AXP192)` table for the bus. The BM8563 INT to AXP192 power key through R401 and C401 is a vendor statement this pass did not open | VERIFIED (chip), UNVERIFIED (INT coupling) |
 | 5 | Display controller and sleep-timing class | ST7789v2, one-direction 120 ms class | M5CP "1.14 inch 135 x 240 ST7789v2"; GFX `Panel_M5StickCPlus : Panel_ST7789`; [st7789.md](st7789.md) row 3 | VERIFIED |
 | 6 | Touch controller and address | none | M5CP pin map lists none | VERIFIED |
@@ -120,7 +120,7 @@ Row `src/FurbleBoard.cpp:147`.
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Battery capacity | 200 mAh | M5CP2 "Battery 200mAh@3.7V" | VERIFIED |
 | 2 | Charging path and current | no PMIC. An external charger, battery voltage on the ADC divider at G38. No charge status, so `battery.charging` is false | M5CP2 version change 2023.12 "Removed AXP192 power management chip"; pin map `Battery Voltage Detect: G38`; UNI `_pmic = pmic_adc`, `_batAdcPin = 38`, `_adc_ratio = 2.0f` | VERIFIED |
-| 3 | Power-off mechanism and `powerOffPath` | the regulator enable is the `HOLD` pin G4, held high at boot and driven low to cut. `powerOffPath` true, `powerHoldPin` 4 | M5CP2 "set HOLD (GPIO4) to 0 during program execution to cut off power"; the boot hold is `src/FurblePlatform.cpp:164-170` and the timed-wake release `src/FurblePlatform.cpp:1019-1024` | VERIFIED |
+| 3 | Power-off mechanism and `powerOffPath` | the regulator enable is the `HOLD` pin G4, held high at boot and driven low to cut. `powerOffPath` true, `powerHoldPin` 4 | M5CP2 "set HOLD (GPIO4) to 0 during program execution to cut off power"; the boot hold is `src/FurblePlatform.cpp:175-181` and the timed-wake release `src/FurblePlatform.cpp:1066-1071` | VERIFIED |
 | 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | BM8563 at 0x51, kept alive across a HOLD cut, `rtcOnBus` true, `timedWake` RTC_ALARM | M5CP2 `RTC BM8563` on G21/G22 and "wake the device via an IRQ signal triggered by the RTC timer" | VERIFIED |
 | 5 | Display controller and sleep-timing class | ST7789v2, one-direction class | M5CP2 "ST7789v2"; GFX maps the board to `Panel_ST7789`; [st7789.md](st7789.md) row 3 | VERIFIED |
 | 6 | Touch controller and address | none | M5CP2 pin map lists none | VERIFIED |
@@ -142,7 +142,7 @@ Row `src/FurbleBoard.cpp:151`. This is the only image with an M5PM1.
 | # | Fact | Value | Evidence | State |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Battery capacity | 250 mAh | M5S3 `Battery Capacity 250mAh` | VERIFIED |
-| 2 | Charging path and current | M5PM1 charger, charge status on PM1 GPIO0 as `PYG0_CHG_STAT`, active low. No current register | M5S3 M5PM1 pin table `Battery Charge: PYG0_CHG_STAT`; UNI sets `M5pm1.setGPIOFunction(gpio0, gpio)` and `input`; `src/FurblePlatform.cpp:1385` reads it | VERIFIED |
+| 2 | Charging path and current | M5PM1 charger, charge status on PM1 GPIO0 as `PYG0_CHG_STAT`, active low. No current register | M5S3 M5PM1 pin table `Battery Charge: PYG0_CHG_STAT`; UNI sets `M5pm1.setGPIOFunction(gpio0, gpio)` and `input`; `src/FurblePlatform.cpp:1449` reads it | VERIFIED |
 | 3 | Power-off mechanism and `powerOffPath` | `M5PM1.shutdown()` cuts the rail. `powerOffPath` true | `src/FurblePlatform.cpp` M5PM1 shutdown path; [m5pm1.md](m5pm1.md) | VERIFIED |
 | 4 | RTC exists, battery backed, `rtcOnBus`, `timedWake` | no RTC chip, so `rtcOnBus` and `rtcBatteryBacked` false. `timedWake` PMIC_TIMER with the RTC RAM marker | M5S3 pin map lists no RTC part; UNI RTC fallback probe fails without a chip; `src/FurblePlatform.cpp` timer and marker | VERIFIED |
 | 5 | Display controller and sleep-timing class | ST7789P3, one-direction class | M5S3 specification table `Display: Model ST7789P3, Resolution 135x240`, and its ST7789P3 pin table; GFX drives it with `Panel_ST7789`; [st7789.md](st7789.md) row 3 | VERIFIED |

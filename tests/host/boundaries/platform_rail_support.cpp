@@ -146,7 +146,95 @@ TimeKeeper &TimeKeeper::getInstance(void) {
   return instance;
 }
 
+namespace {
+
+// The clock double's state. The rail target never enables the prediction, so
+// its shutdown path writes no record and its adoptTimedWake() adopts nothing,
+// which is what that target's comment says; `platform-timed-wake` sets both.
+bool g_PredictionEnabled = false;
+bool g_AdoptResult = false;
+unsigned g_AdoptCalls = 0;
+size_t g_AdoptLength = 0;
+uint8_t g_AdoptBytes[TimeKeeperPolicy::RECORD_BYTES] = {};
+uint32_t g_ProgrammedSeconds = 0;
+
+}  // namespace
+
+void TimeKeeperDouble::expectedPrediction(uint32_t programmed_seconds, uint8_t *buffer) {
+  if (buffer == nullptr) {
+    return;
+  }
+  // Not a valid TimeSample on purpose: the Platform only carries the record, so
+  // a byte pattern with a tag and the armed interval proves the round trip
+  // without pretending to be a decodable clock. The pattern is distinct in every
+  // byte, so a shifted write cannot pass.
+  for (size_t i = 0; i < TimeKeeperPolicy::RECORD_BYTES; i++) {
+    buffer[i] = static_cast<uint8_t>(0x40 + i);
+  }
+  buffer[0] = 0xA5;
+  buffer[1] = static_cast<uint8_t>(programmed_seconds & 0xFF);
+  buffer[2] = static_cast<uint8_t>((programmed_seconds >> 8) & 0xFF);
+}
+
 void TimeKeeper::flush(void) {}
+
+size_t TimeKeeper::prepareTimedWake(uint32_t programmed_seconds, uint8_t *buffer, size_t capacity) {
+  g_ProgrammedSeconds = programmed_seconds;
+  if (!g_PredictionEnabled || (buffer == nullptr) || (capacity < TimeKeeperPolicy::RECORD_BYTES)) {
+    return 0;
+  }
+  TimeKeeperDouble::expectedPrediction(programmed_seconds, buffer);
+  return TimeKeeperPolicy::RECORD_BYTES;
+}
+
+bool TimeKeeper::adoptTimedWake(const uint8_t *buffer, size_t length) {
+  g_AdoptCalls++;
+  g_AdoptLength = length;
+  for (size_t i = 0; i < sizeof(g_AdoptBytes); i++) {
+    g_AdoptBytes[i] = 0;
+  }
+  if ((buffer != nullptr) && (length <= sizeof(g_AdoptBytes))) {
+    for (size_t i = 0; i < length; i++) {
+      g_AdoptBytes[i] = buffer[i];
+    }
+  }
+  return g_AdoptResult;
+}
+
+void TimeKeeper::setPredictionEnabled(bool enabled) {
+  g_PredictionEnabled = enabled;
+}
+
+void TimeKeeper::setAdoptResult(bool result) {
+  g_AdoptResult = result;
+}
+
+unsigned TimeKeeper::adoptCalls(void) {
+  return g_AdoptCalls;
+}
+
+size_t TimeKeeper::lastAdoptLength(void) {
+  return g_AdoptLength;
+}
+
+const uint8_t *TimeKeeper::lastAdoptBytes(void) {
+  return g_AdoptBytes;
+}
+
+uint32_t TimeKeeper::lastProgrammedSeconds(void) {
+  return g_ProgrammedSeconds;
+}
+
+void TimeKeeper::resetForTest(void) {
+  g_PredictionEnabled = false;
+  g_AdoptResult = false;
+  g_AdoptCalls = 0;
+  g_AdoptLength = 0;
+  g_ProgrammedSeconds = 0;
+  for (size_t i = 0; i < sizeof(g_AdoptBytes); i++) {
+    g_AdoptBytes[i] = 0;
+  }
+}
 
 Power &Power::getInstance(void) {
   static Power instance;

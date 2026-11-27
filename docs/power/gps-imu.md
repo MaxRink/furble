@@ -872,7 +872,7 @@ range with its basis, not a claim.
 - **Effort.** Not applicable.
 - **Required test.** Not applicable. Plan 20 gate steps 1 and 2 already exercise
   the armed path.
-- **Citation.** `src/FurblePlatform.cpp:548-583`;
+- **Citation.** `src/FurblePlatform.cpp:559-594`;
   `src/FurbleIMUMotionBMI270.cpp:255`; `src/FurbleIMUMotionMPU6886.cpp:144`.
 
 ### I-02 Put the IMU in accelerometer-only mode when the gyro has no consumer
@@ -1280,7 +1280,7 @@ current saving.
 | Motion API | `include/FurbleIMU.h:28-190` |
 | UI timers and motion consumer | `src/FurbleUI.cpp:415-462`, `:9681` |
 | Gesture thresholds | `include/FurbleUIGesture.h:45-53`, `src/FurbleUIGesture.cpp:70-190` |
-| Platform IMU and wake path | `src/FurblePlatform.cpp:41-48`, `:401-605`, `:674-740` |
+| Platform IMU and wake path | `src/FurblePlatform.cpp:51-58`, `:412-616`, `:685-751` |
 | Defaults | `src/FurbleSettings.cpp:545-760` |
 | Per-second logs | `src/FurbleControl.cpp:155-158`, `src/FurblePower.cpp:84-92`, `:118-130` |
 | PM and log config | `sdkconfig.m5stick-s3:2110-2120`, `:2466`, `:2491`, `:2585-2594` |

@@ -49,7 +49,7 @@ one vendor warning had no code behind it at all.
 5. **A refused watchdog change was only in the platform log.** The first draft
    claimed the refusal was silent. It was not: `watchdogEnable()` already logs
    the failed set and the failed verify at ERROR
-   (`src/FurblePlatform.cpp:262`, `:269`), and `m5pm1Access()` logs a WARN. The
+   (`src/FurblePlatform.cpp:272`, `:280`), and `m5pm1Access()` logs a WARN. The
    real defect was narrower. `src/main.cpp` discarded the bool, so a user
    reading the boot summary saw nothing, and the log line the first draft added
    said "arm refused" even on the disarm path, which is the normal call when

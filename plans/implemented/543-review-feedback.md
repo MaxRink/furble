@@ -16,13 +16,13 @@ Request changes. Posted as a review comment because the authenticated account is
 
 | ID | Review finding | State | Change and evidence |
 | :--- | :--- | :--- | :--- |
-| F1 | The replacement assertion cannot fail (blocker 1) | Fixed | The rule is now a production function, `Board::clearsStaleRtcAlarm()` in `include/FurbleBoard.h`, called by `src/FurblePlatform.cpp:176`. `tests/host/board_profile_test.cpp` pins its answer per row as a literal in `BOOT_CLEAR`. Mutation proof: replacing the body with `return row.rtcOnBus;` fails `StickC+`, `StickC+2` and `Tough`; restored, `board-profile: PASS`. The comment, `src/CLAUDE.md` and `plans/386` now name the predicate |
+| F1 | The replacement assertion cannot fail (blocker 1) | Fixed | The rule is now a production function, `Board::clearsStaleRtcAlarm()` in `include/FurbleBoard.h`, called by `src/FurblePlatform.cpp:187`. `tests/host/board_profile_test.cpp` pins its answer per row as a literal in `BOOT_CLEAR`. Mutation proof: replacing the body with `return row.rtcOnBus;` fails `StickC+`, `StickC+2` and `Tough`; restored, `board-profile: PASS`. The comment, `src/CLAUDE.md` and `plans/386` now name the predicate |
 | F2 | Six certified scenarios fail on the PR head (blocker 2) | Fixed | `sim/hardware_model.cpp` rows corrected at STICKC, STICKC_PLUS, CORE, CORE_16MB, CORE2 and TOUGH, and the eight literals in `board-row-{stickc,stickc-plus,sticks3,core,core2,tough}.txt`. `sh sim/scripts/run-e2e.sh` on the M5StickS3 binary passes every certified scenario, including all seven `board-row-*` rows |
 | F3 | The Plus2 IR polarity was promoted to VERIFIED (blocker 3) | Fixed | Row 9 of `docs/components/board-verification.md` is `VERIFIED (pin), UNVERIFIED (polarity)` and cites `plans/350:196`. The polarity is now U13 with the scope on G19 as the settling measurement |
 | F4 | U6 is contradicted by its own page (blocker 4) | Fixed | The M5StickS3 page states `Display: Model ST7789P3, Resolution 135x240` and carries an ST7789P3 pin table. Row 5 is VERIFIED and U6 is closed |
 | F5 | The new certified scenario pins a known-wrong boot state (blocker 5) | Fixed | `sim/hardware_model.cpp` now starts `PWR_CFG` at `PWR_CFG_RESET` (0x17), drops `applyBootOutputPowerLocked`, latches the stale-read snapshot when the rail manager powers the port, and starts `gpsWants` false. `ext5v-rail-boot.txt` asserts the reset byte, an unowned port and a refused transfer until a holder powers it; `hw-pmic-pwr-cfg-lost-update.txt` keeps its lost-update demonstration on the new snapshot |
 | F6 | Eight per-board anchors are six lines short | Fixed | Anchors are 138, 142, 146, 150, 154, 158, 162 and 176 in `board-verification.md`; `bm8563.md` cites `:146` and `:21-27`; `pcf8563.md` cites `:146` |
-| F7 | The Plus2 HOLD citation points at the StickS3 IRQ poll | Fixed | The row cites `src/FurblePlatform.cpp:164-170` for the boot hold and `:1019-1024` for the timed-wake release |
+| F7 | The Plus2 HOLD citation points at the StickS3 IRQ poll | Fixed | The row cites `src/FurblePlatform.cpp:175-181` for the boot hold and `:1019-1024` for the timed-wake release |
 | F8 | `CLAUDE.md:439-441` mixes board rows with build environments | Fixed | The trap says ILI9342C is on three of the seven board rows, names the Core image as also `m5stack-core-usb-debug`, and says the Core2 image also serves the Tough. No `M5Tough` environment is claimed |
 | F9 | `include/FurbleBoard.h:62-64` still says the Plus2 is the only reachable RTC | Fixed | The field comment names all five rows, and the new predicate sits beside it |
 | F10 | The board-map Unknown `sdSlot` cell contradicts the code | Fixed | The cell is `no`, matching `src/FurbleBoard.cpp:183-186` |
@@ -30,7 +30,7 @@ Request changes. Posted as a review comment because the authenticated account is
 | F12 | The Plus row cites a pin-map RTC row that does not exist | Fixed | The row cites the specification table `RTC: BM8563` and the IMU and PMU bus table instead |
 | F13 | `src/FurbleBoard.cpp:45-47` repeats the vendor claim about M5Unified | Fixed | The comment says the pinned 0.2.20 does not leave the port disabled, that `output_power` defaults to true, and that `cfg.output_power = false` is load bearing |
 | F14 | U7 is not genuinely unverified, and U2 is partly decidable | Fixed | U7 is closed: row 1 cites the M5Tough README, "The battery capacity has been upgraded to 390mAh", state VERIFIED. U2 is narrowed to the Core2 and the Tough and records M5Unified's `0x33 = 0b11000000` ("Charge 4.2V, 100mA", `Power_Class.cpp:695`) as what settles the StickC and Plus |
-| F15 | Pre-existing stale wake citations in `board-map.md` | Fixed | The arm and disarm citations are `src/FurblePlatform.cpp:666` and `:741` |
+| F15 | Pre-existing stale wake citations in `board-map.md` | Fixed | The arm and disarm citations are `src/FurblePlatform.cpp:677` and `:741` |
 
 ### Found while fixing F5, not certified
 
@@ -93,9 +93,9 @@ The M5StickS3 spec table states, in the text of the page cited throughout this s
 ## 5. The new certified scenario pins a boot state the firmware contradicts (sim/scenarios/e2e/ext5v-rail-boot.txt:28-29)
 
 Verified in the sources:
-- `src/FurblePlatform.cpp:141` sets `cfg.output_power = false` under `FURBLE_HAS_M5PM1`, and the comment says why: the rail manager owns the port.
-- `sim/FurblePlatformSim.cpp:59-65` builds its own M5 config and never passes that line, so the modelled boot keeps M5Unified's default.
-- `sim/hardware_model.cpp:928-931` applies `BOOST_EN` unconditionally in `applyBootOutputPowerLocked`, and `:1798-1805` takes the stale snapshot after it.
+- `src/FurblePlatform.cpp:152` sets `cfg.output_power = false` under `FURBLE_HAS_M5PM1`, and the comment says why: the rail manager owns the port.
+- `sim/FurblePlatformSim.cpp:65-71` builds its own M5 config and never passes that line, so the modelled boot keeps M5Unified's default.
+- `sim/hardware_model.cpp:964-967` applies `BOOST_EN` unconditionally in `applyBootOutputPowerLocked`, and `:1798-1805` takes the stale snapshot after it.
 
 So the claim in the PR body is true: the model boots 0x1F while the firmware asks for 0x17. The scenario is manifest-certified and passes (rc 0, 13 assertions), asserting `pmic.pwr_cfg 31` and `rail.state on` with `seed gps false`. Its own header at `:22-23` says "a model that starts at 0x17 fails the first two asserts", so it is written to fail when the defect is fixed.
 
@@ -106,7 +106,7 @@ Recommendation, in order: fix the model in this PR (start the byte at 0x17 for t
 ## Other things to fix
 
 1. Every per-board anchor in the new page is six lines short. `board-verification.md:71` cites `src/FurbleBoard.cpp:132`, which is a comment line; STICKC is at 138. Same for `:94` (cites 136, PLUS 142), `:117` (140, PLUS2 146), `:140` (144, STICKS3 150), `:163` (148, CORE 154), `:186` (152, CORE2 158), `:209` (156, TOUGH 162), `:232` (170, WAVESHARE 176). The same drift is in `docs/components/bm8563.md:41` (`:140` should be 146), `pcf8563.md:36` (`:140`), and `bm8563.md:121` still says `:16` while the rest of that file was moved to `:21-27`. The anchors moved when this PR added six lines to the comment block above the table. `check_doc_citations.py` does not check that the cited line holds the cited thing.
-2. `board-verification.md:120` cites `src/FurblePlatform.cpp:820` to `:824` for the Plus2 HOLD pin. Those lines are the StickS3 PMIC GPIO4 poll. The HOLD drive is at `src/FurblePlatform.cpp:164-170`.
+2. `board-verification.md:120` cites `src/FurblePlatform.cpp:831` to `:824` for the Plus2 HOLD pin. Those lines are the StickS3 PMIC GPIO4 poll. The HOLD drive is at `src/FurblePlatform.cpp:175-181`.
 3. `CLAUDE.md:439-441` says the reverse wait is required on "four of the seven display boards", listing `m5stack-core`, `m5stack-core2`, `m5stack-core-usb-debug` and `M5Tough`. ILI9342C is on three of the seven board rows (Core, Core2, Tough). The list mixes board rows with build environments, and there is no `M5Tough` environment: `platformio.ini:68` says the Core2 image also serves a M5Tough. The Tough belongs in the list, the ratio does not.
 4. `include/FurbleBoard.h:62-64` still says "the Plus2 is the only row with a chip M5Unified drives, so a write to its calendar is the only one that reaches hardware". That is the claim this PR corrects in `CLAUDE.md`, `src/CLAUDE.md` and `include/CLAUDE.md`, and it is now false in the header that defines the field.
 5. `docs/components/board-map.md:32` gives the Unknown row `sdSlot` yes. The code has `false` (`src/FurbleBoard.cpp:183-186`). Every other cell in the regenerated table matches the structs; this one does not.
@@ -114,12 +114,12 @@ Recommendation, in order: fix the model in this PR (start the byte at 0x17 for t
 7. `board-verification.md:101` (Plus row 4) cites "M5CP pin map `RTC BM8563`". The Plus page pin map has no RTC row; only the spec table names BM8563. The pin wiring claim needs the spec table plus M5Unified's bus, not a pin map row that does not exist.
 8. `src/FurbleBoard.cpp:45-47` says the M5StickS3 page states "that M5Unified leaves the port disabled at init". The page does say that, but the pinned library does not: 0.2.20 has `output_power = true` (`M5Unified.hpp:133`) and `_begin()` calls `setExtOutput(cfg.output_power)` (`M5Unified.cpp:2015`), which sets BOOST_EN (`M5PM1_Class.cpp:72-75`). The `cfg.output_power = false` line is load bearing, not belt and braces. Say that, because a reader could delete it on the strength of this sentence.
 9. `board-verification.md:310` (U7) is not genuinely unverified. The M5Tough README that plans/354:52 already names states "The battery capacity has been upgraded to 390mAh" at the public URL, and row 1 is already REPORTED (`:213`). A REPORTED fact should not also appear in "What remains UNVERIFIED". U2 (`:305`) is partly decidable too: M5Unified's AXP192 init writes `0x33 = 0b11000000`, commented "Charge 4.2V, 100mA" (`Power_Class.cpp:695`), and the Core2 row already states 360 mA from `setChargeCurrent(390)`.
-10. Pre-existing but in a section this PR edits: `docs/components/board-map.md:83-84` cites `src/FurblePlatform.cpp:526-536` and `:573-597` for arming and clearing the GPIO4 wake. Those ranges are the IP5306 keep-on and the power-off path; the real ones are `:666` (`armMotionWake`) and `:741` (`disarmMotionWake`).
+10. Pre-existing but in a section this PR edits: `docs/components/board-map.md:83-84` cites `src/FurblePlatform.cpp:537-547` and `:573-597` for arming and clearing the GPIO4 wake. Those ranges are the IP5306 keep-on and the power-off path; the real ones are `:666` (`armMotionWake`) and `:741` (`disarmMotionWake`).
 
 ## What I checked and found correct
 
 - Counts: 143 fact rows exactly, 16 per shipped board, 10 CoreS3 and 5 LilyGO, 12 U items.
-- `rtcOnBus` true on the StickC, Plus, Core2 and Tough: each page lists a BM8563, and M5Unified 0.2.20 `PCF8563_Class::begin` writes 0x00 twice and 0x0E and keeps the instance only when acknowledged (`PCF8563_Class.cpp:29-30`, `RTC_Class.cpp:81-87`). M5Unified probes on every board regardless of the profile, so the `CLAUDE.md` correction is right and the only runtime change is the boot IRQ clear at `src/FurblePlatform.cpp:176`.
+- `rtcOnBus` true on the StickC, Plus, Core2 and Tough: each page lists a BM8563, and M5Unified 0.2.20 `PCF8563_Class::begin` writes 0x00 twice and 0x0E and keeps the instance only when acknowledged (`PCF8563_Class.cpp:29-30`, `RTC_Class.cpp:81-87`). M5Unified probes on every board regardless of the profile, so the `CLAUDE.md` correction is right and the only runtime change is the boot IRQ clear at `src/FurblePlatform.cpp:187`.
 - Core2 rail: `Power_Class.cpp:958` calls `Axp2101.setBLDO2(enable * 3300)`; the AXP192 path at `:967` writes 0x90. The old comment was wrong twice: the AXP2101 has no LDOIO, and the Tough has no AXP2101.
 - `ledActiveLow` false on the four rows is inert and defensible: `FurbleFeedback.cpp:150` uses it only when `feedbackLight` is set, and `FurblePinShare.cpp:71` is compiled only for the shared-pin boards, whose `ledPin` is not -1.
 - Tough ILI9342C: `M5GFX.cpp:246` (`Panel_M5StackCore2 : Panel_ILI9342`) is the panel used for the Tough at `:1467`, and the page states ILI9342C.

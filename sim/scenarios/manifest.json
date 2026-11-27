@@ -1132,6 +1132,34 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-clock-resume.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+      "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
+      "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-clock-start.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+      "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": false,
+      "reason": "Executed by the dedicated deep-sleep runner, which supplies persisted power-cycle state."
+    },
+    {
       "path": "sim/scenarios/deep-sleep/intervalometer-deep-sleep-completed.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

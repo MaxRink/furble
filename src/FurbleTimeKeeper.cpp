@@ -437,6 +437,50 @@ uint64_t TimeKeeper::nowEpochUs(void) const {
              : 0;
 }
 
+size_t TimeKeeper::prepareTimedWake(uint32_t programmed_seconds, uint8_t *buffer, size_t capacity) {
+  init();
+  std::lock_guard<std::mutex> lock(g_Mutex);
+  if (!g_HasCurrent || (buffer == nullptr)) {
+    return 0;
+  }
+  const uint64_t now = monotonicMs();
+  TimeSample prediction = {};
+  if (!TimeKeeperPolicy::predictTimedWake(g_Current, now, programmed_seconds, prediction)) {
+    return 0;
+  }
+  const size_t length = TimeKeeperPolicy::encode(prediction, buffer, capacity);
+  if (length == 0) {
+    return 0;
+  }
+  ESP_LOGI(LOG_TAG, "timed wake clock predicted at %llu ms with %lu ms uncertainty",
+           static_cast<unsigned long long>(prediction.epoch_us),
+           static_cast<unsigned long>(prediction.uncertainty_ms));
+  return length;
+}
+
+bool TimeKeeper::adoptTimedWake(const uint8_t *buffer, size_t length) {
+  init();
+  std::lock_guard<std::mutex> lock(g_Mutex);
+  const uint64_t now = monotonicMs();
+  TimeSample adopted = {};
+  if (!TimeKeeperPolicy::adoptTimedWake(buffer, length, now, g_HasCurrent ? &g_Current : nullptr,
+                                        adopted)) {
+    return false;
+  }
+  if (!TimeKeeperPolicy::shouldAccept(g_HasCurrent ? &g_Current : nullptr, adopted, now)) {
+    return false;
+  }
+  g_Current = adopted;
+  g_HasCurrent = true;
+  setSystemTime(adopted.epoch_us);
+  // Carry the adopted value into the soft-reset record so a panic or a USB
+  // reset after a timed wake does not fall back to the older checkpoint.
+  // Nothing is written to NVS here: the checkpoint was committed before the
+  // power-off, and a free record costs no flash wear in a timelapse.
+  retainCurrent(now);
+  return true;
+}
+
 void TimeKeeper::flush(void) {
   init();
   std::lock_guard<std::mutex> lock(g_Mutex);

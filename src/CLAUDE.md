@@ -157,7 +157,7 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   (`components/esp_driver_rmt/src/rmt_common.c:230`), and `ESP_PM_APB_FREQ_MAX`
   appears nowhere in `esp_driver_rmt`. `createChannel()` never sets `with_dma`.
   furble raises the PM CPU maximum itself, 160 MHz by default
-  (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:84`), and APB is
+  (`include/FurblePlatform.h:25-28`, `src/FurblePlatform.cpp:95`), and APB is
   80 MHz at that maximum, so the 38 kHz carrier holds. The divisor is
   fixed at channel creation, before the lock is taken, so this only holds while
   APB is already 80. Setting `with_dma` on the S3 would swap the lock for

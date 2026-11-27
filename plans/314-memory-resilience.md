@@ -1839,9 +1839,9 @@ which this follow-up now makes mean internal plus PSRAM. Pointing the shim at
 moves and the simulator suite cannot be run in this environment. The two
 consumers are `src/FurbleUI.cpp:12180-12181`, which renders
 `"Heap:\n%lu B, min %lu B"` into the About and Device info rows
-(`src/FurbleUI.cpp:12185`, `:12188`), and `src/FurbleConsole.cpp:2518-2519`,
+(`src/FurbleUI.cpp:12185`, `:12188`), and `src/FurbleConsole.cpp:2520-2521`,
 the `heap` and `heap_min` console lines. The StickS3 profile seeds 8 MiB of
-PSRAM (`sim/hardware_model.cpp:541-545`, `:687-692`), so the rendered number
+PSRAM (`sim/hardware_model.cpp:555-559`, `:724-729`), so the rendered number
 would grow from five digits to seven on the `about` page, and
 `sim/scenarios/bughunt/page-matrix.txt:275`, `:280` and `:284` assert
 `ui.cut_labels 0` there, which is "no label lost any of its own text". That

@@ -787,6 +787,12 @@ void validateSeed(const std::string &name, const std::string &value) {
       std::exit(2);
     }
     return;
+  } else if (name == "time_epoch") {
+    if (!epochSeedIsValid(value)) {
+      std::cerr << "Invalid time_epoch: " << value << " (expected 1577836800-4102444800)\n";
+      std::exit(2);
+    }
+    return;
   }
 
   std::cerr << "Unknown scenario seed: " << name << '\n';
@@ -2028,7 +2034,7 @@ std::string queryValueUnscoped(const std::string &key) {
     return (TimeKeeper::getInstance().status().source == TimeSource::GPS) ? "1" : "0";
   }
   if (key == "time.valid" || key == "time.source" || key == "time.rtc_available"
-      || key == "time.rtc_battery" || key == "time.epoch_s") {
+      || key == "time.rtc_battery" || key == "time.epoch_s" || key == "time.uncertainty_ms") {
     // The production clock's own answers, so a scenario asserts the seam the
     // firmware reads instead of a simulator copy of the rule.
     const auto status = TimeKeeper::getInstance().status();
@@ -2044,6 +2050,11 @@ std::string queryValueUnscoped(const std::string &key) {
     if (key == "time.epoch_s") {
       return std::to_string(status.epoch_us / 1000000ULL);
     }
+    if (key == "time.uncertainty_ms") {
+      // The claim the firmware makes about its own clock, so a scenario can
+      // assert the bound a recovered value carries.
+      return std::to_string(status.uncertainty_ms);
+    }
     switch (status.source) {
       case TimeSource::NVS:
         return "nvs";
@@ -2055,6 +2066,8 @@ std::string queryValueUnscoped(const std::string &key) {
         return "gps";
       case TimeSource::NTP:
         return "ntp";
+      case TimeSource::TIMED_WAKE:
+        return "timed_wake";
       default:
         return "none";
     }
@@ -2870,6 +2883,19 @@ void applyScenarioSettings(void) {
   }
   if (scenarioSettingIsTrue("rtc_clock_lost")) {
     hwSetRtcClockLost(true);
+  }
+  // An installed wall clock, as SNTP or a companion would set one before the
+  // scripted run. It goes through the production TimeKeeper, so the modelled
+  // running clock and the clock the firmware reads are one value and a board
+  // with no RTC chip can start a run with a clock to predict a timed wake
+  // from. Placed before the resume fixtures so their wake times use it.
+  const auto timeEpoch = scenarioSettings.find("time_epoch");
+  if (timeEpoch != scenarioSettings.end()) {
+    const uint64_t seconds = parseUnsigned64(timeEpoch->second, "time_epoch");
+    if (!TimeKeeper::getInstance().update(TimeSource::NTP, seconds * 1000000ULL, 1000)) {
+      std::cerr << "time_epoch was rejected by the wall clock\n";
+      std::exit(2);
+    }
   }
   if (scenarioSettings.find("psram_memtest") != scenarioSettings.end()) {
     hwSetPsramMemtest(scenarioSettingIsTrue("psram_memtest"));

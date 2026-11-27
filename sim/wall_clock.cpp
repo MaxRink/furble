@@ -6,10 +6,10 @@
 // has no I2C bus, so M5.Rtc can never come up in the SDL build and this file
 // stands in for the chip at both places:
 //
-// * time() returns the modelled chip's register reading, which is what
-//   settimeofday() would have installed on a board after an RTC read. With no
-//   chip modelled it stays on the host clock, so every existing scenario and
-//   capture run is unchanged.
+// * time() returns the modelled RTC-domain system clock: the chip reading a
+//   board loads at boot through M5.begin(), or the value TimeKeeper adopted
+//   after a timed wake, and it ticks. With nothing set it stays on the host
+//   clock, so every existing scenario and capture run is unchanged.
 // * furble_sim_system_time_us()/furble_sim_set_system_time_us() are the
 //   production simulator hooks TimeKeeper already used for the system clock.
 // * furble_sim_rtc_*() are the chip itself: presence, the backup cell, one
@@ -23,21 +23,16 @@
 
 #include "hardware_model.h"
 
-namespace {
-
-uint64_t modelEpochUs(void) {
-  const uint64_t seconds = Furble::Sim::hwRtcEpochSeconds();
-  return seconds * 1000000ULL;
-}
-
-}  // namespace
-
 // The system wall clock. Furble's TimeKeeper reads it through the hooks below
-// and everything else, including UI::Intervalometer, through std::time().
+// and everything else, including UI::Intervalometer, through std::time(). Both
+// read the same model, so a value TimeKeeper adopts after a timed wake is the
+// value the UI compares its deadline against, as settimeofday() makes it.
 extern "C" time_t time(time_t *result) {
   time_t value = 0;
-  if (Furble::Sim::hwRtcPresent()) {
-    value = static_cast<time_t>(Furble::Sim::hwRtcEpochSeconds());
+  if (Furble::Sim::hwSystemTimeSet()) {
+    // The modelled RTC-domain running clock: seeded from a chip reading at
+    // boot, then written by TimeKeeper exactly as settimeofday() would.
+    value = static_cast<time_t>(Furble::Sim::hwSystemTimeUs() / 1000000ULL);
   } else {
     // No chip modelled: keep the host clock, as the simulator always did.
     timespec now = {};
@@ -54,11 +49,13 @@ extern "C" time_t time(time_t *result) {
 // TimeKeeper's system clock. The host has no settimeofday() effect other
 // boards would see, so the model owns the value.
 extern "C" uint64_t furble_sim_system_time_us(void) {
-  return modelEpochUs();
+  return Furble::Sim::hwSystemTimeUs();
 }
 
 extern "C" void furble_sim_set_system_time_us(uint64_t epochUs) {
-  Furble::Sim::hwRtcWrite(epochUs);
+  // settimeofday() writes the system clock, not the calendar chip; TimeKeeper's
+  // own writeRtc() path is what reaches the chip.
+  Furble::Sim::hwSetSystemTime(epochUs);
 }
 
 extern "C" bool furble_sim_rtc_present(void) {

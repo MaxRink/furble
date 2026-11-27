@@ -40,7 +40,7 @@ Hard rules applied in this note:
   active-current number.
 - A developer console build is not a power measurement build. The ESP32 console
   holds `ESP_PM_APB_FREQ_MAX` for its lifetime
-  (`src/FurbleConsole.cpp:3697`) and the S3 console uses the USB Serial/JTAG
+  (`src/FurbleConsole.cpp:3699`) and the S3 console uses the USB Serial/JTAG
   path.
 
 ## The current power architecture
@@ -126,7 +126,7 @@ Approximate periodic wake sources per second, read from the code:
 | Source | Period | Owner | Count per second | Citation |
 |---|---|---|---|---|
 | UI loop | 5 ms | main task, priority 1 | 200 | `src/FurbleUI.cpp:10177-10218` |
-| PMIC button read | 20 ms | main task, I2C | 50 | `src/FurblePlatform.cpp:980-996`, `include/FurblePlatformPolicy.h:19-24` |
+| PMIC button read | 20 ms | main task, I2C | 50 | `src/FurblePlatform.cpp:1027-1043`, `include/FurblePlatformPolicy.h:19-24` |
 | Control queue | 50 ms | control task, priority 4 | 20 | `src/FurbleControl.cpp:379-386` |
 | Target queue | 50 ms per camera | target task, priority 3 | 20 per camera, up to 180 at 9 cameras | `src/FurbleControl.cpp:100-107`, `977` |
 | GPS UART queue | 100 ms or event | GPS task, priority 3 | 10 plus UART events | `src/FurbleGPS.cpp:209-260`, `525-592` |
@@ -136,7 +136,7 @@ Approximate periodic wake sources per second, read from the code:
 | Icon refresh | 250 ms | LVGL timer | 4 while the panel is on, 0 while off | `src/FurbleUI.cpp:751`, `:1872`, `:1920` |
 | Connect liveness | 500 ms | LVGL timer | 2 while active, paused when idle | `src/FurbleUI.cpp:5216-5217`, `748-749` |
 | Console read | 100 ms | console task, priority 2 | 10, console builds only | `src/FurbleConsole.cpp:68-71`, `2848-2853` |
-| M5PM1 watchdog feed | 1000 ms | main task | 1 | `src/FurblePlatform.cpp:198-212` |
+| M5PM1 watchdog feed | 1000 ms | main task | 1 | `src/FurblePlatform.cpp:209-223` |
 | Task watchdog | 5 s | ESP-IDF | 0.2 | `sdkconfig.m5stick-s3:2283-2287` |
 
 The UI loop is the binding deadline whenever the display is off and no camera is
@@ -285,7 +285,7 @@ This is a documentation and build consistency item, not a separate power lever.
   that must wake the chip or hold a level.
 - **Current behavior:** Unset (`sdkconfig.m5stick-s3:2116`). The code relies on
   pads holding through sleep: the feedback LED (`src/FurbleFeedback.cpp:14-20`),
-  the motion wake GPIO (`src/FurblePlatform.cpp:447-476`), the PMIC button and
+  the motion wake GPIO (`src/FurblePlatform.cpp:458-487`), the PMIC button and
   IRQ lines, and the GPS UART.
 - **Evidence:** inferred (kconfig). IDF says disabling all GPIO in sleep reduces current
   by about 200 to 300 uA (IDF `esp_pm/Kconfig:81-92`). That is comparable to
@@ -303,7 +303,7 @@ This is a documentation and build consistency item, not a separate power lever.
   Run a 24 hour screen-off soak and check for lost NMEA and spurious wakes.
   Measure with an analyzer at the battery boundary.
 - **Citation:** IDF `esp_pm/Kconfig:81-92`, `src/FurbleFeedback.cpp:14-20`,
-  `src/FurblePlatform.cpp:447-476`, `src/FurbleGPS.cpp:159-183`.
+  `src/FurblePlatform.cpp:458-487`, `src/FurbleGPS.cpp:159-183`.
 
 ### SOC-06 Raise `CONFIG_PM_LIGHTSLEEP_RTC_OSC_CAL_INTERVAL`
 
@@ -647,7 +647,7 @@ This is a documentation and build consistency item, not a separate power lever.
   read per `PM1_POLL_MS` (20 ms), so the UI loop still calls `update()` every
   5 ms but no longer reads the PMIC on every pass.
 - **Current behavior:** `Platform::update()` reads `m_M5PM1.btnGetState()` only
-  when `pm1PollDue()` is true (`src/FurblePlatform.cpp:980-996`,
+  when `pm1PollDue()` is true (`src/FurblePlatform.cpp:1027-1043`,
   `include/FurblePlatformPolicy.h:19-24`). That is at most 50 I2C transactions
   per second instead of 200. The read calls the library directly rather than
   through `m5pm1Access()`, so a read lost to a PM1 idle-sleep wake costs one
@@ -667,7 +667,7 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Required test:** Button click, double click, long press, and PMIC recovery
   tests (`pmic-recovery`), plus a hardware click-latency run. Measure the
   StickS3 screen-off current with 20 and 50 ms polling.
-- **Citation:** `src/FurblePlatform.cpp:980-996`,
+- **Citation:** `src/FurblePlatform.cpp:1027-1043`,
   `include/FurblePlatformPolicy.h:19-24`, `plans/26:210-216`,
   `tools/power-model/board-currents.yaml:387-390`.
 
@@ -675,7 +675,7 @@ This is a documentation and build consistency item, not a separate power lever.
 
 - **Change:** Feed every 5 s instead of every 1 s, keeping the 45 s timeout.
 - **Current behavior:** One `wdtFeed()` I2C write per second
-  (`src/FurblePlatform.cpp:198-212`, `include/FurbleWatchdog.h:12-17`).
+  (`src/FurblePlatform.cpp:209-223`, `include/FurbleWatchdog.h:12-17`).
 - **Evidence:** inferred (code-read, kconfig). The shared static assertion requires
   the timeout to be at least three feed periods, and 45 s allows 15 s
   (`include/FurbleWatchdog.h:16-17`). The PM1 I2C idle sleep timeout is not
@@ -688,7 +688,7 @@ This is a documentation and build consistency item, not a separate power lever.
 - **Effort:** Small.
 - **Required test:** `sim-watchdog`, the `watchdog-stall` scenario, and a
   hardware watchdog expiry run. Read `SLP_TO` before and after.
-- **Citation:** `src/FurblePlatform.cpp:198-212`, `include/FurbleWatchdog.h:12-17`,
+- **Citation:** `src/FurblePlatform.cpp:209-223`, `include/FurbleWatchdog.h:12-17`,
   `plans/26:210-216`, `531-539`.
 
 ### OS-09 Put the IMU into a lower power configuration
@@ -901,7 +901,7 @@ This is a documentation and build consistency item, not a separate power lever.
   line count in boot, connect, and idle. On a console build, verify
   `log * info` restores the lines. Run the full host and simulator suites.
 - **Citation:** `sdkconfig.m5stick-s3:1975-1985`, `sdkconfig.m5stick-c:1710-1720`,
-  IDF `log/Kconfig.level:1-77`, `src/FurbleConsole.cpp:2433-2463`.
+  IDF `log/Kconfig.level:1-77`, `src/FurbleConsole.cpp:2435-2465`.
 
 ## Console and USB serial
 
@@ -969,8 +969,8 @@ This is a documentation and build consistency item, not a separate power lever.
 
 - **Change:** Raise the 100 ms console read timeout to 1 s when idle.
 - **Current behavior:** `readByte()` waits 100 ms for a byte
-  (`src/FurbleConsole.cpp:2848-2853`), and the task loops on it
-  (`src/FurbleConsole.cpp:2867-2904`). That is 10 wakes per second in console
+  (`src/FurbleConsole.cpp:2850-2855`), and the task loops on it
+  (`src/FurbleConsole.cpp:2869-2906`). That is 10 wakes per second in console
   builds.
 - **Evidence:** inferred (code-read).
 - **Estimated saving:** Negligible. Console builds are developer builds and are
@@ -982,17 +982,17 @@ This is a documentation and build consistency item, not a separate power lever.
   and the `power log` cadence check (the task calls `powerLogTick()` before and
   after the read, so a 1 s timeout still meets a 1 s log interval only
   approximately; keep the timeout at or below the `power log` interval).
-- **Citation:** `src/FurbleConsole.cpp:2848-2853`, `2867-2904`.
+- **Citation:** `src/FurbleConsole.cpp:2850-2855`, `2867-2904`.
 
 ### Console and USB cost summary
 
 - **CON-03, ESP32 console APB lock.** The ESP32 console path holds
   `ESP_PM_APB_FREQ_MAX` for the whole console lifetime
-  (`src/FurbleConsole.cpp:3746`). It defeats light sleep entirely. This is
+  (`src/FurbleConsole.cpp:3748`). It defeats light sleep entirely. This is
   deliberate and developer-only. Do not copy it into release and do not use a
   console build for a power claim.
 - **CON-05, measurement tooling.** The S3 console path uses the USB Serial/JTAG
-  driver (`src/FurbleConsole.cpp:2823-2827`). With a host attached, the USJ lock
+  driver (`src/FurbleConsole.cpp:2825-2829`). With a host attached, the USJ lock
   keeps the chip out of light sleep. With no host attached, the console task
   still polls the driver every 100 ms. `power stats` and `power log` are
   measurement tools (`src/FurbleConsole.cpp:1399-1421`, `1490-1550`). They add
@@ -1013,7 +1013,7 @@ These were examined and do not justify a power change on the current evidence.
 | Main XTAL powered during light sleep | With the main XTAL as the BLE low power clock, the XTAL must stay powered. Disabling it would break the connected sleep clock. The plan 07 text that calls it meaningful only for the external 32 kHz path does not match the committed S3 config, but the committed config is the functional one. | `sdkconfig.m5stick-s3:1454-1456`, `plans/07:96-114` |
 | External 32.768 kHz crystal | Not fitted on the StickS3. The 230 uA BLE light sleep mode is impossible. This was established by the boot log in plan 00. | `plans/00:186`, `tools/power-model/README.md:62-70` |
 | GPS UART clock | S3 uses `UART_SCLK_XTAL`; ESP32 uses `UART_SCLK_REF_TICK`. On the S3 the third source, XTAL_CLK, is independent of APB_CLK, so the configuration is DFS safe. On the ESP32 it is not: the UART clock can only be APB_CLK or REF_TICK, and REF_TICK is derived from APB_CLK with a per-source divider, so a CPU clock source change needs the divider reprogrammed (`SYSCON_PLL_TICK_NUM`, `SYSCON_APLL_TICK_NUM`, `SYSCON_XTAL_TICK_NUM`, `SYSCON_CK8M_TICK_NUM`). ESP-IDF keeps that divider consistent, which is why the setting stays correct, not the absence of an APB dependency. | `src/FurbleGPS.cpp:167-174`; ESP32 TRM v5.9, 19.3.2 p. 312, 7.2.4.2 and Table 7.2-5 p. 169; ESP32-S3 TRM v1.8, 26.3 and 26.4.1 p. 926, `UART_SCLK_SEL` p. 961; IDF 5.5.3 `components/esp_hw_support/port/esp32/rtc_clk.c:379`, `397`, `442` calls `clk_ll_ref_tick_set_divider` (`components/hal/esp32/include/hal/clk_tree_ll.h:679-705`) to hold REF_TICK at 1 MHz |
-| RMT IR clock | `RMT_CLK_SRC_DEFAULT` is safe, but not because the driver locks APB. It holds `ESP_PM_CPU_FREQ_MAX` without DMA and `ESP_PM_NO_LIGHT_SLEEP` with DMA (`components/esp_driver_rmt/src/rmt_common.c:230`), and the IR channel never sets `with_dma`. furble sets the CPU maximum to 160 MHz at runtime (`src/FurblePlatform.cpp:84`), where APB is 80 MHz, and the channel divisor is fixed at creation (`components/esp_driver_rmt/src/rmt_tx.c:324`) before the lock is taken (`:774`). The code always disables. On the ESP32 a channel is clocked from either the APB bus clock or REF_TICK, on the S3 from its own source. The channel RAM shape differs and explains `SOC_RMT_MEM_WORDS_PER_CHANNEL`: the ESP32 has eight channels that are each TX or RX but not both, sharing one 512 by 32-bit RAM split into eight 64-word blocks; the S3 has four dedicated TX and four dedicated RX channels sharing one 384 by 32-bit RAM split into eight 48-word blocks. | `src/FurbleIR.cpp:215-278`, `src/FurbleIR.cpp:233`, `src/CLAUDE.md:58-64`; ESP32 TRM v5.9, 30.2.1 and 30.2.2 p. 728; ESP32-S3 TRM v1.8, 37.1 and 37.2 p. 1415, 37.3.2.2 p. 1417 |
+| RMT IR clock | `RMT_CLK_SRC_DEFAULT` is safe, but not because the driver locks APB. It holds `ESP_PM_CPU_FREQ_MAX` without DMA and `ESP_PM_NO_LIGHT_SLEEP` with DMA (`components/esp_driver_rmt/src/rmt_common.c:230`), and the IR channel never sets `with_dma`. furble sets the CPU maximum to 160 MHz at runtime (`src/FurblePlatform.cpp:95`), where APB is 80 MHz, and the channel divisor is fixed at creation (`components/esp_driver_rmt/src/rmt_tx.c:324`) before the lock is taken (`:774`). The code always disables. On the ESP32 a channel is clocked from either the APB bus clock or REF_TICK, on the S3 from its own source. The channel RAM shape differs and explains `SOC_RMT_MEM_WORDS_PER_CHANNEL`: the ESP32 has eight channels that are each TX or RX but not both, sharing one 512 by 32-bit RAM split into eight 64-word blocks; the S3 has four dedicated TX and four dedicated RX channels sharing one 384 by 32-bit RAM split into eight 48-word blocks. | `src/FurbleIR.cpp:215-278`, `src/FurbleIR.cpp:233`, `src/CLAUDE.md:58-64`; ESP32 TRM v5.9, 30.2.1 and 30.2.2 p. 728; ESP32-S3 TRM v1.8, 37.1 and 37.2 p. 1415, 37.3.2.2 p. 1417 |
 | I2S speaker clock | The IDF I2S driver holds the APB lock while the channel is enabled, and `M5.Speaker.end()` closes the amplifier between patterns. | `src/FurbleFeedback.cpp:14-20`, `166-170`, `330-352` |
 | Speaker, vibration, LED | All three are bracketed on demand and shut down between events. No idle cost found. | `src/FurbleFeedback.cpp:150-170`, `320-360` |
 | IR and SD tasks | Both block on a queue with `portMAX_DELAY`; no periodic polling. | `src/FurbleIR.cpp:219`, `src/FurbleSD.cpp:818` |

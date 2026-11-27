@@ -136,7 +136,7 @@ include path, with no edit to any shipping file:
 
 - `include/FurblePlatform.h:4` includes `M5PM1.h` unconditionally, and the
   class holds an `M5PM1 m_M5PM1` member. A stub `M5PM1.h` with the four methods
-  used at `src/FurblePlatform.cpp:34-37` and `src/FurblePlatform.cpp:74` costs
+  used at `src/FurblePlatform.cpp:34-37` and `src/FurblePlatform.cpp:85` costs
   about 20 lines.
 - `include/FurbleGPS.h:4` includes `driver/uart.h` and holds a
   `uart_port_t m_UART`. A stub `driver/uart.h` with the typedef and

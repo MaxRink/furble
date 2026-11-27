@@ -59,7 +59,7 @@ Out of scope:
   current `esp_pm` configuration so the UI does not include `esp_pm.h` directly.
   `Platform::tick()` at `src/FurblePlatform.cpp:51-53` already returns
   milliseconds since boot.
-- `src/FurblePlatform.cpp:65-72`, `setSleep`. Add a getter that returns the last
+- `src/FurblePlatform.cpp:75-82`, `setSleep`. Add a getter that returns the last
   applied configuration, or call `esp_pm_get_configuration()` on demand.
 
 No settings changes. No new NVS keys.

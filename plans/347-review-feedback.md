@@ -48,7 +48,7 @@ have broken to buy bytes, checked one at a time and found intact.
   SH200Q arm at 122 and the BMM150 and AK8963 probing after it are outside the
   guard and still compile. No board lost a probe it needs.
 * **No enum changed.** `imu_t`, including `imu_bmi270`, lives in the unpatched
-  `IMU_Class.hpp`, so `src/FurbleConsole.cpp:2612` still compiles its
+  `IMU_Class.hpp`, so `src/FurbleConsole.cpp:2614` still compiles its
   `case m5::imu_bmi270` on every env. The guard removes the code that can
   return that value on the Core, not the value itself, which is why all fifteen
   envs in `platformio.ini` still compile.

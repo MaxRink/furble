@@ -68,7 +68,7 @@ Current count after hal-2 (#462): eight call sites. Six are switches in
 `src/FurbleUI.cpp`, four of them geometry at `:843`, `:10560`, `:10668` and
 `:11348`, and two are input wiring at `:2000` and `:13536`. The seventh is the
 profile lookup at `src/FurbleBoard.cpp:83`, the eighth a simulator board check
-at `sim/FurblePlatformSim.cpp:289`. The audit below is the state at `e66e8807`.
+at `sim/FurblePlatformSim.cpp:295`. The audit below is the state at `e66e8807`.
 
 | Path | Where | Board knowledge today |
 | :--- | :--- | :--- |
@@ -261,7 +261,7 @@ floor, modem sleep switch and power-off policies. `M5.getBoard()` drops from
 31 calls to 7 in the firmware: the profile lookup and six UI switches, four
 geometry at `:843`, `:10560`, `:10668` and `:11348`, and two input wiring at
 `:2000` and `:13536`. The simulator adds one more check at
-`sim/FurblePlatformSim.cpp:289`, which is why the census above counts eight. The
+`sim/FurblePlatformSim.cpp:295`, which is why the census above counts eight. The
 M5PM1
 specific paths still sit under `FURBLE_HAS_M5PM1`; the profile only says which
 path the board takes. The EXT_5V rail goes through the rail manager with the

@@ -134,7 +134,7 @@ quoting 81.2 mA as the default case.
 - The icon timer is paused while the panel is off:
   `src/FurbleUI.cpp:1872`, `src/FurbleUI.cpp:1920`.
 - StickS3 status LED is cut on display off and restored on wake:
-  `src/FurblePlatform.cpp:221-254`.
+  `src/FurblePlatform.cpp:232-265`.
 - LVGL uses partial rendering, two DMA buffers, and `pushImageDMA`:
   `src/FurbleUI.cpp:435-438`, `src/FurbleUI.cpp:1373-1374`.
 - Page-local timers are mostly paused when their page is closed, for example

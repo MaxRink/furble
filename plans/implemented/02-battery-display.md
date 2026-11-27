@@ -116,7 +116,7 @@ The M5PM1 sleeps after an I2C idle period, configured with `setI2cSleepTime`.
 The vendor documentation states that the first communication after that sleep
 fails and only wakes the chip. So every read path on the S3 must retry once:
 issue the transaction, and on failure repeat it. Put this in one helper in
-`Platform` and use it for every M5PM1 access. `src/FurblePlatform.cpp:86` already
+`Platform` and use it for every M5PM1 access. `src/FurblePlatform.cpp:97` already
 calls `m_M5PM1.btnGetState()` every update and checks for `M5PM1_OK`, so the
 failure mode is already reachable in the current code.
 
