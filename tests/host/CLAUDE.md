@@ -53,6 +53,16 @@ thread that waits for the peer to accept the reconnect. Do not replace that with
 a pre-press `cancelConnect()`, which the pre-relink check short-circuits before
 the probe runs.
 
+`ricoh-wake` also pins the control-task stall the wake would otherwise cause.
+`Control::sampleAdaptivePower()` samples `Camera::getRssi()` from state active,
+which is the only state a wake runs in, and the wake holds `Camera::m_Mutex` for
+its relink (the settle, the reconnect and its handshake). The probe that follows
+runs without it. A helper thread therefore hammers `getRssi()` while a
+never-waking body is driven through a wake, and asserts the sampler sees
+contended reads and reports the "no reading" 0 instead of waiting. Reverting the
+`try_lock` in `getRssi()` makes every call wait the relink out, so the sampler
+never sees a contended read and fails the assertion.
+
 Provisioning tests cover Legend Off through the production apply path and NVS
 store. Keep `Furble::Settings` qualified outside its namespace; run both the
 ordinary and MQTT-enabled provisioning targets when changing this coverage.

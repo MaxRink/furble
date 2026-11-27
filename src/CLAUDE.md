@@ -268,10 +268,12 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   on-device screen has to follow the remote action. That queue is compiled into
   every build; only `PERF` and `AUDIT` stay behind `FURBLE_CONSOLE`. For the
   same reason the camera records read rssi from `Control::getTargetState()`,
-  never `Camera::getRssi()`, which takes the camera connect mutex a cold
-  connect holds for the whole connect timeout. Companion connect requests carry
-  stable saved camera ids and are resolved and busy-checked again on the UI
-  task; transient scan indexes must never cross that queue boundary.
+  never `Camera::getRssi()`, which does a synchronous HCI round trip under the
+  camera connect mutex a cold connect holds for the whole connect timeout. That
+  call is `try_lock`'d, so it no longer stalls a caller, but it still returns 0
+  on contention and still belongs to Control's sampler. Companion connect
+  requests carry stable saved camera ids and are resolved and busy-checked again
+  on the UI task; transient scan indexes must never cross that queue boundary.
   Console completion envelopes use the same intrusive `RequestState*` ownership
   in display and headless builds. Caller timeout does not release the queued
   owner's reference; completion or queue draining does.

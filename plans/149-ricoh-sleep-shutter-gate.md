@@ -103,7 +103,18 @@ wake command.
   back to the pool on failure so repeated failed wakes cannot exhaust
   `CONFIG_BT_NIMBLE_MAX_CONNECTIONS`. It leaves the session flags alone, so a
   wake is not a connect cycle: the user's selection and the target's ownership
-  do not change, and no progress-0 blip is published to the UI.
+  do not change, and Control publishes no `CONNECTING` state for it. Connect
+  progress does blip, and that is accepted rather than fixed. The handshake the
+  relink re-runs is `Ricoh::_connect()`, which rewrites `m_Progress` from 0
+  (`lib/furble/Ricoh.cpp:186`), and the companion snapshot
+  (`src/FurbleCompanionService.cpp:399`) and the MQTT camera state
+  (`src/FurbleMQTT.cpp:1769`) both send `getConnectProgress()` unconditionally,
+  so a status reader sampling across the relink sees the reset. It is acceptable
+  because it carries no information the reader does not already have: the link
+  really is down for the settle, so the same reader reports the camera
+  disconnected there, and suppressing the reset would change nothing, because a
+  completed `_connect()` ends at exactly 100. The "Is the wake observable"
+  section below and the state-machine notes say the same thing.
 
 ### Is the wake observable in the notification stream
 
@@ -153,7 +164,10 @@ service discovery, the identity write and four subscriptions.
 encryption event (`components/esp-nimble-cpp/src/NimBLEClient.cpp`), so it is
 bounded only by the peer, the supervision timeout, or
 `Camera::abortBlockingConnect()`; the same class is already recorded at 29.85 s
-on the X100VI bench in `lib/furble/Camera.cpp`. A wake that hits it therefore
+on the X100VI bench in `plans/implemented/151-fujifilm-registration-followups.md`
+line 300, which is the only place that measurement exists. `Camera.cpp` records
+the same class as "up to 30 s" and carries no decimal figure
+(`lib/furble/Camera.cpp:1365-1366`). A wake that hits it therefore
 occupies the target task for roughly settle + connect timeout + that wait +
 probe, not 7.2 s.
 

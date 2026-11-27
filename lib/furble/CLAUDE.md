@@ -173,13 +173,23 @@ protocol core.
   describes the link, so a vendor teardown may keep gating on `isConnected()`.
   A caller must check `connectCancelled()` before it drops a working link: a
   press that arrives during a teardown must not relink the camera.
-- Any wait on the connect path goes through `Camera::pollDelay()`, never a bare
+- New waits on the connect path go through `Camera::pollDelay()`, never a bare
   `vTaskDelay` or `sleep_for` and never a vendor class's own copy. It slices the
   wait and polls the cancel token in its own body, which is the plan 170 rule
   `tests/test_connect_cancel_contract.py` enforces, and it owns the
   scheduler-clock-versus-wall-clock choice. Do not include `<freertos/*>` from a
   vendor class to get `vTaskDelay`: the host and simulator shims declare
-  conflicting queue types and clang-tidy fails the translation unit.
+  conflicting queue types and clang-tidy fails the translation unit. Seven
+  waits predate the seam and stay as they are, each polling
+  `connectCancelled()` in its own body and so already satisfying the gate:
+  the ATT MTU poll (`Camera.cpp:1245-1249`),
+  `Fujifilm::waitForRegistration()` (`Fujifilm.cpp:155-159`),
+  `FujifilmSecure::_connect()` (`FujifilmSecure.cpp:493`),
+  `FujifilmBasic::_connect()` (`FujifilmBasic.cpp:141`),
+  `CanonEOSSmart::_connect()` (`CanonEOSSmart.cpp:131`),
+  `DJIOsmo::finishProtocolConnection()` (`DJIOsmo.cpp:326`) and
+  `Lumix::startSession()` (`Lumix.cpp:301`). Convert one only while you are
+  already changing that function's body.
 - Vendor GATT traffic goes through the protected `Camera::gattWrite`,
   `gattRead`, and `gattSubscribe` wrappers. The console-only journal hooks
   live at that seam, so companion traffic and raw explorer traffic stay out
