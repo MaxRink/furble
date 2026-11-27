@@ -265,6 +265,31 @@ void generateSettings(const std::string &root,
                  "settings-response",
                  makeSettingsResponse(4, setting.wire_id, setting.type, {}, false), true,
                  "write-only setting refuses readback for " + setting.symbol);
+    } else if (FurbleProtocolTest::settingAnswersSecretIndicator(setting)) {
+      // A secret setting answers the console's word instead of the credential.
+      // Both words are pinned because they are different lengths, so a client
+      // that hardcodes the value length or reads the trailing flags at a fixed
+      // offset fails here rather than on a device.
+      addFixture(golden, manifest, settingFile("response-get", setting.wire_id),
+                 "settings-response",
+                 makeSettingsResponse(0, setting.wire_id, setting.type,
+                                      FurbleProtocolTest::secretIndicatorValue(false), false),
+                 true, "unset secret indicator for " + setting.symbol);
+      addFixture(golden, manifest, settingFile("response-list", setting.wire_id),
+                 "settings-list-record",
+                 makeSettingsResponse(0, setting.wire_id, setting.type,
+                                      FurbleProtocolTest::secretIndicatorValue(false), true, flags),
+                 true, "unset secret indicator in the list for " + setting.symbol);
+      addFixture(golden, manifest, settingFile("response-get", setting.wire_id, "set"),
+                 "settings-response",
+                 makeSettingsResponse(0, setting.wire_id, setting.type,
+                                      FurbleProtocolTest::secretIndicatorValue(true), false),
+                 true, "set secret indicator for " + setting.symbol);
+      addFixture(golden, manifest, settingFile("response-list", setting.wire_id, "set"),
+                 "settings-list-record",
+                 makeSettingsResponse(0, setting.wire_id, setting.type,
+                                      FurbleProtocolTest::secretIndicatorValue(true), true, flags),
+                 true, "set secret indicator in the list for " + setting.symbol);
     } else {
       addFixture(golden, manifest, settingFile("response-get", setting.wire_id),
                  "settings-response",

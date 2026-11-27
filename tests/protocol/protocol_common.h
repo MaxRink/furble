@@ -62,6 +62,24 @@ inline bool settingIsWriteOnly(const SettingInfo &setting) {
   return setting.symbol == "COMPANION_PASSWORD";
 }
 
+// A secret setting is write-only too, but it answers instead of refusing: a get
+// or a list returns the word set or unset in the setting's own SETTING_STRING
+// type. This mirrors the two secretIndicator() arms in
+// CompanionService::settingValue, WIFI_PSK and MQTT_PASS. The corpus pins that
+// answer because it is the shape a client renders, and pinning the refused
+// readback it replaced would leave the checked-in contract disagreeing with the
+// firmware (PR 534 review F2).
+inline bool settingAnswersSecretIndicator(const SettingInfo &setting) {
+  return (setting.symbol == "WIFI_PSK") || (setting.symbol == "MQTT_PASS");
+}
+
+// The two words the firmware answers for a secret setting, mirroring
+// SECRET_SET and SECRET_UNSET in src/FurbleCompanionService.cpp. `stored`
+// selects the word a device with a saved credential returns.
+inline Bytes secretIndicatorValue(bool stored) {
+  return stored ? Bytes {'s', 'e', 't'} : Bytes {'u', 'n', 's', 'e', 't'};
+}
+
 template <typename T>
 Bytes bytesOf(const T &value) {
   Bytes bytes(sizeof(value));
@@ -239,10 +257,16 @@ inline Bytes appendUint32LittleEndian(uint32_t value) {
           static_cast<uint8_t>((value >> 16) & 0xff), static_cast<uint8_t>((value >> 24) & 0xff)};
 }
 
-inline std::string settingFile(const std::string &operation, uint8_t id) {
+inline std::string settingFile(const std::string &operation,
+                               uint8_t id,
+                               const std::string &suffix = {}) {
   std::ostringstream name;
   name << "settings/" << operation << '-' << std::setfill('0') << std::setw(2)
-       << static_cast<unsigned>(id) << ".bin";
+       << static_cast<unsigned>(id);
+  if (!suffix.empty()) {
+    name << '-' << suffix;
+  }
+  name << ".bin";
   return name.str();
 }
 
