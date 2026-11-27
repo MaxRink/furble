@@ -27,8 +27,8 @@ constexpr uint8_t REG_PERCENT = 0xA4;
 // INFERRED, not from a datasheet: neither AXP2101 revision the driver cites
 // defines register 0x03, revision 0.1 documents 0x47 or 0x57 for it, and 0x4A
 // traces to the X-Powers reference library this value is copied from. It is
-// also what M5Unified's AXP2101 path compares against (M5Unified's own AXP2101 path,
-// src/utility/power/AXP2101_Class.cpp:34). Recorded as inferred in
+// also the value the pinned board support library's own AXP2101 path compares
+// against (its src/utility/power/AXP2101_Class.cpp:34). Recorded as inferred in
 // docs/components/axp2101.md row 17 and open question C-19a, and the probe
 // retries because a failed identity read costs every rail and the power-off
 // path.
