@@ -116,6 +116,40 @@ of a guessing game.
 Without the archive check both runs would have gone on to `apt-get install`
 with no index at all, which is the silent-looking failure this plan refuses.
 
+### The other two red jobs
+
+The same push turned `sim-e2e` and `sim-sanitizers` red for the same reason.
+Both had already moved to the helper, and both failed inside it:
+
+```
+ci-apt-install: dropped third-party source packages.microsoft.com in /etc/apt/sources.list.d/microsoft-prod.list
+ci-apt-install: disabled ubuntu.sources: third-party host(s) priority priority priority priority priority priority
+ci-apt-install: FAIL: no Ubuntu archive source is enabled under /etc/apt; refusing to install against an empty package index
+```
+
+Neither job carries its own apt call, so this was not a workflow the change
+missed. It was the `priority:` parse, and the token scan above fixes all three
+jobs at once, which is the point of one helper instead of six copies of shell.
+
+## Every package install in every workflow
+
+The question "did the fix cover every job" is answered by enumeration, not by
+the list of files the change happens to touch. Every workflow was searched for
+a package install, including the ones this change does not edit.
+
+| Where | Installs | Covered by |
+| --- | --- | --- |
+| `coverage.yml`, `static-analysis.yml`, `power-gate.yml`, `ui-screenshots.yml`, `sim-e2e.yml` (2 jobs) | apt packages | `tools/ci-apt-install.sh`, 6 call sites |
+| `main.yml`, `reproducible.yml`, `pages.yml`, `release.yml`, `static-analysis.yml` | `pip install -r requirements.txt` | PyPI only, no extra index, nothing unrelated to break |
+| `main.yml`, `pre-review.yml` | `pip install -r .github/workflows/*-requirements.txt` | same |
+| `android.yml` | `sdkmanager` platform and build tools | the Android SDK repository the build needs |
+| `apple.yml` | `swift test`, `sudo xcode-select` | package dependencies the test target needs |
+| `host-sanitized.yml`, `camera-tests.yml`, `protocol-tests.yml` | the compiler and cmake the image carries | no install step at all |
+
+There is no `sudo apt-get install` left anywhere in `.github/workflows`, and
+`tools/check_ci_workflows.py` fails the pre-review gate if one comes back, in
+any workflow, including a new one.
+
 ## Per-workflow table
 
 Line numbers are the `run:` line on `origin/master` before this change and on
