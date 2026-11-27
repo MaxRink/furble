@@ -7681,6 +7681,26 @@ void UI::connectTimerHandler(lv_timer_t *timer) {
   }
 }
 
+namespace {
+
+/**
+ * Arm the intervalometer timer so its next state transition is due on the next
+ * UI pass.
+ *
+ * "Now" has to be expressed this way, not as a period of 0. LVGL computes
+ * lv_timer_time_remaining() from the period, so a zero period leaves the timer
+ * permanently due: it would run on every pass and tell the run-page countdown
+ * that a real deadline exists. lv_timer_ready() clears the remaining time once,
+ * which is the shortest wait this UI loop can honour, and leaves the period
+ * meaning "a deadline".
+ */
+void armIntervalTimer(lv_timer_t *timer) {
+  lv_timer_resume(timer);
+  lv_timer_ready(timer);
+}
+
+}  // namespace
+
 void UI::startIntervalometerResume(void) {
   if (!m_Intervalometer.startResume()) {
     return;
@@ -7688,7 +7708,9 @@ void UI::startIntervalometerResume(void) {
 
   lv_obj_add_flag(m_IntervalStart, LV_OBJ_FLAG_HIDDEN);
   lv_menu_set_page(m_MainMenu.main, m_Menu.at(m_IntervalometerRunStr).page);
-  lv_timer_resume(m_IntervalTimer);
+  // A resumed run continues now, not at the period the timer carried over from
+  // before the power-off.
+  armIntervalTimer(m_IntervalTimer);
   lv_timer_resume(m_IntervalPageRefresh);
   lv_timer_ready(m_IntervalPageRefresh);
   ESP_LOGI(LOG_TAG, "Intervalometer resumed");
@@ -7729,6 +7751,9 @@ void UI::intervalometer(lv_timer_t *timer) {
   auto &control = Control::getInstance();
   auto *interval = static_cast<Intervalometer *>(lv_timer_get_user_data(timer));
   uint32_t next = 0;
+  // Whether the state machine has a next transition at all. Only FINISHED does
+  // not: 0 is a legal configured duration and means "due now".
+  bool transition_pending = true;
 
   m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
 
@@ -7746,7 +7771,8 @@ void UI::intervalometer(lv_timer_t *timer) {
       interval->m_CountShots = 0;
       m_IntervalCountdownActive = false;
       setLabelTextIfChanged(interval->m_StateLabel, "IDLE");
-      lv_timer_ready(timer);
+      // IDLE hands off to WAIT with no delay, which the schedule tail below
+      // expresses as a pending transition with no duration.
       interval->m_State = Intervalometer::STATE_WAIT;
       m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
       break;
@@ -7829,14 +7855,27 @@ void UI::intervalometer(lv_timer_t *timer) {
       m_IntervalCountdownActive = false;
       setLabelTextIfChanged(interval->m_StateLabel, "FINISHED");
       interval->clearResume();
-      next = 0;
+      // The run is over, so there is no next transition and the timer is
+      // paused. This is a different thing from a transition that is due now.
+      transition_pending = false;
       lv_timer_pause(timer);
       break;
   }
 
-  if (next > 0) {
-    lv_timer_set_period(timer, next);
-    m_IntervalNext = tick() + next;
+  // The configured Wait, Shutter and Delay are durations, and 0 is legal for
+  // all three. 0 means the transition is due now. Folding that into
+  // "next > 0" made a 0 reuse whatever period the timer already had, so after a
+  // frame a configured Shutter of 0 released at the Delay: a 15 s delay became
+  // a 15 s shutter hold. This is the one place that schedules a transition, so
+  // it is the one place that has to tell the two apart.
+  if (transition_pending) {
+    if (next > 0) {
+      lv_timer_set_period(timer, next);
+      m_IntervalNext = tick() + next;
+    } else {
+      armIntervalTimer(timer);
+      m_IntervalNext = tick();
+    }
   }
 
   m_IntervalometerState.store(static_cast<uint8_t>(interval->m_State));
@@ -10842,7 +10881,9 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         // status and the companion report WAIT for one 5 ms tick before the
         // state machine gets there.
         m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_WAIT));
-        lv_timer_resume(timer);
+        // A run starts now, not at the period the timer carried over from the
+        // previous run, which after a finished frame is the Delay.
+        armIntervalTimer(timer);
 
         lv_timer_resume(m_IntervalPageRefresh);
         lv_timer_ready(m_IntervalPageRefresh);
@@ -10884,7 +10925,6 @@ void UI::addIntervalometerMenu(const menu_t &parent) {
         // mirror it to the atomic the console status query reads
         interval->m_State = Intervalometer::STATE_IDLE;
         m_IntervalometerState.store(static_cast<uint8_t>(Intervalometer::STATE_IDLE));
-        lv_timer_set_period(timer, 100);
 
         // release shutter and exit
         control.sendCommand(Control::CMD_SHUTTER_RELEASE);

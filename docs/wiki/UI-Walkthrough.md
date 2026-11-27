@@ -371,6 +371,12 @@ Each row opens its own page. Count carries the Infinite switch plus three digit
 rollers; Delay, Shutter and Wait carry the digits and a unit roller (ms, s, min).
 Infinite counts frames until Stop instead of stopping at the set count.
 
+A value of 0 means now. Wait 0 starts the first frame immediately, Shutter 0
+releases on the next screen update, and Delay 0 starts the next frame as soon as
+the release has gone out. Shutter is also the exposure in bulb on a body that
+latches the remote press, and on a body in continuous drive it sets how long the
+burst runs.
+
 | | |
 | :--- | :--- |
 | ![Count page](img/timer-count.png) | ![Delay page](img/timer-delay.png) |

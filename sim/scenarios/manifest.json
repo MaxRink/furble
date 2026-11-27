@@ -3550,6 +3550,19 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/intervalometer-zero-shutter.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "fauxny"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/level-main-menu.txt",
       "suite": "e2e",
       "owner": "sim-e2e",
