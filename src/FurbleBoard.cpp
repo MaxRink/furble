@@ -241,41 +241,6 @@ constexpr Profile UNKNOWN       = {"M5", {false, false, false, false}, 0, false,
     false, -1, MotionWake::NONE, -1, TimedWake::NONE, -1, false, false, true, true, false, 32,
     false, false, false, -1, true, false, false, GpsPinSource::PROFILE, 9, 8, -1};
 
-// Battery: AXP2101 E-gauge percentage, VBAT and the charge direction, no
-// current sense. Capacity is 0 because the 18650 is the user's cell, not a
-// vendor nominal (plan 322's column note).
-//
-// RTC backing is false although the board's PCF8563 is battery backed: the part
-// is unsettled (the vendor wiki feature list says PCF85063ATL where its address
-// table and the schematic say PCF8563), it answers on the PMIC bus rather than
-// the one M5Unified would use, and this image does not read it. A false row
-// keeps the conservative TimeKeeper checkpoint budget until the part is
-// identified and the read path lands. See plans/390-tbeam-supreme-port.md.
-//
-// GPS: the UART pins are the board's, RX 9 and TX 8, from the vendor pin map
-// for either module. The row names no receiver: the GNSS is an L76K or a
-// MAX-M10S by SKU, and the driver decides from the receiver's own answer, so
-// the MAX-M10S gets the UBX backend and the L76K the NMEA/$PCAS one. ALDO4 is
-// the GPS rail and the only rail furble switches, so `gpsRail` is true. GPIO7
-// is the L76K WAKE_UP line and pin 5 of the MAX-M10S is EXTINT, so furble
-// drives no enable pin on this board: the vendor factory code's GPS_EN_PIN 7
-// would toggle an EXTINT input on the M10S trim. The vendor wiki says the 18650
-// backs the GPS, and the L76K sheet wires V_BCKP to VRTC, but the M10S trim has
-// no schematic and the two trims share one image. The image therefore does not
-// define FURBLE_GPS_BACKUP_SUPPLY: the conservative answer costs one UPD-SOS
-// save before a rail cut on the L76K trim, and the wrong answer would cost a
-// cold start on the M10S trim. See plans/390-tbeam-supreme-port.md.
-//
-// No IR emitter, no IMU wake (the QMI8658 is on SPI and has no backend), no
-// timed wake (the AXP2101 has no wake timer and the PCF8563 alarm is not
-// wired), no LED, no speaker, no vibration motor and no SD slot on the display
-// bus. Feedback is off on all three outputs.
-#if FURBLE_HAS_AXP2101_HAL
-constexpr Profile TBEAM_SUPREME = {"T-Beam S", {true,  true,  false, true},  0,    false, false,
-    -1,    MotionWake::NONE, -1, TimedWake::NONE,       -1,   false, false, true, true, false,
-    32,    false, false, false, -1, true,  false, false,
-    GpsPinSource::PROFILE, 9,  8};
-#endif
 // clang-format on
 }  // namespace
 
@@ -284,7 +249,7 @@ const Profile &compiledProfile(void) {
   return TDECK;
 #elif defined(FURBLE_LILYGO_TWATCH_ULTRA)
   return TWATCH_ULTRA;
-#elif defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#elif FURBLE_PANEL_128X64
   return TBEAM_SUPREME;
 #else
   return profileFor(M5.getBoard());
@@ -325,7 +290,7 @@ extern "C" __attribute__((weak)) bool furble_sim_board_profile(m5::board_t *boar
 #endif
 
 const Profile &profile(void) {
-#if FURBLE_LILYGO_BOARD || defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#if FURBLE_LILYGO_BOARD || FURBLE_PANEL_128X64
   // A single-board LilyGO image: the row cannot come from the detected board,
   // because the pinned M5GFX name is only a probe suppressor and M5Unified
   // reports that M5 board, not this one.

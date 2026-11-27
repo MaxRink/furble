@@ -715,7 +715,7 @@ void validateSeed(const std::string &name, const std::string &value) {
     if (value != "stickc" && value != "stickc-plus" && value != "stickc-plus2" && value != "sticks3"
         && value != "core-4mb" && value != "core-16mb" && value != "core2" && value != "tough"
         && value != "headless-s3" && value != "waveshare-s3-eth" && value != "tdeck"
-        && value != "twatch-ultra") {
+        && value != "twatch-ultra" && value != "tbeam-supreme") {
       std::cerr << "Invalid hw_profile: " << value << '\n';
       std::exit(2);
     }

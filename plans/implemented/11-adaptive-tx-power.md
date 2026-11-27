@@ -47,7 +47,7 @@ Verified current state:
 - `lib/furble/Camera.cpp:27-30` stores the level passed to `connect()`.
 - `src/FurbleControl.cpp:106` passes `m_Power`, set by
   `Control::setPower()` at `src/FurbleControl.cpp:1635` from the UI slider at
-  `src/FurbleUI.cpp:12209`.
+  `src/FurbleUI.cpp:12292`.
 - `src/FurbleUI.cpp:1997-2040` is the TX Power page: a slider with range 0 to 2
   that saves on `LV_EVENT_RELEASED`.
 - No file in `src/`, `include/` or `lib/` calls `getRssi()` today. RSSI is only

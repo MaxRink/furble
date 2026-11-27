@@ -71,7 +71,7 @@ The root CLAUDE.md lists the short form of these. The detail lives here.
   `LGFX_Device::sleep()` and `wakeup()` only add a brightness write
   (`src/lgfx/v1/LGFXBase.hpp:1436-1437`), so both 120 ms waits are furble's.
   `UI::sleepDisplay()` refuses to sleep within 120 ms of the last wake
-  (`src/FurbleUI.cpp:1942-1986`) and `UI::wakeDisplay()` waits the same interval
+  (`src/FurbleUI.cpp:1950-1994`) and `UI::wakeDisplay()` waits the same interval
   before SLPOUT (`:1894-1897`). Together they satisfy all four panels. The
   5 ms needs no separate delay: after SLPIN the next panel command is the
   SLPOUT that the wake gate holds back 120 ms, and after SLPOUT the wake path

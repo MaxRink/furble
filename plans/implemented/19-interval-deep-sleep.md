@@ -145,7 +145,7 @@ if the flash write proves to cost measurable time or power. Keep one interface s
 the state machine does not care which is used.
 
 Clear the resume state on Stop (`src/FurbleUI.cpp:1815-1830`), on
-`STATE_FINISHED` (`src/FurbleUI.cpp:7853`), and whenever the user starts a
+`STATE_FINISHED` (`src/FurbleUI.cpp:7849`), and whenever the user starts a
 new run from the Start button (`src/FurbleUI.cpp:1791-1803`). Stale resume state
 that survives into an unrelated boot must not silently start shooting.
 

@@ -293,7 +293,7 @@ int main() {
   check(!core.canPowerOff, "the Core row offers no auto-off or low-battery policy");
   check(core.powerOffPath, "the Core row keeps its deferred IP5306 power-off path");
 
-#if !FURBLE_LILYGO_BOARD
+#if !FURBLE_LILYGO_BOARD && !FURBLE_HAS_AXP2101_HAL
   // profile() is the row for the detected board on an M5 image. A LilyGO image
   // is the exception the block after this one pins: it answers from its build
   // macro, because the detected value is the M5 name pinned only to suppress
@@ -309,7 +309,7 @@ int main() {
   // A row that names no source resolves nothing and claims no pin, which is what
   // keeps the Core's internal I2C bus and the Waveshare W5500 clock out of the
   // UART.
-#if !FURBLE_LILYGO_BOARD
+#if !FURBLE_LILYGO_BOARD && !FURBLE_HAS_AXP2101_HAL
   const struct {
     int32_t pin1;
     int32_t pin2;

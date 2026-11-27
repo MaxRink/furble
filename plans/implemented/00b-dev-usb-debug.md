@@ -156,7 +156,7 @@ On device, M5StickS3 over USB:
 3. `pio debug -e m5stick-s3-debug`. Confirm the debugger attaches and halts at
    `app_main`.
 4. Step once, continue, confirm the UI still runs.
-5. Set a breakpoint in `UI::handleShutter` (`src/FurbleUI.cpp:2301-2334`), connect to
+5. Set a breakpoint in `UI::handleShutter` (`src/FurbleUI.cpp:2320-2353`), connect to
    the Fujifilm camera, press the shutter, confirm the breakpoint hits. Expect
    the BLE link to drop while halted. Record that behaviour in the PR body.
 

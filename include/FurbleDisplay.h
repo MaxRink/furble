@@ -21,6 +21,37 @@
 #endif
 #endif
 
+namespace Furble {
+namespace Display {
+
+/**
+ * Panel geometry the T-Beam driver configures and the simulator models.
+ */
+constexpr int32_t TBEAM_PANEL_WIDTH = 128;
+constexpr int32_t TBEAM_PANEL_HEIGHT = 64;
+
+namespace Detail {
+
+/**
+ * The address the panel answered on, or 0 when neither answered.
+ */
+constexpr uint8_t choosePanelAddress(bool ack_primary, bool ack_secondary) {
+  if (ack_secondary) {
+    return 0x3D;
+  }
+  return ack_primary ? static_cast<uint8_t>(0x3C) : static_cast<uint8_t>(0);
+}
+
+/** SH1106 multiplex ratio for a panel of `height` rows. */
+constexpr uint8_t sh1106MuxRatio(int32_t height) {
+  return static_cast<uint8_t>(height - 1);
+}
+
+}  // namespace Detail
+
+}  // namespace Display
+}  // namespace Furble
+
 #if defined(FURBLE_DISPLAY_HAS_M5GFX)
 
 /**
@@ -44,7 +75,7 @@
 namespace Furble {
 namespace Display {
 
-#if FURBLE_LILYGO_BOARD || defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#if FURBLE_LILYGO_BOARD || FURBLE_PANEL_128X64
 
 /** The device the UI draws through. Valid after begin(). */
 lgfx::LGFX_Device &screen(void);
@@ -95,76 +126,8 @@ inline int32_t height(void) {
   return screen().height();
 }
 
-/**
- * Panel geometry the T-Beam driver configures and the simulator models.
- */
-constexpr int32_t TBEAM_PANEL_WIDTH = 128;
-constexpr int32_t TBEAM_PANEL_HEIGHT = 64;
-
-namespace Detail {
-
-/**
- * The address the panel answered on, or 0 when neither answered.
- */
-constexpr uint8_t choosePanelAddress(bool ack_primary, bool ack_secondary) {
-  if (ack_secondary) {
-    return 0x3D;
-  }
-  return ack_primary ? static_cast<uint8_t>(0x3C) : static_cast<uint8_t>(0);
-}
-
-/** SH1106 multiplex ratio for a panel of `height` rows. */
-constexpr uint8_t sh1106MuxRatio(int32_t height) {
-  return static_cast<uint8_t>(height - 1);
-}
-
-}  // namespace Detail
-
 #endif
 
-/**
- * Panel geometry the T-Beam driver configures and the simulator models.
- *
- * The SH1106 module fitted to the board is a 1.3 inch 128x64 part, so the
- * driver programs 64 commons and the simulator builds a window of the same
- * size. One constant per dimension keeps the two from drifting apart: the host
- * test asserts the multiplex ratio the driver sends is derived from the value
- * the simulator is built with.
- */
-constexpr int32_t TBEAM_PANEL_WIDTH = 128;
-constexpr int32_t TBEAM_PANEL_HEIGHT = 64;
-
-namespace Detail {
-
-/**
- * The address the panel answered on, or 0 when neither answered.
- *
- * The magnetometer shares the display bus and answers 0x3C on the variants that
- * strap it there, so when both addresses acknowledge, the panel is the one at
- * 0x3D: the board cannot carry two devices at one address, and the OLED strap
- * (R51 for 0x3D, R52 for 0x3C) is the only pairing that leaves 0x3C to the
- * magnetometer. A NACK on both means no panel, and begin() then refuses to
- * draw rather than driving an address it never saw acknowledged.
- */
-constexpr uint8_t choosePanelAddress(bool ack_primary, bool ack_secondary) {
-  if (ack_secondary) {
-    return 0x3D;
-  }
-  return ack_primary ? static_cast<uint8_t>(0x3C) : static_cast<uint8_t>(0);
-}
-
-/**
- * SH1106 multiplex ratio for a panel of `height` rows.
- *
- * The datasheet expresses the ratio as rows - 1, so a 64-row module takes 0x3F.
- * M5GFX's `Panel_SH110x` hard-codes 0x7F for its 128-row default, which is why
- * the driver overrides the init list rather than taking the class default.
- */
-constexpr uint8_t sh1106MuxRatio(int32_t height) {
-  return static_cast<uint8_t>(height - 1);
-}
-
-}  // namespace Detail
 }  // namespace Display
 }  // namespace Furble
 

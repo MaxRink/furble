@@ -8,15 +8,9 @@
 /*
  * The LilyGO display path.
  *
- * M5GFX 0.2.27 has the panel class but not the module's geometry: Panel_SH110x
- * is a Panel_1bitOLED whose constructor defaults to 128x128 and whose init list
- * programs multiplex 0x7F. This driver derives a 128x64 class from it, sets
- * panel and memory height to 64 and sends multiplex 0x3F. The SH1106's 2-column
- * RAM offset is a config field, not a window call: Panel_SH110x::display() adds
- * _cfg.offset_x to the column address and there is no setWindow() in 0.2.27.
- * That offset is left at 0 and measured on the bench. Its setBrightness()
- * writes the contrast command, so brightness is a panel setting and there is
- * no backlight PWM to hold the APB clock for.
+ * M5Unified knows none of these boards, so the panel is built here from the
+ * M5GFX controller class plus the board's real wiring. Two devices cover the
+ * family's panels:
  *
  * - `lgfx::Panel_ST7789` over an ordinary SPI bus, for the T-Deck's 2.8 inch
  *   320x240 IPS panel. The same SPI bus carries the MicroSD card and the
@@ -31,7 +25,7 @@
  * peripheral gate are in FurbleLilyGo, and the profile row is in FurbleBoard.
  */
 
-#if FURBLE_LILYGO_BOARD || defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#if FURBLE_LILYGO_BOARD || FURBLE_PANEL_128X64
 
 #if defined(FURBLE_SIM)
 
@@ -41,7 +35,7 @@
 
 #include <driver/gpio.h>
 #include <lgfx/v1/Light.hpp>
-#if defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#if FURBLE_PANEL_128X64
 #include <lgfx/v1/panel/Panel_SSD1306.hpp>
 #include <lgfx/v1/platforms/esp32/Bus_I2C.hpp>
 #else
@@ -56,55 +50,18 @@ namespace Furble {
 namespace Display {
 namespace {
 
-constexpr int32_t PANEL_WIDTH = TBEAM_PANEL_WIDTH;
-constexpr int32_t PANEL_HEIGHT = TBEAM_PANEL_HEIGHT;
-constexpr uint32_t I2C_FREQ = 400000;
-// The init list leaves the panel at contrast 0x00, and the UI only applies the
-// stored brightness once it is constructed. The splash draws before that, so
-// begin() leaves the panel at a visible mid contrast and the UI overrides it.
-constexpr uint8_t BOOT_CONTRAST = 128;
-// LilyGO T-Beam Supreme schematic V3.1, OLED Display block: R51 and R52 strap
-// the SH1106 SA0 pin, and the sheet note gives 0x3C with R52 fitted and 0x3D
-// with R51 fitted. Probe in the documented order.
-constexpr uint8_t ADDRESS_PRIMARY = 0x3C;
-constexpr uint8_t ADDRESS_SECONDARY = 0x3D;
-// The SH1106 has 132 columns of RAM and a 128-pixel panel window. The module's
-// wiring decides whether the window starts at column 0 or 2; M5GFX applies the
-// value as _cfg.offset_x and it is a bench check (plan 390 open items).
-constexpr uint8_t PANEL_OFFSET_X = 0;
-constexpr int8_t PIN_SDA = 17;
-constexpr int8_t PIN_SCL = 18;
-constexpr int8_t I2C_PORT = 0;
+using namespace Furble::LilyGo;
 
 #if defined(FURBLE_SIM)
 
-// Only the two colours the panel can show. The input is LVGL's byte-swapped
-// RGB565 (lv_draw_sw_rgb565_swap() runs before the flush callback), so undo the
-// swap before taking the luminance.
-constexpr uint16_t MONO_WHITE = 0xFFFF;
-constexpr uint16_t MONO_BLACK = 0x0000;
-
-// The boot screen draws with the panel's own primitives rather than through
-// push(), so the model has to threshold those colours too: on the real panel
-// Panel_1bitOLED dithers them to two levels, and a screenshot that kept the
-// RGB565 values would not be what the module shows.
-uint16_t toMonoRgb(uint16_t rgb) {
-  const uint32_t r = (rgb >> 11) & 0x1F;
-  const uint32_t g = (rgb >> 5) & 0x3F;
-  const uint32_t b = rgb & 0x1F;
-  const uint32_t luminance = (r * 299 * 255 / 31 + g * 587 * 255 / 63 + b * 114 * 255 / 31) / 1000;
-  return (luminance >= 128) ? MONO_WHITE : MONO_BLACK;
-}
-
-uint16_t toMono(uint16_t swapped) {
-  const uint16_t rgb = static_cast<uint16_t>((swapped >> 8) | (swapped << 8));
-  const uint32_t r = (rgb >> 11) & 0x1F;
-  const uint32_t g = (rgb >> 5) & 0x3F;
-  const uint32_t b = rgb & 0x1F;
-  // Integer ITU-R BT.601 weights on the 5/6/5 fields, scaled to 0..255.
-  const uint32_t luminance = (r * 299 * 255 / 31 + g * 587 * 255 / 63 + b * 114 * 255 / 31) / 1000;
-  return (luminance >= 128) ? MONO_WHITE : MONO_BLACK;
-}
+// The simulator window scale. sim/CMakeLists.txt and sim/build.sh define
+// M5GFX_SCALE=2 for the M5 models; the LilyGO models use the same value so a
+// scenario's window is the same size class as the others.
+#if defined(M5GFX_SCALE)
+constexpr uint_fast8_t SIM_SCALE = M5GFX_SCALE;
+#else
+constexpr uint_fast8_t SIM_SCALE = 1;
+#endif
 
 /**
  * The simulated panel.
@@ -118,7 +75,7 @@ uint16_t toMono(uint16_t swapped) {
 class SimPanel: public lgfx::LGFX_Device {
  public:
   SimPanel(void) {
-#if defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#if FURBLE_PANEL_128X64
     // The T-Beam's panel is a fixed 128x64 module with no facts row: its
     // geometry is the constant the driver programs.
     auto cfg = m_Panel.config();
@@ -155,70 +112,18 @@ class SimPanel: public lgfx::LGFX_Device {
 
 #else  // FURBLE_SIM
 
-/*
- * The 128x64 module, as a class derived from M5GFX's SH110x driver. The base
- * constructor sets 128 rows and its init list programs multiplex 0x7F, so a
- * 64-common module would decode pages 8 to 15 as pages 0 to 7 and draw the
- * bottom half of a 128-row buffer onto the top of the panel. Both the geometry
- * and the init list are therefore set here, and the multiplex value comes from
- * the same constant the simulator builds its window with.
+/**
+ * A digital backlight.
+ *
+ * The T-Deck's backlight is an AW9364 driven by a pulse train on GPIO42, not a
+ * PWM dimmer: the panel's brightness is the number of pulses the driver sees.
+ * M5GFX's Light_PWM would hold a duty cycle instead, which that part does not
+ * read as a level. This port therefore drives the pin as on or off and reports
+ * the limitation in plans/387; the 16-level pulse interface is a follow-up that
+ * needs the AW9364 datasheet or a scope capture, neither of which the vendor
+ * publishes.
  */
-class Sh1106Panel64: public lgfx::Panel_SH110x {
- public:
-  Sh1106Panel64(void) {
-    _cfg.panel_width = TBEAM_PANEL_WIDTH;
-    _cfg.panel_height = TBEAM_PANEL_HEIGHT;
-    _cfg.memory_width = TBEAM_PANEL_WIDTH;
-    _cfg.memory_height = TBEAM_PANEL_HEIGHT;
-    _cfg.offset_x = PANEL_OFFSET_X;
-    _cfg.offset_y = 0;
-  }
-
- protected:
-  const uint8_t *getInitCommands(uint8_t listno) const override {
-    // Panel_SH110x's list with the multiplex ratio of a 64-row panel. The COM
-    // pin configuration it already sends (0x12) is the 64-row alternative
-    // layout, so only the ratio differs from the 128-row default.
-    static constexpr uint8_t list0[] = {
-        CMD_DISP_OFF,
-        CMD_SETSTARTLINE,
-        CMD_READMODIFYWRITE_END,
-        CMD_PAGEADDRESSINGMODE,
-        CMD_SETDISPSTARTLINE,
-        0x00,
-        CMD_SETDISPLAYCLOCKDIV,
-        0x50,
-        CMD_SETMULTIPLEX,
-        Detail::sh1106MuxRatio(TBEAM_PANEL_HEIGHT),
-        CMD_SETDISPLAYOFFSET,
-        0x00,
-        CMD_DCDC,
-        0x8B,
-        CMD_SEGREMAP,
-        CMD_COMSCANINC,
-        CMD_SETPRECHARGE,
-        0x20,
-        CMD_SETVCOMDETECT,
-        0x35,
-        CMD_DISPLAYALLON_RESUME,
-        CMD_SETCONTRAST,
-        0x00,
-        CMD_SETCOMPINS,
-        0x12,
-        CMD_DISP_ON,
-        0xFF,
-        0xFF,  // end
-    };
-    switch (listno) {
-      case 0:
-        return list0;
-      default:
-        return nullptr;
-    }
-  }
-};
-
-class I2cPanel: public lgfx::LGFX_Device {
+class LightDigital: public lgfx::ILight {
  public:
   explicit LightDigital(int8_t pin) : m_Pin(pin) {}
 
@@ -243,6 +148,7 @@ class I2cPanel: public lgfx::LGFX_Device {
   int8_t m_Pin;
 };
 
+#if !FURBLE_PANEL_128X64
 /** The T-Deck's ST7789 over the shared SPI bus. */
 class SpiPanel: public lgfx::LGFX_Device {
  public:
@@ -386,7 +292,9 @@ class QspiPanel: public lgfx::LGFX_Device {
   lgfx::Panel_CO5300 m_Panel;
 };
 
-#if defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#endif  // !FURBLE_LILYGO_TBEAM_SUPREME
+
+#if FURBLE_PANEL_128X64
 // LilyGO T-Beam Supreme: a 1.3 inch 128x64 SH1106 on the board's own I2C bus 0
 // at SDA 17 and SCL 18, with the 7-bit address strapped by R51 and R52 per
 // radio band. The magnetometer shares the bus and also answers 0x3C on some
@@ -487,19 +395,16 @@ class Sh1106Panel: public lgfx::LGFX_Device {
 
   /**
    * Probe both strapped addresses, then bring the panel up at the one that
-   * answered. An address probe is a start condition plus the address byte, and
-   * M5GFX reports the NACK from i2c_wait() through endTransaction(), not
-   * through beginTransaction(): the begin call returns once the address is in
-   * the FIFO, and the acknowledgement is only known after the stop. Both
-   * addresses are always probed so that a panel at 0x3D is still found when the
-   * magnetometer answers 0x3C, and a NACK on both leaves begin() false.
+   * answered. M5GFX reports a NACK from i2c_wait() through endTransaction(), so
+   * that result is the acknowledgement; checking the begin call alone always
+   * succeeds. A NACK on both leaves the display unready.
    */
   bool start(void) {
     if (!lgfx::i2c::init(TBEAM_I2C_PORT, TBEAM_SDA, TBEAM_SCL).has_value()) {
       return false;
     }
-    const bool ack_primary = probe(ADDRESS_PRIMARY);
-    const bool ack_secondary = probe(ADDRESS_SECONDARY);
+    const bool ack_primary = probe(TBEAM_ADDRESS_PRIMARY);
+    const bool ack_secondary = probe(TBEAM_ADDRESS_SECONDARY);
     const uint8_t address = Detail::choosePanelAddress(ack_primary, ack_secondary);
     if (address == 0) {
       return false;
@@ -507,14 +412,10 @@ class Sh1106Panel: public lgfx::LGFX_Device {
     auto cfg = m_Bus.config();
     cfg.i2c_addr = address;
     m_Bus.config(cfg);
-    m_Address = address;
     if (!lgfx::LGFX_Device::init_without_reset(false)) {
       return false;
     }
-    // The init list leaves contrast at 0x00, so the splash would be blank until
-    // the UI applies the stored brightness. A mid contrast makes it visible and
-    // the UI's own setBrightness overrides it.
-    setBrightness(BOOT_CONTRAST);
+    setBrightness(TBEAM_BOOT_CONTRAST);
     return true;
   }
 
@@ -522,17 +423,14 @@ class Sh1106Panel: public lgfx::LGFX_Device {
   Sh1106Panel64 m_Panel;
 
  private:
-  /** True when the device at `address` acknowledged the address byte. */
   bool probe(uint8_t address) {
     const bool started =
-        lgfx::i2c::beginTransaction(I2C_PORT, address, I2C_FREQ, false).has_value();
+        lgfx::i2c::beginTransaction(TBEAM_I2C_PORT, address, TBEAM_I2C_FREQ, false).has_value();
     // The stop is where the NACK surfaces, so its result is the probe. It is
-    // also sent when the start failed, to release the bus.
-    const bool acked = lgfx::i2c::endTransaction(I2C_PORT).has_value();
+    // sent even when the start failed, to release the bus.
+    const bool acked = lgfx::i2c::endTransaction(TBEAM_I2C_PORT).has_value();
     return started && acked;
   }
-
-  uint8_t m_Address = 0;
 };
 #endif  // FURBLE_LILYGO_TBEAM_SUPREME
 
@@ -540,7 +438,7 @@ class Sh1106Panel: public lgfx::LGFX_Device {
 
 #if defined(FURBLE_SIM)
 SimPanel g_Panel;
-#elif defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#elif FURBLE_PANEL_128X64
 Sh1106Panel g_Panel;
 #elif defined(FURBLE_LILYGO_TWATCH_ULTRA)
 QspiPanel g_Panel;
@@ -560,7 +458,7 @@ bool begin(void) {
   if (s_Ready) {
     return true;
   }
-#if !defined(FURBLE_SIM) && !defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#if !defined(FURBLE_SIM) && !FURBLE_PANEL_128X64
   // The board's peripheral gate and PMIC rails come up before the panel: on the
   // T-Watch Ultra the panel supply is switched by the XL9555 output that
   // powerOn() sets, and on the T-Deck the panel sits behind GPIO10. The T-Beam
@@ -583,135 +481,11 @@ bool ready(void) {
 }
 
 int32_t width(void) {
-  return g_Ready ? PANEL_WIDTH : 0;
+  return s_Ready ? screen().width() : 0;
 }
 
 int32_t height(void) {
-  return g_Ready ? PANEL_HEIGHT : 0;
-}
-
-bool mono(void) {
-  return true;
-}
-
-void push(int32_t x, int32_t y, int32_t w, int32_t h, const uint16_t *pixels) {
-  if ((!g_Ready) || (pixels == nullptr) || (w <= 0) || (h <= 0)) {
-    return;
-  }
-#if defined(FURBLE_SIM)
-  // The model's own frame, in panel coordinates, so a partial block is
-  // converted and pushed as the panel would receive it.
-  static uint16_t mono[PANEL_WIDTH * PANEL_HEIGHT];
-  for (int32_t row = 0; row < h; ++row) {
-    const int32_t py = y + row;
-    if ((py < 0) || (py >= PANEL_HEIGHT)) {
-      continue;
-    }
-    for (int32_t column = 0; column < w; ++column) {
-      const int32_t px = x + column;
-      if ((px < 0) || (px >= PANEL_WIDTH)) {
-        continue;
-      }
-      mono[py * PANEL_WIDTH + px] = toMono(pixels[row * w + column]);
-    }
-  }
-  g_Display.pushImage(0, 0, PANEL_WIDTH, PANEL_HEIGHT, mono);
-#else
-  g_Display.pushImageDMA<uint16_t>(x, y, w, h, pixels);
-#endif
-}
-
-void wait(void) {
-  g_Display.waitDMA();
-}
-
-void setBrightness(uint8_t brightness) {
-  g_Display.setBrightness(brightness);
-}
-
-uint8_t getRotation(void) {
-  return g_Display.getRotation();
-}
-
-void setRotation(uint8_t rotation) {
-  g_Display.setRotation(rotation);
-}
-
-void sleep(void) {
-  g_Display.sleep();
-}
-
-void wakeup(void) {
-  g_Display.wakeup();
-}
-
-void calibrateTouch(uint16_t *points, size_t count) {
-  // The module has no touch controller. The parameters are accepted so the
-  // shared UI path compiles unchanged, and ignored on purpose.
-  (void)points;
-  (void)count;
-}
-
-namespace {
-
-#if defined(FURBLE_SIM)
-// The simulator model is a colour window, so the direct draws are thresholded
-// here to the panel's two levels. The device path passes the value through:
-// Panel_1bitOLED does the conversion itself.
-uint16_t panelColour(uint16_t rgb) {
-  return toMonoRgb(rgb);
-}
-#else
-uint16_t panelColour(uint16_t rgb) {
-  return rgb;
-}
-#endif
-
-}  // namespace
-
-uint16_t color565(uint8_t red, uint8_t green, uint8_t blue) {
-  return g_Display.color565(red, green, blue);
-}
-
-void fillScreen(uint16_t color) {
-  g_Display.fillScreen(panelColour(color));
-}
-
-void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) {
-  g_Display.fillRect(x, y, w, h, panelColour(color));
-}
-
-void drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) {
-  g_Display.drawRect(x, y, w, h, panelColour(color));
-}
-
-void drawString(const char *text, int32_t x, int32_t y) {
-  g_Display.drawString(text, x, y);
-}
-
-void setTextColor(uint16_t color) {
-  g_Display.setTextColor(panelColour(color));
-}
-
-void setTextColor(uint16_t foreground, uint16_t background) {
-  g_Display.setTextColor(panelColour(foreground), panelColour(background));
-}
-
-void setTextDatum(uint8_t datum) {
-  g_Display.setTextDatum(datum);
-}
-
-void setTextSize(uint8_t size) {
-  g_Display.setTextSize(size);
-}
-
-void *panelBus(void) {
-  auto *panel = g_Display.getPanel();
-  return (panel != nullptr) ? panel->getBus() : nullptr;
-}
-
-void readRectRGB(int32_t x, int32_t y, int32_t w, int32_t h, uint8_t *rgb) {
-  g_Display.readRectRGB(x, y, w, h, rgb);
+  return s_Ready ? screen().height() : 0;
 }
 
 }  // namespace Display

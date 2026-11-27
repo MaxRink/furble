@@ -14,7 +14,6 @@
 #include "FurbleBatteryStatus.h"
 #include "FurbleBoard.h"
 #include "FurbleBoardCaps.h"
-#include "FurbleDisplay.h"
 #include "FurbleIR.h"
 #include "FurblePlatform.h"
 #include "FurblePlatformPolicy.h"
@@ -49,116 +48,6 @@ using Watchdog::PM1_TIMEOUT_S;
 // and consumed on the next boot, as Platform::consumeTimedWake() does.
 constexpr const char *TIMED_WAKE_RECORD_KEY = "sim_wake_time";
 }  // namespace
-
-#if !FURBLE_PANEL_128X64
-// The M5 side of the display seam. The simulator links its own Platform
-// translation unit, so the adapter that firmware keeps in
-// src/FurblePlatform.cpp has to exist here too; the 128x64 board's device is
-// in src/FurbleDisplay.cpp and is linked into the same binary when its
-// capability is on.
-namespace Display {
-
-bool begin(void) {
-  return true;
-}
-
-bool ready(void) {
-  return true;
-}
-
-int32_t width(void) {
-  return M5.Display.width();
-}
-
-int32_t height(void) {
-  return M5.Display.height();
-}
-
-bool mono(void) {
-  return false;
-}
-
-void setBrightness(uint8_t brightness) {
-  M5.Display.setBrightness(brightness);
-}
-
-uint8_t getRotation(void) {
-  return M5.Display.getRotation();
-}
-
-void setRotation(uint8_t rotation) {
-  M5.Display.setRotation(rotation);
-}
-
-void sleep(void) {
-  M5.Display.sleep();
-}
-
-void wakeup(void) {
-  M5.Display.wakeup();
-}
-
-void calibrateTouch(uint16_t *points, size_t count) {
-  if ((points != nullptr) && (count == 8)) {
-    M5.Display.setTouchCalibrate(points);
-  }
-}
-
-uint16_t color565(uint8_t red, uint8_t green, uint8_t blue) {
-  return M5.Display.color565(red, green, blue);
-}
-
-void fillScreen(uint16_t color) {
-  M5.Display.fillScreen(color);
-}
-
-void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) {
-  M5.Display.fillRect(x, y, w, h, color);
-}
-
-void drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) {
-  M5.Display.drawRect(x, y, w, h, color);
-}
-
-void drawString(const char *text, int32_t x, int32_t y) {
-  M5.Display.drawString(text, x, y);
-}
-
-void setTextColor(uint16_t color) {
-  M5.Display.setTextColor(color);
-}
-
-void setTextColor(uint16_t foreground, uint16_t background) {
-  M5.Display.setTextColor(foreground, background);
-}
-
-void setTextDatum(uint8_t datum) {
-  M5.Display.setTextDatum(datum);
-}
-
-void setTextSize(uint8_t size) {
-  M5.Display.setTextSize(size);
-}
-
-void push(int32_t x, int32_t y, int32_t w, int32_t h, const uint16_t *pixels) {
-  M5.Display.pushImageDMA<uint16_t>(x, y, w, h, pixels);
-}
-
-void wait(void) {
-  M5.Display.waitDMA();
-}
-
-void *panelBus(void) {
-  auto *panel = M5.Display.getPanel();
-  return (panel != nullptr) ? panel->getBus() : nullptr;
-}
-
-void readRectRGB(int32_t x, int32_t y, int32_t w, int32_t h, uint8_t *rgb) {
-  M5.Display.readRectRGB(x, y, w, h, rgb);
-}
-
-}  // namespace Display
-#endif
 
 Platform &Platform::getInstance(void) {
   static Platform instance;

@@ -291,6 +291,29 @@ applies the stored brightness only once it exists, the `-debug` environment is
 in the reproducible matrix instead of being a pinned budget nothing built, and
 `REQUIRED_SELECTIONS` lists the board so the two scenarios cannot be dropped.
 
+## Merging the LilyGO family port (549)
+
+549 landed the T-Deck and T-Watch Ultra with a display seam of its own:
+`Display::screen()` returns the `lgfx::LGFX_Device` the image draws through, and
+`src/FurbleDisplay.cpp` builds that device per board. This port now rides that
+seam instead of carrying a parallel one, and the differences are worth stating:
+
+- `src/FurbleDisplay.cpp` builds the T-Beam's `Sh1106Panel` in the same TU and
+  under the same `screen()` as the ST7789 and CO5300 panels, selected by the
+  panel capability macro rather than by a second facade. The probe, the 64-row
+  configuration and the multiplex override are unchanged; the class that held
+  them is `Sh1106Panel` now, not `I2cPanel`.
+- The drawing facade this branch first carried is gone: the UI, the boot screen
+  and the SD service call `Display::screen()` as 549 does, so there is one
+  display seam in the tree and not two.
+- The 128x64 layout tier this plan described is not in this merge. The T-Beam
+  draws with the shared UI at its real 128x64 geometry, and the page-by-page
+  layout work stays an open item, as it was.
+- The simulator window models the panel's geometry from the same constants. The
+  1-bit thresholding of pushed blocks went with the facade; a splash capture
+  from this head is 128x64 and now carries the UI's colours rather than two
+  levels, which is a model limitation to close with the layout pass.
+
 ## Verification
 
 Recorded on this branch, macOS host, no device attached:
@@ -299,7 +322,7 @@ Recorded on this branch, macOS host, no device attached:
   SUCCESS. `-e lilygo-tbeam-supreme-debug` also builds, with the console and
   the debug fragments.
 - `python3 tools/check_size_budget.py --env lilygo-tbeam-supreme`: PASS, flash
-  1,819,952 of 3,145,728 bytes, DRAM 47,316 of 48,128, IRAM 110,848 of 111,616.
+  1,819,953 of 3,145,728 bytes, DRAM 47,308 of 48,128, IRAM 110,848 of 111,616.
   The `-debug` env records flash 2,215,360, DRAM 52,404 and IRAM 129,792
   against the same slot, rebuilt on this head rather than carried over from the
   pre-rebase tree.

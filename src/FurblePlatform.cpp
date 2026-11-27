@@ -14,7 +14,7 @@
 #include "FurbleBoardCaps.h"
 #include "FurbleBootTimeline.h"
 #include "FurbleControl.h"
-#if FURBLE_LILYGO_BOARD || defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#if FURBLE_LILYGO_BOARD || FURBLE_PANEL_128X64
 #include "FurbleDisplay.h"
 #endif
 #include "FurbleFeedback.h"
@@ -1399,7 +1399,7 @@ bool Platform::powerOffUntil(uint32_t seconds) {
       }
     }
 
-#if FURBLE_LILYGO_BOARD || defined(FURBLE_LILYGO_TBEAM_SUPREME)
+#if FURBLE_LILYGO_BOARD || FURBLE_PANEL_128X64
     // The panel is not M5Unified's, so it is reached through the seam.
     Display::screen().sleep();
 #else

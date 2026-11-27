@@ -10,7 +10,7 @@ only code that closes the GPX track file and unmounts the card, so a slow mount
 or a slow FAT write that outlasted the wait left both open.
 
 `Platform::powerOff()` then cut the rail a few lines later
-(`src/FurblePlatform.cpp:870-929` runs the handshake, `:458` is the M5PM1
+(`src/FurblePlatform.cpp:905-964` runs the handshake, `:458` is the M5PM1
 `shutdown()`; the AXP192 and IP5306 boards fall through to
 `M5.Power.powerOff()`). Cutting the rail there loses the track tail written
 after the last `fsync()` and leaves FAT in its dirty state, so the next mount

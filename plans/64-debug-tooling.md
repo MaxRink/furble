@@ -173,7 +173,7 @@ lock.no_light_sleep.owner.gps: 17
 ...
 ```
 
-Then calls `Platform::dumpPMLocks()` (`src/FurblePlatform.cpp:803-809`), the
+Then calls `Platform::dumpPMLocks()` (`src/FurblePlatform.cpp:838-844`), the
 existing `esp_pm_dump_locks(stdout)` wrapper wired to the plan 05 button. With
 `CONFIG_PM_PROFILING=y` that same call grows `Total_count`, `Time(us)` and
 `Time(%)` per lock, plus the mode stats table: time and percentage per DFS
@@ -201,7 +201,7 @@ calibration input for plan 63, the sim power model (in flight, not on fork
 master yet; this plan is its on-device twin).
 
 Data source: the PR02 EWMA. Today the filter lives in the UI task,
-`UI::batteryUpdate` (`src/FurbleUI.cpp:11635-11724`), alpha 1/4 on level and
+`UI::batteryUpdate` (`src/FurbleUI.cpp:11718-11807`), alpha 1/4 on level and
 voltage, 1/12 on current, sampled every 5 s, units percent, mV, mA with
 charging positive (`include/FurblePlatform.h:35-40`). Move the filter state
 and update step into `Platform` as a `sampleBattery()` helper the existing UI
