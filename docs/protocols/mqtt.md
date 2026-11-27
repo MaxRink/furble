@@ -34,8 +34,8 @@ The root is the base topic plus the device string id
 | `furble/<id>/cmd/connect` | subscribe | `all`, empty, or a decimal camera id | `src/FurbleMQTT.cpp:699` |
 | `furble/<id>/cmd/disconnect` | subscribe | any payload | `src/FurbleMQTT.cpp:700` |
 | `furble/<id>/cmd/location` | subscribe | JSON with `latitude`, `longitude` and `timestamp` | `src/FurbleMQTT.cpp:701,1248-1268` |
-| `furble/<id>/cmd/ota` | subscribe | `status`, `check`, `check <url>`, `abort`, or an `https://` URL | `src/FurbleMQTT.cpp:801,1255,1478` |
-| `furble/<id>/state/ota` | publish | flat JSON OTA status record; retained final result | `src/FurbleMQTT.cpp:802,1500`, `src/FurbleOTAStatus.cpp:148` |
+| `furble/<id>/cmd/ota` | subscribe | `status`, `check`, `check <url>`, `abort`, or an `https://` URL | `src/FurbleMQTT.cpp:853,1309,1532` |
+| `furble/<id>/state/ota` | publish | flat JSON OTA status record; retained final result | `src/FurbleMQTT.cpp:854,1576`, `src/FurbleOTAStatus.cpp:153` |
 | `homeassistant/status` | subscribe | `online` re-publishes discovery | `src/FurbleMQTT.cpp:57,1131-1136` |
 
 Command topics are matched exactly, not by prefix, so a trailing level or a
@@ -98,21 +98,21 @@ A different URL while an update runs
 is `busy`; the identical URL is an idempotent duplicate, so a QoS-1 redelivery
 cannot start a second download. The version comparison needs a strictly newer
 dotted numeric release, and an installed `dev+g<hash>` build counts as older
-than any release (`include/FurbleOTAAdmission.h:75`,
+than any release (`include/FurbleOTAAdmission.h:125`,
 `src/FurbleOTAAdmission.cpp:143`).
 
 A check reads the release manifest, not the image: it never opens the download.
 An update additionally requires the manifest image to fit the inactive slot.
 The handler reads battery, control, intervalometer and link state through one
-context owned by the MQTT task (`src/FurbleMQTT.cpp:1544`).
+context owned by the MQTT task (`src/FurbleMQTT.cpp:1603`).
 
 `state/ota` is a flat object with stable keys: `state`, `error`, `progress`,
 `bytes`, `total`, `reason`, `detail`, `command`, `result`, `installed`,
 `available`, `update`, `checked`, `busy`, `slot`, `boot` and `failure`
-(`include/FurbleOTAStatus.h:66`, `src/FurbleOTAStatus.cpp:148`). `state` and
+(`include/FurbleOTAStatus.h:75-93`, `src/FurbleOTAStatus.cpp:153`). `state` and
 `error` come from the OTA engine, `reason` from the precondition policy or the
 handler, `detail` from the delivery adapter, and `slot`/`boot` from the boot
-health verdict (`include/FurbleOTAStatus.h:52`). The adapter labels a rejected
+health verdict (`include/FurbleOTAStatus.h:92`). The adapter labels a rejected
 digest or an interrupted transfer with `reasonName()`
 (`src/FurbleOTAHTTPS.cpp:62`). A pending or rolled-back image is therefore
 visible on the same retained record as the update result.
@@ -121,12 +121,12 @@ Only a final `done`, `error` or `aborted` record is retained, so a dashboard
 that connects later still sees the result. Live progress is not retained. The
 first `checking` record of a new update is retained once, which replaces the
 previous retained result instead of leaving it on the broker for the whole
-transfer (`src/FurbleOTACommand.cpp:321`).
+transfer (`src/FurbleOTACommand.cpp:323-329`).
 
 No HTTPS download is linked in this build. Without an attached transport the
 topic still answers, with `transport_unavailable`, so a dashboard can tell a
-build without OTA from an idle device (`src/FurbleMQTT.cpp:1524`). The console
-command `ota status` prints the same record (`src/FurbleConsole.cpp:3587`).
+build without OTA from an idle device (`src/FurbleOTAAdmission.cpp:115`). The console
+command `ota status` prints the same record (`src/FurbleConsole.cpp:3635`).
 
 The 60 s hold limit and the 256-byte topic limit are
 `include/FurbleMQTT.h:93,96`.
