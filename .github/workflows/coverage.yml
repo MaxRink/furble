@@ -32,6 +32,7 @@ name: Coverage floor
       - 'tools/coverage.py'
       - 'tools/gen_lv_conf.py'
       - 'tools/check_sim_scenarios.py'
+      - 'tools/ci-apt-install.sh'
       - '.github/workflows/coverage.yml'
   push:
     branches: [master]
@@ -48,6 +49,7 @@ name: Coverage floor
       - 'tools/coverage.py'
       - 'tools/gen_lv_conf.py'
       - 'tools/check_sim_scenarios.py'
+      - 'tools/ci-apt-install.sh'
       - '.github/workflows/coverage.yml'
   workflow_dispatch:
 
@@ -94,12 +96,14 @@ jobs:
       # libmosquitto-dev and libcjson-dev are the native transport the fourth
       # build compiles against; without them sim/build.sh exits on
       # FURBLE_SIM_MQTT=1 rather than measuring less.
+      #
+      # Third-party apt sources on the runner image are dropped before the
+      # update (plan 375). A package this step needs that cannot be installed
+      # still fails it.
       - name: Install SDL2, the MQTT transport and the pinned Clang and LLVM
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            clang-18 llvm-18 libclang-rt-18-dev libsdl2-dev \
-            libmosquitto-dev libcjson-dev
+          sh tools/ci-apt-install.sh clang-18 llvm-18 libclang-rt-18-dev \
+            libsdl2-dev libmosquitto-dev libcjson-dev
           test -f "$(clang-18 -print-file-name=libclang_rt.profile-x86_64.a)"
           pkg-config --exists libmosquitto
           "$CXX" --version

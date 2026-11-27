@@ -28,6 +28,7 @@ name: Simulator end-to-end
       - 'tools/check_sim_scenarios.py'
       - 'tools/check_fuzz.py'
       - 'sim/scenarios/manifest.json'
+      - 'tools/ci-apt-install.sh'
       - '.github/workflows/sim-e2e.yml'
   push:
     branches: [master]
@@ -52,6 +53,7 @@ name: Simulator end-to-end
       - 'tools/check_sim_scenarios.py'
       - 'tools/check_fuzz.py'
       - 'sim/scenarios/manifest.json'
+      - 'tools/ci-apt-install.sh'
       - '.github/workflows/sim-e2e.yml'
   workflow_dispatch:
 
@@ -73,10 +75,11 @@ jobs:
           path: sim/.pio
           key: ${{ runner.os }}-sim-e2e-${{ hashFiles('sim/platformio.ini', '.github/workflows/sim-e2e.yml') }}
 
+      # Third-party apt sources on the runner image are dropped before the
+      # update (plan 375). A package this step needs that cannot be installed
+      # still fails it.
       - name: Install SDL2 and Clang
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y clang libsdl2-dev libmosquitto-dev libcjson-dev
+        run: sh tools/ci-apt-install.sh clang libsdl2-dev libmosquitto-dev libcjson-dev
 
       # build.sh never invokes PlatformIO; it only needs the four source trees.
       # Pinned shallow git clones are faster and fail loudly when a pin is
@@ -630,10 +633,12 @@ jobs:
 
       # --no-install-recommends drops the clang runtime that holds the
       # sanitizer libraries, so name it. llvm symbolizes the reports.
+      #
+      # Third-party apt sources on the runner image are dropped before the
+      # update (plan 375). A package this step needs that cannot be installed
+      # still fails it.
       - name: Install SDL2, Clang and the sanitizer runtime
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y clang libclang-rt-dev llvm libsdl2-dev
+        run: sh tools/ci-apt-install.sh clang libclang-rt-dev llvm libsdl2-dev
 
       # Same pins as the sim-e2e job above; keep them in sync.
       - name: Fetch simulator dependencies

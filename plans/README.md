@@ -335,6 +335,7 @@ the bench work.
 | [347-review-feedback.md](347-review-feedback.md) | Review-feedback record for PR 524: the DEBUG and VERBOSE strings are back in both Core debug ELFs and absent on master, the BMI270 blob and probe are present on StickS3 and Core2 and gone on the Core family by `nm`, a 9,120-byte guard and 9,152 bytes of margin on the constrained lane, and six fixed defects in the plan, `docs/power/soc.md` and the crash-diagnostics scope paragraph |
 | [475-review-feedback.md](475-review-feedback.md) | Review-feedback record for PR 494: the full-queue bypass, the unbounded automatic retry, the two false user-visible claims, the citation drift, the boundary count and the reachable board row |
 | [372-web-installer-chip-family.md](372-web-installer-chip-family.md) | Every generated manifest offered both an ESP32 build with the bootloader at 0x1000 and an ESP32-S3 build with it at 0x0 over the same binaries, so the wrong choice left the board unbootable until a UART reflash. One family per manifest, derived from the environment's sdkconfig target, a page that refuses a mismatched manifest, and the regression test that would have caught it |
+| [375-ci-apt-resilience.md](375-ci-apt-resilience.md) | apt steps survive a broken third-party repository on the runner image: one helper that drops the sources a job does not need, keeps every failure for a package it does name, and a checker rule that stops a bare `apt-get update` coming back |
 
 ## Network, companion, and simulator follow-ups
 
