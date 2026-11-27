@@ -197,6 +197,7 @@ whose title carries it, and plan 331 is archived there with it.
 | [364-ext5v-rail.md](364-ext5v-rail.md) | StickS3 EXT_5V rail ownership: one writer for `PWR_CFG` 0x06, named holders with a reference count, the output-mode supply interlock and the IR hold around a burst |
 | [364-review-feedback.md](364-review-feedback.md) | Review-feedback record for the EXT_5V rail ownership branch, PR #493 |
 | [374-control-release-durability.md](374-control-release-durability.md) | Shutter and focus release durability: a full per-target queue gives a release the oldest waiting command's slot instead of dropping it, with the vendor table that shows no driver times the hold out |
+| [546-review-feedback.md](546-review-feedback.md) | Review-feedback record for PR 546: the release that evicted a queued release, the docs that overstated the guarantee, the two test checks that proved nothing, the two citations that pointed at the wrong line, and the two invariants the fix rests on |
 | [302-companion-restart-reconnect.md](302-companion-restart-reconnect.md) | Companion stop/start without a heap panic, and advertising restart after a rejected link |
 | [337-sim-mem-shims.md](337-sim-mem-shims.md) | Simulator heap_caps calloc, realloc and get_info shims, and the PSRAM task-stack abort |
 | [303-upstream-sync.md](implemented/303-upstream-sync.md) | Read-only upstream audit, open issue mapping, and full SHA PlatformIO pins for upstream issue 309 |

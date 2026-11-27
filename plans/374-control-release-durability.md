@@ -45,7 +45,7 @@ The return value is "at least one target took it", so a single target that
 refuses the command reads as `pdFALSE` to the caller.
 
 The queue that matters is `Control::Target::m_Queue`, 8 entries
-(`include/FurbleControl.h:79`), and the drop is in `Control::Target::sendCommand`
+(`include/FurbleControl.h:98`), and the drop is in `Control::Target::sendCommand`
 (lines 102 to 137 of `src/FurbleControl.cpp` on the base commit):
 
 ```
@@ -123,7 +123,7 @@ Producer and consumer rates bound the window.
 
 - The UI loop runs on `app_main`'s task, which ESP-IDF starts at priority 1 and
   no sdkconfig in this tree overrides. A target task runs at priority 3
-  (`src/FurbleControl.cpp:1383`) and the control task at 4
+  (`src/FurbleControl.cpp:1418`) and the control task at 4
   (`src/main.cpp:524`).
 - Because a runnable target task preempts the UI, the queue holds at most one
   command in normal operation. It can only build a backlog while the target task
@@ -136,7 +136,7 @@ Producer and consumer rates bound the window.
   `m_IdleTimeout = 700` in 10 ms units).
 - In those seconds the producers keep posting. At the fastest intervalometer
   settings one command leaves per 100 ms tick, so 8 slots is 800 ms. A 1 Hz GPS
-  fan-out adds one per second (`src/FurbleControl.cpp:247-249`), and a
+  fan-out adds one per second (`src/FurbleControl.cpp:275-277`), and a
   multi-connect session shares one radio across up to three queues, which
   multiplies each command's latency by the number of cameras.
 
@@ -158,7 +158,7 @@ release that gets through. That makes case 1 the damaging one, and it is why the
 intervalometer and the shutter lock matter even though they are not the busiest
 producers.
 
-`allConnectedLocked` (`src/FurbleControl.cpp:777-807`) is not part of this. It
+`allConnectedLocked` (`src/FurbleControl.cpp:806-836`) is not part of this. It
 decides whether the machine stays `STATE_ACTIVE`; it does not gate the send and
 does not drop anything. The other refusal in `sendCameraCommand` is a target
 whose link is down, which is intended: the press went with the connection.
@@ -168,6 +168,16 @@ whose link is down, which is intended: the press went with the connection.
 Chosen: a release takes the oldest waiting command's slot. The release path
 becomes unbounded, every request path stays bounded by the same 8 slots, and
 neither side grows the queue.
+
+**Narrowed after review ([546-review-feedback.md](546-review-feedback.md), finding
+1).** "The oldest waiting command" can be a release, and the review built the
+case: a delivered press, a shutter release behind it at the head of the queue,
+seven presses behind that, then a focus release. The reviewed head evicted the
+shutter release and left the shutter held on Lumix, Sony, Canon EOS Smart, Nikon
+Remote, Ricoh and DJI, which is the failure this plan exists to remove. The rule
+now displaces the oldest waiting command only when it is a request, puts a queued
+release back at the front with `xQueueSendToFront`, and refuses its own release
+instead. The code quoted below is the reviewed head, not the current file.
 
 Rejected alternatives:
 

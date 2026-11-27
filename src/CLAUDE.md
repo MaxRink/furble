@@ -24,9 +24,16 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   the connect gate for up to a tick (plan 317).
   A per-target queue of 8 bounds every camera command except a shutter or focus
   release, which takes the oldest waiting command's slot instead of being
-  dropped. The press it ends was already delivered and no vendor driver times
-  the hold out, so the release is the one command a full queue must not lose
-  (plan 374). Both sides stay non-blocking and the queue never grows. A queued
+  dropped, and only when that command is a request: a release already in the
+  queue is never displaced, because on Lumix, Sony, Canon EOS Smart, Nikon
+  Remote, Ricoh and DJI a focus release does not let go of the shutter, so the
+  two release kinds are not interchangeable (plans 374 and 546). The press a
+  release ends was already delivered and no vendor driver times the hold out, so
+  the release is the one command a full queue must not lose. A release is still
+  refused when it arrives with another release at the head of the queue, which
+  that release already covers. Both sides stay non-blocking and the queue never
+  grows. Every producer posts under `m_Mutex`, which is what keeps the
+  check-and-send atomic; `sendCommand` carries that contract. A queued
   `CMD_DISCONNECT` refuses every later command, so a release cannot evict it.
 - The simulator UI loop calls its post-`lv_task_handler` hook only after the
   real production UI handler returns. Keep this hook observational: it may

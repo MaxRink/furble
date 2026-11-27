@@ -157,25 +157,54 @@ BaseType_t Control::Target::sendCommand(cmd_t cmd) {
   if ((ret != pdTRUE) && isReleaseCommand(cmd)) {
     // A release must not be the command a full queue discards. The press it
     // ends has already been delivered, the camera is holding it, and nothing in
-    // the firmware or in a vendor driver lets go on its own (plan 374), so the
+    // the firmware or in a vendor driver lets go on its own (plan 374), so a
     // dropped release leaves the shutter held until the user presses and
-    // releases again. Take the oldest waiting command's slot instead. Every
-    // command still in the queue is worth less than the release: a request that
-    // loses its slot is a lost press, which the release behind it answers with
-    // an up the camera ignores.
-    //
-    // Both calls are non-blocking and the receive frees exactly the slot the
-    // send then takes, so this cannot grow the queue or wait on the target
-    // task draining it. Two attempts cover another producer taking the freed
-    // slot in between: that producer is another release, which releases the
-    // camera just as well, or one more request to evict.
-    for (uint8_t attempt = 0; (ret != pdTRUE) && (attempt < 2); attempt++) {
-      cmd_t evicted = CMD_ERROR;
-      if (xQueueReceive(m_Queue, &evicted, 0) != pdTRUE) {
-        break;
+    // releases again. Free one slot instead, then decide from what occupied it:
+    // only a request there may be displaced.
+    cmd_t head = CMD_ERROR;
+    if (xQueueReceive(m_Queue, &head, 0) != pdTRUE) {
+      // The target task drained the queue between the refused send and this
+      // receive, so the fullness that turned the release away is gone. Take the
+      // slot rather than refusing over a fullness that no longer exists.
+      ret = xQueueSend(m_Queue, &cmd, 0);
+    } else if (isReleaseCommand(head)) {
+      // The head is itself a release, and a queued release is not disposable.
+      // It answers a press the camera has already acted on, and the two classes
+      // are not interchangeable: on Lumix, Sony, Canon EOS Smart, Nikon Remote,
+      // Ricoh and DJI a focus release does not let go of the shutter (plan 374),
+      // so a focus release can never stand in for a shutter release, nor the
+      // reverse for a held half press. Put it back at the front, in the slot the
+      // receive just freed, which is where it was and keeps it ahead of the
+      // requests queued behind it. xQueueSendToFront is the call for that: a
+      // receive followed by an append would move the release behind those
+      // presses, and a receive whose re-send can fail loses one of the two.
+      //
+      // The push-back cannot lose the slot it needs. Every producer of this
+      // queue holds Control::m_Mutex (the contract on sendCommand in
+      // include/FurbleControl.h), so no producer can take the freed slot
+      // between the receive and the send, and the target task only ever removes
+      // items. That is also why the previous shape's second attempt never ran.
+      //
+      // This release is then the one command a full queue turns away, which is
+      // safe only because the release already queued covers the press that is
+      // held. The two producers that track a refused release as still owed
+      // retry it (MQTT at 250 ms, the WebUI at 200 ms); for the rest, the queued
+      // release already does what this one would have done.
+      if (xQueueSendToFront(m_Queue, &head, 0) != pdTRUE) {
+        // Unreachable with the slot free. Keep the count exact if it happens:
+        // the item is gone, so its reservation retires here, the same rule the
+        // CMD_DISCONNECT drain above uses.
+        m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
       }
-      // The receive proves this side removed the item, so exactly one
-      // reservation retires here, the same rule the CMD_DISCONNECT drain uses.
+    } else {
+      // A request is disposable: a press it would have fired is lost and the
+      // release behind it answers the camera with an up it ignores, and a GPS
+      // update is replaced by the next fix a second later. Retire its
+      // reservation (the receive proves this side removed the item, the same
+      // rule the CMD_DISCONNECT drain uses) and append the release behind the
+      // requests that remain. The tail is where it has to go: those requests are
+      // presses that assert the button again, so a release put in front of them
+      // would leave the camera held when the drain ends.
       m_InFlight.fetch_sub(1, std::memory_order_acq_rel);
       ret = xQueueSend(m_Queue, &cmd, 0);
     }
@@ -1076,6 +1105,13 @@ bool Control::disconnect(uint32_t timeout_ms, bool forRestart) {
       target->sendCommand(CMD_DISCONNECT);
     }
   }
+
+  // Every target of this session now holds its teardown and m_Mutex is
+  // released. The point marks the edge a test needs to tell "refused because
+  // the target is disconnecting" from "refused because its queue is full": the
+  // teardown is on the queue and the queue is otherwise drained, so only the
+  // disconnect rule can turn a later command away.
+  FURBLE_TEST_SYNC_POINT("disconnect_teardown_queued");
 
   // Now that m_Mutex is released, wake any attempt that is blocked inside
   // NimBLE. The token above is what the vendor waits poll; this is what

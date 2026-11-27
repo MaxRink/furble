@@ -58,6 +58,15 @@
  *   window exact. The point fires before the registration deadline is taken, so
  *   a parked thread does not spend the timeout it is about to observe.
  *
+ * "disconnect_teardown_queued"
+ *   Caller task inside Control::disconnect(), after the CMD_DISCONNECT fan-out
+ *   has run under m_Mutex and the lock is released. The point fires with every
+ *   target's teardown already queued and its queue otherwise drained, so a test
+ *   parked here can post a command and attribute a refusal to the pending
+ *   teardown rather than to a full queue. It fires on the interactive and the
+ *   restart path alike, and on the reset-driven disconnect the note above
+ *   describes.
+ *
  * "target_command_complete"
  *   Target task after a queued shutter, focus or GPS command has completed its
  *   camera call. A test can release this point before reading peer events,

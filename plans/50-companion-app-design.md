@@ -336,7 +336,7 @@ uint8  op       // 0 shutter release, 1 shutter press, 2 focus press,
 uint16 hold_ms  // op 4 only
 ```
 
-Mapping to `Control::sendCommand()` (`include/FurbleControl.h:154`):
+Mapping to `Control::sendCommand()` (`include/FurbleControl.h:174`):
 
 | op | command |
 |---|---|
