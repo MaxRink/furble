@@ -788,7 +788,11 @@ void GPS::serviceCycle(void) {
 
   if (m_RailOffPending) {
     bool answered = false;
-    if (text().save_session.active() || !text().save_queue.empty()) {
+    // A text state is only absent while GPS is off or after a failed
+    // allocation, so the queue is empty then and the UBX branch answers.
+    const bool textSave =
+        (m_TextState != nullptr) && (text().save_session.active() || !text().save_queue.empty());
+    if (textSave) {
       // A vendor text save in flight steps its own sequence.
       answered = textSaveService(now);
       if (answered) {
@@ -801,7 +805,7 @@ void GPS::serviceCycle(void) {
     }
     if (answered || tickReached(now, m_RailOffDeadline)) {
       if (!answered) {
-        if (text().save_queue.empty()) {
+        if ((m_TextState == nullptr) || text().save_queue.empty()) {
           const std::lock_guard<std::mutex> ubx(m_UbxMutex);
           m_UbxSosBackup = 2;
         } else {
@@ -810,8 +814,10 @@ void GPS::serviceCycle(void) {
           text().status.save = 2;
         }
       }
-      text().save_session.clear();
-      text().save_queue.clear();
+      if (m_TextState != nullptr) {
+        text().save_session.clear();
+        text().save_queue.clear();
+      }
       m_RailOffPending = false;
       enterRailOff(now);
     }
@@ -1167,7 +1173,11 @@ void GPS::railOffOrRestart(void) {
     // turns it back on.
     textPowerBackOn();
   }
-  text().stopped = false;
+  if (m_TextState != nullptr) {
+    // disable() reaches here with the state already gone when GPS was never
+    // enabled, which is the common boot path on a board with GPS switched off.
+    text().stopped = false;
+  }
 }
 
 void GPS::beginResync(uint32_t now) {
