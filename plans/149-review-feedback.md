@@ -211,7 +211,14 @@ is now stated in the four documents that make it.
   by re-running the analyzer; CI runs it on every push.
 - Red-first and regression probes as recorded above.
 - Round 2 re-measured the full suite at the final head: `ctest -j 6`, 224/224
-  pass, 82 s, and `ctest -R '^ricoh-'` 6/6 pass, 13 s.
+  pass, in 82 s and then again in 129 s on a busier host, and
+  `ctest -R '^ricoh-'` 6/6 pass, 13 s.
+- Two runs of the same suite in between, at a load average above 20, failed two
+  timed tests on their own ctest timeouts: `control-tsan-wrapper-contract` and
+  `sim-power-profiler-concurrent-3`. Both pass in isolation and in the final run,
+  and `tests/host/run_tsan_race_contract.sh` takes 20 to 45 s on the unmodified
+  head while the host file system is cold, against a 10 s ctest timeout, so the
+  timeout is the host rather than this branch. Flagging it rather than hiding it.
 - `ricoh_wake_test` eight consecutive runs after round 2's changes: 8/8 exit 0.
   The new sampler case reported between 0.90 and 1.33 million contended reads
   per run against the assertion's floor of 50.
