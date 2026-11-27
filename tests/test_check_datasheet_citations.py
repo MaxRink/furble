@@ -301,7 +301,7 @@ class CitationGateTest(unittest.TestCase):
     """A coverage regression fails here, not silently in a page."""
     errors, checked, cited, tolerated = check(ROOT)
     self.assertEqual(errors, [])
-    # Plan 367 added one timing token, BUSY_ASSERT_BUDGET_US in SX1262.h, and
+    # Plan 385 added one timing token, BUSY_ASSERT_BUDGET_US in SX1262.h, and
     # its comment carries the section 8.3.1 reference the SX1262 page cites. The
     # block comment above that run also covers SLEEP_CONFIRM_BUDGET_US, which the
     # gate now attributes to the run rather than reporting as a gap, so cited

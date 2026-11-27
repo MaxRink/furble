@@ -1,4 +1,4 @@
-# 367 - HAL register verification pass 3
+# 385 - HAL register verification pass 3
 
 Status: implementation on `fix/hal-datasheet-verification`. Two driver defects
 and one simulator-double defect fixed, with host cases that fail when each fix is
