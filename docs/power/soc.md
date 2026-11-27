@@ -540,9 +540,9 @@ This is a documentation and build consistency item, not a separate power lever.
   per second used for `reapZombieTargets()`, `sampleAdaptivePower()`, and
   liveness checks. Commands themselves wake the queue immediately.
 - **Evidence:** inferred (code-read). `sampleAdaptivePower()` is rate limited to 5 s
-  by `RSSI_SAMPLE_INTERVAL_MS` (`src/FurbleControl.cpp:27`) against
-  `m_LastRssiSample` (`src/FurbleControl.cpp:1607-1607`), and the zombie reclaim
-  deadline is the timestamp `m_ZombieDeadline` (`src/FurbleControl.cpp:1197-1197`), so
+  by `RSSI_SAMPLE_INTERVAL_MS` (`src/FurbleControl.cpp:29-31`) against
+  `m_LastRssiSample` (`src/FurbleControl.cpp:1623-1623`), and the zombie reclaim
+  deadline is the timestamp `m_ZombieDeadline` (`src/FurbleControl.cpp:1213-1213`), so
   the tick is a service cadence, not a correctness deadline.
 - **Estimated saving:** Low. A task wake and context switch is on the order of
   tens of microseconds, so 4 wakes per second instead of 20 is well below
@@ -988,7 +988,7 @@ This is a documentation and build consistency item, not a separate power lever.
 
 - **CON-03, ESP32 console APB lock.** The ESP32 console path holds
   `ESP_PM_APB_FREQ_MAX` for the whole console lifetime
-  (`src/FurbleConsole.cpp:3822`). It defeats light sleep entirely. This is
+  (`src/FurbleConsole.cpp:3824`). It defeats light sleep entirely. This is
   deliberate and developer-only. Do not copy it into release and do not use a
   console build for a power claim.
 - **CON-05, measurement tooling.** The S3 console path uses the USB Serial/JTAG
