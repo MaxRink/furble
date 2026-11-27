@@ -357,18 +357,32 @@ remediation batches. The batch is named in each GATED-ON tag.
 - Secrets-over-companion redaction. Medium. settingValue returns raw WIFI_PSK
   and MQTT_PASS over the BLE companion service; return a set/unset indicator
   and keep writes write-only, matching console and REST. Source: plan 96 C6,
-  `src/FurbleCompanionService.cpp:316-326`. GATED-ON: wifi restack.
+  `src/FurbleCompanionService.cpp:787-915`. GATED-ON: wifi restack.
   State: fixed in this tranche, 2c47add0. `settingValue()` answers the
   word `set` or `unset` for `WIFI_PSK` and `MQTT_PASS`, in the setting's own
   `SETTING_STRING` type, for both the single read and the catalog, so no client
   needs a new wire type and no reader receives the credential. Writes are
   untouched, so the setting stays write-only rather than read-only.
   `companion_gatt_test` grew a red-first case that reads a stored passphrase
-  through op 1 and op 0 and asserts the secret text never appears in a record.
+  through op 1 and op 0 and asserts the secret text never appears in a record,
+  and the same case now covers `MQTT_PASS`, which the target used to compile
+  out (PR 534 review F3).
   Deviation from the item text: the item named an indicator; this answers the
   console's words instead, because a one-byte indicator inside a string setting
   would render as a stray byte in the two companions' text editors, and the URI
   stays readable because it carries the broker address a user needs.
+  Follow-up, still open, app side: the firmware half is complete, but neither
+  companion renders wire ids 53 and 59 as a status. The Android settings screen
+  has no `FurbleSettingMetadata` row for either id, so `SettingRecord.editable`
+  is false and the row shows `Unknown setting 53` and the hex of the word
+  (`736574` for `set`) instead of `set`. Adding a row with
+  `SettingEditorKind.READ_ONLY` and an ASCII `displayValue()` makes the answer
+  read as a status and keeps it out of a text field by construction; the editor
+  kind and the `editable` rule already exist
+  (`companion/android/app/src/main/java/com/furble/companion/protocol/FurbleProtocol.kt:236-241`).
+  The Apple companion has no settings surface yet, only `FurbleCompanionCLI`,
+  so the same rule lands there with its first settings editor. Both are app
+  work outside this tranche, recorded here rather than only in the PR body.
 - CameraList access routing plus MQTT timer teardown guard. Low. Serialize
   CameraList loads from httpd and mqtt tasks against the GUI scan; guard
   esp_timer publishes into a client being destroyed. Source: plan 96 C10.
