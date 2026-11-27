@@ -185,14 +185,14 @@ Both are recorded here so the next reader does not have to rediscover them.
    which after a frame is the Delay value: a 15 s delay becomes a 15 s shutter
    hold. 0 is inside the documented range
    (`docs/settings-and-controls.md:225`). This is a separate defect, fixed in
-   PR #548 (plan 376), not here.
+   PR #548 (plan 389), not here.
 2. **The Timer docs stated the hold but not its two consequences.** At the
    time of this decision neither `docs/settings-and-controls.md:225` nor
    `docs/wiki/Settings-Reference.md:215` said that the value is the exposure in
    bulb on bodies that latch the press, or that a longer value shoots several
    frames on a body in continuous drive. Both follow from `gkoh/furble#244` and
    from the per-family table above. The wording gap is closed by PR #548 (plan
-   376), which owns the Timer text.
+   389), which owns the Timer text.
 
 ## Flip condition
 

@@ -18,9 +18,9 @@ and line 68 says it must be decided per camera family. `plans/373:10` now cites
 is closed.
 
 The pointer to the 0 ms follow-up is also good: PR #548 exists
-(`fix/shutter-zero-hold`, "fix(interval): release the shutter when the configured
-hold is 0", open). Plan 376 is not on master yet, which is expected if 548 adds
-it.
+(`fix/shutter-zero-hold`, "fix(interval): release the shutter when the
+configured hold is 0", open). Plan 376, now 389 after the plan renumbering,
+is not on master yet, which is expected if 548 adds it.
 
 ## What passed, do not redo
 
@@ -197,4 +197,5 @@ some of them, and git history keeps that commit.
 | 4, two rows cite ranges without their bytes | fixed | The Fujifilm row also cites `lib/furble/protocol/FujifilmProtocol.cpp:144-158`, which builds `{01 00}` plus `{02 00}` or `{00 00}`. The LUMIX row also cites `lib/furble/Lumix.h:96-97`, where `CMD_SHUTTER_PRESS` is `0x04` and `CMD_SHUTTER_RELEASE` is `0x05`. |
 
 No other part of the record changed. The blocks the review marked correct were
-not restated or re-verified.
+not restated or re-verified. The follow-up plan was renumbered from 376 to 389
+by the plan arbiter, and the references above were updated to match.
