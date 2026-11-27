@@ -2167,8 +2167,16 @@ target_include_directories(companion_gatt_test
                                   ${FURBLE_ROOT}/lib/blowfish
                                   ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR})
+# The MQTT settings arms only exist when FURBLE_MQTT is defined, and no host
+# target compiled the companion service with it: companion_gatt_test,
+# companion_fuzz and boundary_companion_test all built the no-MQTT
+# configuration used by the StickC, StickC Plus and Core images, while the
+# Core2, StickS3, headless and Waveshare images define it. Every MQTT settings
+# arm, including the MQTT password redaction, was therefore compiled out of
+# every test (PR 534 review F3). FURBLE_MQTT is defined here now, with the MQTT
+# double in companion/doubles/FurbleMQTT.h so no broker code is linked.
 target_compile_definitions(companion_gatt_test PRIVATE FURBLE_NO_DISPLAY
-                                                       FURBLE_HOST_COMPANION_TEST)
+                                                       FURBLE_HOST_COMPANION_TEST FURBLE_MQTT=1)
 # Omitted designated-initializer members are value initialized, so the glibc
 # struct tm tail in the Canon and Lumix time helpers is not a real gap.
 target_compile_options(companion_gatt_test PRIVATE -Wall -Wextra -Werror -Wno-format

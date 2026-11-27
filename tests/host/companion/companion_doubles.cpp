@@ -17,6 +17,9 @@
 #include "FurbleControl.h"
 #include "FurbleFeedback.h"
 #include "FurbleGPS.h"
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+#include "FurbleMQTT.h"
+#endif
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleSettings.h"
@@ -62,6 +65,14 @@ const std::unordered_map<Settings::type_t, Settings::setting_t> SETTINGS = {
     {Settings::IVL_SLEEP_THR,
      {Settings::IVL_SLEEP_THR, 76, "Sleep Threshold", "ivl_sleep_thr", "furble"}                          },
     {Settings::TIMEZONE,           {Settings::TIMEZONE, 42, "Time zone", "timezone", "furble"}            },
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    {Settings::MQTT,               {Settings::MQTT, 56, "MQTT", "mqtt", "furble"}                         },
+    {Settings::MQTT_URI,           {Settings::MQTT_URI, 57, "MQTT URI", "mqtt_uri", "furble"}             },
+    {Settings::MQTT_USER,          {Settings::MQTT_USER, 58, "MQTT User", "mqtt_user", "furble"}          },
+    {Settings::MQTT_PASS,          {Settings::MQTT_PASS, 59, "MQTT Password", "mqtt_pass", "furble"}      },
+    {Settings::MQTT_BASE,          {Settings::MQTT_BASE, 60, "MQTT Base", "mqtt_base", "furble"}          },
+    {Settings::MQTT_HA,            {Settings::MQTT_HA, 61, "MQTT Home Assistant", "mqtt_ha", "furble"}    },
+#endif
 #if defined(FURBLE_WEBUI) && FURBLE_WEBUI
     {Settings::WEB_UI,             {Settings::WEB_UI, 62, "Web UI", "web_ui", "furble"}                   },
 #endif
@@ -124,6 +135,29 @@ bool WiFi::setNtpEnabled(bool) {
 bool WiFi::reloadNtp(void) {
   return true;
 }
+
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+// MQTT -----------------------------------------------------------------------
+
+namespace {
+
+unsigned g_MqttReloads = 0;
+
+}  // namespace
+
+MQTT &MQTT::getInstance(void) {
+  static MQTT instance;
+  return instance;
+}
+
+void MQTT::reloadSetting(void) {
+  ++g_MqttReloads;
+}
+
+unsigned MQTT::reloadCount(void) {
+  return g_MqttReloads;
+}
+#endif
 
 // Platform and power --------------------------------------------------------
 

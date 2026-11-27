@@ -27,6 +27,7 @@
 #include "FurbleCompanionService.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurbleMQTT.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "NimBLEDevice.h"
@@ -455,6 +456,110 @@ void testCompanionSecretRedaction(void) {
 
   // Release the shutter timer init() created, so this case leaves nothing for
   // LeakSanitizer to find.
+  service.deinit();
+  central.disconnect();
+  NimBLEDevice::resetMock();
+}
+
+// The broker password is the second secret over this link, and the only one
+// whose redaction is compiled out unless FURBLE_MQTT is defined. The
+// companion-gatt target defines it now, so this case runs the code every
+// shipped image builds (PR 534 review F3). Deliberately unguarded: if the
+// target ever drops FURBLE_MQTT, Settings::MQTT_PASS stops existing and this
+// file stops compiling, rather than the coverage disappearing quietly.
+void testCompanionMqttPassRedaction(void) {
+  std::cout << "test: companion MQTT password reads are redacted\n";
+  NimBLEDevice::resetMock();
+
+  const std::string brokerPassword = "broker-hunter2";
+  const std::string brokerUri = "mqtt://broker.example:1883";
+  Furble::Settings::save<std::string>(Furble::Settings::MQTT_PASS, brokerPassword);
+  Furble::Settings::save<std::string>(Furble::Settings::MQTT_URI, brokerUri);
+
+  MockCentral central;
+  CompanionService service(central);
+  central.attach(service);
+  service.init();
+  central.connect();
+
+  auto containsPassword = [&](const std::vector<std::vector<uint8_t>> &records) {
+    for (const auto &record : records) {
+      const std::string text(record.begin(), record.end());
+      if (text.find(brokerPassword) != std::string::npos) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Op 1, the single-setting read.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 59, 0}), "companion routes an MQTT password read");
+  check(central.indications().size() == 1, "the MQTT password read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    const std::string value(record.begin() + 4, record.end());
+    check(record.size() == 4 + 3 && record[0] == 0 && record[1] == 59 && record[2] == 3,
+          "the MQTT password read reports an OK SETTING_STRING record");
+    check(value == "set", "a stored MQTT password reads back as set");
+  }
+  check(!containsPassword(central.indications()),
+        "the MQTT password itself never crosses the link");
+
+  // Op 0, the catalog the app lists before an editor is opened.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {0, 0, 0}), "companion routes the MQTT settings list");
+  check(!containsPassword(central.indications()),
+        "the MQTT catalog does not leak the broker password");
+  bool listed = false;
+  for (const auto &record : central.indications()) {
+    if ((record.size() >= 4) && (record[1] == 59)) {
+      listed = true;
+      const std::string value(record.begin() + 4, record.begin() + 4 + record[3]);
+      check(record[0] == 0 && record[2] == 3, "the MQTT catalog lists the password as a string");
+      check(value == "set", "the MQTT catalog reports the password as set");
+    }
+  }
+  check(listed, "the MQTT catalog still lists the password row so an app can set it");
+
+  // The broker address stays readable. It is the endpoint a user needs to see,
+  // and the item records its userinfo as a separate open caveat rather than a
+  // read to redact, so a future change that redacts it fails here.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 57, 0}), "companion routes an MQTT URI read");
+  check(central.indications().size() == 1, "the MQTT URI read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    check(std::string(record.begin() + 4, record.end()) == brokerUri,
+          "the broker address stays readable");
+  }
+
+  // The write half is unchanged, and it reaches the MQTT reload fan-out.
+  const std::string replacement = "broker-replacement";
+  std::vector<uint8_t> writeRecord {2, 59, static_cast<uint8_t>(replacement.size())};
+  writeRecord.insert(writeRecord.end(), replacement.begin(), replacement.end());
+  const unsigned reloadsBefore = Furble::MQTT::reloadCount();
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, writeRecord), "companion routes an MQTT password write");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_PASS) == replacement,
+        "a companion MQTT password write still reaches the store");
+  check(central.indications().size() == 1 && central.indications()[0][0] == 0,
+        "the MQTT password write is acknowledged");
+  check(Furble::MQTT::reloadCount() == reloadsBefore + 1,
+        "an MQTT password write still reloads the broker settings");
+
+  // A cleared password reads as unset, not as an empty string a client could
+  // write back as the credential.
+  Furble::Settings::save<std::string>(Furble::Settings::MQTT_PASS, "");
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 59, 0}), "companion routes the cleared MQTT read");
+  check(central.indications().size() == 1, "the cleared MQTT password read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    check(std::string(record.begin() + 4, record.end()) == "unset",
+          "a cleared MQTT password reads back as unset");
+  }
+
   service.deinit();
   central.disconnect();
   NimBLEDevice::resetMock();
@@ -1206,6 +1311,7 @@ int main(void) {
   testPasswordLoadFailureDeniesPrivilegedWrites();
   testAuthDisconnectRace();
   testCompanionSecretRedaction();
+  testCompanionMqttPassRedaction();
   testCompanionGattFlow();
   testCompanionCameras();
   if (g_Failures != 0) {
