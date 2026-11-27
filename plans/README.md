@@ -214,6 +214,7 @@ whose title carries it, and plan 331 is archived there with it.
 | [350-stickc-family-fixes.md](350-stickc-family-fixes.md) | StickC family fixes: shared LED/IR pin ownership, LED and IR polarity, Plus2 RTC backing, AXP192 ADC mask reason, GPIO35 third source, StickC Plus timed wake, GPS rail already on |
 | [350-review-feedback.md](350-review-feedback.md) | Review-feedback record for PR #505: the arbiter build gate, the unrecorded-level fallback, the boot-time EXTEN writes, and the polarity and RTC questions this review closed |
 | [371-fork-network-sweep.md](371-fork-network-sweep.md) | Fork network sweep: 41 forks classified, the 123 commits absent by SHA, the two new ones worth taking, the web installer chip family defect, and the items cleared so nobody re-ports them |
+| [373-interval-shutter-hold.md](373-interval-shutter-hold.md) | Intervalometer shutter hold decision record: the 30 ms default kept, the per-family evidence for which drivers honour the value, why the fork's 400 ms and its migration are rejected, and the one capture that would reopen it |
 
 ## Next hardware
 
