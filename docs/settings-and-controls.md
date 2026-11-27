@@ -232,6 +232,17 @@ these on the device and press Start, so the value you see is the value that
 runs. Cameras that trigger with a single operation (for example Ricoh GR) ignore
 the Shutter duration but still honour Count, Delay, and Wait.
 
+A value of 0 means now. Wait 0 starts the first frame immediately, Shutter 0
+issues the release on the next UI pass (about 5 ms, the shortest interval the
+loop can honour), and Delay 0 starts the next frame as soon as the release has
+gone out. A run with Shutter and Delay both 0 fires as fast as the UI loop and
+the camera link allow.
+
+The Shutter value is also the exposure when the camera is in bulb on a body that
+latches the remote press, which is Fujifilm, Sony and LUMIX here: the release
+ends the exposure. On a body in continuous drive the same value sets how long
+the burst runs, so a longer Shutter takes several frames per step.
+
 Deep Sleep and Sleep Threshold appear only on boards with a timed wake source:
 the M5StickS3 (M5PM1 timer) and the M5StickC Plus and Plus2 (BM8563 alarm). On
 other boards the controls are hidden and the intervalometer runs awake. On the

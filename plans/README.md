@@ -262,6 +262,7 @@ whose title carries it, and plan 331 is archived there with it.
 | [350-review-feedback.md](350-review-feedback.md) | Review-feedback record for PR #505: the arbiter build gate, the unrecorded-level fallback, the boot-time EXTEN writes, and the polarity and RTC questions this review closed |
 | [371-fork-network-sweep.md](371-fork-network-sweep.md) | Fork network sweep: 41 forks classified, the 123 commits absent by SHA, the two new ones worth taking, the web installer chip family defect, and the items cleared so nobody re-ports them |
 | [373-interval-shutter-hold.md](373-interval-shutter-hold.md) | Intervalometer shutter hold decision record: the 30 ms default kept, the per-family evidence for which drivers honour the value, why the fork's 400 ms and its migration are rejected, and the one capture that would reopen it |
+| [389-shutter-zero-hold.md](389-shutter-zero-hold.md) | A configured Shutter of 0: the timer period and the configured duration were conflated, so 0 reused the previous period and a 15 s delay became a 15 s hold. 0 now means due now, and the per-call-site workarounds are gone |
 
 ## Next hardware
 

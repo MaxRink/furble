@@ -243,7 +243,7 @@ typedef struct {
 } multiselect_t;
 ```
 
-Save it once in `doConnect` (`src/FurbleUI.cpp:8617-8651`) after the activate
+Save it once in `doConnect` (`src/FurbleUI.cpp:8656-8690`) after the activate
 loop. Load and apply it in the `addConnectMenu` refresh callback
 (`src/FurbleUI.cpp:1434-1458`), right where each item is created: if the camera
 name matches an entry, call `camera->setActive(true)` and
@@ -374,7 +374,7 @@ snapshot from that PR instead.
 - `getTargets()` hands out a reference to a vector that `Control::disconnect`
   clears (`src/FurbleControl.cpp:242`). A timer tick that runs during a
   disconnect can walk a stale vector. Re-fetch every tick, and pause the timer
-  in `doDisconnect` (`src/FurbleUI.cpp:8653-8699`) as well as in the page leave
+  in `doDisconnect` (`src/FurbleUI.cpp:8692-8738`) as well as in the page leave
   handler.
 - `NimBLEClient::getRssi()` blocks. Measured cost is unknown until it is tried
   on hardware. Mitigation is above.
