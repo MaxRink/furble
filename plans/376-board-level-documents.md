@@ -1,4 +1,4 @@
-# 367 - Board-level documents for the supported and planned boards
+# 376 - Board-level documents for the supported and planned boards
 
 Status: research and document register. This plan adds no firmware, board,
 driver or support claim. No hardware was bought, flashed or measured. Every
@@ -96,9 +96,11 @@ path plan 318 could not find:
 - The factory example sets `XPOWERS_ALDO4` to 3300 mV and enables it under the
   comment `//gps`, which makes `A_LDO4` the AXP2101 ALDO4 GPS rail at 3.3 V
   (`examples/Factory/LoRaBoards.cpp`, the `T_BEAM_S3_SUPREME` block).
-- Pin 6 V_BCKP sits on the `VRTC` net, and the same code sets `XPOWERS_VBACKUP`
-  to 3300 mV, so the backup rail plan 318 marked `[inferred]` for this trim now
-  has a drawing and vendor code behind it.
+- Pin 6 V_BCKP sits on the `VRTC` net in the drawing, which is where plan 318
+  already had it, so the `[inferred]` tag stays. The factory example disables
+  VBACKUP for this board under `//not use channel`, its only 3300 mV
+  `XPOWERS_VBACKUP` write is in the `CONFIG_IDF_TARGET_ESP32` branch, and the
+  hardware page lists `LDO1(VRTC)` and `VBACKUP` as unused.
 
 So V_IO has a named supply path for the first time: the pin 7 pad, through a 0
 ohm link, to ALDO4 at 3.3 V. It is not certified. No document says a MAX-M10S is
@@ -112,7 +114,7 @@ ALDO4 rail plus a UART exchange on that rail, and it is unchanged from plan
 | Fact | Was | Now | State |
 | :--- | :--- | :--- | :--- |
 | T-Beam M10S V_IO | undocumented | pad to `A_LDO4` through a 0 ohm link, ALDO4 at 3300 mV in the factory code | path named, UNVERIFIED on hardware |
-| T-Beam M10S V_BCKP | `[inferred]` | `VRTC` on the shared drawing, `XPOWERS_VBACKUP` at 3300 mV in the factory code | drawing and code, UNVERIFIED for the M10S assembly |
+| T-Beam M10S V_BCKP | `[inferred]` | Still `[inferred]`. `VRTC` on the shared drawing, but the factory code disables VBACKUP for this board and the rail table lists `LDO1(VRTC)` and `VBACKUP` as unused | UNVERIFIED, unchanged |
 | Core2 v1.1 PMIC | AXP2101 inferred from the product page | AXP2101 drawn on sheet 4; AXP192 drawn on V1.0 | VERIFIED from the drawings |
 | StickS3 rails | product page numbers | M5PM1 rail tree on sheet 1, L0 shipping to L3B all-active | VERIFIED from the drawing |
 | Cardputer-Adv | no PMIC recorded | charger plus boost on sheet 1, no AXP part on any of the four sheets, TCA8418 on sheet 2 | read from the drawing; the absence is an OCR sweep of all four sheets plus a visual read of sheet 1 |

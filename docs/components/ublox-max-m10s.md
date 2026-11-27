@@ -90,12 +90,14 @@ constellation mask and the detection rule are protocol facts and live on the
   document read here says whether the MAX-M10S has V_BCKP connected on the
   boards furble drives, so `src/FurbleGPS.cpp` saves the BBR with UPD-SOS before
   a rail cut rather than trusting it. The board side of that question has a
-  named path on one target at least: on the LilyGO T-Beam Supreme the pad for
-  module pin 6 sits on the `VRTC` net, which the vendor factory example drives
-  from `XPOWERS_VBACKUP` at 3300 mV, and the pad for pin 7 is tied to the GPS
-  rail through a 0 ohm link. Both are drawing facts on an assembly that no
-  document confirms carries this module, so the row stays open and the detail
-  is in [board-document-gaps.md](../power/board-document-gaps.md#3-the-t-beam-supreme-max-m10s-trim).
+  drawing fact on one target: on the LilyGO T-Beam Supreme the pad for module
+  pin 6 sits on a net the drawing labels `VRTC`, and the pad for pin 7 is tied
+  to the GPS rail through a 0 ohm link. Nothing read here says what drives
+  `VRTC`: the vendor's rail table lists both `LDO1(VRTC)` and `VBACKUP` as
+  unused and its factory code disables VBACKUP for that board, so the backup
+  source is UNVERIFIED. Both facts belong to an assembly that no document
+  confirms carries this module, so the row stays open and the detail is in
+  [board-document-gaps.md](../power/board-document-gaps.md#3-the-t-beam-supreme-max-m10s-trim).
 - The antenna supervisor and the external LNA behaviour, and the ANTSTATUS
   encodings behind them.
 - The GNSS signal defaults the module ships with. The IFD ROM defaults

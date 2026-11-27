@@ -30,7 +30,7 @@ with a schematic may still be in this table, because a trim of it has none.
 | Board | Board-level schematic | What stands in when it does not | What the substitute settles | Still open |
 | :--- | :--- | :--- | :--- | :--- |
 | LilyGO T-Beam Supreme, L76K trim | Yes. Carrier drawing in three sheets, revision V3.0, plus the core board at V3.0 and V3.1 | not needed | Module TXD on pin 2 reaches the `GPS_RX` net through a 100 ohm series resistor and module RXD on pin 3 reaches `GPS_TX` through a second, 1PPS on pin 4 reaches `GPS_PPS` through a series 1N4148, WAKE_UP on pin 5 comes from GPIO7, V_BCKP on pin 6 comes from the `VRTC` net, and pin 7 is marked RESERVED and wired to the pin 8 net through a 0 ohm link (radio and GNSS sheet, revision V3.0) | Whether the L76K trim leaves pin 7 unpopulated, and whether that 0 ohm link is fitted on an L76K assembly |
-| LilyGO T-Beam Supreme, MAX-M10S trim | No drawing of its own. See section 3 | The L76K carrier drawing, the vendor compatibility statement, the vendor pin map and the factory example code | That the vendor considers one drawing to cover both trims, that GPIO7 is documented as L76K-only wake-up, and that the GPS rail is ALDO4 at 3300 mV while the backup rail is VBACKUP at 3300 mV | V_IO (MAX-M10S pin 7) is named by no vendor document as a supply. The drawing shows that pad tied to the GPS rail through a 0 ohm link, which is the only candidate path, and section 3 records why that is a reading and not a certification |
+| LilyGO T-Beam Supreme, MAX-M10S trim | No drawing of its own. See section 3 | The L76K carrier drawing, the vendor compatibility statement, the vendor pin map and the factory example code | That the vendor considers one drawing to cover both trims, that GPIO7 is documented as L76K-only wake-up, and that the GPS rail is ALDO4 at 3300 mV | V_IO (MAX-M10S pin 7) is named by no vendor document as a supply. The drawing shows that pad tied to the GPS rail through a 0 ohm link, which is the only candidate path, and section 3 records why that is a reading and not a certification |
 | LilyGO T-Deck | Yes, one sheet, title block empty except the date 2023/6/1 | not needed | The board as drawn | Nothing for a board furble does not port |
 | LilyGO T-Deck Plus | Yes, two GPS card variants: MIA-M10Q, dated 24-03-29, and L76K, dated 24-08-12 | not needed | Which receiver each card carries, and that both exist under the Plus | Which variant a given unit ships with is a purchase question, not a document one |
 | LilyGO T-LoRa Pager | Yes, five sheets, Rev V1.0 | not needed | That a five-sheet set exists for the Pager and carries the GNSS block; the receiver module name appears on the drawing | The printed date is a template default, so the drawing date is UNVERIFIED. The BQ25896 and XL9555 parts the component pages record were not re-read against this drawing in this pass |
@@ -73,22 +73,30 @@ What this pass adds, and what it does not:
    designator is readable beside it at 1600 dpi. The pin 8 net is labelled
    `A_LDO4`.
 3. **The factory example names that net's rail and voltage.** Under
-   `T_BEAM_S3_SUPREME` the vendor's own `LoRaBoards.cpp` sets
-   `XPOWERS_ALDO4` to 3300 mV and enables it under the comment `//gps`, and sets
-   `XPOWERS_VBACKUP` to 3300 mV under `// GNSS RTC PowerVDD`. So `A_LDO4` is
-   the AXP2101 ALDO4 GPS rail at 3.3 V, and the `VRTC` net on pin 6 is the
-   AXP2101 backup rail at 3.3 V.
+   `T_BEAM_S3_SUPREME` the vendor's own `LoRaBoards.cpp` sets `XPOWERS_ALDO4`
+   to 3300 mV and enables it under the comment `//gps`. So `A_LDO4` is the
+   AXP2101 ALDO4 GPS rail at 3.3 V. The same file does not say that for the
+   backup: its 3300 mV `XPOWERS_VBACKUP` write is in the
+   `CONFIG_IDF_TARGET_ESP32` branch, the Supreme branch lists VBACKUP under
+   `//not use channel` and disables it, and the hardware page lists both
+   `LDO1(VRTC)` and `VBACKUP` as unused while saying GPS backup power comes
+   from the 18650.
 4. **What that makes newly verifiable.**
    - V_IO supply path: on this board the pad a MAX-M10S uses for V_IO is tied
      to the GPS VDD rail at 3.3 V through a 0 ohm link. This is the first
      statement of the path in any document, and it is read off the drawing and
      the vendor code, both first party. It replaces "what supplies V_IO is
      undocumented" with a named path.
-   - V_BCKP path: the drawing's `VRTC` net and the factory code's
-     `XPOWERS_VBACKUP` at 3300 mV agree, so the backup supply plan 318 marked
-     `[inferred]` for the M10S trim is now supported by a drawing plus vendor
-     code, and stops being a bare inference.
+   - Not V_BCKP: pin 6 is on the `VRTC` net in the drawing, which is where
+     plan 318 already had it, and no document read here says what drives that
+     net, so the `[inferred]` tag stays. See item 5.
 5. **What stays open, and why.**
+   - The V_BCKP source is **UNVERIFIED**. The drawing names the `VRTC` net on
+     pin 6 and that label also appears on the AXP2101 sheet, but the vendor's
+     rail table lists `LDO1(VRTC)` and `VBACKUP` as unused, the factory code
+     disables VBACKUP under `//not use channel`, and the hardware page says the
+     backup comes from the 18650. Three sources, no agreement, so the
+     `[inferred]` tag returns.
    - V_IO is still **UNVERIFIED as a supply**. No document states that a
      MAX-M10S is fitted to that pad, that the link is populated, or that V_IO draws
      from it. The drawing names an L76K, and a 0 ohm link to the GPS rail is
@@ -111,11 +119,11 @@ What this pass adds, and what it does not:
 | Fact | Before | Now | State |
 | :--- | :--- | :--- | :--- |
 | T-Beam Supreme M10S V_IO supply | "undocumented, including what supplies V_IO" (plan 318) | The pad is tied to the GPS rail `A_LDO4` through a 0 ohm link, and that rail is ALDO4 at 3300 mV per the vendor example code | path named, supply UNVERIFIED on hardware |
-| T-Beam Supreme M10S V_BCKP | `[inferred]` from the L76K sheet | `VRTC` on pin 6 of the shared drawing, and `XPOWERS_VBACKUP` at 3300 mV in the vendor code | documented for the drawing, UNVERIFIED for the M10S assembly |
+| T-Beam Supreme M10S V_BCKP | `[inferred]` from the L76K sheet | Still `[inferred]`. Pin 6 is on the `VRTC` net in the drawing, but nothing read here says what drives it: the factory code disables VBACKUP for this board and the vendor rail table lists `LDO1(VRTC)` and `VBACKUP` as unused | UNVERIFIED, unchanged |
 | T-Beam Supreme M10S existence of a drawing | "there is no M10S schematic" | No drawing names the M10S. The vendor states the L76K drawing is the same board | vendor statement, not a document |
 | Core2 v1.1 PMIC | "fits an AXP2101 under the same board ID", AXP2101 datasheet called an open gap | Sheet 4 of the v1.1 drawing carries the AXP2101; sheet 1 of V1.0 carries the AXP192 | VERIFIED from the drawings |
 | StickS3 rail tree | product page numbers only | Sheet 1 of the K150 drawing is the M5PM1 rail tree, L0 to L3B, with the SoC IO map | VERIFIED from the drawing |
-| Cardputer-Adv power | the catalog calls it a BLE plus display board with no GNSS | No PMIC on the drawing: a charger and a boost converter, and the TCA8418 on sheet 2 | VERIFIED from the drawing |
+| Cardputer-Adv power | the catalog calls it a BLE plus display board with no GNSS | Sheet 1 has a charger and a boost converter and no AXP part appears on any of the four sheets; the TCA8418 is on sheet 2 | read from the drawing; the absence is an OCR sweep of all four sheets plus a visual read of sheet 1 |
 | M5StickC full schematic | no vendor schematic, rebuild pin map only | Still no vendor schematic. The FCC filing index lists a Schematics exhibit of 537.1 KB and a Block Diagram of 91.8 KB, both marked metadata only | UNVERIFIED, the file was not reachable |
 | FCC exhibits in general | "no claim is made about schematics or internal photos in any of these filings" | The per-ID index pages do list Schematics exhibits, with sizes, for the StickC, StickC Plus, StickS3 and Core2. Every one of those rows carries the mirror's metadata-only flag, and the FCC attachment endpoints still answer 403 | index read 2026-11-27, file UNVERIFIED |
 | M5PM1 reference design | assumed available as a fallback | The chip manual has no application circuit and no schematic section | VERIFIED by searching the manual for application, typical, circuit, schematic and reference |

@@ -113,7 +113,7 @@ feed (P-077) and disabling the USB Serial/JTAG console in release (P-205).
 7. **Camera parity is out of scope.** The camera rows measure link power, not
    protocol parity. No errata or application note is cited, and several vendor
    documents were not opened: FT6336U, ES8311, AW8737 and BM8563. The board
-   schematics were opened on 2026-11-27, in the pass plan 367 records.
+   schematics were opened on 2026-11-27, in the pass plan 376 records.
 
 ## What this change set does
 

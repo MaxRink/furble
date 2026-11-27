@@ -349,10 +349,12 @@ PCF85063ATL).
 
 ## Follow-up: the M10S trim's V_IO and V_BCKP paths (2026-11-27)
 
-Plan 367 went looking for board-level documents and reopened this plan's
-"there is no M10S schematic" line. It is too strong, and the two facts this plan
-left inferred now have a named path. Nothing here changes the decision, the
-ranking or the bench plan; the bench item 6 expectation is simply known now.
+Plan 376 went looking for board-level documents and reopened this plan's
+"there is no M10S schematic" line. It is too strong: the drawing exists under the
+L76K name and the vendor says both trims share it. One of the two facts this
+plan left inferred now has a named path. The other does not, and keeps its
+`[inferred]` tag. Nothing here changes the decision, the ranking or the bench
+plan; the bench item 6 expectation is simply known now.
 
 - There is still no drawing with the MAX-M10S name on it, and there will not be
   one. In issue 225 a LilyGO maintainer answers a request for it with "It is
@@ -366,9 +368,12 @@ ranking or the bench plan; the bench item 6 expectation is simply known now.
   `XPOWERS_ALDO4` to 3300 mV and enables it under `//gps`, so that net is the
   AXP2101 ALDO4 GPS rail at 3.3 V. That is the first named supply path for V_IO,
   the pin this plan recorded as undocumented.
-- Pin 6 V_BCKP sits on the `VRTC` net, and the same factory code sets
-  `XPOWERS_VBACKUP` to 3300 mV, so the `[inferred]` tag on the M10S backup path
-  is replaced by a drawing plus vendor code.
+- Pin 6 V_BCKP sits on the `VRTC` net in the drawing, which is where this
+  plan already had it. The `[inferred]` tag stays: the factory example disables
+  VBACKUP for this board under `//not use channel`, its only 3300 mV
+  `XPOWERS_VBACKUP` write belongs to the classic ESP32 T-Beam branch, and the
+  hardware page lists both `LDO1(VRTC)` and `VBACKUP` as unused while saying
+  backup power comes from the 18650. What drives `VRTC` is UNVERIFIED.
 - Neither is certified on an M10S assembly. No document says a MAX-M10S is
   fitted to that pad or that the 0 ohm link is populated, so bench item 6 keeps
   its place and gains an expected answer: continuity from module pin 7 to the
