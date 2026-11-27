@@ -564,7 +564,9 @@ heap_trace: stopped, 3 records held
 
 ## ota
 
-`ota status` prints the shared OTA status record, one fact per line:
+`ota status` prints the shared OTA status record, one fact per line. The
+command is built with the MQTT hub, which is the only producer of the record;
+console-only images leave it out.
 
 ```
 ota: idle, error none

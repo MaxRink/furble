@@ -459,7 +459,7 @@ interval start | stop | status       Timer page workflow
 bulb start | stop | status           Bulb page workflow
 display status | mode | brightness   display workflow
 mqtt status | connect | disconnect | discovery clear
-ota status                         last OTA attempt, available version and boot rollback
+ota status                         last OTA attempt, boot rollback (MQTT builds)
 shutter press | release | hold <ms>
 focus press | release
 ir fire [protocol]                  fire the IR emitter

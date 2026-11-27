@@ -200,13 +200,28 @@ Implemented:
   check without a download, retained policy, transport detail and a rollback
   after a failed health check), the `mqtt-owner` `cmd/ota` block (mock MQTT
   events through the production topic route and HTTPS adapter), and the
-  `console-commands` `ota status` case.
+  `console-commands` `ota status` case, which compiles under the same
+  `FURBLE_MQTT` guard as the command and is asserted through
+  `OTA::formatStatus` in `ota-mqtt-handler`.
 
 Deviations from the plan text:
 
 - No `esp_https_ota` call, no `PRIV_REQUIRES` change and no network fetch. The
   scope was the host-testable adapter, and the user authority for this slice
   excluded a real download. The firmware adapter is the next hardware slice.
+- `ota status` is built only with `FURBLE_MQTT`. The MQTT handler is the only
+  producer of the record, so a console-only image cannot start an update and
+  the record never leaves idle, while the command and the status module cost
+  2.4 KB of flash. The 4 MB Core debug lane fits master with 784 bytes free
+  (1,740,016 of its 1,740,800-byte slot by `check_size_budget.py`), so it
+  cannot hold them: this slice measured 1,741,921 bytes of program size
+  locally and 1,741,581 in CI, 781 over the slot at `checkprogsize`. Scoping
+  the command to the hub puts the lane back at 1,740,016 with 784 bytes free,
+  the same bin size as master. Hub builds keep the command and its six-line
+  output unchanged. Two behavior-preserving
+  alternatives were measured and rejected: `-Oz` instead of `-Os` on that lane
+  came out 16 bytes larger, and a leaner formatter saved about 1 KB against the
+  1.1 KB the local image needed, with no margin left.
 - No `OTA_URL` or `OTA_CHANNEL` setting. Without a manifest source the settings
   have no consumer. `check` therefore requires an explicit URL or the last URL
   the device was given.

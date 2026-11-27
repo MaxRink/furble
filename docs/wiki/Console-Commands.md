@@ -554,7 +554,8 @@ heap_trace: stopped, 3 records held
 
 ## ota
 
-`ota status` prints the last OTA attempt and the boot rollback verdict:
+`ota status` prints the last OTA attempt and the boot rollback verdict. The
+command is built with the MQTT hub, the only producer of the record.
 
 ```
 ota: idle, error none

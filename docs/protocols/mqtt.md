@@ -126,7 +126,8 @@ transfer (`src/FurbleOTACommand.cpp:323-329`).
 No HTTPS download is linked in this build. Without an attached transport the
 topic still answers, with `transport_unavailable`, so a dashboard can tell a
 build without OTA from an idle device (`src/FurbleOTAAdmission.cpp:115`). The console
-command `ota status` prints the same record (`src/FurbleConsole.cpp:3635`).
+command `ota status`, built with the hub, prints the same record
+(`src/FurbleConsole.cpp:3639`).
 
 The 60 s hold limit and the 256-byte topic limit are
 `include/FurbleMQTT.h:93,96`.
