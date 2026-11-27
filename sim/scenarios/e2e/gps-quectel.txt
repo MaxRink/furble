@@ -1,0 +1,36 @@
+# A Quectel LC29H-class part on the port. The driver sends three
+# identification probes in one window, the receiver answers $PQTMVERNO, and the
+# Quectel backend takes over: PAIR062 sets the sentence set, PAIR050 the fix
+# rate, PAIR080 the navigation mode, PAIR410 SBAS and PAIR066 the
+# constellation, each acknowledged by $PAIR001,<id>,0. Plan 367.
+seed gps true
+seed gps_model quectel
+seed gps_nmea true
+seed gps_rate 2
+seed gps_gnss 9
+seed gps_platform 1
+wait 8000
+assert gps.backend quectel
+assert text.version LC29HAANR01A04S
+assert text.fw 2022/11/04_16:39:48
+assert text.saved 0
+assert text.unsupported 0
+
+# Every configuration command is acknowledged, in plan order: six sentence
+# rates, the fix rate, the navigation mode, SBAS and the search mode.
+assert-eventually 5000 gps.config.0.state ACKED
+assert-eventually 5000 gps.config.9.state ACKED
+assert text.naks 0
+assert_min text.acks 10
+
+# What the receiver kept: 500 ms, GGA and RMC only, GPS and Galileo, SBAS off,
+# and PAIR080 normal mode for the Portable platform setting.
+assert text.rate_ms 500
+assert text.sentence 1000100000
+assert text.gnss 101000
+
+# The fix still comes from the NMEA stream the receiver prints.
+assert-eventually 5000 gps.source uart
+assert_min gps.satellites 1
+assert_min gps.fresh_fixes_parsed 1
+exit

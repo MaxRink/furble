@@ -34,7 +34,10 @@ using lv_obj_t = _lv_obj_t;
 #include "protocol/GpsCasic.h"
 #include "protocol/GpsDemux.h"
 #include "protocol/GpsNavx.h"
+#include "protocol/GpsQuectel.h"
+#include "protocol/GpsText.h"
 #include "protocol/GpsUbx.h"
+#include "protocol/GpsUnicore.h"
 
 namespace Furble {
 class GPS {
@@ -65,18 +68,21 @@ class GPS {
   /**
    * The configuration protocol the receiver was identified as.
    *
-   * Detection polls UBX-MON-VER once the receiver talks. A u-blox receiver
-   * answers and gets the UBX backend. Anything else keeps the NMEA backend,
-   * which is the path furble always had: NMEA parsing plus the CASIC
-   * configuration with its $PCAS fallback for the AT6668 and L76K. Both are
-   * shaped so another vendor ($PAIR, $CFG) is one more value here and one more
-   * configure function, not a new abstraction.
+   * Detection sends three probes in one window once the receiver talks:
+   * UBX-MON-VER, $PQTMVERNO and $PDTINFO. A u-blox receiver answers the first,
+   * a Quectel part answers the second and a Unicore part the third; each answer
+   * decides the backend at once, so a vendor that answers is not made to wait
+   * out another vendor's window. A receiver that answers none of them keeps the
+   * NMEA backend, which is the path furble always had: NMEA parsing plus the
+   * CASIC configuration with its $PCAS fallback for the AT6668 and L76K.
    */
   enum class backend_t : uint8_t {
     UNKNOWN,   /**< not identified this session */
-    DETECTING, /**< the MON-VER poll is outstanding */
-    NMEA,      /**< no UBX answer: NMEA with CASIC configuration */
+    DETECTING, /**< the identification probes are outstanding */
+    NMEA,      /**< no vendor answered: NMEA with CASIC configuration */
     UBX,       /**< a u-blox receiver answered MON-VER */
+    QUECTEL,   /**< a Quectel receiver answered $PQTMVERNO */
+    UNICORE,   /**< a Unicore receiver answered $PDTINFO */
   };
 
   /** UBX receiver state for the console and the simulator. */
@@ -138,6 +144,43 @@ class GPS {
     bool have_sat;
     std::array<uint8_t, 7> sat_view;
     std::array<uint8_t, 7> sat_used;
+  };
+
+  /**
+   * Vendor text receiver state: Quectel $PAIR/$PQTM and Unicore $CFG.
+   *
+   * The console reads this through getTextStatus(), which is the same surface
+   * getUbxStatus() gives a u-blox receiver. It reports the identity the startup
+   * detection found, what the last configuration actually sent, and how every
+   * command ended, so a receiver that refused a setting is told apart from one
+   * that never answered.
+   */
+  struct text_status_t {
+    bool have_version;
+    std::string model;     /**< PQTMVERNO version string, or PDTINFO pdtName */
+    std::string firmware;  /**< PQTMVERNO build date and time, or PDTINFO fwVer */
+    bool configured;       /**< a configuration queue was built this session */
+    uint16_t rate_ms;      /**< fix interval the plan sent, 0 when left alone */
+    uint8_t gnss;          /**< effective constellation mask */
+    bool gnss_refused;     /**< the mask broke a documented combination rule */
+    bool sbas;             /**< SBAS enable that was sent, if the mask decided it */
+    bool sbas_refused;     /**< SBAS asked for in a mode that forbids it */
+    bool platform_refused; /**< the part has no mode for the platform setting */
+    bool rate_refused;     /**< the rate is outside the part's documented range */
+    bool psm_refused;      /**< standby is unsupported or out of range */
+    bool sentences_set;    /**< the sentence set was decided */
+    uint8_t sentences;     /**< the GpsText::SentenceSet that was sent */
+    uint32_t acks;         /**< acknowledged commands this session */
+    uint32_t naks;         /**< refused commands this session */
+    uint32_t timeouts;     /**< unanswered commands this session */
+    /** Configuration save: 0 not tried, 1 saved, 2 refused or unanswered. */
+    uint8_t save;
+    /** Standby: 0 never asked, 1 sent, 2 refused by the part or the driver. */
+    uint8_t standby;
+    /** GpsText::Op of the last finished command. */
+    uint8_t last_op;
+    /** GpsText::Verdict of the last finished command. */
+    uint8_t last_verdict;
   };
 
   /** Per satellite diagnostics parsed from GSV and GSA. */
@@ -489,6 +532,9 @@ class GPS {
   /** A coherent copy of the UBX receiver state. Empty fields off the UBX backend. */
   ubx_status_t getUbxStatus(void) const;
 
+  /** A coherent copy of the vendor text receiver state. */
+  text_status_t getTextStatus(void) const;
+
   /** Poll one NAV-SAT on a UBX receiver; the answer lands in getUbxStatus(). */
   void pollUbxSatellites(void);
 
@@ -547,6 +593,11 @@ class GPS {
   static constexpr uint32_t BINARY_ACK_TIMEOUT_MS = 300;
   // UBX: CFG input is acknowledged "at least within one second" (IFD 3.9.1, 3.9.2).
   static constexpr uint32_t UBX_ACK_TIMEOUT_MS = 1000;
+  // The whole vendor save sequence, in one budget on the shutdown path. A rail
+  // cut waits this long at most, whether or not the receiver answered.
+  static constexpr uint32_t TEXT_SAVE_BUDGET_MS = 1500;
+  // How long each save frame waits for its own acknowledgement.
+  static constexpr uint32_t TEXT_SAVE_REPLY_MS = 250;
   static constexpr uint8_t BINARY_ATTEMPTS = 3;
   static constexpr size_t MAX_CONFIG_COMMANDS = 16;
   static constexpr size_t NAVX_PAYLOAD_SIZE = 44;
@@ -631,6 +682,11 @@ class GPS {
     // the GNSS subsystem, IFD 4.9.21).
     bool ubx = false;
     uint16_t settle_ms = 0;
+    // A vendor text command (GpsText) instead of a CASIC or UBX frame. The
+    // body, acknowledgement name and settle time live in text_command, and
+    // class_id and message_id are unused for it.
+    bool text = false;
+    GpsText::Command text_command;
   } binary_command_t;
 
   static_assert(sizeof(aid_cache_t) == 56, "AID cache layout changed");
@@ -725,6 +781,53 @@ class GPS {
    * the task's deepest path.
    */
   counters_t getCounters(void) const;
+
+  /* Vendor text backend, src/FurbleGPSText.cpp. */
+  /**
+   * Send the three identification probes: UBX-MON-VER, $PQTMVERNO and
+   * $PDTINFO. A receiver answers at most one of them.
+   */
+  void sendIdentifyProbes(void);
+  /** Build the GpsText::Request the settings describe. */
+  GpsText::Request textRequest(bool sentences) const;
+  /** Queue a vendor text command as an acknowledged command. */
+  void enqueueTextConfig(const GpsText::Command &command);
+  /** Write one framed vendor sentence. Empty frames are refused. */
+  bool sendText(const GpsText::Command &command);
+  /** Route one VENDOR piece from the demultiplexer. */
+  void serviceText(const uint8_t *data, size_t length);
+  /** Turn a plan into the configuration queue. */
+  void configureQuectel(void);
+  void configureUnicore(void);
+  /** Report what the text plan decided; called once per configuration. */
+  void publishTextPlan(const GpsText::Request &request,
+                       uint16_t rate_ms,
+                       uint8_t gnss,
+                       bool gnss_refused,
+                       bool sbas,
+                       bool sbas_refused,
+                       bool platform_refused,
+                       bool rate_refused,
+                       bool psm_refused);
+  /** Enter the vendor standby the backend documents, or report the refusal. */
+  bool textStandby(uint32_t now);
+  /**
+   * Save the receiver's configuration before a planned power cut. Returns true
+   * while the rail cut must wait for the answers.
+   */
+  bool textSave(uint32_t now);
+  /** The blocking form for disable(), which runs with the GPS task parked. */
+  void textSaveBlocking(void);
+  /** Advance the save sequence. True once it finished, saved or refused. */
+  bool textSaveService(uint32_t now);
+  /** Queue the save commands the backend documents. */
+  void textSaveQueueBuild(void);
+  /** Restart the receiver with the backend's own command. */
+  bool textRestart(uint8_t mode);
+  /** Drop the text identity, plan and counters. */
+  void resetText(void);
+  /** Which vendor answered the identification probes, if any. */
+  GpsText::Dialect textIdentity(void) const;
 
   /* UBX backend, src/FurbleGPSUbx.cpp. */
   void startDetect(uint32_t now);
@@ -1062,6 +1165,21 @@ class GPS {
   // CFG-RST GNSS stop sent for a save-on-shutdown, not yet followed by a cut
   bool m_UbxStopped = false;
   uint32_t m_RailOffDeadline = 0;
+
+  // Vendor text backend. m_TextIdentity is written on the GPS task and by
+  // enable() and disable() with the task parked; everything under m_TextMutex
+  // is read by the console through getTextStatus().
+  std::atomic<uint8_t> m_TextIdentity {static_cast<uint8_t>(GpsText::Dialect::NONE)};
+  GpsText::Session m_Text;
+  mutable std::mutex m_TextMutex;
+  text_status_t m_TextStatus = {};
+  // The configuration save in flight on the shutdown path. Its own session, so
+  // a save never disturbs the configuration session; the GPS task is the only
+  // writer and disable() runs with that task parked.
+  std::vector<GpsText::Command> m_TextSaveQueue;
+  GpsText::Session m_TextSave;
+  size_t m_TextSaveNext = 0;
+  bool m_TextSaveRefused = false;
 
   // MON-HW interference snapshot, hardware-tuning-pending
   std::atomic<bool> m_MonHwPending = false;

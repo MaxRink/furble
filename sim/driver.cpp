@@ -488,6 +488,10 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps_m10_backup",
       "gps_m10_flash",
       "gps_m10_hot",
+      "gps_quectel_no_fix_rate",
+      "gps_quectel_no_search_mode",
+      "gps_unicore_no_flash",
+      "gps_unicore_silent",
       "sd_gpx",
       "imu_trigger",
       "ivl_sleep",
@@ -660,10 +664,11 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "gps_model") {
     // The receiver on the port: the historic CASIC unit, a virtual L1-only
     // u-blox MAX-M10S or MIA-M10Q, a virtual dual-band NEO-F10N (named, or
-    // behind an unknown module string), or a receiver that answers no binary
-    // protocol.
+    // behind an unknown module string), a receiver that answers no binary
+    // protocol, or one of the vendor text parts of plan 388.
     if (value != "casic" && value != "m10" && value != "m10-mia" && value != "f10"
-        && value != "f10-unnamed" && value != "nmea") {
+        && value != "f10-unnamed" && value != "nmea" && value != "quectel"
+        && value != "unicore") {
       std::cerr << "Invalid gps_model: " << value << '\n';
       std::exit(2);
     }
@@ -2148,6 +2153,10 @@ std::string queryValueUnscoped(const std::string &key) {
     // configuration database (m10.ram.<hex key>, m10.bbr.<hex key>).
     return furble_sim_m10_query(key.substr(std::char_traits<char>::length("m10.")));
   }
+  if (prefixed("text.")) {
+    // The virtual vendor text receiver on the port, Quectel or Unicore.
+    return furble_sim_text_query(key.substr(std::char_traits<char>::length("text.")));
+  }
   if (prefixed("uart.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("uart."));
     const auto writes = furble_sim_uart_writes_snapshot();
@@ -3124,6 +3133,10 @@ void applyScenarioSettings(void) {
   if (irBurst != scenarioSettings.end()) {
     hwSetIrBurstMs(parseUnsigned(irBurst->second));
   }
+  furble_sim_uart_set_text_variant(scenarioSettingIsTrue("gps_quectel_no_fix_rate"),
+                                   scenarioSettingIsTrue("gps_quectel_no_search_mode"),
+                                   scenarioSettingIsTrue("gps_unicore_no_flash"),
+                                   scenarioSettingIsTrue("gps_unicore_silent"));
   const auto model = scenarioSettings.find("gps_model");
   if (model != scenarioSettings.end()) {
     const auto unknown = scenarioSettings.find("gps_m10_unknown_key");

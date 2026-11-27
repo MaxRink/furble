@@ -95,6 +95,12 @@ device location using an M5Stack GPS unit on Grove Port A. Enable it under
 remote. The GPS/BDS Unit v1.1 (AT6668) needs the baud rate set to 115200 under
 `Settings` > `GPS` > `GPS baud 115200`.
 
+The AT6668 units are all supported. furble also detects and configures a u-blox
+M10, a Quectel LC76G or LC29H and a Unicore UC6580 on the same port: it sends
+three identification probes at GPS start and whichever receiver answers decides
+the configuration protocol, so nothing needs selecting by hand. A receiver it
+does not recognise still supplies fixes over NMEA.
+
 The AT6668 units are all supported. For weak or indoor reception, the Unit-GPS
 with the external SMA antenna is the recommended drop in. A u-blox receiver
 (MAX-M10S, MIA-M10Q or another M10 UART module, or a dual-band NEO-F10N) is

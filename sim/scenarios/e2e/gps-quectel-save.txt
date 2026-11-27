@@ -1,0 +1,26 @@
+# Rail cycling a Quectel part with no backup supply. Before the cut furble locks
+# the sleep state, powers the GNSS engine off, saves the PAIR settings with
+# PAIR513, the PQTM settings with PQTMSAVEPAR and the navigation data with
+# PAIR511, then cuts the rail (Q76 2.3.30 page 56, 2.3.44 to 2.3.46).
+seed gps true
+seed gps_model quectel
+seed gps_power 2
+seed gps_duty 10
+seed gps_gnss 1
+seed gps_rate 2
+wait 6000
+assert gps.backend quectel
+assert-eventually 5000 gps.config.1.state ACKED
+assert text.saved 0
+
+# The rail cut waits for the save sequence.
+assert-eventually-virtual 20000 text.saved 1
+assert_min text.saves 3
+
+# The saved configuration survives the cut: the receiver comes back at 500 ms
+# rather than its own 1 Hz default. The rail is off for part of every duty
+# cycle, so this waits for the value rather than for a state.
+wait 20000
+assert-eventually-virtual 20000 text.rate_ms 500
+assert_min text.restarts 0
+exit

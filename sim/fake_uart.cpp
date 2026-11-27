@@ -13,6 +13,7 @@
 #include "FurbleSettings.h"
 #include "clock.h"
 #include "ubx_m10.h"
+#include "vendor_gnss.h"
 
 namespace {
 
@@ -161,12 +162,46 @@ bool monHwShort = false;
 std::string receiverModel = "casic";
 Furble::Sim::VirtualM10 m10;
 Furble::Sim::VirtualM10::Options m10Options;
+Furble::Sim::VirtualQuectel quectel;
+Furble::Sim::VirtualQuectel::Options quectelOptions;
+Furble::Sim::VirtualUnicore unicore;
+Furble::Sim::VirtualUnicore::Options unicoreOptions;
 bool railOn = true;
 bool m10Silent = false;
 
 bool isM10Locked(void) {
   return receiverModel == "m10" || receiverModel == "m10-mia" || receiverModel == "f10"
          || receiverModel == "f10-unnamed";
+}
+
+/**
+ * Is the modelled receiver one of the vendor text parts?
+ *
+ * "quectel" is an LC29H-like part that implements every command the driver
+ * sends, and "unicore" a UC6580 with a flash. The variant flags below model the
+ * documented gaps, so a scenario can watch the driver refuse rather than
+ * pretend.
+ */
+bool isQuectelLocked(void) {
+  return receiverModel == "quectel";
+}
+
+bool isUnicoreLocked(void) {
+  return receiverModel == "unicore";
+}
+
+bool isTextLocked(void) {
+  return isQuectelLocked() || isUnicoreLocked();
+}
+
+/** Fix interval the modelled text receiver reports, ms. */
+uint32_t textPeriodMsLocked(void) {
+  return isQuectelLocked() ? quectel.periodMs() : unicore.periodMs();
+}
+
+bool textOutputtingLocked(void) {
+  const uint32_t now = Furble::Sim::clockMillis();
+  return isQuectelLocked() ? quectel.outputting(now) : unicore.outputting(now);
 }
 
 /** Rebuild the advancing fix burst at base 12:35:19 plus fixSecond. */
@@ -451,6 +486,24 @@ void queueGpsEvent(QueueHandle_t queue) {
       gpsNextEventMillis = UINT32_MAX;
       return;
     }
+    if (isTextLocked() && !textOutputtingLocked()) {
+      // A part in backup mode, with its GNSS stopped, or with no supply prints
+      // nothing. Look again shortly, the way a host sees the line come back.
+      gpsQueue = queue;
+      gpsOffset = gpsStream.size();
+      gpsEventQueued = false;
+      gpsNextEventMillis = Furble::Sim::clockMillis() + 100;
+      m10Silent = true;
+      return;
+    }
+    if (isTextLocked() && m10Silent) {
+      m10Silent = false;
+      gpsQueue = queue;
+      gpsOffset = gpsStream.size();
+      gpsEventQueued = false;
+      gpsNextEventMillis = Furble::Sim::clockMillis() + textPeriodMsLocked();
+      return;
+    }
     if (isM10Locked() && !m10.outputting(Furble::Sim::clockMillis())) {
       // Standby, a stopped GNSS or no supply: the receiver prints nothing.
       // Look again shortly, the way a host sees the line come back.
@@ -642,6 +695,18 @@ int uart_write_bytes(uart_port_t, const void *data, size_t length) {
     queueRxLocked(m10.receive(bytes, length, Furble::Sim::clockMillis()));
     return static_cast<int>(length);
   }
+  if (isQuectelLocked()) {
+    // A Quectel part answers $PAIR and $PQTM, acks with $PAIR001 and ignores
+    // everything else the driver might send.
+    queueRxLocked(quectel.receive(bytes, length, Furble::Sim::clockMillis()));
+    return static_cast<int>(length);
+  }
+  if (isUnicoreLocked()) {
+    // A Unicore part answers $CFG, $OK and $FAIL, and ignores an illegal
+    // command outright (UC 3.2 page 31).
+    queueRxLocked(unicore.receive(bytes, length, Furble::Sim::clockMillis()));
+    return static_cast<int>(length);
+  }
   if (receiverModel == "nmea") {
     // An NMEA-only receiver answers no binary protocol at all.
     return static_cast<int>(length);
@@ -798,6 +863,24 @@ void furble_sim_uart_set_model(const char *model,
                                bool unresolved) {
   std::lock_guard<std::mutex> lock(gpsMutex);
   receiverModel = (model == nullptr) ? "casic" : model;
+  if (isQuectelLocked()) {
+    quectelOptions.backup = vbckp;
+    quectel.reset(quectelOptions, Furble::Sim::clockMillis());
+    if (!railOn) {
+      quectel.setPower(false, Furble::Sim::clockMillis());
+    }
+    fixDateAdvances = true;
+    gpsStream = modernFixStream();
+    gpsOffset = gpsStream.size();
+  } else if (isUnicoreLocked()) {
+    unicore.reset(unicoreOptions, Furble::Sim::clockMillis());
+    if (!railOn) {
+      unicore.setPower(false, Furble::Sim::clockMillis());
+    }
+    fixDateAdvances = true;
+    gpsStream = modernFixStream();
+    gpsOffset = gpsStream.size();
+  }
   if (isM10Locked()) {
     m10Options.vbckp = vbckp;
     m10Options.flash = flash;
@@ -831,7 +914,31 @@ void furble_sim_uart_set_model(const char *model,
 
 bool furble_sim_uart_gps_backup(void) {
   std::lock_guard<std::mutex> lock(gpsMutex);
-  return isM10Locked() && m10Options.vbckp;
+  if (isM10Locked()) {
+    return m10Options.vbckp;
+  }
+  // A Quectel part keeps its RAM across a rail cut only with a backup domain,
+  // so this is the flag the save-on-shutdown path reads there too.
+  return isQuectelLocked() && quectelOptions.backup;
+}
+
+void furble_sim_uart_set_text_variant(bool noFixRate, bool noSearch, bool noFlash, bool silent) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  quectelOptions.noFixRate = noFixRate;
+  quectelOptions.noSearchMode = noSearch;
+  unicoreOptions.flash = !noFlash;
+  unicoreOptions.silent = silent;
+  if (isQuectelLocked()) {
+    quectel.reset(quectelOptions, Furble::Sim::clockMillis());
+    if (!railOn) {
+      quectel.setPower(false, Furble::Sim::clockMillis());
+    }
+  } else if (isUnicoreLocked()) {
+    unicore.reset(unicoreOptions, Furble::Sim::clockMillis());
+    if (!railOn) {
+      unicore.setPower(false, Furble::Sim::clockMillis());
+    }
+  }
 }
 
 bool furble_sim_uart_rail_on(void) {
@@ -848,6 +955,10 @@ void furble_sim_uart_set_rail(bool on) {
   railOn = on;
   if (isM10Locked()) {
     m10.setPower(on, Furble::Sim::clockMillis());
+  } else if (isQuectelLocked()) {
+    quectel.setPower(on, Furble::Sim::clockMillis());
+  } else if (isUnicoreLocked()) {
+    unicore.setPower(on, Furble::Sim::clockMillis());
   }
 }
 
@@ -903,6 +1014,134 @@ std::string furble_sim_m10_query(const std::string &key) {
       return "unset";
     }
     return std::to_string(m10.value(id));
+  }
+  return "";
+}
+
+/**
+ * Virtual Quectel and Unicore observability, the text twin of
+ * furble_sim_m10_query. Keys are "<field>" with the dialect selected by the
+ * model on the port.
+ */
+std::string furble_sim_text_query(const std::string &key) {
+  std::lock_guard<std::mutex> lock(gpsMutex);
+  const uint32_t now = Furble::Sim::clockMillis();
+  if (key == "model") {
+    return receiverModel;
+  }
+  if (isQuectelLocked()) {
+    quectel.tick(now);
+    if (key == "state") {
+      return Furble::Sim::VirtualQuectel::stateName(quectel.state());
+    }
+    if (key == "sleeping") {
+      return quectel.sleeping(now) ? "1" : "0";
+    }
+    if (key == "gnss_off") {
+      return quectel.gnssOff() ? "1" : "0";
+    }
+    if (key == "saved") {
+      return quectel.saved() ? "1" : "0";
+    }
+    if (key == "rate_ms") {
+      return std::to_string(quectel.settings().rate_ms);
+    }
+    if (key == "version") {
+      return quectel.model();
+    }
+    if (key == "fw") {
+      // one token for the scenario parser, as m10.firmware does
+      std::string out = quectel.firmware();
+      std::replace(out.begin(), out.end(), ' ', '_');
+      return out;
+    }
+    if (key == "standby_s") {
+      return std::to_string(quectel.standbyS);
+    }
+    if (key == "sentence") {
+      // the ten PAIR062 rates as one token, in type order
+      std::string out;
+      for (const uint8_t rate : quectel.settings().sentence) {
+        out += std::to_string(rate);
+      }
+      return out;
+    }
+    const std::pair<const char *, uint32_t> counters[] = {
+        {"commands",     quectel.commands   },
+        {"acks",         quectel.acks       },
+        {"naks",         quectel.naks       },
+        {"unsupported",  quectel.unsupported},
+        {"bad_checksum", quectel.badChecksum},
+        {"saves",        quectel.saves      },
+        {"backups",      quectel.backups    },
+        {"restarts",     quectel.restarts   },
+        {"unknown",      quectel.unknown    },
+    };
+    for (const auto &counter : counters) {
+      if (key == counter.first) {
+        return std::to_string(counter.second);
+      }
+    }
+    if (key == "gnss") {
+      // the search-mode flags as one token: GPS, GLONASS, Galileo, BDS, QZSS, SBAS
+      const auto &s = quectel.settings();
+      std::string out;
+      out += s.gps ? '1' : '0';
+      out += s.glonass ? '1' : '0';
+      out += s.galileo ? '1' : '0';
+      out += s.bds ? '1' : '0';
+      out += s.qzss ? '1' : '0';
+      out += s.sbas ? '1' : '0';
+      return out;
+    }
+    return "";
+  }
+  if (isUnicoreLocked()) {
+    unicore.tick(now);
+    if (key == "state") {
+      return Furble::Sim::VirtualUnicore::stateName(unicore.state());
+    }
+    if (key == "saved") {
+      return unicore.saved() ? "1" : "0";
+    }
+    if (key == "rate_ms") {
+      return std::to_string(unicore.settings().rate_ms);
+    }
+    if (key == "version") {
+      std::string out = unicore.model();
+      std::replace(out.begin(), out.end(), ' ', '_');
+      return out;
+    }
+    if (key == "fw") {
+      return unicore.firmware();
+    }
+    if (key == "sys") {
+      char text[16];
+      std::snprintf(text, sizeof(text), "h%lx", static_cast<unsigned long>(unicore.settings().sys));
+      return text;
+    }
+    if (key == "sentence") {
+      std::string out;
+      for (const uint8_t rate : unicore.settings().sentence) {
+        out += std::to_string(rate);
+      }
+      return out;
+    }
+    const std::pair<const char *, uint32_t> counters[] = {
+        {"commands",     unicore.commands   },
+        {"acks",         unicore.acks       },
+        {"fails",        unicore.fails      },
+        {"bad_checksum", unicore.badChecksum},
+        {"saves",        unicore.saves      },
+        {"resets",       unicore.resets     },
+        {"unknown",      unicore.unknown    },
+    };
+    for (const auto &counter : counters) {
+      if (key == counter.first) {
+        return std::to_string(counter.second);
+      }
+    }
+    return "";
   }
   return "";
 }

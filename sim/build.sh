@@ -377,6 +377,7 @@ for source in \
   "$ROOT/src/FurbleCompanionService.cpp" \
   "$ROOT/src/FurbleControl.cpp" \
   "$ROOT/src/FurbleGPS.cpp" \
+  "$ROOT/src/FurbleGPSText.cpp" \
   "$ROOT/src/FurbleGPSUbx.cpp" \
   "$ROOT/src/FurbleMemoryPressure.cpp" \
   "$ROOT/src/FurbleOTA.cpp" \
@@ -427,7 +428,10 @@ for source in \
   "$ROOT/lib/furble/protocol/FujifilmProtocol.cpp" \
   "$ROOT/lib/furble/protocol/GpsCasic.cpp" \
   "$ROOT/lib/furble/protocol/GpsDemux.cpp" \
+  "$ROOT/lib/furble/protocol/GpsQuectel.cpp" \
+  "$ROOT/lib/furble/protocol/GpsText.cpp" \
   "$ROOT/lib/furble/protocol/GpsUbx.cpp" \
+  "$ROOT/lib/furble/protocol/GpsUnicore.cpp" \
   "$ROOT/lib/furble/protocol/ProvisionTLV.cpp" \
   "$ROOT/lib/testing/nimble/MockNimBLE.cpp" \
   "$ROOT/lib/testing/peer/FujifilmVirtualCamera.cpp" \

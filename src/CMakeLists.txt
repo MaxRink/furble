@@ -16,6 +16,7 @@ set(furble_sources
     FurbleEthernet.cpp
     FurbleFeedback.cpp
     FurbleGPS.cpp
+    FurbleGPSText.cpp
     FurbleGPSUbx.cpp
     FurbleGPX.cpp
     FurbleIMU.cpp

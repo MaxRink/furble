@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "protocol/GpsCasic.h"
+#include "protocol/GpsText.h"
 #include "protocol/GpsUbx.h"
 
 namespace Furble {
@@ -75,6 +76,33 @@ class GPS {
     DETECTING,
     NMEA,
     UBX,
+    QUECTEL,
+    UNICORE,
+  };
+
+  /** Vendor text receiver state, mirroring the firmware struct. */
+  struct text_status_t {
+    bool have_version;
+    std::string model;
+    std::string firmware;
+    bool configured;
+    uint16_t rate_ms;
+    uint8_t gnss;
+    bool gnss_refused;
+    bool sbas;
+    bool sbas_refused;
+    bool platform_refused;
+    bool rate_refused;
+    bool psm_refused;
+    bool sentences_set;
+    uint8_t sentences;
+    uint32_t acks;
+    uint32_t naks;
+    uint32_t timeouts;
+    uint8_t save;
+    uint8_t standby;
+    uint8_t last_op;
+    uint8_t last_verdict;
   };
 
   /** UBX receiver state, mirroring the firmware struct. */
@@ -168,6 +196,7 @@ class GPS {
   backend_t getBackend(void) const;
   static const char *backendName(backend_t backend);
   ubx_status_t getUbxStatus(void) const;
+  text_status_t getTextStatus(void) const;
   void pollUbxSatellites(void);
 
   bool isEnabled(void) const;

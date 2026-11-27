@@ -988,7 +988,7 @@ This is a documentation and build consistency item, not a separate power lever.
 
 - **CON-03, ESP32 console APB lock.** The ESP32 console path holds
   `ESP_PM_APB_FREQ_MAX` for the whole console lifetime
-  (`src/FurbleConsole.cpp:3812`). It defeats light sleep entirely. This is
+  (`src/FurbleConsole.cpp:3810`). It defeats light sleep entirely. This is
   deliberate and developer-only. Do not copy it into release and do not use a
   console build for a power claim.
 - **CON-05, measurement tooling.** The S3 console path uses the USB Serial/JTAG

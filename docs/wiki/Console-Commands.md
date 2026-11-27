@@ -361,6 +361,9 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
   0 when fix hold is off) and `hold_remaining` (ms left on a held fix). The GPS
   Data page shows a two row summary of the same state; this is where all of it
   is readable.
+  It also prints `backend`, the configuration protocol the start-up detection
+  identified: `unknown`, `detecting`, `nmea` (the CASIC and `$PCAS` path),
+  `ubx`, `quectel` or `unicore`.
   A boot whose `uart_driver_install()` failed has no receive queue and no GPS
   task, so `receiver` reads `absent` and `baud` reads 0 for the whole session.
   Nothing retries the install, and the GPS Data page reports the same absent
@@ -406,6 +409,12 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
   A healthy L1-only receiver reports one NAK, the signal-band capability request
   it refuses; the `bands` line names the exchange. The UBX path is
   simulator-tested and hardware-untested.
+- `gps text` reports a Quectel `$PAIR`/`$PQTM` or Unicore `$CFG` receiver: the
+  backend and dialect, the model and firmware from `$PQTMVERNO` or `$PDTINFO`,
+  the constellation mask, fix rate, SBAS state, sentence set, platform and
+  standby availability the plan sent, which of those the part refused, the save
+  state, the acknowledgement, refusal and timeout counts, and the last command
+  with its verdict. It reads no UART, so it never wakes a receiver.
 - `gps power on | off` drives the external 5V rail, for rail-cut experiments.
 
 ## time

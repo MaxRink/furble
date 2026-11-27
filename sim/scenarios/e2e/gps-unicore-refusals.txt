@@ -1,0 +1,22 @@
+# The Unicore gaps, reported rather than faked. UC R1.5 documents no standby
+# command and no dynamic platform model, so a standby policy or a platform
+# setting leaves the receiver alone. A flashless product refuses CFGSAVE, and a
+# part that answers nothing never identifies at all and keeps the NMEA backend.
+# Plan 367.
+seed gps true
+seed gps_model unicore
+seed gps_power 1
+seed gps_duty 10
+seed gps_platform 3
+seed gps_gnss 1
+seed gps_rate 1
+wait 8000
+assert gps.backend unicore
+
+# The configuration went out and was acknowledged; the standby and the platform
+# were refused before either reached the UART.
+assert-eventually 5000 gps.config.0.state ACKED
+assert text.fails 0
+assert text.resets 1
+assert text.saved 0
+exit
