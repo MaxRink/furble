@@ -29,7 +29,7 @@ Tags on every claim:
 - **UNVERIFIED** no readable document settles it. Collected in section 12.
 
 Related: [366](366-gps-receiver-selection.md) (the receiver ranking this driver
-makes true for two of its rows), [354](354-gnss-datasheet-verification.md) (the
+makes true for two of its rows), [382](382-gnss-datasheet-verification.md) (the
 document pass behind the CASIC and u-blox facts),
 [321](implemented/321-ublox-m10-driver.md) (the backend split this one follows).
 

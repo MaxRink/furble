@@ -10545,9 +10545,9 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         if (config.empty()) {
           config = "cfg empty";
         }
-        // A setting the part refused is otherwise only in the log. The refusal
-        // names go last so the first line stays a command result and the
-        // existing diag.nmea check keeps reading the same shape.
+        // A setting the part refused is otherwise only in the log. This page
+        // names it, after the command rows so the first line stays a result and
+        // the existing diag.nmea check keeps reading the same shape.
         const std::string refusals = gpsConfigRefusals(gps);
         if (!refusals.empty()) {
           config += "\nrefused: " + refusals;
