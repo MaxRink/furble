@@ -104,6 +104,7 @@ class GPS {
      * keys, so an unidentified or L1-only part reports BAND_L1 and never
      * receives an L5 key.
      */
+#if FURBLE_GPS_L5
     uint8_t bands;
     /** The band capability came from the probe rather than from MON-VER alone. */
     bool bands_probed;
@@ -111,6 +112,7 @@ class GPS {
     uint8_t family;
     /** The receiver has power save modes, so the CFG-PM keys are safe to write. */
     bool psm_supported;
+#endif
     /** What the last configuration sent, see Ubx::Plan. */
     bool configured;
     uint8_t gnss;
@@ -123,11 +125,13 @@ class GPS {
     bool psm_unsupported;
     bool rate_clamped;
     /** The plan wrote both bands of each enabled constellation. */
+#if FURBLE_GPS_L5
     bool l5_written;
     /** BeiDou B1I was asked for on a dual-band receiver, which has no B1I. */
     bool b1i_refused;
     /** The receiver refused an L5 key in a signal batch after the probe passed. */
     bool l5_refused;
+#endif
     /** The board keeps the receiver's V_BCKP supplied, Platform::hasGpsBackupSupply(). */
     bool backup_supply;
     /** The last NAV-SAT, signals in view and used per gnssId 0 to 6. */
@@ -1019,11 +1023,13 @@ class GPS {
   // disable() with the task parked.
   std::atomic<uint8_t> m_Backend {static_cast<uint8_t>(backend_t::UNKNOWN)};
   Ubx::Detect m_Detect;
+#if FURBLE_GPS_L5
   // which signal bands the receiver implements, and how furble learned it
   Ubx::CapsProbe m_CapsProbe;
   // an answer is waiting for the next serviceConfig() pass, GPS task only
   bool m_CapsAnswered = false;
   bool m_CapsAnswerL5 = false;
+#endif
   // the next configuration command waits for this tick
   Ubx::Settle m_ConfigSettle;
   // the values the closing VALGET must read back

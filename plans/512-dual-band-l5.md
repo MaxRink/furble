@@ -382,3 +382,10 @@ and the fuzz invariant. Deviations from the first draft of this plan:
   simulator refused the earlier plan before any hardware did.
 - The scenario seeds grew from GPS and Galileo to GPS, Galileo, QZSS and SBAS
   once the QZSS L5 key turned out to be the one a mask can silently leave out.
+- The feature is compiled out of `m5stack-core-debug` through `FURBLE_GPS_L5`
+  (0 there, 1 everywhere else). That app slot is 1,740,800 bytes, the release
+  Core build leaves 768 of them free, and the L5 keys, probe and reporting
+  cost about 2.9 KB beside the verbose console. The profile is developer-only
+  and the USB debug profile, which has the single factory partition, keeps the
+  feature. The alternative the size gate offers is a bigger budget, which
+  would be claiming flash this board does not have.

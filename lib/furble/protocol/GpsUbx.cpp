@@ -351,6 +351,7 @@ std::vector<uint8_t> encodeMonVer(const MonVer &ver) {
 }
 
 const std::array<uint32_t, 4> &l5Keys(void) {
+#if FURBLE_GPS_L5
   static constexpr std::array<uint32_t, 4> KEYS = {
       Key::SIGNAL_GPS_L5,
       Key::SIGNAL_GAL_E5A,
@@ -358,11 +359,22 @@ const std::array<uint32_t, 4> &l5Keys(void) {
       Key::SIGNAL_QZSS_L5,
   };
   return KEYS;
+#else
+  // No L5 key exists on this profile, so the probe has nothing to ask for and
+  // no plan can name one.
+  static constexpr std::array<uint32_t, 4> NONE = {0, 0, 0, 0};
+  return NONE;
+#endif
 }
 
 bool isL5Key(uint32_t key) {
+#if FURBLE_GPS_L5
   const auto &keys = l5Keys();
   return std::find(keys.begin(), keys.end(), key) != keys.end();
+#else
+  (void)key;
+  return false;
+#endif
 }
 
 Caps capsFromVersion(const MonVer &ver) {
@@ -374,10 +386,12 @@ Caps capsFromVersion(const MonVer &ver) {
   const std::string protocol = ver.field("PROTVER");
   const std::string firmware = ver.field("FWVER");
   const std::string module = ver.field("MOD");
+#if FURBLE_GPS_L5
   if ((protocol == "40.00") || (firmware.compare(0, 8, "SPG 6.00") == 0) || (module == "NEO-F10N")
       || (module == "MAX-F10S") || (module == "DAN-F10N")) {
     return CAPS_F10;
   }
+#endif
   if ((protocol == "34.10") || (firmware.compare(0, 8, "SPG 5.10") == 0) || (module == "MAX-M10S")
       || (module == "MIA-M10Q")) {
     return CAPS_M10;
@@ -575,14 +589,16 @@ uint8_t maxRateHz(uint8_t mask) {
 }
 
 uint8_t maxRateHz(uint8_t mask, const Caps &caps) {
-  if (!caps.dualBand()) {
-    return maxRateHz(mask);
+#if FURBLE_GPS_L5
+  if (caps.dualBand()) {
+    // NEO-F10N data sheet UBX-23002117 R05, Table 2 page 5: 10 Hz in every
+    // multi-GNSS set. Table 3 page 5: 20 Hz for one constellation. The
+    // dual-band firmware publishes no per-set table like the M10 one, so the
+    // two figures it does publish are the whole ceiling.
+    return (majors(mask) <= 1) ? 20 : 10;
   }
-  // NEO-F10N data sheet UBX-23002117 R05, Table 2 page 5: 10 Hz in every
-  // multi-GNSS set. Table 3 page 5: 20 Hz for one constellation. The dual-band
-  // firmware publishes no per-set table like the M10 one, so the two figures
-  // it does publish are the whole ceiling.
-  return (majors(mask) <= 1) ? 20 : 10;
+#endif
+  return maxRateHz(mask);
 }
 
 uint8_t dynModelForPlatform(uint8_t platform) {
@@ -593,7 +609,14 @@ uint8_t dynModelForPlatform(uint8_t platform) {
 
 Plan plan(const Request &request) {
   Plan out = {};
+#if FURBLE_GPS_L5
   const Caps &caps = request.caps;
+#else
+  // A build without the band model has no way to learn anything but the M10
+  // preset, so the branches on `caps` fold away and the plan is the L1 one.
+  static constexpr Caps L1_CAPS = CAPS_M10;
+  const Caps &caps = L1_CAPS;
+#endif
   // Bits the request leaves alone keep the module preset (DS-F10N 1.3 page 5).
   const uint8_t gnss = static_cast<uint8_t>((request.gnss & request.gnss_set)
                                             | (GNSS_MASK_MODULE_DEFAULT & ~request.gnss_set));
@@ -606,10 +629,14 @@ Plan plan(const Request &request) {
   // R05, Table 4 page 6), so B1C is the only L1-side BeiDou signal there and
   // the B1I exclusion cannot apply.
   const bool b1c = bds && (caps.dualBand() || glo);
+#if FURBLE_GPS_L5
   // The band a plan reports is the band whose keys it actually queued, filled in
   // as they are written below. A request that writes no key claims no band.
   out.bands = 0;
+#endif
+#if FURBLE_GPS_L5
   out.b1i_refused = caps.dualBand() && bds && ((request.gnss_set & GNSS_MASK_BDS) != 0);
+#endif
 
   uint8_t psm = (request.psm <= PSM_ON_OFF) ? request.psm : PSM_OFF;
   if ((psm != PSM_OFF) && !caps.psm) {
@@ -704,12 +731,14 @@ Plan plan(const Request &request) {
         {Key::SIGNAL_SBAS_ENA,  GNSS_MASK_SBAS, GNSS_MASK_SBAS, 0            },
         {Key::SIGNAL_SBAS_L1CA, GNSS_MASK_SBAS, 0,              0            },
     };
+#if FURBLE_GPS_L5
     static constexpr Signal L5_SIGNALS[] = {
         {Key::SIGNAL_GPS_L5,  GNSS_MASK_GPS,  0, 0},
         {Key::SIGNAL_GAL_E5A, GNSS_MASK_GAL,  0, 0},
         {Key::SIGNAL_BDS_B2A, GNSS_MASK_BDS,  0, 0},
         {Key::SIGNAL_QZSS_L5, GNSS_MASK_QZSS, 0, 0},
     };
+#endif
     const bool dual = caps.dualBand();
     // One writer for both band tables. A signal key's value is 1 unless a mask
     // bit it clears is set: the constellation's own enable key carries off, and
@@ -722,7 +751,9 @@ Plan plan(const Request &request) {
       }
       const bool value = ((gnss & signal.need) == signal.need) && ((gnss & signal.clear) == 0);
       out.signals.push_back({signal.key, value ? 1u : 0u});
+#if FURBLE_GPS_L5
       out.bands = static_cast<uint8_t>(out.bands | (isL5Key(signal.key) ? BAND_L5 : BAND_L1));
+#endif
     };
     for (Signal signal : L1_SIGNALS) {
       // A firmware without GLONASS keys is never told about them, because a
@@ -731,6 +762,7 @@ Plan plan(const Request &request) {
           && ((signal.key == Key::SIGNAL_GLO_ENA) || (signal.key == Key::SIGNAL_GLO_L1))) {
         continue;
       }
+#if FURBLE_GPS_L5
       if (dual && (signal.key == Key::SIGNAL_BDS_B1)) {
         // The F10 firmware does have this key (F10-IFD 4.9.20 page 158 lists
         // CFG-SIGNAL-BDS_B1_ENA 0x1031000d); it is the NEO-F10N module that has
@@ -745,6 +777,7 @@ Plan plan(const Request &request) {
         out.bands = static_cast<uint8_t>(out.bands | BAND_L1);
         continue;
       }
+#endif
       if (dual && (signal.key == Key::SIGNAL_BDS_B1C)) {
         // On a dual-band receiver BeiDou runs B1C beside B2a and the receiver
         // has no B1I and no GLONASS at all, so B1C carries no dependency of its
@@ -756,11 +789,13 @@ Plan plan(const Request &request) {
       }
       writeSignal(signal);
     }
+#if FURBLE_GPS_L5
     if (dual) {
       for (const Signal &signal : L5_SIGNALS) {
         writeSignal(signal);
       }
     }
+#endif
   }
 
   if (!caps.psm) {
@@ -783,6 +818,7 @@ Plan plan(const Request &request) {
   return out;
 }
 
+#if FURBLE_GPS_L5
 void CapsProbe::begin(uint32_t now) {
   m_Result = Result::WAITING;
   m_Answered = false;
@@ -813,6 +849,7 @@ CapsProbe::Result CapsProbe::service(uint32_t now, bool &poll) {
   m_Result = Result::L1;
   return m_Result;
 }
+#endif  // FURBLE_GPS_L5
 
 void Detect::begin(uint32_t now) {
   m_Result = Result::WAITING;

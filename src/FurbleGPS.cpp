@@ -1752,6 +1752,7 @@ void GPS::serviceConfig(void) {
     applyConfiguration();
   }
 
+#if FURBLE_GPS_L5
   if ((getBackend() == backend_t::UBX)
       && (m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING)) {
     // Which signal bands the receiver implements is a question, not a guess.
@@ -1762,6 +1763,7 @@ void GPS::serviceConfig(void) {
     }
     return;
   }
+#endif
 
   if (m_ConfigInFlight.has_value()) {
     const uint32_t now = Platform::getInstance().tick();
@@ -1794,6 +1796,7 @@ void GPS::serviceConfig(void) {
 
 void GPS::applyConfiguration(void) {
   if (getBackend() == backend_t::UBX) {
+#if FURBLE_GPS_L5
     if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::IDLE)
         || (m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING)) {
       // Ask before writing. serviceConfig() calls back here once the answer is
@@ -1801,6 +1804,7 @@ void GPS::applyConfiguration(void) {
       serviceCaps(Platform::getInstance().tick());
       return;
     }
+#endif
     configureUbx();
     return;
   }

@@ -1649,9 +1649,11 @@ const char *gpsSosRestoreName(uint8_t value) {
 
 /** Signal bands a UBX receiver implements, for the receiver report. */
 const char *gpsBandName(uint8_t bands) {
+#if FURBLE_GPS_L5
   if ((bands & Ubx::BAND_L5) != 0) {
     return "L1 and L5";
   }
+#endif
   return (bands & Ubx::BAND_L1) != 0 ? "L1" : "unknown";
 }
 
@@ -1660,8 +1662,10 @@ const char *gpsFamilyName(uint8_t family) {
   switch (family) {
     case Ubx::FAMILY_M10:
       return "M10 (SPG 5.10, L1 only)";
+#if FURBLE_GPS_L5
     case Ubx::FAMILY_F10:
       return "F10 (SPG 6.00, L1 and L5)";
+#endif
     default:
       return "unidentified";
   }
@@ -1701,12 +1705,14 @@ int gpsUbx(void) {
   printf("firmware: %s\n", ubx.firmware.empty() ? ubx.software.c_str() : ubx.firmware.c_str());
   printf("protocol: %s\n", ubx.protocol.empty() ? "unknown" : ubx.protocol.c_str());
   printf("hardware: %s\n", ubx.hardware.c_str());
+#if FURBLE_GPS_L5
   // The bands are a receiver capability, so they are reported before the
   // configuration that follows from them.
   printf("family: %s\n", gpsFamilyName(ubx.family));
   printf("bands: %s (%s)\n", gpsBandName(ubx.bands),
          ubx.bands_probed ? "asked the receiver" : "MON-VER only, no L5 key written");
   printf("power_save_supported: %s\n", boolStr(ubx.psm_supported));
+#endif
   if (ubx.have_pvt) {
     printf("pvt_fix: %u\n", static_cast<unsigned>(ubx.pvt.fixType));
     printf("pvt_sats: %u\n", static_cast<unsigned>(ubx.pvt.numSV));
@@ -1730,11 +1736,13 @@ int gpsUbx(void) {
            ubx.psm_refused ? " (refused with BeiDou B1C)" : "",
            ubx.psm_unsupported ? " (not implemented on this receiver)" : "");
     printf("assistnow_autonomous: %s\n", boolStr(ubx.ana));
+#if FURBLE_GPS_L5
     printf("l5_signals: %s%s\n", ubx.l5_written ? "written" : "not written",
            ubx.l5_refused ? " (refused by the receiver, stayed on L1)" : "");
     if (ubx.b1i_refused) {
       printf("beidou_b1i: not written, a dual-band receiver has B1C and B2a only\n");
     }
+#endif
   }
   printf("backup_supply: %s\n", boolStr(ubx.backup_supply));
   printf("sos_restore: %s\n", gpsSosRestoreName(ubx.sos_restore));

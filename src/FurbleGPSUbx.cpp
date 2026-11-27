@@ -38,9 +38,11 @@ const char *GPS::backendName(backend_t backend) {
 void GPS::resetUbx(void) {
   m_Backend.store(static_cast<uint8_t>(backend_t::UNKNOWN));
   m_Detect = {};
+#if FURBLE_GPS_L5
   m_CapsProbe = {};
   m_CapsAnswered = false;
   m_CapsAnswerL5 = false;
+#endif
   m_ConfigSettle.clear();
   m_UbxExpected.clear();
   {
@@ -135,6 +137,12 @@ bool GPS::serviceDetect(uint32_t now) {
  * rate, the dynamic model and the L1 signals down with it.
  */
 bool GPS::serviceCaps(uint32_t now) {
+#if !FURBLE_GPS_L5
+  // The build has no L5 keys to ask for, so the receiver stays on L1 and the
+  // MON-VER hint is all the capability the console and the UI report.
+  (void)now;
+  return true;
+#else
   if (m_CapsProbe.result() == Ubx::CapsProbe::Result::IDLE) {
     m_CapsProbe.begin(now);
     std::vector<uint32_t> keys;
@@ -184,6 +192,7 @@ bool GPS::serviceCaps(uint32_t now) {
            : l5      ? "the L5 signal keys are implemented"
                      : "no L5 signal key in the firmware");
   return true;
+#endif
 }
 
 /**
@@ -240,17 +249,21 @@ void GPS::configureUbx(void) {
   if (plan.psm_unsupported) {
     ESP_LOGW(LOG_TAG, "GPS power save is not implemented on this receiver, left at full power");
   }
+#if FURBLE_GPS_L5
   if (plan.b1i_refused) {
     ESP_LOGI(LOG_TAG, "GPS BeiDou uses B1C and B2a on a dual-band receiver, B1I is not written");
   }
+#endif
   if (request.ana && !plan.ana) {
     ESP_LOGW(LOG_TAG, "GPS AssistNow Autonomous is not supported with BeiDou B1C, left off");
   }
+#if FURBLE_GPS_L5
   if (plan.bands != 0) {
     ESP_LOGI(
         LOG_TAG, "GPS signals: %s, %s", (plan.bands & Ubx::BAND_L5) != 0 ? "L1 and L5" : "L1",
         (plan.bands & Ubx::BAND_L5) != 0 ? "both bands of each enabled constellation" : "L1 only");
   }
+#endif
 
   constexpr uint8_t LAYERS = Ubx::LAYER_RAM | Ubx::LAYER_BBR;
   constexpr uint16_t SIGNAL_SETTLE_MS = 500;
@@ -459,12 +472,14 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       // A refused CFG-VALGET while the capability probe is out is the L1
       // answer: the firmware does not know one of the L5 keys (M10 IFD 3.10.4
       // page 53, F10-IFD 3.10.4 pages 54 and 55).
+#if FURBLE_GPS_L5
       if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING) && (ack.cls == Ubx::CLASS_CFG)
           && (ack.id == Ubx::ID_CFG_VALGET)) {
         m_CapsAnswerL5 = false;
         m_CapsAnswered = true;
         return;
       }
+#endif
       ESP_LOGW(LOG_TAG, "GPS UBX %02X/%02X was refused by the receiver", ack.cls, ack.id);
     }
     if (!m_ConfigInFlight.has_value() || !m_ConfigInFlight->ubx
@@ -475,6 +490,7 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       // the data answers a VALGET, the acknowledgement only follows it
       return;
     }
+#if FURBLE_GPS_L5
     if (!ack.ack) {
       // A refused signal batch that carried an L5 key is the one case the probe
       // did not catch: the firmware answered for the keys but refused to apply
@@ -500,6 +516,7 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
                  "GPS receiver refused a signal batch that carried L5 keys; L5 is off from here");
       }
     }
+#endif
     const uint16_t settle = m_ConfigInFlight->settle_ms;
     finishConfigCommand(ack.ack ? CONFIG_ACKED : CONFIG_NACKED);
     if (ack.ack && (settle != 0)) {
@@ -513,6 +530,7 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
     if (!Ubx::parseValGet(payload, n, response)) {
       return;
     }
+#if FURBLE_GPS_L5
     if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING)
         && (response.layer == Ubx::GET_DEFAULT)) {
       // The probe's answer: every L5 key present means the firmware implements
@@ -527,6 +545,7 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       m_CapsAnswered = true;
       return;
     }
+#endif
     if (!m_ConfigInFlight.has_value() || !m_ConfigInFlight->ubx
         || (m_ConfigInFlight->message_id != Ubx::ID_CFG_VALGET)) {
       return;
@@ -565,9 +584,11 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       // serviceCaps() asks the receiver before any L5 key is written. Once the
       // probe or a refused batch has decided the bands, a late MON-VER answer
       // does not reopen them.
+#if FURBLE_GPS_L5
       if (!m_UbxCapsProbed) {
         m_UbxCaps = Ubx::capsFromVersion(m_UbxVersion);
       }
+#endif
     }
     const backend_t backend = getBackend();
     if ((backend == backend_t::UBX) || (backend == backend_t::UNKNOWN)) {
@@ -690,10 +711,12 @@ GPS::ubx_status_t GPS::getUbxStatus(void) const {
     status.config_verified = m_UbxVerified;
     status.naks = m_UbxNaks;
     status.configured = m_UbxConfigured;
+#if FURBLE_GPS_L5
     status.bands = m_UbxCaps.bands;
     status.bands_probed = m_UbxCapsProbed;
     status.family = m_UbxCaps.family;
     status.psm_supported = m_UbxCaps.psm;
+#endif
     status.gnss = m_UbxPlan.gnss;
     status.psm = m_UbxPlan.psm;
     status.rate_ms = m_UbxPlan.rate_ms;
@@ -702,9 +725,11 @@ GPS::ubx_status_t GPS::getUbxStatus(void) const {
     status.psm_refused = m_UbxPlan.psm_refused;
     status.psm_unsupported = m_UbxPlan.psm_unsupported;
     status.rate_clamped = m_UbxPlan.rate_clamped;
+#if FURBLE_GPS_L5
     status.l5_written = (m_UbxPlan.bands & Ubx::BAND_L5) != 0;
     status.b1i_refused = m_UbxPlan.b1i_refused;
     status.l5_refused = m_UbxPlan.l5_refused;
+#endif
     status.have_sat = m_UbxHaveSat;
     status.sat_view = m_UbxSatView;
     status.sat_used = m_UbxSatUsed;

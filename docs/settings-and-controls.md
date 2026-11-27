@@ -191,6 +191,13 @@ L1. A dual-band F10 answers, and the planner then runs both bands of every
 constellation it enables: the two bands of a constellation cannot be enabled
 apart on that firmware, so there is no L1-only option to offer.
 
+One build has no L5 support: `m5stack-core-debug` compiles the dual-band
+capability out to fit its 1.7 MB app slot (`FURBLE_GPS_L5` in
+`lib/furble/protocol/GpsUbx.h`). Its `gps ubx` report says
+`bands: L1 (no L5 support in this build)` and the receiver diagnostics page
+shows `ubx l1`. Every release build and every other debug profile has the
+feature.
+
 The GPS Power Save row is not exposed in the LVGL UI at all: it is set from the
 console or the companion app. Its refusal on a receiver without a CFG-PM group
 is reported there as `power_save: off (not implemented on this receiver)`. The

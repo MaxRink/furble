@@ -192,7 +192,7 @@ values are the ones each firmware prints (M10 IFD 1.2 page 10, F10 IFD 1.2 page
 ### The capability probe
 
 `CapsProbe` sends one CFG-VALGET for the four L5 keys at the default layer
-(`lib/furble/protocol/GpsUbx.h:657`). A firmware that has them answers with one
+(`lib/furble/protocol/GpsUbx.h:678`). A firmware that has them answers with one
 item each; a firmware that does not refuses the message with UBX-ACK-NAK,
 because that is how an unknown key is reported (M10 IFD 3.10.4 page 53, F10 IFD
 3.10.4 pages 54 and 55). Nothing is written, so the receiver configuration is
@@ -211,6 +211,20 @@ because one unknown key costs the whole VALSET that carries it, the rate and the
 dynamic model included. When a signal batch carrying an L5 key is refused anyway,
 the driver demotes the receiver to L1 for the rest of the session and reports it
 (`PlanSummary::l5_refused` at `lib/furble/protocol/GpsUbx.h:540`).
+
+### One profile builds without L5
+
+`FURBLE_GPS_L5` (`lib/furble/protocol/GpsUbx.h`) defaults to 1 and is set to 0
+only for `m5stack-core-debug`. That profile's app partition is 1,740,800 bytes
+and the release Core build already leaves 768 of them free
+(`tools/size_budget.json`), while the L5 keys, the capability probe and their
+console and UI reporting cost about 2.9 KB. The verbose debug console is the
+point of that developer-only profile, so the profile builds L1 only: it never
+polls for the L5 keys, never writes one, reports `no L5 support in this build`
+in `gps ubx`, and shows `ubx l1`. `m5stack-core-usb-debug` inherits the Core
+debug flags but has the single factory partition and sets the flag back to 1.
+Every release profile and every other debug profile keeps the feature. The
+per-profile size is `tools/check_size_budget.py --env m5stack-core-debug`.
 
 ### Exclusions a plan must respect
 

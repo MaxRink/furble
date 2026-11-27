@@ -10430,9 +10430,13 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         // capability rather than a setting: a dual-band firmware runs both
         // bands of each enabled constellation together.
         if (gps.getBackend() == GPS::backend_t::UBX) {
+#if FURBLE_GPS_L5
           const auto ubx = gps.getUbxStatus();
           config = ((ubx.bands & Ubx::BAND_L5) != 0) ? "ubx l1+l5" : "ubx l1";
           config += ubx.bands_probed ? "" : " (guess)";
+#else
+          config = "ubx l1";
+#endif
           config += '\n';
         }
         for (const auto &entry : gps.getConfigStatus()) {

@@ -116,7 +116,7 @@ Writing `B1I = 0` costs one known key, is accepted by the model
 
 The probe sets `bands` only. For a receiver whose MON-VER names no family,
 `CAPS_UNKNOWN` keeps `psm = true` and `glo = true`
-(`lib/furble/protocol/GpsUbx.h:469`), so `bands = L1|L5` arrives with a plan that
+(`lib/furble/protocol/GpsUbx.h:476-485`), so `bands = L1|L5` arrives with a plan that
 writes GLONASS keys and CFG-PM keys to an F10 and NAKs. "Fail closed" holds for
 the band and not for the two capabilities that come with the family. Derive
 `psm`/`glo` from the probed family, or set both false when the probe answers L5.

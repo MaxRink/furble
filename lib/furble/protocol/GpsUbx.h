@@ -421,7 +421,23 @@ constexpr uint8_t PSM_OFF = 0;
 constexpr uint8_t PSM_CYCLIC = 1;
 constexpr uint8_t PSM_ON_OFF = 2;
 
-/*
+/**
+ * Whether L5 and dual-band configuration is compiled in.
+ *
+ * This is a flash size decision, not a protocol one. The M5Stack Core debug
+ * image is the tightest slot in the tree: its app partition is 1,740,800 bytes
+ * and the release Core build already leaves only 768 of them free
+ * (tools/size_budget.json). The L5 signal keys, the capability probe that
+ * confirms them and their console and UI reporting do not fit beside the
+ * verbose debug console, so that one developer-only profile builds without
+ * them and configures L1 only. Every other profile, the release Core included,
+ * defines nothing here and gets the feature.
+ */
+#if !defined(FURBLE_GPS_L5)
+#define FURBLE_GPS_L5 1
+#endif
+
+/**
  * Signal bands. A band belongs to the receiver firmware, not to a setting.
  *
  * The M10 firmware implements L1 signals only: its CFG-SIGNAL table stops at
@@ -506,10 +522,12 @@ struct Request {
 
 /** What a plan decided; a driver keeps only this part. */
 struct PlanSummary {
-  uint16_t rate_ms;  /**< the rate actually sent, 0 when left alone */
-  uint8_t gnss;      /**< effective constellation mask */
-  uint8_t psm;       /**< the power save mode actually sent */
-  uint8_t bands;     /**< BAND_* actually written, 0 when no signal write happened */
+  uint16_t rate_ms; /**< the rate actually sent, 0 when left alone */
+  uint8_t gnss;     /**< effective constellation mask */
+  uint8_t psm;      /**< the power save mode actually sent */
+#if FURBLE_GPS_L5
+  uint8_t bands; /**< BAND_* actually written, 0 when no signal write happened */
+#endif
   bool gnss_refused; /**< the mask broke a rule, signals left alone */
   bool psm_refused;  /**< power save with BeiDou B1C, left at full power */
   bool rate_clamped; /**< the rate exceeded the constellation limit */
@@ -528,6 +546,7 @@ struct PlanSummary {
    * The NEO-F10N data sheet lists B1C and B2a only (UBX-23002117 R05, Table 4
    * page 5), so the plan writes B1C and B2A and leaves B1I alone.
    */
+#if FURBLE_GPS_L5
   bool b1i_refused;
   /**
    * The receiver refused an L5 key after the capability probe passed.
@@ -538,6 +557,7 @@ struct PlanSummary {
    * it, because a VALSET applies as a whole (IFD 3.10.5).
    */
   bool l5_refused;
+#endif
   /**
    * AssistNow Autonomous actually written.
    *
@@ -654,6 +674,7 @@ class Detect {
  * a signal VALSET carrying an unknown key is refused in full, which would
  * take the rate, dynamic model and the L1 signals down with it.
  */
+#if FURBLE_GPS_L5
 class CapsProbe {
  public:
   static constexpr uint32_t ATTEMPT_MS = 1000;
@@ -691,6 +712,7 @@ class CapsProbe {
   uint8_t m_Attempts = 0;
   uint32_t m_Deadline = 0;
 };
+#endif  // FURBLE_GPS_L5
 
 }  // namespace Ubx
 }  // namespace Furble
