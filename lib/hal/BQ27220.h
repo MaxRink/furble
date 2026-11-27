@@ -60,8 +60,11 @@ class BQ27220 {
    * Read every field: five standard-command packets with the 66 us bus-free
    * gap of section 5.3 between them, so one call keeps the bus about 264 us.
    *
-   * Returns false if any transfer fails, in which case `reading` is left
-   * untouched.
+   * Returns false if any transfer fails, or if StateOfCharge() reads above the
+   * 0 to 100 range section 2.21, page 25, gives that field. In either case
+   * `reading` is left untouched, so a caller keeps its last good sample: an
+   * all-ones SOC word from a gauge that is not estimating must not become a
+   * full battery.
    *
    * Rate limit: call this at most twice per second (section 5.3, see
    * MIN_POLL_INTERVAL_MS). One call reads each of the five commands once, so

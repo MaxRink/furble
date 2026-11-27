@@ -137,6 +137,14 @@ const FujifilmVirtualCamera::Config &FujifilmVirtualCamera::config() const {
 }
 
 std::vector<FujifilmVirtualCamera::Write> FujifilmVirtualCamera::writes() const {
+  // The snapshot has to hold the same mutex write() appends under, or the copy
+  // can run while push_back() reallocates the vector: ASan and UBSan saw the
+  // torn vector as a null reference binding in that copy. This is the peer's
+  // own mutex, not Host::peerWriteJournalMutex(), because sim/BleSim.cpp holds
+  // the process-wide one around this accessor for the peers that return a
+  // view. Taking the same non-recursive mutex again there hangs the UI task,
+  // which the simulator watchdog reports as exit 3.
+  const std::lock_guard<std::mutex> journal(m_JournalMutex);
   return m_Writes;
 }
 
@@ -509,6 +517,9 @@ bool FujifilmVirtualCamera::isDropOnSubscribe(const NimBLEUUID &service,
 }
 
 void FujifilmVirtualCamera::clearEvents() {
+  // Clearing the journal is a write to the same vector the control task
+  // appends to, so it takes the peer journal mutex as well.
+  const std::lock_guard<std::mutex> journal(m_JournalMutex);
   m_Writes.clear();
   m_Notifications.clear();
   m_LastGeotag.clear();
@@ -790,7 +801,13 @@ bool FujifilmVirtualCamera::write(NimBLEClient &client,
   write_event.characteristic = characteristic.toString();
   write_event.payload = value;
   write_event.response = response;
-  m_Writes.push_back(write_event);
+  {
+    // Narrow on purpose: the journal mutex is never held across anything that
+    // can yield on the simulator's scheduler, so a reader that waits for it
+    // waits for a push_back and nothing else.
+    const std::lock_guard<std::mutex> journal(m_JournalMutex);
+    m_Writes.push_back(write_event);
+  }
 
   bool result = false;
   if (matches(service, m_Config.secure ? SECURE_PAIR_SERVICE_UUID : pairServiceUUID())

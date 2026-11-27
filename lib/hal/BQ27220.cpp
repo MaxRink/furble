@@ -58,8 +58,19 @@ bool BQ27220::read(Reading &reading) {
   result.discharging = (words[1] & STATUS_DSG) != 0;
   result.currentMa = static_cast<int16_t>(words[2]);
   result.timeToEmptyMin = words[3];
+  // Section 2.21, page 25: StateOfCharge() is a percentage "with a range of 0
+  // to 100". The manual gives this field no out-of-range sentinel, unlike
+  // TimeToEmpty() (section 2.11, page 23, 0xFFFF means not discharging), so a
+  // word above 100 is not an SOC and the call reports no reading rather than a
+  // full battery. What a gauge that is not estimating actually returns here is
+  // not stated anywhere in the chapter, and the all-ones field case is inferred
+  // from the neighbouring fields rather than documented; the range check does
+  // not depend on it, and a clamp would turn any such word into 100 percent.
   const uint16_t soc = words[4];
-  result.percent = static_cast<uint8_t>((soc > 100) ? 100 : soc);
+  if (soc > 100) {
+    return false;
+  }
+  result.percent = static_cast<uint8_t>(soc);
   reading = result;
   return true;
 }

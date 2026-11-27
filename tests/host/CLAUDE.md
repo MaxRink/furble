@@ -21,6 +21,15 @@ tree with ASan. Its plain twin, `control-gps-race-plain`, builds the same source
 without the sanitizer, so the walk stays covered in the normal host suite and
 under ASan and UBSan.
 
+`fujifilm-journal-race` is the write-journal probe: one thread appends shutter
+writes through `FujifilmVirtualCamera::write()` while the main thread takes
+`writes()` snapshots and calls `clearEvents()`. The peer appends under
+`Host::peerWriteJournalMutex()`, so the accessor has to take it as well; without
+that, ASan and UBSan see only a torn vector and only when the window is hit,
+which is how the sanitized job once failed on `control-e2e-multi-connect-fujifilm`.
+It has no plain twin because no other sanitizer can see the overlap, and it is
+in the same TSan exclusion list for the same reason.
+
 Every other host test must pass under ASan and UBSan
 (`tools/run_sanitized_host_tests.sh`) and, on Linux, LeakSanitizer. A host
 double that stands in for a production type must keep its full value range:

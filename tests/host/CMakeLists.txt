@@ -1896,6 +1896,31 @@ target_compile_options(control_gps_race_test PRIVATE
                        -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
 target_link_options(control_gps_race_test PRIVATE -fsanitize=thread)
 target_link_libraries(control_gps_race_test PRIVATE Threads::Threads)
+
+# Thread-sanitizer proof for the Fujifilm peer write journal. The peer appends
+# from the control task under Host::peerWriteJournalMutex() and hands out
+# snapshots from another task, so the accessor has to take that mutex too.
+# ASan and UBSan only see the torn vector the overlap produces, and only when
+# the window is hit; this probe reports the overlap itself. The peer source is
+# compiled here rather than linked from furble_host_camera so the accesses in
+# write() and writes() are instrumented.
+add_executable(fujifilm_journal_race_test
+               fujifilm_journal_race_test.cpp
+               ${CONTROL_E2E_DIR}/freertos_shim.cpp
+               ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
+               ${HOST_PEER_DIR}/FujifilmVirtualCamera.cpp)
+target_include_directories(fujifilm_journal_race_test
+                           BEFORE PRIVATE
+                                  ${CONTROL_E2E_DIR}
+                                  ${FURBLE_ROOT}/include
+                                  ${HOST_NIMBLE_DIR}
+                                  ${HOST_PEER_DIR})
+target_compile_options(fujifilm_journal_race_test PRIVATE
+                       -Wall -Wextra -Wno-format -Wno-unused-parameter
+                       -fsanitize=thread -fno-omit-frame-pointer -g
+                       -include ${CONTROL_E2E_DIR}/freertos/FreeRTOS.h)
+target_link_options(fujifilm_journal_race_test PRIVATE -fsanitize=thread)
+target_link_libraries(fujifilm_journal_race_test PRIVATE Threads::Threads)
 endif()
 
 # The same GPS fan-out probe without the thread sanitizer, so the regression
@@ -2712,6 +2737,11 @@ if(BUILD_TESTING)
                      $<TARGET_FILE:control_connecting_snapshot_test>
                      "control connecting-camera snapshot: PASS")
     set_tests_properties(control-connecting-snapshot PROPERTIES TIMEOUT 120)
+    add_test(NAME fujifilm-journal-race
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/run_tsan_race.sh
+                     $<TARGET_FILE:fujifilm_journal_race_test>
+                     "fujifilm-journal-race: PASS")
+    set_tests_properties(fujifilm-journal-race PROPERTIES TIMEOUT 180)
     # The shell contract emits no profraw, so keep it out of coverage's CTest
     # profile inventory while retaining the normal host and standalone checks.
     add_test(NAME control-tsan-wrapper-contract

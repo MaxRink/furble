@@ -466,6 +466,23 @@ void testBq27220(void) {
   check(gauge.read(r) && !r.present && !r.discharging && r.timeToEmptyMin == 0xFFFF,
         "bq27220 no battery, no estimate");
 
+  // Section 2.21, page 25: StateOfCharge() is a percentage "with a range of 0
+  // to 100". The manual gives this field no out-of-range sentinel, unlike
+  // TimeToEmpty() in section 2.11, so a word outside the range is not a reading
+  // and the call must not clamp it: 100 percent is a full battery, and an
+  // all-ones word from a gauge that is not estimating would report exactly
+  // that forever.
+  BQ27220::Reading socKept = {4200, -200, 64, 300, true, true};
+  bus.regs[0x2C] = 101;
+  bus.regs[0x2D] = 0;
+  check(!gauge.read(socKept) && socKept.percent == 64, "bq27220 soc above 100 is not a reading");
+  bus.regs[0x2C] = 0xFF;
+  bus.regs[0x2D] = 0xFF;
+  check(!gauge.read(socKept) && socKept.percent == 64, "bq27220 soc 0xFFFF is not a reading");
+  bus.regs[0x2C] = 100;
+  bus.regs[0x2D] = 0;
+  check(gauge.read(socKept) && socKept.percent == 100, "bq27220 soc 100 is a reading");
+
   BQ27220::Reading kept = {4200, -200, 64, 300, true, true};
   bus.fail = true;
   check(!gauge.read(kept) && kept.voltageMv == 4200 && kept.percent == 64,
@@ -502,6 +519,11 @@ class FakeRadio final: public SX1262::Port {
   std::vector<std::string> events;
   uint32_t busyPolls = 3;          // polls with BUSY high before it drops after reset
   uint32_t sleepConfirmPolls = 0;  // polls with BUSY still low after SetSleep
+  // Polls after the reset release that still read low. Section 8.3.1 documents
+  // BUSY high while the chip calibrates and low in STDBY_RC, and no table
+  // bounds the rise, so a part that has not raised it yet is healthy.
+  uint32_t busyLowPollsAfterReset = 0;
+  bool busyNeverRises = false;
   bool asleep = false;
   bool honourSleep = true;
   bool spiOk = true;
@@ -510,6 +532,7 @@ class FakeRadio final: public SX1262::Port {
   void setReset(bool asserted) override {
     events.push_back(asserted ? "reset-low" : "reset-high");
     asleep = false;
+    resetPolls = 0;
   }
   bool busy(void) override {
     if (asleep) {
@@ -518,6 +541,13 @@ class FakeRadio final: public SX1262::Port {
         return false;
       }
       return true;
+    }
+    if (resetPolls < busyLowPollsAfterReset) {
+      resetPolls++;
+      return false;
+    }
+    if (busyNeverRises) {
+      return false;
     }
     if (busyPolls > 0) {
       busyPolls--;
@@ -540,6 +570,9 @@ class FakeRadio final: public SX1262::Port {
     delayed += us;
     events.push_back("delay " + std::to_string(us));
   }
+
+ private:
+  uint32_t resetPolls = 0;
 };
 
 uint32_t delayAfter(const std::vector<std::string> &events, const std::string &marker) {
@@ -559,32 +592,33 @@ uint32_t delayAfter(const std::vector<std::string> &events, const std::string &m
 constexpr uint32_t SLEEP_SEQUENCE_BUDGET_US = 20'000;
 
 /**
- * The bound SX1262.h states for the whole sequence: 200 us of reset, 10,000 us
- * waiting for the post-reset calibration, 500 us of no-SPI settle and 5,000 us
- * confirming sleep, so 15,700 us at worst.
+ * The bound SX1262.h states for the whole sequence: 200 us of reset, 1,000 us
+ * waiting for BUSY to rise, 10,000 us waiting for the post-reset calibration,
+ * 500 us of no-SPI settle and 5,000 us confirming sleep, so 16,700 us at worst.
  *
  * The 500 us is section 13.1.1's figure and the 200 us reset pulse is twice
  * section 8.1's 100 us minimum; the 10 ms ready budget covers Table 8-2's 3.5 ms
- * cold start with room, and only the 5,000 us sleep-confirm budget has no
- * tabulated value behind it. The header's total is the contract a board budgets
- * its power-off path against. Summing the header's own constants against that
- * total keeps the paragraph honest: with no such check a 9,000 us confirm budget
- * or a 14,000 us ready budget passes every other case here and quietly
- * contradicts the document.
+ * cold start with room, and the 1,000 us BUSY-rise budget and the 5,000 us
+ * sleep-confirm budget are the two no table bounds. The header's total is the
+ * contract a board budgets its power-off path against. Summing the header's own
+ * constants against that total keeps the paragraph honest: with no such check a
+ * 9,000 us confirm budget or a 14,000 us ready budget passes every other case
+ * here and quietly contradicts the document.
  */
-constexpr uint32_t DOCUMENTED_SLEEP_BOUND_US = 15'700;
-constexpr uint32_t HEADER_SLEEP_BOUND_US = SX1262::RESET_PULSE_US + SX1262::READY_BUDGET_US
-                                           + SX1262::SLEEP_SETTLE_US
+constexpr uint32_t DOCUMENTED_SLEEP_BOUND_US = 16'700;
+constexpr uint32_t HEADER_SLEEP_BOUND_US = SX1262::RESET_PULSE_US + SX1262::BUSY_ASSERT_BUDGET_US
+                                           + SX1262::READY_BUDGET_US + SX1262::SLEEP_SETTLE_US
                                            + SX1262::SLEEP_CONFIRM_BUDGET_US;
 
 void testSx1262(void) {
-  // The four budgets the header's steps name, then their sum against the total
+  // The five budgets the header's steps name, then their sum against the total
   // it states.
-  check(SX1262::RESET_PULSE_US == 200 && SX1262::READY_BUDGET_US == 10'000
-            && SX1262::SLEEP_SETTLE_US == 500 && SX1262::SLEEP_CONFIRM_BUDGET_US == 5'000,
+  check(SX1262::RESET_PULSE_US == 200 && SX1262::BUSY_ASSERT_BUDGET_US == 1'000
+            && SX1262::READY_BUDGET_US == 10'000 && SX1262::SLEEP_SETTLE_US == 500
+            && SX1262::SLEEP_CONFIRM_BUDGET_US == 5'000,
         "sx1262 budgets are the numbers the header states");
   check(HEADER_SLEEP_BOUND_US == DOCUMENTED_SLEEP_BOUND_US,
-        "sx1262 header total bound is the documented 15,700 us");
+        "sx1262 header total bound is the documented 16,700 us");
 
   FakeRadio radio;
   check(SX1262::sleep(radio), "sx1262 sleep succeeds");
@@ -608,9 +642,12 @@ void testSx1262(void) {
   check(radio.delayed <= SLEEP_SEQUENCE_BUDGET_US, "sx1262 sequence inside the stated bound");
 
   // Table 8-2 tabulates no standby-to-sleep time, so BUSY may arrive late; a
-  // part that asserts it after the settle window is healthy.
+  // part that asserts it after the settle window is healthy. The calibration
+  // level itself must still be seen. Section 9.1, page 60, sets BUSY high in
+  // STARTUP at power-up or after a reset, so one poll of it is enough for the
+  // rise wait, and a part whose line is already high costs nothing.
   FakeRadio late;
-  late.busyPolls = 0;
+  late.busyPolls = 1;
   late.sleepConfirmPolls = 10;  // BUSY stays low for 1 ms after SetSleep
   check(SX1262::sleep(late), "sx1262 sleep tolerates a late BUSY");
   check(late.delayed <= SLEEP_SEQUENCE_BUDGET_US, "sx1262 late BUSY stays inside the bound");
@@ -622,14 +659,55 @@ void testSx1262(void) {
     check(e.rfind("spi", 0) != 0, "sx1262 no command while BUSY is high");
   }
   // A stuck BUSY spends the reset pulse plus the whole ready budget and returns
-  // before SetSleep, so 10,200 us is its real cost. The bound here is the
-  // documented total on purpose: the first version restated the driver's own
-  // constants, and the four cold starts plus reset bound that replaced them
-  // (14,200 us from Table 8-2) was looser than the path it guarded, so a
-  // 14,000 us ready budget fitted it. The two checks above are what hold the
-  // header at 15,700 us; this case proves the wait stops inside it.
+  // before SetSleep, so 10,200 us is its real cost: the rise wait is satisfied
+  // by BUSY already being high and never delays, so the 1 ms assert budget is
+  // not spent. The header states that sum, and this case pins it exactly rather
+  // than only bounding it, because 11,200 us (reset plus both waits) was stated
+  // once and nothing noticed.
+  constexpr uint32_t STUCK_HIGH_SPEND_US = SX1262::RESET_PULSE_US + SX1262::READY_BUDGET_US;
+  check(STUCK_HIGH_SPEND_US == 10'200,
+        "sx1262 stuck-high spend is the reset pulse plus the ready budget");
+  check(stuck.delayed == STUCK_HIGH_SPEND_US,
+        "sx1262 stuck BUSY spends reset plus the ready budget, 10,200 us");
+  // The bound here is the documented total on purpose: the first version
+  // restated the driver's own constants, and the four cold starts plus reset
+  // bound that replaced them (14,200 us from Table 8-2) was looser than the
+  // path it guarded, so a 14,000 us ready budget fitted it. The two checks
+  // above are what hold the header at 16,700 us; this case proves the wait
+  // stops inside it.
   check(stuck.delayed <= DOCUMENTED_SLEEP_BOUND_US,
         "sx1262 stuck BUSY stays inside the documented total");
+
+  // BUSY is high while the chip calibrates and no table bounds the rise, so a
+  // part that has not raised it yet is healthy. The window between the reset
+  // release and the start of the calibration is inferred rather than
+  // documented, but a ready wait alone would pass in it and send SetSleep from
+  // a state section 13.1.1 does not accept it in, which is what this case
+  // models.
+  FakeRadio slowStart;
+  slowStart.busyLowPollsAfterReset = 5;  // BUSY rises 500 us after the release
+  check(SX1262::sleep(slowStart), "sx1262 waits for BUSY to rise after reset");
+  {
+    size_t busySamples = 0;
+    for (const auto &e : slowStart.events) {
+      if (e.rfind("spi", 0) == 0) {
+        break;
+      }
+      if ((e.rfind("delay ", 0) == 0) && (e != "delay 200")) {
+        busySamples++;
+      }
+    }
+    check(busySamples >= 5, "sx1262 polls BUSY until it rises before SetSleep");
+  }
+
+  FakeRadio neverRises;
+  neverRises.busyNeverRises = true;
+  check(!SX1262::sleep(neverRises), "sx1262 BUSY that never rises fails");
+  for (const auto &e : neverRises.events) {
+    check(e.rfind("spi", 0) != 0, "sx1262 no command before BUSY has risen");
+  }
+  check(neverRises.delayed == SX1262::RESET_PULSE_US + SX1262::BUSY_ASSERT_BUDGET_US,
+        "sx1262 BUSY that never rises stops inside the assert budget");
 
   FakeRadio ignored;
   ignored.honourSleep = false;
