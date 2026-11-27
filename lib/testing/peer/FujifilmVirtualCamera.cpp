@@ -137,6 +137,11 @@ const FujifilmVirtualCamera::Config &FujifilmVirtualCamera::config() const {
 }
 
 std::vector<FujifilmVirtualCamera::Write> FujifilmVirtualCamera::writes() const {
+  // The snapshot has to hold the same mutex write() appends under, or the copy
+  // can run while push_back() reallocates the vector. WriteJournal.h states
+  // that contract; taking only the append side left the reader racing it, and
+  // ASan/UBSan saw the torn vector as a null reference binding in the copy.
+  const std::lock_guard<std::mutex> journal(Host::peerWriteJournalMutex());
   return m_Writes;
 }
 
@@ -509,6 +514,9 @@ bool FujifilmVirtualCamera::isDropOnSubscribe(const NimBLEUUID &service,
 }
 
 void FujifilmVirtualCamera::clearEvents() {
+  // Clearing the journal is a write to the same vector the control task
+  // appends to, so it takes the journal mutex as well.
+  const std::lock_guard<std::mutex> journal(Host::peerWriteJournalMutex());
   m_Writes.clear();
   m_Notifications.clear();
   m_LastGeotag.clear();

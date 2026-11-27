@@ -2,7 +2,7 @@
 
 # Build and run the host test suite under AddressSanitizer and
 # UndefinedBehaviorSanitizer in a dedicated build tree. By default every host
-# test runs except the three ThreadSanitizer probes, which cannot combine with
+# test runs except the four ThreadSanitizer probes, which cannot combine with
 # ASan and run in the normal host build through tests/host/run_tsan_race.sh.
 # The script is fail-closed: a missing compiler, a compiler without both sanitizers, an
 # unmatched test regex, or any sanitizer failure returns non-zero.
@@ -33,7 +33,9 @@ TEST_REGEX='.'
 # combined with ASan; tests/host/run_tsan_race.sh runs them in the normal host
 # build. Every other host test runs here by default, including the plain twin of
 # the control-gps-race probe, so the GPS fan-out stays covered under ASan/UBSan.
-TSAN_TESTS='^(control-connect-camera-race|control-connecting-snapshot|control-gps-race)$'
+# fujifilm-journal-race is the write-journal snapshot against the append; it has
+# no plain twin because the overlap is invisible without ThreadSanitizer.
+TSAN_TESTS='^(control-connect-camera-race|control-connecting-snapshot|control-gps-race|fujifilm-journal-race)$'
 CLEAN=0
 LIST_TESTS=0
 CC=${CC:-cc}

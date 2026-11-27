@@ -251,7 +251,11 @@ class FujifilmVirtualCamera final: public NimBLEMockPeer {
   const Config &config() const;
   // A snapshot, not a view: the peer write handler appends to the log from the
   // Control task while a test walks it, so a reference could be read after a
-  // reallocation. ASan reported that as a heap-use-after-free once.
+  // reallocation. ASan reported that as a heap-use-after-free once. The copy
+  // holds Host::peerWriteJournalMutex(), the same mutex write() appends under,
+  // because a snapshot taken without it can still run against a reallocating
+  // vector: ASan and UBSan reported the torn vector as a null reference binding
+  // in the copy, and fujifilm-journal-race is the probe that proves the lock.
   std::vector<Write> writes() const;
   std::vector<Notification> notifications() const;
   std::vector<uint8_t> lastGeotag() const;

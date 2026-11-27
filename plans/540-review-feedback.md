@@ -151,3 +151,88 @@ and CI is where the measurement happens.
 The branch was rebased onto `origin/master` at `18bbcb5a` before the remediation,
 because master had moved `sim/hardware_model.cpp` and the plan's citations into it
 had to be re-derived. Every citation the rebase moved was re-checked.
+
+## The two checks that failed after the remediation
+
+Head `2526e65c` addressed all ten findings and left two checks red. Both
+assertions were read from the job logs before anything was changed.
+
+### ASan and UBSan host tests, job `140252663079`
+
+One case failed out of 220, and the sanitizer named the site:
+
+```
+167/220 Test #167: control-e2e-multi-connect-fujifilm ... Subprocess aborted
+/usr/include/c++/15/bits/stl_uninitialized.h:145:17: runtime error: reference
+binding to null pointer of type 'struct Write'
+  #4 FujifilmVirtualCamera::writes() const lib/testing/peer/FujifilmVirtualCamera.cpp:140
+  #5 shutterWriteCount tests/host/control_e2e/control_e2e.cpp:98
+  #6 waitForShutterWrites tests/host/control_e2e/control_e2e.cpp:134
+  #7 scenarioMultiConnectFujifilm tests/host/control_e2e/control_e2e.cpp:642
+```
+
+Neither of the two behaviour changes on this branch is in that stack. Both were
+audited anyway.
+
+- `BQ27220::read()`: the only caller in the tree is
+  `tests/host/hal_drivers_test.cpp`. It initialises the struct before every
+  call (`BQ27220::Reading socKept = {4200, -200, 64, 300, true, true}`), so a
+  failed read leaves the previous sample in place rather than an uninitialised
+  one, and the new cases assert exactly that for the 101 and 0xFFFF words. No
+  source under `src/`, `include/` or `lib/furble` names the gauge, so there is
+  no other caller to audit.
+- `SX1262::sleep()`: the rise wait is issued after `port.setReset(false)`, so
+  the pin is never sampled while NRESET is held, and the confirmation wait is
+  issued after `port.transfer()` returns and after the 500 us settle, not
+  before the transfer. `hal-drivers` passes under both sanitizers, including
+  the case that compares the measured spend with the stated bound.
+
+The cause is in the test double, and it predates this branch: nothing under
+`lib/testing/` changes here. `FujifilmVirtualCamera::write()` appends to
+`m_Writes` while it holds `Host::peerWriteJournalMutex()`, and `writes()` copied
+the vector without that lock, so the copy could run while `push_back()` was
+reallocating it. `WriteJournal.h` already states that the mutex is what keeps
+the append and the snapshot from overlapping; only the append side took it.
+ThreadSanitizer on the same scenario reports the pair directly: the append in
+`write()` against the copy in `writes()`, 29 reports in total.
+
+Fixed by taking the journal mutex in `writes()` and in `clearEvents()`, which
+also mutates the vector. The new probe `fujifilm-journal-race` runs the overlap
+on purpose, one thread appending shutter writes through the peer and one taking
+snapshots and clearing: ThreadSanitizer reports one race against the unfixed
+accessor and none with the lock, and `run_tsan_race.sh` fails closed on either.
+It has no plain twin because no other sanitizer can see the overlap, and it
+joins the ThreadSanitizer exclusion list in `tools/run_sanitized_host_tests.sh`
+for the same reason as the other three probes.
+
+Two siblings are recorded gaps, not fixed here. `notifications()` has the same
+shape, but its writer holds the subscription delivery lock rather than the
+journal mutex, so it needs a lock of its own and a probe; and
+`NimBLEClient::mockDropLink()` called from a test thread against a running
+target is a race in the scenarios' fault injection, not in the journal. Both are
+in the ThreadSanitizer report for this scenario. Neither is in the failing
+assertion, and fixing either changes how the scenarios inject faults, which does
+not belong in this PR.
+
+### Simulator end-to-end, job `140252662698`
+
+The failing step is `Fuzz the no-touch UI (all modeled panels)` and the
+assertion is its determinism replay:
+
+```
+=== determinism replay seed 31337 (600 steps) ===
+FAIL determinism replay seed 31337 (fuzz report lines diverged)
+-FUZZ COVERAGE pages=28: about=5 ... connected=37 ... main=223 ...
++FUZZ COVERAGE pages=28: about=5 ... connected=39 ... main=221 ...
+```
+
+`connected` and `main` move by two in opposite directions and every other line
+of the two reports matches. Two runs of the same binary with the same seed
+disagree, so the branch's code cannot be the cause: the simulator compiles no
+`lib/hal` source, and the branch's only file under `sim/` is a comment-only hunk
+in `sim/shim/M5PM1.h`, which changes no behaviour.
+
+Rebasing does not address it either. `18bbcb5a..baa4ac23` is PRs 536 and 539, and
+it changes `docs/hardware-catalog.md` and four files under `plans/`. No scenario,
+harness, manifest or gate moved, so the failure is not in a scenario master
+changed.
