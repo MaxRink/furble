@@ -2075,6 +2075,20 @@
       "certified": true
     },
     {
+      "path": "sim/scenarios/e2e/ext5v-rail-boot.txt",
+      "suite": "e2e",
+      "owner": "sim-e2e",
+      "boards": [
+        "m5stick-s3"
+      ],
+      "capabilities": [
+        "gps",
+        "ir"
+      ],
+      "expected_exit": 0,
+      "certified": true
+    },
+    {
       "path": "sim/scenarios/e2e/ext5v-rail-interlock.txt",
       "suite": "e2e",
       "owner": "sim-e2e",

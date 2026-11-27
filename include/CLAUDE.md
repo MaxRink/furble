@@ -360,8 +360,10 @@ settings-touching rebase.
   alarm wake; the Core2 row keeps `TimedWake::NONE` because the 2023.2 revision
   removed its RTC backup cell (plans/354).
   `rtcOnBus` means an RTC chip the driver can reach answers on the internal
-  I2C bus, which is only the Plus2's BM8563; it is not the same fact as
-  `rtcBatteryBacked` or as the `TimedWake` kind, so gate RTC writes on it.
+  I2C bus: a BM8563 at 0x51 on the StickC, the StickC Plus, the StickC Plus2,
+  the Core2 and the Tough, and on no other row. It is not the same fact as
+  `rtcBatteryBacked` or as the `TimedWake` kind, so gate RTC writes on it and
+  never derive it from a timed wake (plan 367).
 - `Board::gpsPins()` is the only GPS UART pin source. `BOARD_SUPPORT` reads
   M5Unified's Port A table in `src/FurbleBoard.cpp`; a board M5Unified cannot
   describe sets `GpsPinSource::PROFILE` and carries `gpsRxPin`/`gpsTxPin` in its

@@ -104,6 +104,7 @@ page names.
 
 | Component | Page | Status | Role | Implementation | Documents |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| Board rows | [board-map.md](board-map.md), [board-verification.md](board-verification.md) | shipped | Every `Board::Profile` column and the per-board `Platform` branches, one row per fact with its source | `src/FurbleBoard.cpp`, `src/FurblePlatform.cpp` | M5Stack product pages and pin maps, M5Unified 0.2.20, M5GFX 0.2.27, M5PM1 1.0.6 |
 | M5Stack M5PM1 | [m5pm1.md](m5pm1.md) | shipped | PMIC, watchdog, power button, status LED on the StickS3 | `src/FurblePlatform.cpp`, `include/FurblePlatform.h` | M5PM1 V1.9 |
 | X-Powers AXP2101 | [axp2101.md](axp2101.md) | future | PMIC for boards M5Unified does not know | `lib/hal/AXP2101.cpp` | AXP2101 rev 1.4, rev 1.0 and rev 0.1 |
 | X-Powers AXP192 | [axp192.md](axp192.md) | board support | PMIC on the Core2 and the StickC family | `src/FurblePlatform.cpp` via M5Unified | AXP192 V1.2 and two unrevisioned copies of the same 53 pages |

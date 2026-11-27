@@ -8,55 +8,78 @@ supply these numbers; they come from the board layout as it is written in
 ## Runtime board profile
 
 `Board::profileFor()` picks a row from the detected board, not from a build
-macro, because one image serves several boards (`src/FurbleBoard.cpp:61-80`).
-The row layout is documented above the table in `src/FurbleBoard.cpp:25-28`, and
-the field list is `include/FurbleBoard.h:36-65`.
+macro, because one image serves several boards. The field list and the meaning
+of each column are in `include/FurbleBoard.h`. The values below are the table in
+`src/FurbleBoard.cpp`, and the evidence for each one is the per-board
+verification table in
+[board-verification.md](board-verification.md).
 
-| Field | StickC | StickC+ | StickC+2 | StickS3 | Core | Core2 | Tough | Unknown |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `batteryCapacityMah` | 95 | 120 | 200 | 250 | 0 | 390 | 390 | 0 |
-| `rtcBatteryBacked` | true | true | false | false | false | true | false | false |
-| `irPin` | 9 | 9 | 19 | 46 | -1 | -1 | -1 | -1 |
-| `motionWake` | DIRECT | DIRECT | NONE | PMIC_GPIO | NONE | NONE | NONE | NONE |
-| `motionWakePin` | 35 | 35 | -1 | 13 | -1 | -1 | -1 | -1 |
-| `timedWake` | NONE | NONE | RTC_ALARM | PMIC_TIMER | NONE | NONE | NONE | NONE |
-| `powerHoldPin` | -1 | -1 | 4 | -1 | -1 | -1 | -1 | -1 |
-| `pmicClickStreak` | true | true | false | false | false | false | true | false |
-| `sdSlot` | false | false | false | false | true | true | false | false |
-| `canPowerOff` | true | true | true | true | false | true | true | true |
-| `modemSleep` | false | false | false | true | false | false | false | false |
-| `minBrightness` | 48 | 48 | 32 | 32 | 32 | 32 | 32 | 32 |
-| `feedbackSound` | false | true | true | true | true | true | false | false |
-| `feedbackLight` | true | true | true | false | false | false | false | false |
-| `feedbackVibration` | false | false | false | false | false | true | false | false |
-| `ledPin` | 10 | 10 | 19 | -1 | -1 | -1 | -1 | -1 |
-| `gpsRail` | true | true | false | true | false | true | true | false |
+| Field | StickC | StickC+ | StickC+2 | StickS3 | Core | Core2 | Tough | Waveshare | Unknown |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `battery.level` | yes | yes | yes | yes | yes | yes | yes | no | no |
+| `battery.voltage` | yes | yes | yes | yes | no | yes | yes | no | no |
+| `battery.current` | yes | yes | no | no | no | yes | yes | no | no |
+| `battery.charging` | yes | yes | no | yes | yes | yes | yes | no | no |
+| `batteryCapacityMah` | 95 | 120 | 200 | 250 | 110 | 500 | 390 | 0 | 0 |
+| `rtcBatteryBacked` | yes | yes | yes | no | no | yes | yes | no | no |
+| `rtcOnBus` | yes | yes | yes | no | no | yes | yes | no | no |
+| `irPin` | 9 | 9 | 19 | 46 | -1 | -1 | -1 | -1 | -1 |
+| `motionWake` | DIRECT | DIRECT | NONE | PMIC_GPIO | NONE | NONE | NONE | NONE | NONE |
+| `motionWakePin` | 35 | 35 | -1 | 13 | -1 | -1 | -1 | -1 | -1 |
+| `timedWake` | NONE | RTC_ALARM | RTC_ALARM | PMIC_TIMER | NONE | NONE | RTC_ALARM | NONE | NONE |
+| `powerHoldPin` | -1 | -1 | 4 | -1 | -1 | -1 | -1 | -1 | -1 |
+| `pmicClickStreak` | yes | yes | no | no | no | no | yes | no | no |
+| `sdSlot` | no | no | no | no | yes | yes | yes | no | yes |
+| `canPowerOff` | yes | yes | yes | yes | no | yes | yes | no | yes |
+| `powerOffPath` | yes | yes | yes | yes | yes | yes | yes | no | yes |
+| `modemSleep` | no | no | no | yes | no | no | no | no | no |
+| `minBrightness` | 48 | 48 | 32 | 32 | 32 | 32 | 32 | 32 | 32 |
+| `feedbackSound` | no | yes | yes | yes | yes | yes | yes | no | no |
+| `feedbackLight` | yes | yes | yes | no | no | no | no | no | no |
+| `feedbackVibration` | no | no | no | no | no | yes | no | no | no |
+| `ledPin` | 10 | 10 | 19 | -1 | -1 | -1 | -1 | -1 | -1 |
+| `gpsRail` | yes | yes | no | yes | no | yes | yes | no | no |
+| `ledActiveLow` | yes | yes | no | no | no | no | no | no | yes |
+| `irMarkLow` | yes | yes | no | no | no | no | no | no | no |
+| `gpsPinSource` | BOARD | BOARD | BOARD | BOARD | NONE | BOARD | BOARD | NONE | BOARD |
+| `gpsRxPin` / `gpsTxPin` | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 | -1 / -1 |
 
-Rows: StickC `src/FurbleBoard.cpp:31`, StickC+ `:34`, StickC+2 `:37`, StickS3
-`:40`, Core `:43`, Core2 `:46`, Tough `:49`, unknown `:55`.
+BOARD is `GpsPinSource::BOARD_SUPPORT`. The unknown row is the fallback for a
+board furble cannot identify, and the Waveshare ESP32-S3-ETH is the row for
+`board_M5StampS3`, which is the identity M5GFX reports for that image because
+`platformio.ini` pins it.
 
-Reading notes from the same block (`src/FurbleBoard.cpp:7-23`):
+The per-board facts behind these columns, with a document or a source file for
+each one, are in [board-verification.md](board-verification.md). The columns that
+changed in plan 367 are `rtcOnBus`, which was false on four boards whose vendor
+pinmap lists a BM8563 at 0x51, and `ledActiveLow`, which was true on four rows
+that drive no LED pad at all.
 
-- The IR pin is only free on StickC and StickC Plus because those images run the
-  flash in DIO mode. QIO would claim GPIO 9 and 10 as SD2 and SD3.
-  `src/FurbleBoard.cpp:12-14`.
-- GPIO 19 on the Plus2 is also the LED, so the IR emitter and the LED share it.
-  `src/FurbleBoard.cpp:13-14`.
-- Battery flow follows the PMIC. AXP192 boards report all four values, the
-  M5PM1 has no battery current register, the Plus2 reads an ADC divider and the
-  Core's IP5306 gives a coarse level only. `src/FurbleBoard.cpp:7-10`.
-- `gpsRail` is true only where `M5.Power.setExtOutput()` actually switches Port A
-  5 V. It does nothing on the Plus2, the Core or any other supported board.
-  `src/FurbleBoard.cpp:20-23`.
+Reading notes from the comment block above the table:
+
+- Battery caps still follow the PMIC: AXP192 and AXP2101 boards report all four
+  values, the M5PM1 has no battery current register, the Plus2 reads an ADC
+  divider on G38, and the Core's IP5306 gives a coarse four-level level only.
+- The IR pin is only free on the StickC and StickC Plus because those images run
+  the flash in DIO mode. QIO would claim GPIO 9 and 10 as SD2 and SD3. GPIO 19
+  on the Plus2 is also the LED, and the StickS3 emitter is on G46 with its
+  receiver on G42.
+- `gpsRail` is true only where `M5.Power.setExtOutput()` actually switches the
+  external 5 V output. The same output feeds the Grove port, the HAT 5 V pin and
+  the IR circuit on the StickS3, and one BUS_5V net for Port A and the M-Bus on
+  the Core2 and Tough.
+- `powerOffPath` is false only on the Waveshare row, which has no PMIC, no cell
+  and no rail, so `M5.Power.powerOff()` would deep sleep with no wake source
+  armed.
 
 ## Motion wake wiring
 
 - StickC family: the MPU6886 INT pin is GPIO 35, shared with the BM8563 on the
   SYS_INT net, and M5Unified configures that pin open drain, so it needs an
-  external pull-up (`src/FurbleBoard.cpp:15-17`,
+  external pull-up (`src/FurbleBoard.cpp:21-27`,
   `src/FurbleIMUMotionMPU6886.cpp:54-57`).
 - StickS3: the BMI270 INT1 goes to M5PM1 GPIO 4, and the PMIC drives its own IRQ
-  into SoC GPIO 13 (`src/FurbleBoard.cpp:16-18`). The firmware arms GPIO 4 as a
+  into SoC GPIO 13 (`src/FurbleBoard.cpp:25-27`). The firmware arms GPIO 4 as a
   wake source before light sleep (`src/FurblePlatform.cpp:526-536`) and clears
   it afterwards (`src/FurblePlatform.cpp:573-597`).
 
@@ -64,6 +87,8 @@ Reading notes from the same block (`src/FurbleBoard.cpp:7-23`):
 
 | Part | 7-bit address | Bus owner | Citation |
 | :--- | :--- | :--- | :--- |
+| FT6336U touch, Core2 | 0x38 | M5GFX `Touch_FT5x06`, INT on G39 | M5Stack Core2 page, PinMap `CAP.TOUCH` |
+| CHSC6540 touch, Tough | 0x2E | M5GFX `Touch_CHSC6540`, INT on G39 | M5Stack Tough page, PinMap `Cap.Touch` |
 | BMI270 IMU | 0x68 | M5Unified internal bus | `src/FurbleIMUMotionBMI270.cpp:24` |
 | MPU6886 IMU | 0x68 | M5Unified internal bus | `src/FurbleIMUMotionMPU6886.cpp:18` |
 | BM8563 RTC | 0x51 | M5Unified internal bus, 400 kHz | `src/FurblePlatform.cpp:42-46` |
@@ -72,10 +97,12 @@ Reading notes from the same block (`src/FurbleBoard.cpp:7-23`):
 | BQ27220 gauge | 0x55 | `lib/hal` `RegisterBus`, future boards only | `lib/hal/BQ27220.h:30` |
 | XL9555 expander | 0x20 to 0x27 | `lib/hal` `RegisterBus`, future boards only | `lib/hal/XL9555.h:27` |
 
-The AXP192, IP5306 and the Core2 touch controller are driven entirely by
-M5Unified and M5GFX, so their addresses are not in this repository. That is an
-open row in [the gap closure plan](../../plans/379-docs-gap-closure.md), not a
-value this page may invent.
+The AXP192 (0x34) and the IP5306 (0x75 on the Core, its I2C variant) are driven
+entirely by M5Unified, so their addresses appear in this repository only as the
+register targets `src/FurblePlatform.cpp` writes and as the vendor pinmap rows
+that name them. The two touch controllers are M5GFX's: FT5x06 at 0x38 on the
+Core2 and CHSC6540 at 0x2E on the Tough, both with their interrupt on G39, which
+is also the wake pin M5Unified records for those boards.
 
 ## GPS UART
 
@@ -126,9 +153,13 @@ Waveshare image (`platformio.ini:88`), where `post:patches/m5gfx_board.py` pins
 `M5GFX::autodetect`. Panel geometry per simulated board is 80x160 StickC,
 135x240 StickS3 and 320x240 Core (`docs/sim.md:17-21`).
 
-The panel parts are ST7735S on the StickC, ST7789V on the StickC Plus, the Plus2
-and the StickS3, and ILI9342C on the Core and Core2, each with its own page:
-[st7735.md](st7735.md), [st7789.md](st7789.md) and [ili934x.md](ili934x.md).
+The panel parts are ST7735S on the StickC, an ST7789 variant on the StickC Plus,
+the Plus2 and the StickS3, and ILI9342C on the Core, the Core2 and the Tough,
+each with its own page: [st7735.md](st7735.md), [st7789.md](st7789.md) and
+[ili934x.md](ili934x.md). The Waveshare image has no panel. M5GFX maps the four
+ILI9342C boards to `Panel_ILI9342` and the StickC to `Panel_ST7735S`, so the
+both-direction dwell rule applies to four of the seven display boards, not
+three.
 
 ### The panel sleep dwell
 
@@ -168,7 +199,7 @@ HTTPS server needs (`src/FurbleUI.cpp:571-577`).
 The minimum brightness per board is a multiple of the slider step, so the slider
 cannot select a level the panel renders as off (`include/FurbleBoard.h:53`).
 The values are 48 on StickC and StickC Plus and 32 everywhere else
-(`src/FurbleBoard.cpp:31-56`, and the `minBrightness` row above).
+(`src/FurbleBoard.cpp:132-168`, and the `minBrightness` row above).
 
 ## Console transport
 
@@ -189,7 +220,7 @@ behind it is documented on its own page.
 
 | Item | Value | Citation |
 | :--- | :--- | :--- |
-| Boards with a slot | Core, Core2 and Tough. The StickC family has none, and the stack is compiled out there | `include/FurbleBoardCaps.h:47,49`, `src/FurbleBoard.cpp:43-52` |
+| Boards with a slot | Core, Core2 and Tough. The StickC family has none, and the stack is compiled out there | `include/FurbleBoardCaps.h`, `src/FurbleBoard.cpp` |
 | Bus | SDSPI on the display SPI bus, 10 MHz | `src/FurbleSD.cpp:959-969` |
 | Mount point | `/sd` by default | `src/FurbleSD.cpp:39-43` |
 | Settings file | `/sd/furble/settings.txt` | `src/FurbleSD.cpp:44-45` |
@@ -198,22 +229,23 @@ behind it is documented on its own page.
 | Power-off drain | 3000 ms | `src/FurbleSD.cpp:55` |
 | Failure limit | 3 | `src/FurbleSD.cpp:56` |
 
-The Waveshare image carries a microSD slot in 1-line mode that furble does not
-use (`docs/power/board-power.md:185`). A card that is absent, mounted or in error
-is a modelled peripheral state in the simulator
-(`sim/coverage/hardware_quirks.json`, category `peripheral`, feature
+| Card detect | none of the three boards wires one. M5Unified's SD pin table carries `255` in the detect columns for the Core, Core2 and Tough | vendor pinmap, `SD` row: CS, SCK, MISO, MOSI only |
+| Waveshare slot | the board has a TF slot but no card-select pin that the SDSPI stack could use, so the profile reports no slot while the image is built with `FURBLE_HAS_SD` | [board-verification.md](board-verification.md), Waveshare row |
+
+A card that is absent, mounted or in error is a modelled peripheral state in the
+simulator (`sim/coverage/hardware_quirks.json`, category `peripheral`, feature
 `SD absent/mounted/error`).
 
 ## IR emitter
 
 | Item | Value | Citation |
 | :--- | :--- | :--- |
-| Pin | 9 on StickC and StickC Plus, 19 on Plus2, 46 on StickS3, none elsewhere | `src/FurbleBoard.cpp:31-52` |
+| Pin | 9 on StickC and StickC Plus, 19 on Plus2, 46 on StickS3, none elsewhere | `src/FurbleBoard.cpp:132-160` |
 | Peripheral | one RMT TX channel at 1 MHz resolution | `src/FurbleIR.cpp:21,229-236` |
 | Transmit timeout | 1000 ms, then the channel is disabled regardless | `src/FurbleIR.cpp:24,289-305` |
 | Task | 4096-byte stack, priority 3, stack allowed in PSRAM because the task never writes NVS | `src/FurbleIR.cpp:27,174-186` |
 | Carriers | 38 kHz Nikon, 40 kHz Sony, 32.7 kHz Canon | `src/FurbleIR.cpp:31,47,55` |
-| GPIO 9 caveat | only free because the StickC images run the flash in DIO mode | `src/FurbleBoard.cpp:12-14` |
+| GPIO 9 caveat | only free because the StickC images run the flash in DIO mode | `src/FurbleBoard.cpp:17-19` |
 
 The protocol timings are in [the IR remote page](../protocols/ir-remote.md).
 
@@ -230,7 +262,7 @@ The protocol timings are in [the IR remote page](../protocols/ir-remote.md).
 
 Which outputs a board has is the `feedbackSound`, `feedbackLight` and
 `feedbackVibration` fields of the board profile
-(`include/FurbleBoard.h:77-79`, `src/FurbleBoard.cpp:66-104`). A request for an
+(`include/FurbleBoard.h:77-79`, `src/FurbleBoard.cpp:137-172`). A request for an
 output the board lacks is skipped rather than logged as a failure
 (`src/FurbleFeedback.cpp:85-87`).
 
@@ -256,6 +288,6 @@ slot (`docs/power/board-power.md:283`).
 | ID | Missing | Document and section needed | State |
 | :--- | :--- | :--- | :--- |
 | C-31a | The microSD electrical limits and the SDSPI timing table | SD Physical Layer Simplified Specification, bus timing chapter | open, the firmware fixes 10 MHz with no cited limit |
-| C-31b | The speaker amplifier part and its gain | M5Stack Core schematic and the amplifier datasheet, which is not in the tree | open |
+| C-31b | The speaker amplifier part and its gain on the Core | The Basic pinmap puts the speaker on G25 as `DAC/SPK`, and M5Unified drives G25 with `use_dac = true`, so there is no I2S amplifier on that board. Which part buffers the DAC output is still not in the tree | open, narrowed by plan 367 |
 | C-31c | The WS2812 timing | WS2812B datasheet, timing table | open, M5Unified drives it |
 | C-31d | The USB CDC and JTAG electrical detail | ESP32-S3 Technical Reference Manual v1.8 section 33.4, page 1253 gives the PLL plus APB_CLK dependency and the 40 MHz APB floor, so the clock half of this row is closed | open for the electrical detail only |

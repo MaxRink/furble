@@ -1245,12 +1245,12 @@ bool Platform::switchRailLocked(bool on) {
            m_RailOn ? "on" : "off");
   return false;
 #else
-  // AXP192 EXTEN (StickC family) and AXP2101 LDOIO0 (Core2, Tough) go through
-  // M5Unified, which already owns that register alone and refuses external
-  // power on a low battery with no ACIN supply. There is no second writer of
-  // that byte, so there is nothing to serialize here and no PWR_CFG interlock
-  // to apply. Whether EXTEN reaches the Grove 5 V pin on those boards is
-  // UNVERIFIED; see plans/364-ext5v-rail.md.
+  // AXP192 EXTEN (StickC family) and AXP2101 BLDO2 on a Core2 v1.1, through
+  // M5Unified's setExtOutput(), which owns that register alone and refuses
+  // external power on a low battery with no ACIN. There is no second writer of
+  // that byte, so nothing to serialize here and no PWR_CFG interlock to apply.
+  // The vendor pinmap lists 5V GROVE as an AXP192 output on the StickC and Plus,
+  // so EXTEN does reach the Grove 5 V pin (plans/364, plans/367).
   M5.Power.setExtOutput(on, m5::ext_PA);
   if (M5.Power.getExtOutput() != on) {
     M5.Power.setExtOutput(on, m5::ext_PA);

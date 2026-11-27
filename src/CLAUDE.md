@@ -70,14 +70,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   trust an `RTC` sample when no RTC chip is present (plan 139).
 - `Platform::getInstance()` clears the RTC IRQ at boot only when
   `Board::profile().rtcOnBus` is set and the board's timed wake is not
-  `RTC_ALARM`. Only the Plus2 sets `rtcOnBus`, and its timed wake is
-  `RTC_ALARM`, so the compound guard is unreachable for every shipped row: it
-  is a contract guard, not a live branch. `board-profile` asserts the
-  implication (`rtcOnBus` means an `RTC_ALARM` timed wake), so a new row that
-  breaks it fails the test instead of silently reaching the call. Keep both
-  tests: the chip fact says an RTC answers on the bus, and the timed-wake kind
-  says `consumeTimedWake()` needs the flag left alone. M5Unified probes 0x51 on
-  every board, so on the StickS3 no RTC instance exists; gate on the chip,
+  `RTC_ALARM`. A BM8563 answers at 0x51 on the StickC, the StickC Plus, the
+  StickC Plus2, the Core2 and the Tough, so the guard is live on the StickC,
+  Core2 and Tough and excluded on the two rows whose alarm flag
+  `consumeTimedWake()` reads. The two columns carry different facts: the chip
+  fact says an RTC answers on the bus, and the timed-wake kind says the flag
+  must be left alone. M5Unified probes 0x51 on every board, so on the StickS3
+  no RTC instance exists; gate on the chip,
   never on the timed-wake kind alone.
 - Every M5PM1 IRQ status clear goes through `Platform::clearPmicIrqLatches()`:
   arm, disarm, `clearMotionWake()` and, for Status 2 only,

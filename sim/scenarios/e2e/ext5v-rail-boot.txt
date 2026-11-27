@@ -1,0 +1,49 @@
+# EXT_5V at boot, and the transferred hold.
+#
+# M5Stack states that EXT_5V_EN defaults to disabled and that the Grove and HAT
+# 5 V outputs and the IR transmitter and receiver all sit behind it. The
+# firmware acts on that: Platform::init() passes output_power = false on this
+# board so M5Unified does not commit the port during M5.begin(), and the rail
+# manager powers it when a holder asks (plans/364). furble also never cuts Port
+# A at boot when GPS is disabled, because the port may feed other devices
+# (plans/350).
+#
+# The model does not perform the output_power = false step. hwStart() applies
+# M5PM1's documented reset byte 0x17 and then M5Unified's own output_power
+# default, which sets bit 3, so the modelled port is powered from the first
+# instruction and a GPS holder is already on it even with the setting off
+# (plans/367 finding 8). This scenario pins the modelled byte and the transfer
+# contract so a change to either has to be deliberate:
+#
+#   boot      PWR_CFG 0x1F and the port powered
+#   transit   the IR circuit takes its own hold, so the holders are gps+ir
+#   end       the burst releases only the IR hold, so the port stays powered
+#
+# Teeth: a model that starts at 0x17 fails the first two asserts. An IR path
+# that stops taking its own hold fails the holder assert during the transfer.
+# A burst end that cuts the port fails the last two.
+seed gps false
+wait 500
+
+assert rail.state on
+assert pmic.pwr_cfg 31
+assert ir.state idle
+assert ir.transmits 0
+assert ir.failures 0
+
+# Both ends of the infrared link are behind the switched output, so a transfer
+# holds it in addition to whichever holder was already there.
+action ir-transmit
+assert ir.state transmitting
+assert ir.transmits 1
+assert ir.failures 0
+assert rail.holders gps+ir
+
+# The burst ends and only the earlier holder remains, so the port stays on.
+action ir-transmit-end
+wait 500
+assert rail.holders gps
+assert rail.state on
+assert pmic.pwr_cfg 31
+assert ir.transmits 1
+exit
