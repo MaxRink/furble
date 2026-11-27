@@ -1670,16 +1670,19 @@ void GPS::startConfigCommand(void) {
   }
 
   m_ConfigInFlight = std::move(m_ConfigQueue.front());
+  // The guard and the one accessor, with no call between them: the reference
+  // then outlives every call below, so nothing else touches the optional.
+  if (!m_ConfigInFlight.has_value()) {
+    return;
+  }
+  binary_command_t &config = m_ConfigInFlight.value();
   m_ConfigQueue.pop_front();
   m_ConfigAttempts = 1;
   m_ConfigSent = Platform::getInstance().tick();
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
 
-  // Read the field the status row needs once, straight after the assignment:
-  // the status lock is a call, and a member optional cannot be proven engaged
-  // across one. .value() is the checked access the checker understands.
-  const uint8_t status_index = m_ConfigInFlight->status_index;
+  const uint8_t status_index = config.status_index;
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
     auto &status = m_ConfigStatus[status_index];
@@ -1689,14 +1692,14 @@ void GPS::startConfigCommand(void) {
   }
 
 #if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
-  if (m_ConfigInFlight->text) {
+  if (config.text) {
     // The vendor text layer owns the acknowledgement timeout and the retry, so
     // it starts with the first send rather than after it.
-    text().session.begin(m_ConfigInFlight->text_command, m_ConfigSent);
+    text().session.begin(config.text_command, m_ConfigSent);
   }
 #endif
 
-  if (!sendConfigFrame(*m_ConfigInFlight)) {
+  if (!sendConfigFrame(config)) {
     ESP_LOGW(LOG_TAG, "GPS binary command write failed");
   }
 }
@@ -1867,79 +1870,84 @@ void GPS::serviceConfig(void) {
   }
 #endif
 #if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
-  if (m_ConfigInFlight.has_value() && m_ConfigInFlight->text) {
-    // As in startConfigCommand: read the three fields the branches need before
-    // the session call, whose opaque body is enough to make the checker
-    // distrust the optional.
-    const GpsText::Op text_op = m_ConfigInFlight->text_command.op;
-    const GpsText::Dialect text_dialect = m_ConfigInFlight->text_command.dialect;
-    const uint16_t text_settle = m_ConfigInFlight->text_command.settle_ms;
-    const uint32_t now = Platform::getInstance().tick();
-    switch (text().session.service(now)) {
-      case GpsText::Session::Step::SEND:
-        m_ConfigSent = now;
+  if (m_ConfigInFlight.has_value()) {
+    // The one accessor, immediately after the guard and before any call.
+    binary_command_t &config = m_ConfigInFlight.value();
+    if (config.text) {
+      // As in startConfigCommand: read the three fields the branches need before
+      // the session call, whose opaque body is enough to make the checker
+      // distrust the optional.
+      const GpsText::Op text_op = config.text_command.op;
+      const GpsText::Dialect text_dialect = config.text_command.dialect;
+      const uint16_t text_settle = config.text_command.settle_ms;
+      const uint32_t now = Platform::getInstance().tick();
+      switch (text().session.service(now)) {
+        case GpsText::Session::Step::SEND:
+          m_ConfigSent = now;
+          {
+            const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+            m_ConfigStatus[m_ConfigInFlightStatus].attempts = text().session.attempts();
+          }
+          if (!sendConfigFrame(config)) {
+            ESP_LOGW(LOG_TAG, "GPS text retry write failed");
+          }
+          return;
+        case GpsText::Session::Step::ACKED:
         {
-          const std::lock_guard<std::mutex> lock(m_ConfigMutex);
-          m_ConfigStatus[m_ConfigInFlightStatus].attempts = text().session.attempts();
+          finishConfigCommand(CONFIG_ACKED);
+          if (text_settle != 0) {
+            m_ConfigSettle.arm(Platform::getInstance().tick(), text_settle);
+          }
+          return;
         }
-        if (!sendConfigFrame(*m_ConfigInFlight)) {
-          ESP_LOGW(LOG_TAG, "GPS text retry write failed");
-        }
-        return;
-      case GpsText::Session::Step::ACKED:
-      {
-        finishConfigCommand(CONFIG_ACKED);
-        if (text_settle != 0) {
-          m_ConfigSettle.arm(Platform::getInstance().tick(), text_settle);
-        }
-        return;
-      }
-      case GpsText::Session::Step::FAILED:
-      {
-        const GpsText::Verdict verdict = text().session.verdict();
-        const GpsText::Op op = text_op;
-        const GpsText::Dialect dialect = text_dialect;
-        ESP_LOGW(LOG_TAG, "GPS %s refused: %s", GpsText::opName(op), GpsText::verdictName(verdict));
+        case GpsText::Session::Step::FAILED:
         {
-          const std::lock_guard<std::mutex> lock(m_TextMutex);
-          text().status.last_op = static_cast<uint8_t>(op);
-          text().status.last_verdict = static_cast<uint8_t>(verdict);
-          text().status.naks++;
+          const GpsText::Verdict verdict = text().session.verdict();
+          const GpsText::Op op = text_op;
+          const GpsText::Dialect dialect = text_dialect;
+          ESP_LOGW(LOG_TAG, "GPS %s refused: %s", GpsText::opName(op),
+                   GpsText::verdictName(verdict));
+          {
+            const std::lock_guard<std::mutex> lock(m_TextMutex);
+            text().status.last_op = static_cast<uint8_t>(op);
+            text().status.last_verdict = static_cast<uint8_t>(verdict);
+            text().status.naks++;
+          }
+          finishConfigCommand(CONFIG_NACKED);
+          // A Unicore $OK names no command (UC 3.2 page 30), so the failure
+          // closes the seam for one second: an acknowledgement of this command
+          // must not be credited to the next one.
+          if (dialect == GpsText::Dialect::UNICORE) {
+            m_ConfigSettle.arm(Platform::getInstance().tick(), GpsText::Session::ACK_TIMEOUT_MS);
+          }
+          return;
         }
-        finishConfigCommand(CONFIG_NACKED);
-        // A Unicore $OK names no command (UC 3.2 page 30), so the failure
-        // closes the seam for one second: an acknowledgement of this command
-        // must not be credited to the next one.
-        if (dialect == GpsText::Dialect::UNICORE) {
-          m_ConfigSettle.arm(Platform::getInstance().tick(), GpsText::Session::ACK_TIMEOUT_MS);
-        }
-        return;
-      }
-      case GpsText::Session::Step::TIMEOUT:
-      {
-        const GpsText::Op op = text_op;
-        const GpsText::Dialect dialect = text_dialect;
-        const GpsText::Verdict verdict = text().session.verdict();
-        if (verdict == GpsText::Verdict::STALLED) {
-          ESP_LOGW(LOG_TAG, "GPS %s stayed in processing, giving up", GpsText::opName(op));
-        } else {
-          ESP_LOGW(LOG_TAG, "GPS %s went unanswered", GpsText::opName(op));
-        }
+        case GpsText::Session::Step::TIMEOUT:
         {
-          const std::lock_guard<std::mutex> lock(m_TextMutex);
-          text().status.last_op = static_cast<uint8_t>(op);
-          text().status.last_verdict = static_cast<uint8_t>(verdict);
-          text().status.timeouts++;
+          const GpsText::Op op = text_op;
+          const GpsText::Dialect dialect = text_dialect;
+          const GpsText::Verdict verdict = text().session.verdict();
+          if (verdict == GpsText::Verdict::STALLED) {
+            ESP_LOGW(LOG_TAG, "GPS %s stayed in processing, giving up", GpsText::opName(op));
+          } else {
+            ESP_LOGW(LOG_TAG, "GPS %s went unanswered", GpsText::opName(op));
+          }
+          {
+            const std::lock_guard<std::mutex> lock(m_TextMutex);
+            text().status.last_op = static_cast<uint8_t>(op);
+            text().status.last_verdict = static_cast<uint8_t>(verdict);
+            text().status.timeouts++;
+          }
+          finishConfigCommand(CONFIG_TIMEOUT);
+          if (dialect == GpsText::Dialect::UNICORE) {
+            m_ConfigSettle.arm(Platform::getInstance().tick(), GpsText::Session::ACK_TIMEOUT_MS);
+          }
+          return;
         }
-        finishConfigCommand(CONFIG_TIMEOUT);
-        if (dialect == GpsText::Dialect::UNICORE) {
-          m_ConfigSettle.arm(Platform::getInstance().tick(), GpsText::Session::ACK_TIMEOUT_MS);
-        }
-        return;
+        case GpsText::Session::Step::IDLE:
+        case GpsText::Session::Step::WAIT:
+          return;
       }
-      case GpsText::Session::Step::IDLE:
-      case GpsText::Session::Step::WAIT:
-        return;
     }
   }
 
