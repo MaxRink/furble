@@ -136,12 +136,14 @@ class CiaptInstallTest(unittest.TestCase):
     self.assertIn("# See http://help.ubuntu.com/community/UpgradeNotes", rewritten)
 
   def test_mirror_file_indirection_is_read(self):
-    # This is the shape on the GitHub runner image, and the reason the first
-    # version of this helper failed its own archive check there: the host in
-    # ubuntu.sources is the literal string "mirror+file".
+    # This is the exact shape on the Ubuntu 26.04 runner image, and the reason
+    # the first two versions of this helper failed their own archive check
+    # there: ubuntu.sources names `mirror+file:/etc/apt/apt-mirrors.txt`, and
+    # each line of that file is a preference followed by the URI.
     (self.root / "etc" / "apt" / "apt-mirrors.txt").write_text(
-        "# mirrors to try\nhttp://azure.archive.ubuntu.com/ubuntu/\n"
-        "http://archive.ubuntu.com/ubuntu/\n",
+        "# mirrors to try\n"
+        "priority:1 http://azure.archive.ubuntu.com/ubuntu/\n"
+        "priority:2 http://archive.ubuntu.com/ubuntu/\n",
         encoding="utf-8",
     )
     kept = self.add_source(
@@ -156,8 +158,12 @@ class CiaptInstallTest(unittest.TestCase):
 
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertTrue(kept.exists())
-    self.assertNotIn("mirror+file", result.stderr.replace(
-        "URIs: mirror+file", ""), result.stderr)
+    self.assertIn("mirror list", result.stderr)
+    self.assertIn("azure.archive.ubuntu.com", result.stderr)
+    self.assertNotIn("mirror+file", result.stderr,
+                     "the scheme must never be read as a host")
+    self.assertNotIn("priority", result.stderr,
+                     "the preference must never be read as a host")
     self.assertIn("disabled 0 unrelated source(s)", result.stderr)
 
   def test_unreadable_mirror_indirection_is_left_enabled(self):
@@ -172,6 +178,7 @@ class CiaptInstallTest(unittest.TestCase):
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertTrue(kept.exists(),
                     "a source the helper cannot read must not be disabled")
+    self.assertIn("does not exist", result.stderr)
     self.assertIn("cannot resolve the mirror list", result.stderr)
 
   def test_remote_mirror_list_is_left_enabled(self):
@@ -185,6 +192,22 @@ class CiaptInstallTest(unittest.TestCase):
 
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertTrue(kept.exists())
+    self.assertIn("cannot resolve the mirror list", result.stderr)
+
+  def test_mirror_list_without_a_readable_uri_is_left_enabled(self):
+    (self.root / "etc" / "apt" / "apt-mirrors.txt").write_text(
+        "# every line unusable\npriority:1 not-a-uri\n", encoding="utf-8")
+    kept = self.add_source(
+        "ubuntu.sources",
+        "Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\n"
+        "Suites: resolute\nComponents: main\n",
+    )
+
+    result = self.run_install("clang")
+
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertTrue(kept.exists())
+    self.assertIn("names no mirror this script can read", result.stderr)
 
   def test_runner_with_no_archive_source_fails_before_any_update(self):
     self.add_source("microsoft-prod.list", MICROSOFT_LIST)

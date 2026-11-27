@@ -159,13 +159,32 @@ expand_uri() {
       case $list in
         /*) list=$ROOT$list ;;
       esac
-      [ -f "$list" ] || return 0
-      while IFS= read -r line; do
-        line=${line%%#*}
-        case $line in
-          *://*) printf '%s\n' "${line%:[0-9]*}" ;;
-        esac
-      done <"$list"
+      if [ ! -f "$list" ]; then
+        warn "mirror list $list does not exist"
+        return 0
+      fi
+      # A line is a URI, or a preference followed by one: the Ubuntu 26.04
+      # image writes `priority:1 http://azure.archive.ubuntu.com/ubuntu/`.
+      # Take the first token that is a URI rather than assuming a position, so
+      # the preference form does not read as a host called "priority".
+      mirrors=$(awk '
+        {
+          sub(/#.*/, "")
+          for (i = 1; i <= NF; i++) {
+            if ($i !~ /:\/\//) continue
+            sub(/:[0-9]+$/, "", $i)
+            print $i
+            break
+          }
+        }' "$list")
+      if [ -z "$mirrors" ]; then
+        warn "mirror list $list names no mirror this script can read"
+        return 0
+      fi
+      # Name the upstreams once per list, so a run records which mirrors it
+      # actually used.
+      info "mirror list $list: $(printf '%s\n' "$mirrors" | tr '\n' ' ')"
+      printf '%s\n' "$mirrors"
       ;;
     mirror+*)
       # A remote mirror list. Fetching it is the failure mode this script
