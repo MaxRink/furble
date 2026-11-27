@@ -5,21 +5,12 @@
   "new_install_improv_wait_time": 0,
   "builds": [
     {
-      "chipFamily": "ESP32",
+      "chipFamily": "$CHIP_FAMILY",
       "parts": [
-        { "path": "$ASSET_BASE_URL/furble-bootloader-$PLATFORM-$VERSION.bin", "offset": 4096 },
-        { "path": "$ASSET_BASE_URL/furble-partitions-$PLATFORM-$VERSION.bin", "offset": 32768 },
-        { "path": "$ASSET_BASE_URL/furble-ota_data_initial-$PLATFORM-$VERSION.bin", "offset": 61440 },
-        { "path": "$ASSET_BASE_URL/furble-$PLATFORM-$VERSION.bin", "offset": 131072 }
-      ]
-    },
-    {
-      "chipFamily": "ESP32-S3",
-      "parts": [
-        { "path": "$ASSET_BASE_URL/furble-bootloader-$PLATFORM-$VERSION.bin", "offset": 0 },
-        { "path": "$ASSET_BASE_URL/furble-partitions-$PLATFORM-$VERSION.bin", "offset": 32768 },
-        { "path": "$ASSET_BASE_URL/furble-ota_data_initial-$PLATFORM-$VERSION.bin", "offset": 61440 },
-        { "path": "$ASSET_BASE_URL/furble-$PLATFORM-$VERSION.bin", "offset": 131072 }
+        { "path": "$ASSET_BASE_URL/furble-bootloader-$PLATFORM-$VERSION.bin", "offset": $BOOTLOADER_OFFSET },
+        { "path": "$ASSET_BASE_URL/furble-partitions-$PLATFORM-$VERSION.bin", "offset": $PARTITION_TABLE_OFFSET },
+        { "path": "$ASSET_BASE_URL/furble-ota_data_initial-$PLATFORM-$VERSION.bin", "offset": $OTA_DATA_OFFSET },
+        { "path": "$ASSET_BASE_URL/furble-$PLATFORM-$VERSION.bin", "offset": $APP_OFFSET }
       ]
     }
   ]

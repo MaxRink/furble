@@ -7,11 +7,21 @@ import argparse
 import re
 from pathlib import Path
 
-from check_partition_tables import CheckError, parse_csv, parse_size
+from check_partition_tables import (
+  APP_FLASH_OFFSET,
+  CheckError,
+  check_manifest_offsets,
+  manifest_parts,
+  parse_csv,
+  parse_size,
+)
 
 
 FLASH_SIZE = 4 * 1024 * 1024
-APP_OFFSET = 0x20000
+# The single-factory table starts where every other app slot starts, so it reads
+# the same one definition: tools/web_installer_layout.py, through
+# check_partition_tables.py. A literal here is how the two drift apart.
+APP_OFFSET = APP_FLASH_OFFSET
 FACTORY_SIZE = 0x3E0000
 CSV_NAME = "partitions_single_factory_4m.csv"
 PROFILE_NAME = "m5stack-core-usb-debug"
@@ -53,24 +63,20 @@ def check_platformio(repo_root: Path) -> None:
   )
   require(global_match is not None, "platformio.ini: global upload offset is missing")
   require(parse_size(global_match.group(1)) == APP_OFFSET,
-          "platformio.ini: upload app offset must remain 0x20000")
+          f"platformio.ini: upload app offset must remain 0x{APP_OFFSET:x}")
 
 
 def check_manifest(repo_root: Path) -> None:
   manifest = (repo_root / "web-installer" / "manifest.tmpl").read_text(encoding="utf-8")
-  app_offsets = [
-      int(value)
-      for value in re.findall(
-          r'"path":\s*"[^"]+/furble-\$PLATFORM-\$VERSION\.bin",\s*'
-          r'"offset":\s*(\d+)',
-          manifest,
-      )
-  ]
-  require(app_offsets and all(value == APP_OFFSET for value in app_offsets),
-          "web-installer/manifest.tmpl: published app offset changed")
-  ota_parts = re.findall(r"ota_data_initial", manifest)
-  require(len(ota_parts) == 2,
-          "web-installer/manifest.tmpl: published OTA parts must remain present")
+  # The template names the offsets instead of repeating them, so resolve the
+  # placeholder through the shared layout table rather than beside the file name.
+  check_manifest_offsets(manifest, APP_OFFSET)
+  # One build per manifest means one OTA data part, not the two a two-family
+  # template published. The single-factory profile has no otadata partition of
+  # its own, so this is the published manifest's part, not its table's.
+  ota_parts = [path for path, _ in manifest_parts(manifest) if "ota_data_initial" in path]
+  require(len(ota_parts) == 1,
+          "web-installer/manifest.tmpl: published OTA data part must remain present")
 
 
 def check_table(csv_path: Path) -> None:

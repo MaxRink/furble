@@ -51,16 +51,12 @@ jobs:
       - name: Install clang-format
         run: python3 -m pip install -r .github/workflows/clang-format-requirements.txt
 
+      # The module list lives in tools/pre_review.py and is discovered from
+      # tests/, so a new scanner test cannot be left out of the gate here while
+      # the Python tooling job runs it. This step was a second hand-written list
+      # and had already fallen behind the scanners it was meant to cover.
       - name: Scanner unit tests
-        run: |
-          python3 -m unittest \
-            tests.test_check_pr_hygiene \
-            tests.test_check_settings_contracts \
-            tests.test_check_cpp_safety \
-            tests.test_check_coupling_ratchet \
-            tests.test_check_datasheet_citations \
-            tests.test_check_format \
-            tests.test_plot_companion_power
+        run: python3 tools/pre_review.py --unit-only
 
       - name: Run pre-review scanners
         env:

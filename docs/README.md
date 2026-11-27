@@ -39,6 +39,7 @@ Start at the top level [README](../README.md) for the product overview, or
 | [UI walkthrough](ui-walkthrough.md) | Every screen, with screenshots per panel size. |
 | [WebUI and REST API](webui.md) | HTTPS server, memory budget, pressure handling, REST routes. |
 | [Companion app](companion.md) | The phone app, its source priority and platform notes. |
+| [Web installer](web-installer.md) | The browser flasher, its one-chip-family manifest, and the Pages gate. |
 | [Boot timing](boot-timing.md) | Boot phases and the retained timeline. |
 | [Crash diagnostics](crash-diagnostics.md) | Crash records, reset reasons and the report format. |
 
