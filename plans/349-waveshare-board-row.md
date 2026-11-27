@@ -374,7 +374,7 @@ fixed here:
 
 - This branch's edits move lines, and the gate pins `file:line` citations, so
   five citations in other documents were re-pointed: `docs/components/board-map.md`
-  (`include/FurbleBoard.h`), `plans/34-ota-partitions.md`,
+  (`include/FurbleBoard.h`), `plans/implemented/34-ota-partitions.md`,
   `plans/implemented/11-adaptive-tx-power.md` (`src/FurbleUI.cpp`) and
   `plans/implemented/13-auto-off-low-batt.md` plus two in
   `plans/implemented/26-pm1-watchdog.md` (`src/FurblePlatform.cpp`,

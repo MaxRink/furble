@@ -2,8 +2,8 @@
 
 ## Motivation
 
-Third narrow pass over failure handling, after [339](339-mqtt-retry-backoff.md)
-(MQTT retry backoff), [340](340-gps-uart-install.md) (GPS UART install) and
+Third narrow pass over failure handling, after [339](implemented/339-mqtt-retry-backoff.md)
+(MQTT retry backoff), [340](implemented/340-gps-uart-install.md) (GPS UART install) and
 [341](341-sd-shutdown-ack.md) (SD writer shutdown acknowledgement). The pass
 looks for defects in NVS wear, watchdog coverage, retry storms, connect and
 disconnect leaks, storage failure handling, discovered-but-unhandled states and

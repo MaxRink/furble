@@ -170,7 +170,7 @@ carries a dated note that the guard and its test were removed.
 
 ## Follow-up: the override still accepted a workflow edit
 
-Source: the retrospective review of #478 (`plans/357-review-feedback.md`). The
+Source: the retrospective review of #478 (`plans/implemented/357-review-feedback.md`). The
 base-ref read fixes the stale-clone direction and the fail-closed cases above
 all hold. It does not fix the other direction the #450 item 11 guard closed.
 

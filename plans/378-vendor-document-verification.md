@@ -305,7 +305,7 @@ here rather than left describing behaviour that no longer exists. The 40 to
 
 ## Correction, 2026-11-26: the StickC board IDs exist
 
-Source: the retrospective review of #495 (`plans/357-review-feedback.md`), which
+Source: the retrospective review of #495 (`plans/implemented/357-review-feedback.md`), which
 asked whether the StickC claim was understated the way the Waveshare one was. It
 was.
 

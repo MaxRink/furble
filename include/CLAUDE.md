@@ -133,7 +133,7 @@ Public headers for the app layer in src/, one header per module
   promise for the refused case, because the rail can stay up while the receiver
   is stopped. Never call `Platform::setRail()` from the GPS path. The receiver
   never assumes it owns the rail, because the infrared circuit and a Grove
-  device draw from the same switch; see plans/364-ext5v-rail.md.
+  device draw from the same switch; see plans/implemented/364-ext5v-rail.md.
 - `FurbleSD.h` and `FurbleGPX.h`: all SD and GPX file I/O runs on the SD
   writer task. Other tasks use only the non-blocking `SD::request()` /
   `SD::logPoint()` API and the atomic state accessors, and never call GPX
@@ -396,7 +396,7 @@ settings-touching rebase.
   and reports the receiver absent, so never add a pin fallback there, and never
   give `board_M5StampS3` `BOARD_SUPPORT` because M5Unified reports the id. -1
   means no pin and is what `uart_set_pin` receives on the other sources. See
-  plans/336-gps-pin-seam.md.
+  plans/implemented/336-gps-pin-seam.md.
 - `FurblePinShare.h` is the ownership contract for one pin shared by the
   feedback LED and the IR emitter (Plus2 G19). Feedback calls
   `PinShare::requestLed()`; IR brackets a frame with `beginIr()` and
@@ -447,7 +447,7 @@ settings-touching rebase.
   request and releases it after the burst, which is the deferred-cut rule that
   stops a GPS duty cycle cutting the carrier without letting a queued request cut
   one already in flight.
-  See plans/364-ext5v-rail.md.
+  See plans/implemented/364-ext5v-rail.md.
 - Rail returns are read-back, never intent. A cut refused for another holder, a
   refused output-mode enable and a PMIC that did not take the write all return
   false, and `GPS::railOffOrRestart()` restarts a receiver it stopped for a cut
@@ -458,7 +458,7 @@ settings-touching rebase.
   is on the bidirectional port or the supply cannot be established, because the
   vendor documents short-circuit and device-damage risk otherwise. The failure
   direction is closed: a refusal writes nothing, so the port keeps the vendor
-  default of input mode. A cut is always allowed. See plans/364-ext5v-rail.md.
+  default of input mode. A cut is always allowed. See plans/implemented/364-ext5v-rail.md.
 - `PWR_CFG` 0x06 has one writer, `Platform::updatePowerConfig()`, because the
   rail bit and the status LED bit live in the same byte and both callers run on
   different tasks. Its `m_PowerConfigMutex` is a leaf lock: never hold it across

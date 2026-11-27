@@ -19,7 +19,7 @@ A fact that no source settles carries **UNVERIFIED** with the artifact that
 would close it.
 
 Related: [318](318-next-board-battery-gps.md) (the 32.768 kHz finding and the
-GNSS rules this board does not change), [322](322-hardware-abstraction.md) (the
+GNSS rules this board does not change), [322](implemented/322-hardware-abstraction.md) (the
 `lib/hal` seams, the `Platform` contract and the 19 column profile row),
 [287](287-mcu-portability-and-bundle-hardware.md) (the porting survey),
 [320](320-rtc-use.md) (RTC domain use). Plan 336 (PR 510) moves the GPS UART

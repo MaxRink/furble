@@ -18,7 +18,7 @@ Tags on every claim:
 Related: [127](127-nordic-port-baseline.md) (the port contract this plan
 inherits), [287](287-mcu-portability-and-bundle-hardware.md) (the MCU survey),
 [318](318-next-board-battery-gps.md) (the board decision this plan must not
-contradict), [322](322-hardware-abstraction.md) (the HAL seam the display work
+contradict), [322](implemented/322-hardware-abstraction.md) (the HAL seam the display work
 would extend).
 
 ## Motivation

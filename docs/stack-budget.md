@@ -216,7 +216,7 @@ deepest end, which on the ESP32 boards is `FujifilmSecure::_connect()` through
 the NimBLE security and NVS store path to the `free()` assert and the panic
 handler. That resolution raises the row by 1,536 bytes on the ESP32 release
 boards and by 1,952 on `m5stick-c-debug`; the per-env numbers are in
-[`plans/335-stack-cuts.md`](../plans/335-stack-cuts.md). More than 200 indirect
+[`plans/implemented/335-stack-cuts.md`](../plans/implemented/335-stack-cuts.md). More than 200 indirect
 sites are still unresolved with the rule in place (201 on `m5stick-c`), so the
 hardware high-water mark remains the evidence for this task, as it is for
 `main`.

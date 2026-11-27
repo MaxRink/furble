@@ -375,7 +375,7 @@ aborting binary.
 
 ## Follow-up: the info watermark ignored the pool
 
-Source: the retrospective review of #506 (`plans/357-review-feedback.md`).
+Source: the retrospective review of #506 (`plans/implemented/357-review-feedback.md`).
 
 `heap_caps_get_info()` resolves one pool per query from the SPIRAM bit, but it
 took `minimum_free_bytes` from the internal pool whichever pool it resolved. So

@@ -517,6 +517,6 @@ furble source and plan anchors
 - `src/FurbleUI.cpp:443,504` touch read callback and pointer indev
 - `plans/40-thinknode-port.md` nRF52 rewrite verdict
 - `plans/41-alternative-hardware.md` sidecar hardware survey, ThinkNode M5 pick
-- `plans/34-ota-partitions.md` OTA partition scheme, adjacent to the two-app switch
+- `plans/implemented/34-ota-partitions.md` OTA partition scheme, adjacent to the two-app switch
 - Fork PR #118, per-model physical buttons in the SDL sim:
   https://github.com/MaxRink/furble/pull/118

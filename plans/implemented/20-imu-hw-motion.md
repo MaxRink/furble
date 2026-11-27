@@ -979,7 +979,7 @@ All links checked.
 
 ## Follow-up: scale audit (2026-11-25)
 
-[Plan 332](../332-imu-motion-scale-audit.md) re-read this feature's threshold
+[Plan 332](332-imu-motion-scale-audit.md) re-read this feature's threshold
 maths against the current datasheets and corrected three statements here and in
 the code. No register value changes, so the wake sensitivity of every shipped
 backend is unchanged.

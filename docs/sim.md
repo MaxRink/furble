@@ -433,7 +433,7 @@ Waveshare ESP32-S3-ETH image reports (`board_M5StampS3`) and `core` the M5Stack
 Core's. It reaches `Board::profile()` through the simulator's strong
 `furble_sim_board_profile` hook, so a scenario can assert a row the simulated
 build does not detect. The two seeded rows are the ones that name no GPS UART.
-See plans/336-gps-pin-seam.md.
+See plans/implemented/336-gps-pin-seam.md.
 
 All listed seeds are applied before simulated `Platform::init()` and before the
 UI is constructed. These byte settings are:
@@ -500,7 +500,7 @@ EXT_5V output-mode interlock: `battery` (the default, no external source),
 `usb` (USB/DC 5 V input), `port` (an external 5 V source driving the
 bidirectional 5 V port), `unknown` (no supply reported) or `unreadable` (the
 register does not answer). The last three refuse an output-mode enable, which is
-the vendor short-circuit protection; see plans/364-ext5v-rail.md.
+the vendor short-circuit protection; see plans/implemented/364-ext5v-rail.md.
 `ir_burst_ms` sets the virtual-millisecond window the simulated IR fake holds
 the EXT_5V rail for one `action ir-fire`, default 100. It is a modelled
 ownership window, not an RMT timing claim. `rail.interlock` reports the last
@@ -1063,7 +1063,7 @@ pending request past its response deadline without a wall-clock wait.
 the console `ir fire` command exists. With the emitter present, the sim IR shim
 holds the `EXT_5V` rail for `seed ir_burst_ms` virtual milliseconds, which is
 the modelled queued-or-in-flight burst that keeps a GPS cut refused; see
-`include/FurbleRail.h` and plans/364-ext5v-rail.md. It models rail ownership,
+`include/FurbleRail.h` and plans/implemented/364-ext5v-rail.md. It models rail ownership,
 not the RMT waveform.
 
 `watchdog` is present in the M5StickS3 build. The lists above are the canonical

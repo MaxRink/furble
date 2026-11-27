@@ -297,7 +297,7 @@ per-count figure, so 4 mg and therefore 64 mg are assumptions this project has
 not measured. `include/FurbleIMUMotionScale.h` holds the one definition of every
 one of these numbers, and `tests/host/imu_motion_scale_test.cpp` pins the mg and
 ms each configuration produces. See
-[plans/332-imu-motion-scale-audit.md](../../plans/332-imu-motion-scale-audit.md)
+[plans/implemented/332-imu-motion-scale-audit.md](../../plans/implemented/332-imu-motion-scale-audit.md)
 for the audit and the hardware gate that would close the MPU-6886 figure.
 
 `HW_MOTION` defaults to Software. Auto prefers the board engine and falls back

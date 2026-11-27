@@ -166,4 +166,4 @@ a failed allocation: its panic record carries the modelled line and leaves
 firmware consumers render the About and Device info heap rows and print the
 console `heap` and `heap_min` lines; no gate reads them. Closing the difference
 moves the 135x240 About row, so it is tracked rather than asserted;
-`plans/370-sim-memory-coverage.md` records it.
+`plans/implemented/370-sim-memory-coverage.md` records it.
