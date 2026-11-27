@@ -291,7 +291,7 @@ Measured with `python3 tools/check_size_budget.py --env m5stick-c
 
 | Env | Flash | Static DRAM | IRAM |
 | :--- | :--- | :--- | :--- |
-| `m5stack-core-debug` | 1,739,824 of 1,740,800 | 56,340 of 57,344 | 119,036 of 119,808 |
+| `m5stack-core-debug` | 1,740,112 of 1,740,800 | 56,348 of 57,344 | 119,036 of 119,808 |
 | `m5stick-c` | 1,525,056 of 1,740,800 | 55,172 of 55,296 | 114,024 of 114,688 |
 | `m5stick-c-plus` | 1,574,816 of 1,740,800 | 55,148 of 55,296 | 114,024 of 114,688 |
 | `m5stick-s3` | 1,884,352 of 3,145,728 | 47,608 of 48,128 | 114,944 of 115,712 |
@@ -327,13 +327,23 @@ a second OTA target. So the backend is a build capability:
 
 - `FURBLE_GPS_TEXT` is absent (on) in every environment except
   `m5stack-core-debug`, which sets `-DFURBLE_GPS_TEXT=0` in `platformio.ini`.
-- Off compiles `GpsQuectel.cpp` and `GpsUnicore.cpp` to nothing and replaces
-  `src/FurbleGPSText.cpp` with stubs that keep every entry point linkable. The
-  splitter's vendor routing, the `gps text` console command and its dialect
-  helper are gated too, so the linker drops `GpsText::parse()`, `frame()`,
-  `match()` and `Session` as well. The driver allocates nothing and sends no
-  text probe, so identification falls back to MON-VER and then NMEA, and a
-  `$PAIR` or `$CFG` line is ordinary NMEA text the parser ignores.
+- Off `GpsText.cpp` is not compiled, `GpsQuectel.cpp` and `GpsUnicore.cpp` are
+  left unreferenced so the linker drops every symbol in them,
+  `src/FurbleGPSText.cpp` becomes stubs that keep every entry point linkable,
+  and the splitter's vendor routing, the `gps text` console command and its
+  dialect helper, the refusal names on the Raw NMEA page and the
+  `diag.nmea.refusals` query are gated too. The driver allocates nothing and
+  sends no text probe, so identification falls back to MON-VER and then NMEA,
+  and a `$PAIR` or `$CFG` line is ordinary NMEA text the parser ignores.
+- The integration follows the capability as well, not only the seam: the
+  shutdown save queue and its step, the standby dispatch, the rail restart after
+  a refused cut, the detection shortcut that reads the answered dialect and the
+  `resetText()`/`freeTextState()` calls are all gated, so a text-off build keeps
+  master's UBX and NMEA paths and nothing else. With them in, the build was 928
+  bytes over its slot even though the seam was out; with them gated it measures
+  1,740,112 of 1,740,800 by `check_size_budget.py`, 688 bytes of headroom, and
+  pio reports 1,739,605. Master at `d31b8f95` measures 1,740,016, so the whole
+  feature costs 96 bytes in this profile.
 - A Core debug build therefore keeps the NMEA receiver, the CASIC `$PCAS` path
   and the u-blox backend, and does not configure a Quectel or Unicore part. That
   is a real loss on that profile and it is recorded here rather than hidden; the
@@ -359,8 +369,9 @@ a second OTA target. So the backend is a build capability:
    discovery.
 3. **The Core debug build compiles the text backend out.** It is the only
    profile whose fixed 1,740,800 byte slot cannot hold the branch, and the
-   alternative was a partition change. `FURBLE_GPS_TEXT=0` drops about 20 KB of
-   flash there; see 9.1. Every other build keeps Quectel and Unicore support.
+   alternative was a partition change. `FURBLE_GPS_TEXT=0` leaves 96 bytes over
+   master's own measurement there; see 9.1. Every other build keeps Quectel and
+   Unicore support.
 4. **`$PAIR002` (GNSS on) is sent only after a refused cut.** The save path
    powers the GNSS off before a rail cut and the rail does the rest, so there is
    nothing to turn back on unless the cut is refused. That case is real (a Core2

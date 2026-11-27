@@ -187,6 +187,33 @@ and `tools/size_budget.json` is unchanged by this PR. Measured with
 moving it would touch the UBX and CASIC paths for about 150 bytes and is not
 needed to pass.
 
+### The CI pass on `9fd20a79`: static analysis and the Core debug slot
+
+Both findings are fixed at the source, with no suppression:
+
+- `bugprone-unchecked-optional-access` in `GPS::serviceConfig`: the three fields
+  the branches use (`op`, `dialect`, `settle_ms`) are read from
+  `m_ConfigInFlight` immediately after the `has_value()` guard and before
+  `text().session.service()`, whose opaque body is what made the checker
+  distrust the optional. `startConfigCommand` reads `status_index` the same way
+  and passes `m_ConfigInFlight.value()` to `sendConfigFrame()`, so no pointer
+  into the optional survives a call.
+- `cppcoreguidelines-owning-memory`: `ensureTextState()` allocates with
+  `new (std::nothrow)` into a local `std::unique_ptr<text_state_t>` and
+  `release()`s it into the singleton member, and `freeTextState()` hands the
+  member back to a `std::unique_ptr` whose scope end destroys it. There is no
+  raw owner assignment and no `delete` expression left, and the type is not
+  marked or suppressed.
+- The Core debug slot was still 928 bytes over with only the seam compiled out,
+  because the save queue, the standby dispatch, the rail restart, the detection
+  shortcut and the refusal display still compiled and ran with the backend off.
+  They all follow `FURBLE_GPS_TEXT` now. On the rebased head pio reports
+  1,739,605 of 1,740,800 and `check_size_budget.py` reports
+  1,740,112 of 1,740,800, DRAM 56,348 of 57,344, IRAM 119,036 of 119,808, so
+  688 bytes of headroom remain. Master at `d31b8f95` measures 1,740,016, so the
+  feature costs 96 bytes in that profile and no budget is raised.
+- The job named `success` is a dependent aggregate and needs no change.
+
 ## B. The review as posted
 
 # PR 552 review feedback: vendor text seam for $PAIR, $PQTM and $CFG
