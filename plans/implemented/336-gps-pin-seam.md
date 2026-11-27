@@ -42,7 +42,7 @@ the MPU6886 (0x68) sit on that bus. `GPS::init()` runs on this board, so
 `uart_set_pin(UART_NUM_2, 21, 22, ...)` re-routed both pads and every
 `M5.Power.getBatteryLevel()` and IMU read failed for the rest of the boot.
 `UI::addGPSMenu()` exposes the GPS setting with no board gate
-(`src/FurbleUI.cpp:9886-9999`), so nothing prevented it.
+(`src/FurbleUI.cpp:9804-9917`), so nothing prevented it.
 
 There is no UART pair on Port A on the Core: the port is the bus. The row
 therefore names `GpsPinSource::NONE`, and the GPS module installs no driver.
