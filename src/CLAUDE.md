@@ -239,33 +239,23 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   into `configureUbx()`. `src/FurbleGPSText.cpp` owns the text backend the way
   `FurbleGPSUbx.cpp` owns UBX: the configuration queue entry carries
   `binary_command_t::text` and a `GpsText::Command`, `serviceConfig()` drives
-<<<<<<< HEAD
   the vendor session instead of the binary retry, and `serviceText()` parses one
   `VENDOR` piece into either an identification answer or an acknowledgement.
   Standby and save-on-shutdown dispatch by backend: `textStandby()` sends
   `PAIR650` and reports a refusal for a 5 s interval or for any Unicore part, and
   `textSave()`/`textSaveBlocking()` run the vendor's save sequence under
   `TEXT_SAVE_BUDGET_MS`. A setting a part has no command for must be reported
-  refused, never silently skipped. Vendor-specific
+  refused, never silently skipped. The backend's fixed state is one heap
+  allocation (`GPS::text_state_t`): `enable()` creates it before the UART task
+  is woken and `disable()` frees it, because about 230 bytes of sessions and
+  status in `.bss` put the classic ESP32 boards over their DRAM budget.
+  `FURBLE_GPS_TEXT=0` compiles the whole text backend out of a build with no
+  flash for it, which is the Core debug profile: `sendIdentifyProbes()` sends
+  only the MON-VER poll there, the stubs keep every entry point linkable and the
+  NMEA and UBX paths are unchanged. Vendor-specific
   actions (configure, restart, standby, satellite capture, MON-HW, ephemeris)
   switch on `GPS::backend_t`; add a vendor as one more value and one more
   configure function. The `$PCAS` command set, its argument ranges and the
-=======
-  the vendor session instead of the binary retry, and `serviceText()` parses
-  one `VENDOR` piece into either an identification answer or an
-  acknowledgement. Standby and save-on-shutdown dispatch by backend:
-  `textStandby()` sends `PAIR650` and reports a refusal for a 5 s interval or
-  for any Unicore part, and `textSave()`/`textSaveBlocking()` run the vendor's
-  save sequence under `TEXT_SAVE_BUDGET_MS`. A setting a part has no command
-  for must be reported refused, never silently skipped. The backend's fixed
-  state is one heap allocation (`GPS::text_state_t`): `enable()` creates it
-  before the UART task is woken and `disable()` frees it, because about 230
-  bytes of sessions and status in `.bss` put the classic ESP32 boards over
-  their DRAM budget. `FURBLE_GPS_TEXT=0` compiles the whole text backend out
-  of a build with no flash for it, which is the Core debug profile; the stubs
-  in `FurbleGPSText.cpp` keep every entry point linkable, `sendIdentifyProbes()`
-  sends only the MON-VER poll, and the NMEA and UBX paths are unchanged. The `$PCAS` command set, its argument ranges and the
->>>>>>> 10cabfb9 (perf(gps): compile the text backend out of the Core debug profile)
   MON-HW layout are recorded per protocol revision on
   `docs/components/at6668.md`: the 2020 specification and the 2025 one disagree
   about `$PCAS04`, `$PCAS15`, the binary classes and the `antStatus` encoding,
