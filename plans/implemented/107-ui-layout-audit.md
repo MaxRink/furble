@@ -100,7 +100,7 @@ Needs per-board validation: yes, worse at 80x160, check 320x240 is unaffected.
 ### A2. Timer row label truncates ("Shutter count" to "Shutter c") (low-medium)
 
 Evidence: `docs/img/settings-timer.png`, row reads `Shutter  c   30`. In
-`addSpinItem` (`src/FurbleUI.cpp:10644-10700`) the row is `LV_FLEX_FLOW_ROW_WRAP`
+`addSpinItem` (`src/FurbleUI.cpp:10676-10732`) the row is `LV_FLEX_FLOW_ROW_WRAP`
 with `spinner.m_Label` carrying no long-mode and, on non-CoreX boards, no
 `flex_grow`, while `spinner.m_Value` has `flex_grow` 1 and circular scroll
 (lines 3928-3938). The value expands and squeezes the plain label, which then
