@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Check the board partition CSVs without requiring an ESP-IDF build."""
+"""Check the board partition CSVs without requiring an ESP-IDF build.
+
+The application offset is not a literal here. It comes from
+`tools/web_installer_layout.py`, the same table the web installer generator
+writes into `web-installer/manifest.tmpl`, and the board CSVs below pin that
+table to ota_0. A template offset that drifts from the table, or a table that
+drifts from the CSVs, fails here instead of shipping in a manifest.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +19,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools import web_installer_layout  # noqa: E402  - after the sys.path fix
+
+
 FLASH_4M = 4 * 1024 * 1024
 FLASH_8M = 8 * 1024 * 1024
 FLASH_16M = 16 * 1024 * 1024
@@ -19,8 +33,24 @@ COREDUMP_SIZE = 0x40000
 PARTITION_TABLE_END = 0x9000
 DATA_ALIGNMENT = 0x1000
 APP_ALIGNMENT = 0x10000
-APP_FLASH_OFFSET = 0x20000
 STOCK_PARTITION_CSV = "partitions_two_ota_large.csv"
+
+# One definition of the app offset, shared with the manifest generator and the
+# Pages verifier. `check_board` proves it is where every board's ota_0 starts.
+APP_FLASH_OFFSET = web_installer_layout.APP_OFFSET
+
+MANIFEST_TEMPLATE = Path("web-installer") / "manifest.tmpl"
+
+# A flash part in the web installer template: its asset path and its offset.
+# The offset is written as a layout constant (`$APP_OFFSET`, `${APP_OFFSET}`)
+# and not as a decimal, so the published flash map has no second definition.
+MANIFEST_PART_PATTERN = re.compile(
+    r'"path":\s*"(?P<path>[^"]+)"\s*,\s*"offset":\s*'
+    r"(?P<offset>\$\{?[A-Za-z_][A-Za-z0-9_]*\}?|0[xX][0-9A-Fa-f]+|\d+)"
+)
+
+# Every other part carries a prefix, so this suffix is the application image.
+MANIFEST_APP_PATH_SUFFIX = "furble-$PLATFORM-$VERSION.bin"
 
 # These are the measured firmware.bin sizes recorded in
 # plans/33-wifi-hub.md:1296-1304 at commit 2b79ce8. The headless S3 env uses
@@ -297,7 +327,65 @@ def check_coredump(spec: BoardSpec, partitions: list[Partition], ota_1: Partitio
     require(partitions[-1] is coredump, f"{spec.name}: the core dump partition must be last")
 
 
-def check_upload_offset(repo_root: Path) -> None:
+def manifest_parts(template: str) -> list[tuple[str, str]]:
+    """Return the (asset path, offset token) pairs the template publishes."""
+    return [
+        (match.group("path"), match.group("offset"))
+        for match in MANIFEST_PART_PATTERN.finditer(template)
+    ]
+
+
+def resolve_manifest_offset(token: str) -> int:
+    """Resolve a template offset token through the shared layout module."""
+    name = token.lstrip("$").strip("{}")
+    value = getattr(web_installer_layout, name, None)
+    require(
+        isinstance(value, int),
+        f"tools/web_installer_layout.py: {name} is not an integer offset "
+        f"constant, so the manifest offset {token} cannot be resolved",
+    )
+    return value
+
+
+def check_manifest_offsets(
+    template: str,
+    app_offset: int,
+    label: str = str(MANIFEST_TEMPLATE),
+) -> None:
+    """Keep the template's application image on the shared app offset.
+
+    The template names the constants in `tools/web_installer_layout.py` instead
+    of repeating the offsets as decimals, so the placeholder is resolved
+    through that module rather than matched beside the file name. A literal, or
+    a placeholder that names another constant, fails here: either way the
+    published flash map would be a second definition that can drift from the
+    one the generator and the Pages verifier read.
+    """
+    parts = manifest_parts(template)
+    require(parts, f"{label}: no flash parts found")
+    literals = sorted({offset for _, offset in parts if not offset.startswith("$")})
+    require(
+        not literals,
+        f"{label}: name the layout constants instead of the literal offsets "
+        + ", ".join(literals),
+    )
+    applications = [
+        offset for path, offset in parts if path.endswith(MANIFEST_APP_PATH_SUFFIX)
+    ]
+    require(
+        len(applications) == 1,
+        f"{label}: expected exactly one application image, found {len(applications)}",
+    )
+    resolved = resolve_manifest_offset(applications[0])
+    require(
+        resolved == app_offset,
+        f"{label}: app offset differs from ota_0: the template resolves "
+        f"{applications[0]} to 0x{resolved:x}, the partition tables use "
+        f"0x{app_offset:x}",
+    )
+
+
+def check_upload_offset(repo_root: Path, manifest: Path | None = None) -> None:
     """Keep no-build uploads and the partition tables on the same app offset.
 
     The ESP-IDF builder discovers the offset from the CSV during a normal
@@ -327,17 +415,11 @@ def check_upload_offset(repo_root: Path) -> None:
                 "platformio.ini: environment upload app offset differs from ota_0",
             )
 
-    manifest = (repo_root / "web-installer" / "manifest.tmpl").read_text(
-        encoding="utf-8"
-    )
-    app_offsets = re.findall(
-        r'"path":\s*"[^\"]+/furble-\$PLATFORM-\$VERSION\.bin",\s*'
-        r'"offset":\s*(\d+)',
-        manifest,
-    )
-    require(
-        app_offsets and all(int(offset) == APP_FLASH_OFFSET for offset in app_offsets),
-        "web-installer/manifest.tmpl: app offset differs from ota_0",
+    template_path = manifest or repo_root / MANIFEST_TEMPLATE
+    check_manifest_offsets(
+        template_path.read_text(encoding="utf-8"),
+        APP_FLASH_OFFSET,
+        label=display_path(template_path, repo_root),
     )
 
 
@@ -402,7 +484,10 @@ def main(argv: list[str] | None = None) -> int:
     except (CheckError, OSError) as exc:
         print(f"upload layout: FAIL: {exc}")
         return 1
-    print("upload layout: PASS app=0x20000 (PlatformIO and web installer)")
+    print(
+        f"upload layout: PASS app=0x{APP_FLASH_OFFSET:x} "
+        "(PlatformIO and web installer)"
+    )
 
     passed = 0
     for spec in BOARD_SPECS:

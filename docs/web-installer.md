@@ -87,19 +87,31 @@ published site keeps working.
 
 Each board radio carries a `data-chip-family` attribute
 (`web-installer/index.html:51`), which is the family that board's manifest must
-declare. `updateManifest` at `web-installer/index.html:185` sets the manifest
-URL, then `verifyFamily` at `web-installer/index.html:151` fetches it and
+declare. `updateManifest` at `web-installer/index.html:213` sets the manifest
+URL, then `verifyFamily` at `web-installer/index.html:160` fetches it and
 requires exactly one build with that family. The Connect button stays disabled
 until the check passes. A manifest that declares a different family, or more
 than one, is refused with the reason on screen. The check fails closed: a
 manifest that cannot be read also keeps the button disabled, because an
 unverified manifest is the shape that bricks a board.
 
+Two more refusals keep the button disabled. A radio with no `data-chip-family`,
+or an empty one, is refused before anything is fetched, because the page cannot
+check an image it cannot name; a new board that forgets the attribute therefore
+loses the click instead of skipping the check. And every request carries the
+generation of the selection that started it, so a manifest answer that arrives
+after a later board was picked is dropped: a stale success cannot re-enable
+Connect for a board that failed, and a stale failure cannot disable a board that
+passed.
+
 The page still cannot detect the chip before it flashes; ESP Web Tools does that
 after the port is granted. The refusal covers the manifest, which is the input
 the generator controls. The `data-chip-family` attributes and the sdkconfig
-derivation are compared by
-`tests/test_web_installer.py:107`, so the two cannot drift apart silently.
+derivation are compared by `tests/test_web_installer.py:100`, so the two cannot
+drift apart silently. The refusals themselves are executed rather than grepped:
+`tests/web-installer/manifest.test.cjs` runs this page's own script in Node
+against a fake DOM and a fake fetch, and `tests/test_web_installer.py` runs that
+file with the tooling suite.
 
 ## Publishing
 

@@ -140,6 +140,10 @@
       // is re-flashed over UART (plan 372). The generator now emits exactly one
       // family per manifest, and this page refuses a manifest that disagrees
       // with the selected board before the install button does anything.
+      // Connect stays disabled until the manifest for the current selection
+      // passes: a refused board, a radio with no family and a late answer to an
+      // older request all leave it disabled.
+      // tests/web-installer/manifest.test.cjs runs this script.
       function selectedFamily(radio) {
         return (radio && radio.dataset && radio.dataset.chipFamily) || '';
       }
@@ -148,10 +152,25 @@
         return families.length ? families.join(' and ') : 'no chip family';
       }
 
-      async function verifyFamily(url, family, board) {
+      // Only the newest selection may write to the page. A manifest check can
+      // settle after a later board was picked, and a stale success would
+      // re-enable Connect for a board whose own manifest was refused.
+      let manifestRequest = 0;
+
+      async function verifyFamily(url, family, board, request) {
         const activate = document.getElementById('installActivate');
         const status = document.getElementById('flashStatus');
-        if (!family || typeof fetch !== 'function') {
+        if (!family) {
+          // A radio without data-chip-family cannot be checked at all. Refusing
+          // is the point of the attribute: the page must not hand an unverified
+          // manifest to ESP Web Tools because a new board forgot to carry it.
+          activate.disabled = true;
+          status.textContent =
+            `Refusing to flash: ${board} does not declare a chip family, ` +
+            `so this page cannot check which image it gets.`;
+          return;
+        }
+        if (typeof fetch !== 'function') {
           // A browser without fetch cannot run ESP Web Tools either.
           activate.disabled = false;
           status.textContent = '';
@@ -161,10 +180,16 @@
         status.textContent = `Checking the ${family} image for ${board}...`;
         try {
           const response = await fetch(url, { cache: 'no-store' });
+          if (request !== manifestRequest) {
+            return;
+          }
           if (!response.ok) {
             throw new Error(`the manifest request returned ${response.status}`);
           }
           const manifest = await response.json();
+          if (request !== manifestRequest) {
+            return;
+          }
           const builds = Array.isArray(manifest.builds) ? manifest.builds : [];
           const families = builds.map(build => build && build.chipFamily);
           if (builds.length !== 1 || families[0] !== family) {
@@ -176,6 +201,9 @@
           activate.disabled = false;
           status.textContent = `${family} image ready for ${board}.`;
         } catch (error) {
+          if (request !== manifestRequest) {
+            return;
+          }
           // Fail closed. An unverified manifest is what bricks the board.
           activate.disabled = true;
           status.textContent = `Refusing to flash: ${error.message}.`;
@@ -199,7 +227,10 @@
         button.manifest = `./manifest_${radio.value}${variant}.json`;
         button.classList.remove('invisible');
         const board = debug.checked ? `${radio.value} debug` : radio.value;
-        verifyFamily(button.manifest, selectedFamily(radio), board);
+        // Claim the next response before it is requested, so a check that
+        // answers late cannot re-enable Connect for an older board.
+        manifestRequest += 1;
+        verifyFamily(button.manifest, selectedFamily(radio), board, manifestRequest);
       }
 
       document.querySelectorAll('input[name="type"]').forEach(radio =>

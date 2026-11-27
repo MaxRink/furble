@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,7 @@ INSTALLER = ROOT / "web-installer"
 GENERATOR_PATH = INSTALLER / "generate-manifest.py"
 TEMPLATE = INSTALLER / "manifest.tmpl"
 PAGE = INSTALLER / "index.html"
+PAGE_NODE_TEST = ROOT / "tests" / "web-installer" / "manifest.test.cjs"
 VERSION = "v9.9.9"
 ASSET_BASE_URL = "firmware/abc"
 
@@ -300,6 +302,36 @@ class WebInstallerOffsetTest(unittest.TestCase):
       ],
     }
     self.assertIn("unsupported chip family", flash_offset_error(build))
+
+
+class WebInstallerPageTest(unittest.TestCase):
+  """The page's own script, executed instead of read.
+
+  A source grep passes with the line commented out, so the fail-closed paths are
+  driven through the real `verifyFamily` in Node against a fake DOM and a fake
+  fetch: unreachable manifest, 404, no builds, two builds, the wrong family, a
+  radio with no or an empty `data-chip-family`, and a stale response for an
+  older selection.
+  """
+
+  def test_the_page_script_fails_closed(self):
+    node = shutil.which("node")
+    if node is None:
+      self.skipTest("node is not installed")
+    result = subprocess.run(
+      [node, str(PAGE_NODE_TEST)], capture_output=True, text=True, check=False)
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertIn("0 failure(s)", result.stderr)
+    # A harness that stopped running its cases would still print that line.
+    counts = re.findall(r"(\d+) checks, 0 failure", result.stderr)
+    self.assertTrue(counts, result.stderr)
+    self.assertGreaterEqual(int(counts[0]), 40, result.stderr)
+
+  def test_every_published_radio_carries_its_family(self):
+    # The regex in radio_families() requires the attribute, so a radio that
+    # loses it also disappears from this mapping. The count pins the six.
+    page = PAGE.read_text(encoding="utf-8")
+    self.assertEqual(len(radio_families(page)), len(RELEASE_PLATFORMS))
 
 
 if __name__ == "__main__":

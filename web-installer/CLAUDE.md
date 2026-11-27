@@ -20,8 +20,12 @@ committed.
 - `index.html` carries a `data-chip-family` attribute on every board radio. The
   page fetches the selected manifest, refuses it unless it declares exactly that
   one family, and only then enables the Connect button. It fails closed: a
-  manifest it cannot read keeps the button disabled. Keep the attribute in step
-  with the sdkconfig target; the regression test compares them.
+  manifest it cannot read keeps the button disabled, and so does a radio with no
+  or an empty attribute, which is refused before anything is fetched. Every
+  request carries the generation of the selection that started it, so a late
+  answer to an older board is dropped rather than re-enabling Connect. Keep the
+  attribute in step with the sdkconfig target; the regression test compares
+  them, and `tests/web-installer/manifest.test.cjs` drives the refusals in Node.
 - Firmware binary names follow `furble[-part]-$PLATFORM-$VERSION.bin`. Any
   rename must match the release workflow in `.github/workflows/`.
 - `.github/workflows/pages.yml` builds the six release environments on a tag

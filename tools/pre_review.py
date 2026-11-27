@@ -9,6 +9,7 @@ Usage:
   python3 tools/pre_review.py
   python3 tools/pre_review.py --base origin/master
   python3 tools/pre_review.py --base <sha> --skip-unit
+  python3 tools/pre_review.py --unit-only
   python3 tools/pre_review.py --repo . --sanitized
 
 Exit status is 0 when every selected gate passes, 1 when a gate fails, and 2
@@ -24,6 +25,24 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = sys.executable or "python3"
+
+# The scanner unit tests are discovered, not listed. A hand-written list is how
+# tests.test_check_partition_tables stayed out of this gate while the same test
+# ran in CI and failed: pre-review printed PASS: 13 gates with a red job behind
+# it. Every tests/test_check_<scanner>.py module now joins the gate by existing.
+SCANNER_UNIT_TEST_MODULES = "test_check_*.py"
+
+# Unit tests for the tools that are not scanners. They belong in the same gate
+# for the same reason: they run without an ESP-IDF build and in a few seconds.
+EXTRA_UNIT_TESTS = ("tests.test_plot_companion_power",)
+
+
+def scanner_unit_tests(root: Path) -> list[str]:
+  """Return every scanner unit test module, plus the non-scanner tools."""
+  modules = sorted(
+    f"tests.{path.stem}" for path in (root / "tests").glob(SCANNER_UNIT_TEST_MODULES)
+  )
+  return modules + list(EXTRA_UNIT_TESTS)
 
 
 def run(label: str, command: list[str], cwd: Path) -> bool:
@@ -46,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
   parser.add_argument("--head", default="HEAD", help="git head revision")
   parser.add_argument("--skip-unit", action="store_true",
                       help="skip the scanner unit tests (CI runs them separately)")
+  parser.add_argument("--unit-only", action="store_true",
+                      help="run only the scanner unit tests")
   parser.add_argument("--sanitized", action="store_true",
                       help="also run the ASan/UBSan host subset")
   args = parser.parse_args(argv)
@@ -55,8 +76,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"FAIL: {root} does not look like the furble repository", file=sys.stderr)
     return 2
 
+  if args.unit_only and args.skip_unit:
+    print("FAIL: --unit-only and --skip-unit select no gate", file=sys.stderr)
+    return 2
+
   revision_range = f"{args.base}...{args.head}"
-  gates: list[tuple[str, list[str]]] = [
+  gates: list[tuple[str, list[str]]] = [] if args.unit_only else [
       ("whitespace", ["git", "diff", "--check", revision_range]),
       ("diff hygiene",
        [PYTHON, "tools/check_pr_hygiene.py", "--repo", str(root), revision_range]),
@@ -83,16 +108,7 @@ def main(argv: list[str] | None = None) -> int:
   ]
   if not args.skip_unit:
     gates.append(("scanner unit tests",
-                  [PYTHON, "-m", "unittest",
-                   "tests.test_check_pr_hygiene",
-                   "tests.test_check_settings_contracts",
-                   "tests.test_check_cpp_safety",
-                   "tests.test_check_coupling_ratchet",
-                   "tests.test_check_datasheet_citations",
-                   "tests.test_check_format",
-                   "tests.test_check_m5gfx_pinning",
-                   "tests.test_check_doc_citations",
-                   "tests.test_plot_companion_power"]))
+                  [PYTHON, "-m", "unittest", *scanner_unit_tests(root)]))
   if args.sanitized:
     gates.append(("sanitized host subset",
                   ["sh", "tools/run_sanitized_host_tests.sh", "--clean"]))
