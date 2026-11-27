@@ -1133,7 +1133,7 @@ One documentation conflict to resolve before designing a fix: plan 10's 2026-08-
 hardware note says active geotagging keeps the link permanently fast because
 "every geotag write counts as activity". The current code does not call
 `noteConnActivity` on the GPS path; `CMD_GPS_UPDATE` only calls
-`updateGeoData` (`src/FurbleControl.cpp:276-278`). The likely mechanism is a
+`updateGeoData` (`src/FurbleControl.cpp:292-294`). The likely mechanism is a
 peer parameter override or the target task staying busy, not an activity
 timestamp. Re-verify before changing the geotag path for power.
 

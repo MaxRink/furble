@@ -20,11 +20,11 @@ the ones an earlier revision of the pull request body listed.
 
 | # | Severity | Finding | Resolution | Evidence |
 | ---: | :--- | :--- | :--- | :--- |
-| F1 | Blocking | `docs/protocols/companion-gatt.md` cited `src/FurbleCompanionService.cpp:139-155` for the set/unset answer. Those lines are the shutter timer `esp_timer_create()` and `deinit()`. The answer is the two `secretIndicator()` arms at :900-915, and the helper is at :109. | Fixed in `d94fa176`. The sentence now cites :900-915 for both arms and :109 for the helper. | `sed -n '139,155p' src/FurbleCompanionService.cpp` spans the tail of the shutter timer init and `CompanionService::deinit()`; `grep -n secretIndicator` reports 109, 901 and 915. `check_doc_citations.py` reports 0 errors before and after, which is the finding's point, not a refutation of it. |
-| F2 | Blocking | The golden corpus still pinned the pre-redaction answer for the write-only settings: `tests/protocol/golden/corpus.json` carried `00 35 03 07 "Default"` for wire id 53 and `00 3b 03 07 "Default"` for id 59, and `protocol_common.h:61` treated only `COMPANION_PASSWORD` as write-only, so host protocol conformance asserted the stale shape and stayed green. The Android client contract read the same corpus. | Fixed in `b4b258ee`. The generator learned the indicator, both words are pinned per secret id, the corpus is regenerated, and the conformance test rejects a fixture that still carries the stored value. Choice and reason in the pull request body. | Restoring the previous corpus with the new test in place fails: `protocol conformance failed: MQTT_PASS unset get response header changed`. The regenerated corpus passes: `protocol conformance passed: 42-byte location, 20-byte status, settings TLVs, triggers, and UUIDs`. A second `generate` run leaves the tree byte identical, which is what the Companion protocol tests workflow diffs. `FurbleGoldenCorpusTest` (Android, run locally with `./gradlew :app:testDebugUnitTest`) passes. |
-| F3 | Blocking | `MQTT_PASS` redaction had no test. `src/FurbleCompanionService.cpp:914-915` sits inside `#if defined(FURBLE_MQTT)`, and no host target compiled the companion service with it, so the arm was compiled out of every test. `tests/host/CMakeLists.txt:2076` is the target's compile definitions. | Fixed in `01c1ed73`. `companion_gatt_test` defines `FURBLE_MQTT`, the doubles gained the six MQTT settings rows plus an inert `FurbleMQTT.h`, and a new case reads id 59 by op 1 and op 0, asserts `set`, the cleared `unset`, and that the broker password appears in no record. It also pins that the broker address stays readable. | Red-first, with the `MQTT_PASS` arm reverted to the raw read: 6 FAILED, exit 1 (output below). Restored: `companion mock-central tests: PASS`, exit 0. |
-| F4 | Non-blocking | The pull request body said the branch "contains four commits and no changes to #530's files beyond the plan document". It was five commits, and the branch overlaps #530 in eight files, seven of them beyond `plans/97-followups.md`. The app-side read-only follow-up for wire ids 53 and 59 existed only in that body. | Body rewritten in this round. The follow-up is now a backlog line in `plans/97-followups.md` under C6, together with what the Android screen does today and what fixes it (`e08bed70`). | `gh pr view 534 --json files` against `gh pr view 530 --json files`: 8 shared paths, 7 beyond the plan document, 3 of those 7 being other plan documents. Commit count from `gh pr view 534 --json commits`: 5 at review time. |
-| N1 | Non-blocking | `docs/power/wifi-coex.md:554` cited `src/FurbleControl.cpp:34-37` for the P3/P6/P9 RSSI hysteresis. Line 34 is the `#endif` closing the sample-interval block and line 41 opens `POWER_LEVELS`, so the range covered neither. | Fixed in `f1ae43c8`, now `src/FurbleControl.cpp:35-45`, which holds the RSSI constants and the level table. | `sed -n '34,45p' src/FurbleControl.cpp`: `#endif` at 34, `RSSI_FILTER_ALPHA` to `RSSI_STEP_UP_SAMPLES` at 35-39, `POWER_LEVELS` at 41-45. |
+| F1 | Blocking | `docs/protocols/companion-gatt.md` cited `src/FurbleCompanionService.cpp:139-155` for the set/unset answer. Those lines are the shutter timer `esp_timer_create()` and `deinit()`. The answer is the two `secretIndicator()` arms at :901-916, and the helper is at :109. | Fixed in `2cd3dac3`. The sentence now cites :901-916 for both arms and :109 for the helper. | `sed -n '139,155p' src/FurbleCompanionService.cpp` spans the tail of the shutter timer init and `CompanionService::deinit()`; `grep -n secretIndicator` reports 109, 901 and 915. `check_doc_citations.py` reports 0 errors before and after, which is the finding's point, not a refutation of it. |
+| F2 | Blocking | The golden corpus still pinned the pre-redaction answer for the write-only settings: `tests/protocol/golden/corpus.json` carried `00 35 03 07 "Default"` for wire id 53 and `00 3b 03 07 "Default"` for id 59, and `protocol_common.h:61` treated only `COMPANION_PASSWORD` as write-only, so host protocol conformance asserted the stale shape and stayed green. The Android client contract read the same corpus. | Fixed in `8260c967`. The generator learned the indicator, both words are pinned per secret id, the corpus is regenerated, and the conformance test rejects a fixture that still carries the stored value. Choice and reason in the pull request body. | Restoring the previous corpus with the new test in place fails: `protocol conformance failed: MQTT_PASS unset get response header changed`. The regenerated corpus passes: `protocol conformance passed: 42-byte location, 20-byte status, settings TLVs, triggers, and UUIDs`. A second `generate` run leaves the tree byte identical, which is what the Companion protocol tests workflow diffs. `FurbleGoldenCorpusTest` (Android, run locally with `./gradlew :app:testDebugUnitTest`) passes. |
+| F3 | Blocking | `MQTT_PASS` redaction had no test. `src/FurbleCompanionService.cpp:915-916` sits inside `#if defined(FURBLE_MQTT)`, and no host target compiled the companion service with it, so the arm was compiled out of every test. `tests/host/CMakeLists.txt:2178` is the target's compile definitions. | Fixed in `224dfe77`. `companion_gatt_test` defines `FURBLE_MQTT`, the doubles gained the six MQTT settings rows plus an inert `FurbleMQTT.h`, and a new case reads id 59 by op 1 and op 0, asserts `set`, the cleared `unset`, and that the broker password appears in no record. It also pins that the broker address stays readable. | Red-first, with the `MQTT_PASS` arm reverted to the raw read: 6 FAILED, exit 1 (output below). Restored: `companion mock-central tests: PASS`, exit 0. |
+| F4 | Non-blocking | The pull request body said the branch "contains four commits and no changes to #530's files beyond the plan document". It was five commits, and the branch overlaps #530 in eight files, seven of them beyond `plans/97-followups.md`. The app-side read-only follow-up for wire ids 53 and 59 existed only in that body. | Body rewritten in this round. The follow-up is now a backlog line in `plans/97-followups.md` under C6, together with what the Android screen does today and what fixes it (`27d719e2`). | `gh pr view 534 --json files` against `gh pr view 530 --json files`: 8 shared paths, 7 beyond the plan document, 3 of those 7 being other plan documents. Commit count from `gh pr view 534 --json commits`: 5 at review time. |
+| N1 | Non-blocking | `docs/power/wifi-coex.md:554` cited `src/FurbleControl.cpp:34-37` for the P3/P6/P9 RSSI hysteresis. Line 34 is the `#endif` closing the sample-interval block and line 41 opens `POWER_LEVELS`, so the range covered neither. | Fixed in `52961e89`, now `src/FurbleControl.cpp:35-45`, which holds the RSSI constants and the level table. | `sed -n '34,45p' src/FurbleControl.cpp`: `#endif` at 34, `RSSI_FILTER_ALPHA` to `RSSI_STEP_UP_SAMPLES` at 35-39, `POWER_LEVELS` at 41-45. |
 
 ## F2: which of the two options, and why
 
@@ -87,39 +87,52 @@ through.
 
 ## Rebase onto master
 
-Master moved past this branch twice: #530 merged as `18bbcb5a` (a squash, so
-none of its commits are ancestors), and #538 renumbered seven plans and rewrote
-`plans/README.md`. The branch was rebased with `git rebase --onto origin/master
-caf683bc`, which replays only this branch's commits onto master instead of
-replaying #530's as well. It applied with no conflicts, so no `plans/README.md`
-row or renamed-plan reference had to be merged: this branch adds no row to that
-index (its review record is attached to plan 97, whose own record carries no
-row), and none of its files cited a plan that #538 moved. The pull request now
-targets `master`; against the old base it reported CONFLICTING and a 100-file
-diff that was not this branch's work.
+Master moved past this branch three times while it was in review. #530 merged
+as `18bbcb5a`, a squash, so none of its commits are ancestors. #538 renumbered
+seven plans and rewrote `plans/README.md`. Then #532, #537, #540, #543, #546,
+#547, #548 and #553 landed within the hour, and the branch went CONFLICTING
+against its stale base. It has since been rebased three times, the last onto
+`6b2da833`, and it now targets `master`.
 
-Rebasing brought in two plans that landed after this branch was cut, and both
-cite `Control::sendCommand` by line. The adaptive floor probe adds sixteen lines
-above it, so `src/FurbleControl.cpp:586-611` is `:602-627` now, fixed in
-`plans/371-fork-network-sweep.md` and `plans/539-review-feedback.md` (the
-second also in the bare `:586-611` form the gate does not resolve).
-`docs/power/soc.md` cited `:484` twice for the 250 ms blocking receive in
-`Control::task()`; that is `:505` now, and was already five lines above the call
-on master.
+Two rebase notes that explain why this record looks the way it does. The first
+rebase used `git rebase --onto origin/master caf683bc`, which replays only this
+branch's commits and not #530's five; the later two were plain rebases because
+the branch already sat on master. No rebase needed a `plans/README.md` merge:
+this branch adds no row to that index, since its review record hangs off plan
+97 and that plan's own record carries no row, and no file it touches cited a
+plan that #538 moved.
 
-The other 151 citations into the files this branch edits were checked the same
-way: for each, the cited block on this head was compared against the block at
-the same lines on master and at the shifted position. All 151 are already in
-this head's numbering, so the re-derivation the original commits did holds and
-no second sweep was needed. That check replaced an earlier mechanical sweep that
-would have shifted all 151 a second time and broken them.
+The rebases did break citations, because this branch inserts lines above code
+that other plans cite. The first pass fixed two master-side plans that cite
+`Control::sendCommand`. The last pass fixed fifteen, and that set says what the
+hazard is: the floor probe adds sixteen lines to `src/FurbleControl.cpp` and the
+secret redaction adds twenty-eight to `src/FurbleCompanionService.cpp`, so every
+citation into those files that master had made current moved. Two of the fifteen
+are in plans this branch does not otherwise touch, `plans/374-control-release-durability.md`
+and `plans/546-review-feedback.md`, which is the cost of a shared
+`file:line` contract.
+
+`check_doc_citations.py --root .` is the authority for the annotated ones and
+now reports 0 errors of 3,732 citations. The unannotated ones cannot be checked
+mechanically: a line map shows a citation moved, not that it was right before,
+and a blind shift would have rewritten 207 citations that were stale before
+this branch existed. The ones this branch itself made current were checked by
+content instead, which is how `docs/power/soc.md` twice moved from the previous
+`:505` to the 250 ms receive at `:585`.
+
+The last rebase also produced one real content conflict rather than a number:
+master added `Settings::validTheme` to the same host double where this branch
+adds `Settings::validMQTTString`. Both declarations were kept, master's first.
 
 ## Gates run locally
 
-Every result below was re-run on this head after the rebase, except the host
-suite and the sanitized run, which are unchanged by a rebase that touched no
-C++ (the citation fix and the hash updates are Markdown only) and stand from the
-previous head.
+The two gates below were re-run on this head after the last rebase, and so were
+the two host tests this branch's C++ touches, because that rebase merged master's
+changes into `src/FurbleControl.cpp` and `src/FurbleCompanionService.cpp`:
+`companion-gatt` and `control-adaptive-floor` both pass, which is the check that
+the merge of #546, #548 and #553 with the floor probe and the redaction did not
+break either. The full host suite and the sanitized run were run on the previous
+head and stand from there; the matrix re-runs both on this push.
 
 `python3 tools/check_pr_hygiene.py origin/master...HEAD`:
 
@@ -131,7 +144,7 @@ summary: 0 failure(s), 0 warning(s)
 `python3 tools/check_doc_citations.py --root .`:
 
 ```
-doc citations in the tree: 2935 line-checked (106 symbol-checked), 126 external, 213 unresolved basename, 0 errors of 3275 citations in 187 files
+doc citations in the tree: 3306 line-checked (113 symbol-checked), 128 external, 298 unresolved basename, 0 errors of 3732 citations in 203 files
 ```
 
 Host suite, `ctest --test-dir /tmp/furble-534-build --output-on-failure`:

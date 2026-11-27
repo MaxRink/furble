@@ -210,7 +210,7 @@ The four packets and their sizes are `AUTH_VERSION` 0x01, `AUTH_OP_BEGIN` 0x00,
 `AUTH_OP_PROOF` 0x01 and `AUTH_OP_RESULT` 0x02, with a challenge of two plus
 sixteen bytes, a proof of two plus sixteen and a result of three
 (`include/FurbleCompanionService.h:62-68`). The exchange runs in
-`handleAuth()` (`src/FurbleCompanionService.cpp:627-684`).
+`handleAuth()` (`src/FurbleCompanionService.cpp:628-685`).
 
 | Result value | Meaning |
 | ---: | :--- |
