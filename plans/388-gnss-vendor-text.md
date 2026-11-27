@@ -291,9 +291,13 @@ Measured with `python3 tools/check_size_budget.py --env m5stick-c
 
 | Env | Flash | Static DRAM | IRAM |
 | :--- | :--- | :--- | :--- |
+| `m5stack-core-debug` | 1,739,824 of 1,740,800 | 56,340 of 57,344 | 119,036 of 119,808 |
 | `m5stick-c` | 1,525,056 of 1,740,800 | 55,172 of 55,296 | 114,024 of 114,688 |
 | `m5stick-c-plus` | 1,574,816 of 1,740,800 | 55,148 of 55,296 | 114,024 of 114,688 |
 | `m5stick-s3` | 1,884,352 of 3,145,728 | 47,608 of 48,128 | 114,944 of 115,712 |
+
+`m5stack-core-debug` is the one profile that runs with `FURBLE_GPS_TEXT=0`, so its
+flash number is after the backend came out; see 9.1.
 
 **No budget is raised.** The first version of this branch put the text backend's
 fixed state in `.bss` and needed the S3 budget lifted to 49,152; the review's
@@ -311,6 +315,37 @@ in-flight configuration command is still an in-DRAM `std::optional` for every
 backend; moving it would touch the UBX and CASIC paths for about 150 bytes, which
 this PR does not need once the text state is out.
 
+### 9.1 Flash, and the Core debug capability
+
+Flash is the other constraint. The seam, both dialects and the driver backend
+measure 4,052 + 6,067 + 5,158 + 9,490 bytes of object text on a classic ESP32
+build, about 24 KB before the linker drops what an unused path leaves behind.
+The `m5stack-core-debug` profile has a fixed 1,740,800 byte app slot from
+`partitions_two_ota_large.csv`, a full verbose debug log level and the console,
+and the branch took it past that slot, which cannot be raised without giving up
+a second OTA target. So the backend is a build capability:
+
+- `FURBLE_GPS_TEXT` is absent (on) in every environment except
+  `m5stack-core-debug`, which sets `-DFURBLE_GPS_TEXT=0` in `platformio.ini`.
+- Off compiles `GpsQuectel.cpp` and `GpsUnicore.cpp` to nothing and replaces
+  `src/FurbleGPSText.cpp` with stubs that keep every entry point linkable. The
+  splitter's vendor routing, the `gps text` console command and its dialect
+  helper are gated too, so the linker drops `GpsText::parse()`, `frame()`,
+  `match()` and `Session` as well. The driver allocates nothing and sends no
+  text probe, so identification falls back to MON-VER and then NMEA, and a
+  `$PAIR` or `$CFG` line is ordinary NMEA text the parser ignores.
+- A Core debug build therefore keeps the NMEA receiver, the CASIC `$PCAS` path
+  and the u-blox backend, and does not configure a Quectel or Unicore part. That
+  is a real loss on that profile and it is recorded here rather than hidden; the
+  Core release build, both StickC builds, every S3 build and the simulator keep
+  the backend.
+- `m5stack-core-usb-debug` extends the Core debug environment and inherits the
+  flag with the rest of its build string. It has a single factory partition with
+  room, so it could keep the backend, but PlatformIO matches `build_unflags`
+  against whole list items and the inherited flags arrive as one item; splitting
+  it means spelling its flags out, which this PR does not do. A follow-up can
+  give that profile its own list.
+
 ## 10. Deviations from the request, and why
 
 1. **One file per vendor rather than one driver class per vendor.** The request
@@ -322,7 +357,11 @@ this PR does not need once the text state is out.
    builders `Quectel::baud()` and `Unicore::port()` exist and are host-tested,
    and no driver path sends them yet. The autobaud ladder still owns rate
    discovery.
-3. **`$PAIR002` (GNSS on) is sent only after a refused cut.** The save path
+3. **The Core debug build compiles the text backend out.** It is the only
+   profile whose fixed 1,740,800 byte slot cannot hold the branch, and the
+   alternative was a partition change. `FURBLE_GPS_TEXT=0` drops about 20 KB of
+   flash there; see 9.1. Every other build keeps Quectel and Unicore support.
+4. **`$PAIR002` (GNSS on) is sent only after a refused cut.** The save path
    powers the GNSS off before a rail cut and the rail does the rest, so there is
    nothing to turn back on unless the cut is refused. That case is real (a Core2
    on a low battery, or an IR hold) and used to leave the receiver fixless, so

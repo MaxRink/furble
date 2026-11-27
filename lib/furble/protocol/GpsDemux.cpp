@@ -33,6 +33,7 @@ bool syncPair(const uint8_t *data) {
  * must not wait for the LF of a line that already completed, because the stop
  * index of a complete line can equal the buffer length.
  */
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
 bool lineEnd(const uint8_t *data, size_t start, size_t length, size_t &stop) {
   for (size_t i = start; i < length; i++) {
     if ((data[i] == '\r') || (data[i] == '\n')) {
@@ -45,6 +46,7 @@ bool lineEnd(const uint8_t *data, size_t start, size_t length, size_t &stop) {
   }
   return false;
 }
+#endif  // FURBLE_GPS_TEXT
 
 }  // namespace
 
@@ -95,6 +97,7 @@ size_t split(const uint8_t *data, size_t length, std::vector<Piece> &out) {
       continue;
     }
 
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
     if (data[at] == '$') {
       switch (GpsText::prefix(data + at, available)) {
         case GpsText::Prefix::MAYBE:
@@ -128,19 +131,26 @@ size_t split(const uint8_t *data, size_t length, std::vector<Piece> &out) {
           break;
       }
     }
+#endif  // FURBLE_GPS_TEXT
 
     // NMEA text up to the next sync pair or the next $-prefixed vendor name.
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
     const size_t scan = (data[at] == '$') ? (at + 1) : at;
+#else
+    const size_t scan = at;
+#endif
     size_t next = length;
     for (size_t i = scan; i < length; i++) {
       if (((i + 1) < length) && syncPair(data + i)) {
         next = i;
         break;
       }
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
       if ((data[i] == '$') && (GpsText::prefix(data + i, length - i) != GpsText::Prefix::NO)) {
         next = i;
         break;
       }
+#endif
     }
 
     if (next == length) {

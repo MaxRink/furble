@@ -1690,6 +1690,7 @@ const char *gpsPsmName(uint8_t psm) {
  * the configuration that was sent and read back, power save, the backup
  * state and the constellations of one NAV-SAT poll.
  */
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
 /** Printable name of a vendor text dialect. */
 const char *gpsTextDialectName(GpsText::Dialect dialect) {
   switch (dialect) {
@@ -1753,6 +1754,7 @@ int gpsText(void) {
          GpsText::verdictName(static_cast<GpsText::Verdict>(text.last_verdict)));
   return 0;
 }
+#endif  // FURBLE_GPS_TEXT
 
 int gpsUbx(void) {
   auto &gps = GPS::getInstance();
@@ -1926,9 +1928,11 @@ int cmdGPS(int argc, char **argv) {
     return gpsUbx();
   }
 
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if (!strcmp(argv[1], "text")) {
     return gpsText();
   }
+#endif
 
   if (!strcmp(argv[1], "power")) {
     if ((argc < 3) || !parseBool(argv[2], value)) {

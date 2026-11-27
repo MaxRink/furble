@@ -203,6 +203,12 @@ Vehicle have no `$CFGDYN` counterpart and are refused too. Both paths are
 verified against virtual receivers in the simulator only; no Quectel or Unicore
 hardware has been tested.
 
+One build does not carry the backend at all: `m5stack-core-debug` compiles it out
+(`FURBLE_GPS_TEXT=0`) because its fixed OTA slot cannot hold the debug image and
+the backend together. That build still reads NMEA from either part and still
+configures a u-blox receiver, and it does not send `$PAIR` or `$CFG` commands.
+Every other environment keeps the backend.
+
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
 checked against the firmware GPS support in `src/FurbleGPS.cpp`. The u-blox M10
 documents are listed in `plans/implemented/321-ublox-m10-driver.md`, and the

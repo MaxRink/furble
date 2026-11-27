@@ -15,6 +15,11 @@ the simulator receiver is `sim/vendor_gnss.cpp`.
 Where the two documents disagree about which variant supports a command, the
 driver obeys the narrower one and reports the refusal.
 
+The driver's `$PAIR and $PQTM` backend is compiled out of one profile:
+`m5stack-core-debug` sets `FURBLE_GPS_TEXT=0` because its fixed OTA slot
+cannot hold the full debug image, so that build reads NMEA from the part
+and sends no configuration command. Every other build keeps it.
+
 ## Frame layout
 
 | Offset | Size | Field | Citation |

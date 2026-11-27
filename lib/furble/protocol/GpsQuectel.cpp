@@ -1,3 +1,11 @@
+/*
+ * FURBLE_GPS_TEXT=0 drops the vendor text backend from a build with no flash
+ * for it (the Core debug profile). The Quectel dialect is only reachable
+ * through src/FurbleGPSText.cpp, which is stubbed in that build, so this
+ * file compiles to nothing there.
+ */
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+
 #include "GpsQuectel.h"
 
 #include <array>
@@ -260,3 +268,5 @@ Plan plan(const GpsText::Request &request) {
 
 }  // namespace Quectel
 }  // namespace Furble
+
+#endif  // FURBLE_GPS_TEXT

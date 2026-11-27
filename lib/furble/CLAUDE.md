@@ -249,6 +249,11 @@ protocol core.
   document, section and page, and both planners turn the GPS settings into a
   command queue the way `Ubx::plan()` does. `gps-text` and `gps-text-sim` cover
   them; the documents and the UNVERIFIED list are in plans/388.
+  `FURBLE_GPS_TEXT=0` compiles the two dialects and the driver backend out of
+  a build whose flash slot cannot take them (the Core debug profile, about
+  20 KB): the seam stays for the splitter, the driver keeps stubs, and no text
+  command is ever sent. The define is absent everywhere else, so an
+  `#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT` guard is the contract.
 - `GpsUbx` (`Furble::Ubx`) is the u-blox codec: framing, Fletcher checksum,
   `scan()`, the resynchronising `Stream`, every message furble uses, `Detect`,
   `CapsProbe`, the tick-wrap-safe `Settle` gate and `plan()`, which turns the

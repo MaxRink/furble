@@ -12,6 +12,11 @@ shared seam in `lib/furble/protocol/GpsText.{h,cpp}`, the driver is
 | Codec | `lib/furble/protocol/GpsUnicore.h:17-28` |
 | Plan | [388](../../plans/388-gnss-vendor-text.md) |
 
+The driver's `$CFG` backend is compiled out of one profile:
+`m5stack-core-debug` sets `FURBLE_GPS_TEXT=0` because its fixed OTA slot
+cannot hold the full debug image, so that build reads NMEA from the part
+and sends no configuration command. Every other build keeps it.
+
 ## Frame layout
 
 | Offset | Size | Field | Citation |
