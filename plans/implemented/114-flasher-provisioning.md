@@ -45,6 +45,25 @@ setting itself and never claims success from a completed write.
   oversized input, an over-long SSID, an over-long passphrase, a truncated frame
   and a repeated frame.
 
+## Review round 1
+
+The independent review is recorded in
+[537-review-feedback.md](../537-review-feedback.md). Its blocking item was a
+cross-PR interaction with plan 372's validator fixture, fixed in
+`tests/test_web_installer.py`. The three domain gaps it found are fixed in both
+halves:
+
+- A passphrase of 1 to 7 characters is refused by
+  `Settings::validNetworkString()` and by the browser encoder. Empty stays valid
+  for an open network, and the 8 to 63 range covers WPA2-PSK and WPA3-SAE.
+- The theme is validated through `Settings::validTheme()` on the provisioning
+  path and on `settings set theme`, so the closed set has one definition.
+- TX power is bounded to 0, 1 and 2 on the provisioning path instead of being
+  stored and clamped to P3.
+- The SSID and passphrase writes are read back because `Settings::save()` is
+  `void`. A refused write logs at error level and fails the command with
+  `storage failure` naming the wire id, and it is never counted as applied.
+
 ## Deviations from the design
 
 - **The step requires the debug build.** The design names the PR27 console as

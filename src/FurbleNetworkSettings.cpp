@@ -11,13 +11,22 @@ bool Settings::validNetworkString(type_t type, const std::string &value) {
     case WIFI_SSID:
       return value.size() <= WIFI_SSID_MAX_LENGTH;
     case WIFI_PSK:
-      return value.size() <= WIFI_PSK_MAX_LENGTH;
+      // WPA2-PSK and WPA3-SAE both take 8 to 63 characters. Empty is an open
+      // network, which the console and the provisioning step both allow on
+      // purpose. Anything between 1 and 7 characters is stored nowhere: it can
+      // never associate, so it is refused here rather than written.
+      return value.empty()
+             || ((value.size() >= WIFI_PSK_MIN_LENGTH) && (value.size() <= WIFI_PSK_MAX_LENGTH));
     case NTP_SERVER:
       return !value.empty() && (value.size() <= NTP_SERVER_MAX_LENGTH);
     default:
       return false;
   }
 }
+bool Settings::validTheme(const std::string &value) {
+  return (value == "Dark") || (value == "Default") || (value == "Mono Furble");
+}
+
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
 bool Settings::validMQTTString(type_t type, const std::string &value) {
   constexpr size_t MAX_LENGTH = 255;

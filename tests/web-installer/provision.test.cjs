@@ -73,11 +73,16 @@ test("the browser encoder matches the shared multi-field fixture", () => {
 });
 
 test("records carry the required bit and the production field order", () => {
-  const bytes = provision.encodeBundle({ wifiSsid: "ab", wifiPsk: "cd", settings: [] });
+  const bytes = provision.encodeBundle({
+    wifiSsid: "ab",
+    wifiPsk: "12345678",
+    settings: [],
+  });
   check(bytes[0] === (provision.TAG.WIFI_SSID | 0x80), "the SSID tag is required");
   check(bytes[1] === provision.TYPE.STRING, "the SSID record is a string");
   check(bytes[2] === 2, "the SSID length is one byte");
   check(bytes[5] === (provision.TAG.WIFI_PSK | 0x80), "the PSK record follows the SSID");
+  check(bytes[7] === 8, "the PSK length is one byte");
   const setting = provision.encodeBundle({
     settings: [{ wireId: 3, type: provision.TYPE.STRING, value: "Dark" }],
   });
@@ -118,15 +123,45 @@ test("SSID length is checked in UTF-8 bytes", () => {
   );
 });
 
-test("passphrase length is checked in UTF-8 bytes", () => {
+test("passphrase length follows the WPA2 and WPA3-SAE range", () => {
+  // WPA2-PSK and WPA3-SAE both take 8 to 63 characters. A shorter one is
+  // stored nowhere: the device can never associate, so the page refuses it
+  // before the port is opened.
   check(
     provision.encodeBundle({ wifiSsid: "ab", wifiPsk: "p".repeat(63) }).length === 5 + 66,
-    "63 bytes are accepted",
+    "a 63-byte WPA2 passphrase is accepted",
   );
+  for (const length of [8, 9, 32]) {
+    check(
+      provision.encodeBundle({ wifiSsid: "ab", wifiPsk: "p".repeat(length) }).length ===
+        8 + length,
+      `a ${length}-byte WPA2 and WPA3-SAE passphrase is accepted`,
+    );
+  }
+  for (const length of [1, 3, 7]) {
+    expectThrows(
+      () => provision.encodeBundle({ wifiSsid: "net", wifiPsk: "p".repeat(length) }),
+      "Passphrase must be empty for an open network, or 8 to 63 UTF-8 bytes. Got " + length,
+      `a ${length}-byte passphrase is rejected`,
+    );
+  }
   expectThrows(
     () => provision.encodeBundle({ wifiSsid: "net", wifiPsk: "p".repeat(64) }),
-    "Passphrase must be at most 63 UTF-8 bytes, got 64",
+    "Passphrase must be empty for an open network, or 8 to 63 UTF-8 bytes. Got 64",
     "a 64-byte passphrase is rejected",
+  );
+  check(
+    provision.encodeBundle({ wifiSsid: "net", wifiPsk: "" }).length === 6 + 3,
+    "an empty passphrase stays valid as an open network",
+  );
+  check(
+    provision.encodeBundle({ wifiSsid: "net", wifiPsk: "ü".repeat(4) }).length === 6 + 3 + 8,
+    "the minimum counts UTF-8 bytes, not characters",
+  );
+  expectThrows(
+    () => provision.encodeBundle({ wifiSsid: "net", wifiPsk: "ü".repeat(3) }),
+    "Got 6",
+    "three two-byte characters are six bytes and are rejected",
   );
 });
 
@@ -170,15 +205,28 @@ test("MQTT fields mirror the firmware string rules", () => {
   );
 });
 
-test("TX power is a single byte", () => {
-  // The firmware accepts any u8 for wire id 4; the page only offers the three
-  // documented steps, so the encoder only has to reject a non-byte value.
-  const bytes = provision.encodeBundle({
-    settings: [{ wireId: 4, type: provision.TYPE.U8, value: 2 }],
-  });
-  check(bytes.length === 5, "a single byte setting is one record");
-  check(bytes[3] === 4, "the record carries the wire id");
-  check(bytes[4] === 2, "the record carries the value");
+test("TX power is one of the three radio levels", () => {
+  // 0 is P3, 1 is P6 and 2 is P9. The settings load maps anything else to P3,
+  // so the encoder refuses an out-of-range value instead of letting the device
+  // silently clamp it.
+  for (const level of [0, 1, 2]) {
+    const bytes = provision.encodeBundle({
+      settings: [{ wireId: 4, type: provision.TYPE.U8, value: level }],
+    });
+    check(bytes.length === 5, `level ${level} is one record`);
+    check(bytes[3] === 4, "the record carries the wire id");
+    check(bytes[4] === level, "the record carries the value");
+  }
+  for (const level of [3, 9, 255]) {
+    expectThrows(
+      () =>
+        provision.encodeBundle({
+          settings: [{ wireId: 4, type: provision.TYPE.U8, value: level }],
+        }),
+      "TX power must be 0 (P3), 1 (P6) or 2 (P9). Got " + level,
+      `level ${level} is rejected`,
+    );
+  }
   expectThrows(
     () =>
       provision.encodeBundle({
@@ -197,6 +245,31 @@ test("TX power is a single byte", () => {
   );
 });
 
+test("the theme is the closed set the firmware accepts", () => {
+  check(
+    provision.THEMES.join(",") === "Dark,Default,Mono Furble",
+    "the encoder lists the three themes the UI offers",
+  );
+  for (const theme of provision.THEMES) {
+    check(
+      provision.encodeBundle({
+        settings: [{ wireId: 3, type: provision.TYPE.STRING, value: theme }],
+      }).length === 3 + 1 + theme.length,
+      `${theme} is accepted`,
+    );
+  }
+  for (const theme of ["dark", "Mono", "", "Dark "]) {
+    expectThrows(
+      () =>
+        provision.encodeBundle({
+          settings: [{ wireId: 3, type: provision.TYPE.STRING, value: theme }],
+        }),
+      "Theme must be Dark, Default, Mono Furble.",
+      `'${theme}' is rejected`,
+    );
+  }
+});
+
 // --- The console line limit -------------------------------------------------
 
 test("an oversized command is refused before anything is sent", () => {
@@ -204,7 +277,9 @@ test("an oversized command is refused before anything is sent", () => {
     wifiSsid: "s".repeat(32),
     wifiPsk: "p".repeat(63),
     companionPassword: "c".repeat(63),
-    settings: [{ wireId: 3, type: provision.TYPE.STRING, value: "t".repeat(40) }],
+    mqttUri: "mqtt://" + "9".repeat(53),
+    mqttBaseTopic: "furble",
+    settings: [{ wireId: 3, type: provision.TYPE.STRING, value: "Dark" }],
   };
   let command = null;
   let message = "";

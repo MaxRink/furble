@@ -305,7 +305,7 @@ std::vector<SettingCase> settingCases() {
       {Settings::WIFI, "WIFI", false, true, StorageKind::BOOL},
       {Settings::WIFI_SSID, "WIFI_SSID", std::string {""}, std::string {"Office"},
        StorageKind::STRING},
-      {Settings::WIFI_PSK, "WIFI_PSK", std::string {""}, std::string {"secret"},
+      {Settings::WIFI_PSK, "WIFI_PSK", std::string {""}, std::string {"secret-passphrase"},
        StorageKind::STRING},
       {Settings::NTP, "NTP", false, true, StorageKind::BOOL},
       {Settings::NTP_SERVER, "NTP_SERVER", std::string {"pool.ntp.org"},
@@ -637,6 +637,17 @@ void testNetworkIngressValidation() {
         "an oversized SSID is rejected");
   check(!Settings::validNetworkString(Settings::WIFI_PSK, embedded),
         "an embedded-NUL passphrase is rejected");
+  // WPA2-PSK and WPA3-SAE take 8 to 63 characters. Empty is an open network.
+  check(Settings::validNetworkString(Settings::WIFI_PSK, ""),
+        "an empty passphrase is an open network");
+  check(Settings::validNetworkString(Settings::WIFI_PSK, "12345678"),
+        "an 8-character WPA2 and WPA3-SAE passphrase is accepted");
+  check(!Settings::validNetworkString(Settings::WIFI_PSK, "1234567"),
+        "a 7-character passphrase is rejected");
+  check(Settings::validNetworkString(Settings::WIFI_PSK, std::string(63, 'p')),
+        "a 63-character passphrase is accepted");
+  check(!Settings::validNetworkString(Settings::WIFI_PSK, std::string(64, 'p')),
+        "a 64-character passphrase is rejected");
   check(Furble::importSetting(Settings::get(Settings::TIMEZONE), "39"),
         "SD import accepts the Auto time zone");
   check(Settings::load<uint8_t>(Settings::TIMEZONE)

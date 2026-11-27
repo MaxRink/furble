@@ -744,6 +744,9 @@ int setValue(const Settings::setting_t &setting, const char *text) {
     } break;
 
     case Settings::THEME:
+      if (!Settings::validTheme(std::string(text))) {
+        return fail("theme must be Dark, Default or Mono Furble");
+      }
       Settings::save<std::string>(setting.type, std::string(text));
       break;
 
@@ -768,7 +771,7 @@ int setValue(const Settings::setting_t &setting, const char *text) {
 
     case Settings::WIFI_PSK:
       if (!Settings::validNetworkString(setting.type, std::string(text))) {
-        return fail("passphrase must be 63 characters or fewer");
+        return fail("passphrase must be empty or 8 to 63 characters");
       }
       Settings::save<std::string>(setting.type, std::string(text));
       break;
@@ -1203,6 +1206,14 @@ int cmdProvision(int argc, char **argv) {
       printf(": %s", report.message.c_str());
     }
     printf("\n");
+    if (report.error == Provision::ApplyError::STORAGE_FAILURE) {
+      // The batch stopped at a refused write, so the counts are partial. Print
+      // the summary anyway with an explicit failure count: no field is claimed
+      // as applied unless it landed.
+      printf("provision: %u field(s) applied, %u field(s) deferred, 1 field(s) failed\n",
+             static_cast<unsigned>(report.fieldsApplied),
+             static_cast<unsigned>(report.deferredFields));
+    }
     return 1;
   }
 

@@ -250,7 +250,7 @@ Submenu: `Settings` > `Theme`.
 
 | Setting | Default | Values | Applies | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| Theme | Default | Dark, Default, Mono Furble | Restart | Press the Restart button to save and apply. |
+| Theme | Default | Dark, Default, Mono Furble | Restart | Press the Restart button to save and apply. The set is closed: the console, the WebUI and provisioning refuse any other value. |
 
 ### Text size
 
@@ -434,7 +434,9 @@ No menu row reaches the WiFi and NTP settings at all: `WiFi` (wire id 51),
 `WiFi SSID` (52), `WiFi Passphrase` (53), `NTP` (54) and `NTP Server` (55), with
 the keys `wifi`, `wifi_ssid`, `wifi_psk`, `ntp` and `ntp_server`. Both switches
 default Off, the two credentials default empty, and the NTP server defaults
-`pool.ntp.org`. Set them from the console with `wifi set ssid|psk`,
+`pool.ntp.org`. The passphrase accepts 8 to 63 characters, or an empty value for
+an open network; 1 to 7 characters is refused because WPA2 and WPA3 cannot
+associate with it. Set them from the console with `wifi set ssid|psk`,
 `wifi enable|disable`, `ntp set server <host>` and `ntp enable|disable|sync`,
 or from the companion app, an authenticated WebUI settings write, SD import and
 export, and provisioning. The browser installer's provisioning step sets both

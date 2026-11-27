@@ -649,6 +649,12 @@ void testSettings(void) {
         "a real receiver setting still queues the GPS reload");
 
   checkContains(runDirect("settings set theme Dark").out, "saved: theme", "a string setting saves");
+  const Result badTheme = runDirect("settings set theme dark");
+  check(badTheme.rc != 0, "a theme outside the closed set is refused");
+  checkContains(badTheme.out, "theme must be Dark, Default or Mono Furble",
+                "the refused theme names the accepted set");
+  check(Furble::Settings::load<std::string>(Furble::Settings::THEME) == "Dark",
+        "a refused theme leaves the stored one alone");
   checkContains(runDirect("settings get theme").out, "value: Dark", "the string reads back");
 
   checkContains(runDirect("settings set gpx_period 30").out, "saved: gpx_period",
@@ -2031,8 +2037,11 @@ void testProvision(void) {
   brightness.value = {99};
   bundle.settings.push_back(brightness);
   const Furble::ProvisionTLV::ByteString text {'f', 'u', 'r', 'b', 'l', 'e'};
+  // The passphrase is the one field with a minimum length: WPA2-PSK and
+  // WPA3-SAE both need at least 8 characters.
+  const Furble::ProvisionTLV::ByteString passphrase {'f', 'u', 'r', 'b', 'l', 'e', 'p', 's', 'k'};
   bundle.wifiSsid = text;
-  bundle.wifiPsk = text;
+  bundle.wifiPsk = passphrase;
   bundle.companionPassword = text;
   bundle.mqttUri = text;
   bundle.mqttUsername = text;
@@ -2075,7 +2084,7 @@ void testProvision(void) {
         "the provisioned value reached the real Settings store");
   check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == "furble",
         "the provisioned SSID reached the real Settings store");
-  check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK) == "furble",
+  check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK) == "furblepsk",
         "the provisioned PSK reached the real Settings store");
 
   // The gesture settings apply immediately, so a provision write must start the
@@ -2261,10 +2270,12 @@ void testProvisionReceivePath(void) {
     bundle.wifiSsid = textBytes("seed-network");
     bundle.wifiPsk = std::vector<uint8_t>(63, 'p');
     bundle.companionPassword = std::vector<uint8_t>(63, 'c');
+    bundle.mqttUri = std::vector<uint8_t>(60, 'm');
+    bundle.mqttBaseTopic = textBytes("furble");
     Furble::ProvisionTLV::SettingValue theme;
     theme.wireId = 3;
     theme.type = Furble::ProvisionTLV::ValueType::STRING;
-    theme.value = std::vector<uint8_t>(63, 't');
+    theme.value = textBytes("Dark");
     bundle.settings.push_back(theme);
     Furble::ProvisionTLV::SettingValue brightness;
     brightness.wireId = 1;
@@ -2309,6 +2320,36 @@ void testProvisionReceivePath(void) {
           "a rejected passphrase changes nothing");
   }
 
+  // A passphrase under the WPA2 and WPA3-SAE minimum of 8 characters is refused
+  // on the wire path, not stored and reported as applied.
+  {
+    const auto bytes =
+        provisionRecord(PSK_TAG, Furble::ProvisionTLV::ValueType::STRING, textBytes("short"));
+    const std::string output = ConsoleHost::runLine("provision " + toHex(bytes));
+    checkContains(output, "error: provision: bad setting",
+                  "a 5-byte passphrase is rejected by the domain rule");
+    check(!contains(output, "field(s) applied"), "a short passphrase reports no summary");
+    check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK) == "seed-passphrase",
+          "a short passphrase changes nothing");
+  }
+
+  // An out-of-range TX power is refused rather than clamped to P3.
+  {
+    const auto bytes = provisionRecord(SETTING_TAG, Furble::ProvisionTLV::ValueType::U8, {4, 3});
+    const std::string output = ConsoleHost::runLine("provision " + toHex(bytes));
+    checkContains(output, "TX power must be 0 (P3), 1 (P6) or 2 (P9)",
+                  "an out-of-range TX power is rejected");
+  }
+
+  // A theme outside the closed set is refused.
+  {
+    const auto bytes = provisionRecord(SETTING_TAG, Furble::ProvisionTLV::ValueType::STRING,
+                                       std::vector<uint8_t> {3, 'd', 'a', 'r', 'k'});
+    const std::string output = ConsoleHost::runLine("provision " + toHex(bytes));
+    checkContains(output, "theme must be Dark, Default or Mono Furble",
+                  "a theme outside the set is rejected");
+  }
+
   // A frame that stops in the middle of its value.
   {
     std::vector<uint8_t> bytes =
@@ -2336,6 +2377,27 @@ void testProvisionReceivePath(void) {
           "a repeated frame changes nothing");
   }
 
+  // A refused NVS write on the SSID is reported, not counted as applied. The
+  // summary line keeps the real counts and adds the failure.
+  {
+    Furble::ProvisionTLV::ProvisionBundle bundle;
+    bundle.wifiSsid = textBytes("refused-network");
+    std::vector<uint8_t> encoded;
+    if (check(Furble::ProvisionTLV::encode(bundle, encoded), "the refused bundle encodes")) {
+      nvs_test_fail_set_on(1);
+      const std::string output = ConsoleHost::runLine("provision " + toHex(encoded));
+      checkContains(output, "error: provision: storage failure",
+                    "a refused SSID write is reported as a storage failure");
+      checkContains(output, "wifi_ssid persistence failed", "the refused write names the key");
+      checkContains(output, "0 field(s) applied, 0 field(s) deferred, 1 field(s) failed",
+                    "the summary line reports the failed field");
+      check(!contains(output, "provision: wifi_ssid applied"),
+            "the refused write is never announced as applied");
+      check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == "seed-network",
+            "the previous SSID survives the refused write");
+    }
+  }
+
   // The device answers the next command, so a failure above never wedges the
   // console the browser is holding open.
   checkContains(ConsoleHost::runLine("version"), "version: host",
@@ -2360,7 +2422,13 @@ void testWiFiAndNtpCommands(void) {
   check(runDirect("wifi set ssid furble-net").rc == 0, "wifi SSID setting succeeds");
   check(wifi.clearRememberedAccessPointCalls == 1,
         "wifi SSID setting clears the remembered access point");
-  check(runDirect("wifi set psk secret").rc == 0, "wifi PSK setting succeeds");
+  check(runDirect("wifi set psk furble-secret").rc == 0, "wifi PSK setting succeeds");
+  const Result shortPsk = runDirect("wifi set psk short");
+  check(shortPsk.rc != 0, "a WPA2 passphrase under 8 characters is refused");
+  checkContains(shortPsk.out, "passphrase must be empty or 8 to 63 characters",
+                "the refused passphrase names the accepted range");
+  check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK) == "furble-secret",
+        "a refused passphrase leaves the stored one alone");
   check(runDirect("wifi enable").rc == 0 && wifi.setEnabledCalls == 1,
         "wifi enable reaches setEnabled");
   check(runDirect("wifi connect").rc == 0 && wifi.connectCalls == 1,

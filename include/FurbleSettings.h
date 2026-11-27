@@ -210,8 +210,14 @@ class Settings {
   } hw_motion_t;
 
   static constexpr size_t WIFI_SSID_MAX_LENGTH = 32;
+  // WPA2-PSK and WPA3-SAE passphrases are 8 to 63 characters. An empty value is
+  // an open network and stays valid. A 64-digit hexadecimal WPA2 key is not
+  // supported: the field is a character string and is capped at 63 bytes.
+  static constexpr size_t WIFI_PSK_MIN_LENGTH = 8;
   static constexpr size_t WIFI_PSK_MAX_LENGTH = 63;
   static constexpr size_t NTP_SERVER_MAX_LENGTH = 63;
+  /** Highest TX power index: 0 is P3, 1 is P6, 2 is P9. */
+  static constexpr uint8_t TX_POWER_MAX = 2;
 
   static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
@@ -251,6 +257,8 @@ class Settings {
 
   /** Validate an ingress network string before it reaches NVS. */
   static bool validNetworkString(type_t type, const std::string &value);
+  /** The closed theme set the UI offers and the SD importer accepts. */
+  static bool validTheme(const std::string &value);
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
   /** Validate MQTT URI, credentials, and topic-root input before persistence. */
   static bool validMQTTString(type_t type, const std::string &value);

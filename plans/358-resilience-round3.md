@@ -19,7 +19,7 @@ board profile table were left alone: no finding needed a change there.
 ### Defect
 
 `SD::exportSettings()` opened `settings.txt` and looped over
-`Settings::getAll()` (`src/FurbleSD.cpp:1096`), treating any `false` from
+`Settings::getAll()` (`src/FurbleSD.cpp:1092`), treating any `false` from
 `serializeSetting()` as fatal. `serializeSetting()` returns `false` for
 `Settings::COMPANION_PASSWORD` on purpose (`src/FurbleSD.cpp:266`): the backup
 is plain text, and `importSetting()` refuses that key too

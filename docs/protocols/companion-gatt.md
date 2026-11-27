@@ -225,7 +225,10 @@ challenge as a failed proof, so a malformed retry cannot reuse one nonce
 ## Provisioning TLV
 
 The console `provision` command and the app share one blob format. A batch is a
-sequence of records (`lib/furble/protocol/ProvisionTLV.h:12-23`).
+sequence of records (`lib/furble/protocol/ProvisionTLV.h:12-23`). The wire
+format allows a 0 to 63 byte `WIFI_PSK`; the apply step then enforces the WPA2
+and WPA3-SAE rule, so an empty value (open network) or 8 to 63 bytes is
+accepted and 1 to 7 bytes is refused before any write.
 
 | Offset | Size | Field |
 | ---: | ---: | :--- |
@@ -237,7 +240,7 @@ sequence of records (`lib/furble/protocol/ProvisionTLV.h:12-23`).
 | Tag | Name | Value layout |
 | ---: | :--- | :--- |
 | 0x01 | `WIFI_SSID` | UTF-8, at most 32 bytes |
-| 0x02 | `WIFI_PSK` | at most 63 bytes |
+| 0x02 | `WIFI_PSK` | empty (open network) or 8 to 63 bytes |
 | 0x03 | `SETTING` | first byte is the stable wire id, then the value |
 | 0x04 | `COMPANION_PASSWORD` | at most 63 bytes, wire id 47 |
 | 0x05 | `MQTT_URI` | at most 255 bytes |

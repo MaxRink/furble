@@ -11,6 +11,12 @@ down. The release workflow does publish the `-debug` image for `m5stack-core2`,
 is also in the `esp32-s3-headless` developer hub image, which the reproducible
 workflow builds.
 
+The console is an unauthenticated local surface. Physical USB access to a debug
+image is equivalent to control of every stored credential it can write: the WiFi
+passphrase, the MQTT password, and the companion password, which gates the
+companion service. Treat a debug build on a desk as a bench device, and do not
+ship one to an untrusted holder.
+
 Open it and type `help`:
 
 ```sh
@@ -248,7 +254,9 @@ explicit `hex:` or `base64:` prefix selects the encoding. On success the command
 prints `provision: decoded <n> bytes as base64` and one line per applied field,
 then `provision: <n> field(s) applied, <m> field(s) deferred`. On failure it
 prints `error: provision: <code> at <n>` and returns 1. Settings are validated
-before the first write, so a rejected batch changes nothing.
+before the first write, so a rejected batch changes nothing. A refused NVS write
+adds `provision: <n> field(s) applied, <m> field(s) deferred, 1 field(s) failed`
+so the counts stay visible and the failed field is never reported as applied.
 
 The line limit also bounds the blob: with the 17-character `provision base64:`
 prefix, about 178 blob bytes fit in one line. Send a smaller bundle rather than
@@ -324,7 +332,11 @@ The same values are reported with their full meaning:
 | `stopped` | `yes` after a terminal auth failure or an exhausted attempt bound; `wifi connect` clears it. |
 | `current`, `estimated_runtime` | Battery drain and runtime estimate when the gauge exposes current. |
 
-`wifi set ssid <ssid>` and `wifi set psk <psk>` write the credentials.
+`wifi set ssid <ssid>` and `wifi set psk <psk>` write the credentials. The
+passphrase accepts 8 to 63 characters, or an empty value for an open network. A
+1 to 7 character passphrase is refused with
+`passphrase must be empty or 8 to 63 characters`, because neither WPA2-PSK nor
+WPA3-SAE can associate with it.
 `wifi enable` and `wifi disable` persist the setting and start or stop the
 station. `wifi connect` and `wifi disconnect` act immediately, and
 `wifi forget` clears the SSID and passphrase.

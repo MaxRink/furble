@@ -314,15 +314,19 @@ void testDomainValidation() {
   // the domain rule is ever reached, so asserting only "it failed" would pass
   // for a setting the bundle can never carry at all.
   const std::pair<SettingValue, const char *> cases[] = {
-      {SettingValue {26, ValueType::U8, {6}},                      "GPS duty must be 0, 5, 10 or 15"         },
-      {SettingValue {33, ValueType::U8, {5}},                      "feedback output is out of range"         },
-      {SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}}, "button mode is not recognised"           },
-      {SettingValue {67, ValueType::U8, {5}},                      "GPS fix hold must be 0 through 4"        },
-      {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"          },
-      {SettingValue {72, ValueType::U8, {4}},                      "IMU wake gesture must be 0, 1, 2 or 3"   },
-      {SettingValue {69, ValueType::U8, {5}},                      "GPS platform setting must be 0 through 4"},
-      {SettingValue {65, ValueType::U8, {3}},                      "legend setting must be 0, 1 or 2"        },
-      {SettingValue {42, ValueType::U8, {40}},                     "time zone setting is out of range"       },
+      {SettingValue {26, ValueType::U8, {6}},                      "GPS duty must be 0, 5, 10 or 15"          },
+      {SettingValue {33, ValueType::U8, {5}},                      "feedback output is out of range"          },
+      {SettingValue {27, ValueType::STRING, {'n', 'o', 'p', 'e'}}, "button mode is not recognised"            },
+      {SettingValue {67, ValueType::U8, {5}},                      "GPS fix hold must be 0 through 4"         },
+      {SettingValue {68, ValueType::BOOL, {2}},                    "boolean setting must be 0 or 1"           },
+      {SettingValue {72, ValueType::U8, {4}},                      "IMU wake gesture must be 0, 1, 2 or 3"    },
+      {SettingValue {69, ValueType::U8, {5}},                      "GPS platform setting must be 0 through 4" },
+      {SettingValue {65, ValueType::U8, {3}},                      "legend setting must be 0, 1 or 2"         },
+      {SettingValue {42, ValueType::U8, {40}},                     "time zone setting is out of range"        },
+      {SettingValue {3, ValueType::STRING, {'d', 'a', 'r', 'k'}},
+       "theme must be Dark, Default or Mono Furble"                                                           },
+      {SettingValue {4, ValueType::U8, {3}},                       "TX power must be 0 (P3), 1 (P6) or 2 (P9)"},
+      {SettingValue {4, ValueType::U8, {9}},                       "TX power must be 0 (P3), 1 (P6) or 2 (P9)"},
   };
 
   ProvisionBundle offBundle;
@@ -361,6 +365,106 @@ void testDomainValidation() {
 
 Furble::ProvisionTLV::ByteString text(const char *value) {
   return Furble::ProvisionTLV::ByteString(value, value + std::strlen(value));
+}
+
+// The WiFi credentials are validated by the same Settings::validNetworkString()
+// the console uses, so the range is asserted here as well as in the page.
+void testWifiCredentialValidation() {
+  resetSettings();
+  const auto bytes = [](size_t length, char value) {
+    return Furble::ProvisionTLV::ByteString(length, static_cast<uint8_t>(value));
+  };
+
+  struct case_t {
+    const char *name;
+    bool hasSsid;
+    Furble::ProvisionTLV::ByteString ssid;
+    bool hasPsk;
+    Furble::ProvisionTLV::ByteString psk;
+    bool accepted;
+  };
+  // An empty SSID field is already refused by the TLV decoder (the field schema
+  // has a minimum of one byte), so it is not repeated as a domain case here.
+  const case_t cases[] = {
+      {"an over-long SSID", true, bytes(33, 's'), false, {}, false},
+      {"a 32-byte SSID", true, bytes(32, 's'), false, {}, true},
+      {"an open network with an empty WPA2 PSK", true, bytes(9, 's'), true, {}, true},
+      {"a WPA3-SAE passphrase of 8 bytes", true, bytes(9, 's'), true, bytes(8, 'p'), true},
+      {"a WPA2 passphrase of 63 bytes", true, bytes(9, 's'), true, bytes(63, 'p'), true},
+      {"a WPA2 passphrase of 7 bytes", true, bytes(9, 's'), true, bytes(7, 'p'), false},
+      {"a WPA3-SAE passphrase of 1 byte", true, bytes(9, 's'), true, bytes(1, 'p'), false},
+      {"a passphrase of 64 bytes", true, bytes(9, 's'), true, bytes(64, 'p'), false},
+  };
+
+  for (const auto &entry : cases) {
+    resetSettings();
+    Furble::Settings::save<std::string>(Furble::Settings::WIFI_SSID, "seed-network");
+    Furble::Settings::save<std::string>(Furble::Settings::WIFI_PSK, "seed-passphrase");
+    ProvisionBundle bundle;
+    if (entry.hasSsid) {
+      bundle.wifiSsid = entry.ssid;
+    }
+    if (entry.hasPsk) {
+      bundle.wifiPsk = entry.psk;
+    }
+    ApplyReport report;
+    const bool applied = apply(bundle, report);
+    check(applied == entry.accepted, std::string(entry.name) + " is handled as declared");
+    if (!entry.accepted) {
+      check(report.error == Furble::Provision::ApplyError::BAD_SETTING,
+            std::string(entry.name) + " reports BAD_SETTING");
+      check(report.fieldsApplied == 0, std::string(entry.name) + " is not counted as applied");
+      check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == "seed-network"
+                && Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK)
+                       == "seed-passphrase",
+            std::string(entry.name) + " changes neither credential");
+      continue;
+    }
+    if (entry.hasSsid) {
+      check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID)
+                == std::string(entry.ssid.begin(), entry.ssid.end()),
+            std::string(entry.name) + " stores the SSID");
+    }
+    if (entry.hasPsk) {
+      check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK)
+                == std::string(entry.psk.begin(), entry.psk.end()),
+            std::string(entry.name) + " stores the passphrase, including empty");
+    }
+  }
+}
+
+// Settings::save() is void, so the provisioning path reads the value back. A
+// write the NVS layer refuses must not be counted as applied or reported as
+// success.
+void testWifiCredentialStorageFailure() {
+  for (const auto type : {Furble::Settings::WIFI_SSID, Furble::Settings::WIFI_PSK}) {
+    resetSettings();
+    Furble::Settings::save<std::string>(Furble::Settings::WIFI_SSID, "seed-network");
+    Furble::Settings::save<std::string>(Furble::Settings::WIFI_PSK, "seed-passphrase");
+    ProvisionBundle bundle;
+    if (type == Furble::Settings::WIFI_SSID) {
+      bundle.wifiSsid = text("typed-network");
+    } else {
+      bundle.wifiPsk = text("typed-passphrase");
+    }
+    nvs_test_fail_set_on(1);
+    ApplyReport report;
+    check(!apply(bundle, report) && !report.ok, "a refused WiFi credential write fails the batch");
+    check(report.error == Furble::Provision::ApplyError::STORAGE_FAILURE,
+          "a refused WiFi credential write reports STORAGE_FAILURE");
+    check(report.failedSettingId == Furble::Settings::get(type).wire_id,
+          "the refused WiFi credential write names its wire id");
+    check(report.fieldsApplied == 0, "a refused WiFi credential write is not counted as applied");
+    if (type == Furble::Settings::WIFI_SSID) {
+      check(report.message == "wifi_ssid persistence failed", "the SSID failure names the key");
+      check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_SSID) == "seed-network",
+            "the previous SSID survives a refused write");
+    } else {
+      check(report.message == "wifi_psk persistence failed", "the PSK failure names the key");
+      check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK) == "seed-passphrase",
+            "the previous passphrase survives a refused write");
+    }
+  }
 }
 
 void testDedicatedMQTTFields() {
@@ -472,6 +576,8 @@ int main() {
   testDedicatedPasswordField();
   testPasswordStorageFailures();
   testDomainValidation();
+  testWifiCredentialValidation();
+  testWifiCredentialStorageFailure();
   testDedicatedMQTTFields();
   testEverySettingHasASchemaRow();
 

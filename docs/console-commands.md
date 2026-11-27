@@ -11,6 +11,12 @@ down. The release workflow does publish the `-debug` image for `m5stack-core2`,
 is also in the `esp32-s3-headless` developer hub image, which the reproducible
 workflow builds.
 
+The console is an unauthenticated local surface. Physical USB access to a debug
+image is equivalent to control of every stored credential it can write: the WiFi
+passphrase, the MQTT password, and the companion password, which gates the
+companion service. Treat a debug build on a desk as a bench device, and do not
+ship one to an untrusted holder.
+
 Open it and type `help`:
 
 ```sh
@@ -267,7 +273,11 @@ setting, its default, and when it applies.
 | `stopped` | `yes` after a terminal auth failure or an exhausted attempt bound; `wifi connect` clears it. |
 | `current`, `estimated_runtime` | Battery drain and runtime estimate when the gauge exposes current. |
 
-`wifi set ssid <ssid>` and `wifi set psk <psk>` write the credentials.
+`wifi set ssid <ssid>` and `wifi set psk <psk>` write the credentials. The
+passphrase accepts 8 to 63 characters, or an empty value for an open network. A
+1 to 7 character passphrase is refused with
+`passphrase must be empty or 8 to 63 characters`, because neither WPA2-PSK nor
+WPA3-SAE can associate with it.
 `wifi enable` and `wifi disable` persist the setting and start or stop the
 station. `wifi connect` and `wifi disconnect` act immediately, and
 `wifi forget` clears the SSID and passphrase.
@@ -406,7 +416,10 @@ On success the command prints `provision: decoded <n> bytes as hex` or
 `base64`, then one line per applied field. On failure it prints
 `error: provision: <code> at offset <n>` for a text or record decode error, or
 `error: provision: <reason>` with the failing wire id for an apply error, and
-returns 1 (`src/FurbleConsole.cpp:1173-1245`).
+returns 1 (`src/FurbleConsole.cpp:1173-1249`). A batch that stops on a refused
+NVS write also prints
+`provision: <n> field(s) applied, <m> field(s) deferred, 1 field(s) failed`, so
+the counts stay visible and no field is claimed as applied.
 
 One provisioning line must fit the console line limit. The console runs at most
 255 characters, because `esp_console_run()` copies the line into a 256-byte

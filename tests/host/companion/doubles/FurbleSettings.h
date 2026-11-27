@@ -103,13 +103,18 @@ class Settings {
   static constexpr const char *BUTTON_MODE_TWO_BUTTON_VALUE = "two-button";
   static constexpr const char *BUTTON_MODE_ONE_BUTTON_VALUE = "one-button";
   static constexpr size_t WIFI_SSID_MAX_LENGTH = 32;
+  static constexpr size_t WIFI_PSK_MIN_LENGTH = 8;
   static constexpr size_t WIFI_PSK_MAX_LENGTH = 63;
   static constexpr size_t NTP_SERVER_MAX_LENGTH = 63;
+  /** Highest TX power index: 0 is P3, 1 is P6, 2 is P9. */
+  static constexpr uint8_t TX_POWER_MAX = 2;
   /** Highest GPS_GNSS mask: GPS, BeiDou, GLONASS, Galileo, QZSS, SBAS (Ubx::GNSS_MASK_ALL). */
   static constexpr uint8_t GPS_GNSS_MAX = 0x3f;
   /** Highest GPS_PSM value: 0 off, 1 cyclic tracking, 2 on/off (Ubx::PSM_ON_OFF). */
   static constexpr uint8_t GPS_PSM_MAX = 2;
   static bool validNetworkString(type_t type, const std::string &value);
+  /** The closed theme set the UI offers and the SD importer accepts. */
+  static bool validTheme(const std::string &value);
   static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;

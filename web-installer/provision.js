@@ -36,11 +36,21 @@ var FurbleProvision = (function () {
     blobBytes: 4096,
     records: 64,
     ssidBytes: 32,
+    // WPA2-PSK and WPA3-SAE passphrases are 8 to 63 characters. An empty value
+    // is an open network, which the firmware stores on purpose.
+    pskMinBytes: 8,
     pskBytes: 63,
     companionPasswordBytes: 63,
     mqttFieldBytes: 255,
-    settingStringBytes: 63
+    settingStringBytes: 63,
+    // TX power is an index: 0 P3, 1 P6, 2 P9. Anything else is refused rather
+    // than stored and silently clamped to P3 by the settings load.
+    txPowerMax: 2
   };
+
+  // src/FurbleNetworkSettings.cpp: the closed theme set. The firmware refuses
+  // anything else, so the page never sends one.
+  var THEMES = ["Dark", "Default", "Mono Furble"];
 
   // src/FurbleSettings.cpp: the stable wire ids this step can write. Theme and
   // TX power have no dedicated provisioning tag, so they travel as SETTING
@@ -113,6 +123,24 @@ var FurbleProvision = (function () {
     return value !== undefined && value !== null;
   }
 
+  // WPA2-PSK and WPA3-SAE take 8 to 63 characters. Empty is an open network.
+  function checkPassphrase(bytes) {
+    if (bytes.length === 0) {
+      return;
+    }
+    if (bytes.length < LIMITS.pskMinBytes || bytes.length > LIMITS.pskBytes) {
+      throw new Error(
+        "Passphrase must be empty for an open network, or " +
+          LIMITS.pskMinBytes +
+          " to " +
+          LIMITS.pskBytes +
+          " UTF-8 bytes. Got " +
+          bytes.length +
+          ".",
+      );
+    }
+  }
+
   // Mirrors Settings::validMQTTString() for the two fields the page can check
   // without the broker: the URI scheme and the base topic shape.
   function validateMqttUri(text) {
@@ -167,7 +195,7 @@ var FurbleProvision = (function () {
     }
     if (present(fields.wifiPsk)) {
       var psk = utf8Bytes(fields.wifiPsk);
-      checkLength("Passphrase", psk, 0, LIMITS.pskBytes);
+      checkPassphrase(psk);
       append(record(TAG.WIFI_PSK, TYPE.STRING, psk));
     }
     if (present(fields.companionPassword)) {
@@ -208,11 +236,22 @@ var FurbleProvision = (function () {
           0,
           LIMITS.settingStringBytes,
         );
+        if (
+          setting.wireId === WIRE_ID.THEME &&
+          THEMES.indexOf(String(setting.value)) < 0
+        ) {
+          throw new Error("Theme must be " + THEMES.join(", ") + ".");
+        }
         append(settingRecord(setting.wireId, TYPE.STRING, text));
       } else if (setting.type === TYPE.U8) {
         var byte = Number(setting.value);
         if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
           throw new Error("Setting " + setting.wireId + " must be a single byte.");
+        }
+        if (setting.wireId === WIRE_ID.TX_POWER && byte > LIMITS.txPowerMax) {
+          throw new Error(
+            "TX power must be 0 (P3), 1 (P6) or 2 (P9). Got " + byte + ".",
+          );
         }
         append(settingRecord(setting.wireId, TYPE.U8, [byte]));
       } else {
@@ -612,6 +651,7 @@ var FurbleProvision = (function () {
     TAG: TAG,
     TYPE: TYPE,
     LIMITS: LIMITS,
+    THEMES: THEMES,
     WIRE_ID: WIRE_ID,
     MAX_COMMAND_CHARS: MAX_COMMAND_CHARS,
     COMMAND_PREFIX: COMMAND_PREFIX,

@@ -151,10 +151,6 @@ bool parseBool(const std::string &text, bool &value) {
   return false;
 }
 
-bool validTheme(const std::string &value) {
-  return (value == "Dark") || (value == "Default") || (value == "Mono Furble");
-}
-
 bool validButtonMode(const std::string &value) {
   return (value == Settings::BUTTON_MODE_TWO_BUTTON_VALUE)
          || (value == Settings::BUTTON_MODE_ONE_BUTTON_VALUE);
@@ -560,7 +556,7 @@ bool importSetting(const Settings::setting_t &setting, const std::string &text) 
       return true;
 
     case Settings::THEME:
-      if (!validTheme(text)) {
+      if (!Settings::validTheme(text)) {
         return false;
       }
       Settings::save<std::string>(setting.type, text);
