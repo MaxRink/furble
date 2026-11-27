@@ -109,11 +109,17 @@ and the feature matrix.
 
 Location tagging uses a GPS unit on Grove Port A. M5Stack's own receivers are
 the AT6668/CASIC family, which the $PCAS and NMEA path covers with no per-unit
-protocol code. A u-blox M10 receiver is
-detected at GPS start by a UBX-MON-VER poll and configured over UBX; any other
-receiver keeps the CASIC and NMEA path. The stored default
-baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
-`GPS Baud` for the AT6668 units.
+protocol code. A u-blox receiver is detected at GPS start by a UBX-MON-VER poll
+and configured over UBX; any other receiver keeps the CASIC and NMEA path. The
+stored default baud is 9600; select `Auto` or a fixed 115200 under `Settings` >
+`GPS` > `GPS Baud` for the AT6668 units.
+
+Which signal bands a u-blox receiver implements is measured, not assumed. After
+MON-VER names the firmware family, furble asks the receiver for the four L5
+signal keys with one read-only request: an L1-only M10 refuses it and stays on
+L1 for the session, and a dual-band F10 answers with the keys and is configured
+for both bands of each enabled constellation. The answer appears as `bands` in
+`gps ubx` and as `ubx l1` or `ubx l1+l5` on the GPS receiver page.
 
 | Unit | Chipset | Antenna | furble boards | Wiring | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -125,6 +131,7 @@ baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
 | LilyGO T-Beam Supreme M10S | u-blox MAX-M10S | SMA | Not a furble board yet | On board | Receiver supported, board not ported. See plan 318. |
 | LilyGO T-Watch Ultra | u-blox MIA-M10Q | Built in | `lilygo-twatch-ultra` | On board | Ported in plan 387. The GNSS is on the UBX path through the pin seam; the receiver is on ALDO1/BLDO1 rails the image brings up. |
 | LilyGO T-LoRa Pager | u-blox MIA-M10Q | Built in | Not a furble board yet | On board | Receiver supported, board not ported. See plan 387. |
+| Generic dual-band UART module | u-blox NEO-F10N or other F10 | Dual-band L1/L5 antenna required | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. Both bands of each constellation run together and there is no power save mode. See [ublox-neo-f10n.md](components/ublox-neo-f10n.md). |
 
 The M5Stack Core and the Waveshare ESP32-S3-ETH have no GPS UART. Grove
 Port A on the Core is the internal I2C bus that carries the IP5306 and the
@@ -137,16 +144,20 @@ The older Mini GPS/BDS Unit is end of life and runs at 9600 baud. `Auto` probes
 sentences before declaring the receiver present. If probing fails, furble marks
 the receiver absent, cuts the external rail, and retries once after 60 seconds.
 
-The u-blox M10 support covers detection, NAV-PVT fix and accuracy,
-constellation selection, update rate, dynamic model, cyclic tracking and on/off
-power save, RXM-PMREQ software standby, AssistNow Autonomous and UPD-SOS
-save-on-shutdown. It is verified against a virtual M10 in the simulator only;
-no M10 hardware has been tested. A board that keeps the receiver's V_BCKP
-supplied defines `FURBLE_GPS_BACKUP_SUPPLY`; no supported board does.
+The u-blox support covers detection, NAV-PVT fix and accuracy, constellation
+selection, signal band capability, update rate, dynamic model, cyclic tracking
+and on/off power save where the firmware has it, RXM-PMREQ software standby,
+AssistNow Autonomous and UPD-SOS save-on-shutdown. The M10 firmware implements
+L1 signals only; the F10 firmware adds GPS L5, Galileo E5a, BeiDou B2a and QZSS
+L5, and has no GLONASS or power-save keys at all. It is verified against a
+virtual receiver in the simulator only, both variants; no u-blox hardware has
+been tested. A board that keeps the receiver's V_BCKP supplied defines
+`FURBLE_GPS_BACKUP_SUPPLY`; no supported board does.
 
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
-checked against the firmware GPS support in `src/FurbleGPS.cpp`. The u-blox
-documents are listed in `plans/implemented/321-ublox-m10-driver.md`.
+checked against the firmware GPS support in `src/FurbleGPS.cpp`. The u-blox M10
+documents are listed in `plans/implemented/321-ublox-m10-driver.md`, and the
+dual-band ones in `plans/512-dual-band-l5.md`.
 
 ## Related references
 

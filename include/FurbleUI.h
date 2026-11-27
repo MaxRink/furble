@@ -1399,7 +1399,7 @@ class UI {
    *
    * A u-blox receiver that reports no power save support has no CFG-PM group
    * at all (F10 SPG 6.00 IFD UBX-23002975 R02, 4.9; NEO-F10N integration manual
-   * UBXDOC-963802114-12193 R04, migration table, page 72), so offering the
+   * UBXDOC-963802114-12193 R04, appendix migration table, page 64), so offering the
    * control would promise a setting the receiver refuses. The CASIC and NMEA
    * receivers keep the control: the AT6668 honors $PCAS12 standby.
    * Runs when the GPS page opens, which is after receiver detection.

@@ -477,7 +477,7 @@ constexpr Caps CAPS_M10 = {BAND_L1, true, true, FAMILY_M10};
  * The F10 interface description has no CFG-PM group at all, and the module
  * manual states that power save is not supported while hardware backup and
  * software standby are (NEO-F10N integration manual UBXDOC-963802114-12193
- * R04, migration table, page 72). Its CFG-SIGNAL table lists no GLONASS key
+ * R04, appendix migration table, page 64). Its CFG-SIGNAL table lists no GLONASS key
  * (F10-IFD 4.9.20 pages 158 and 159).
  */
 constexpr Caps CAPS_F10 = {BAND_L1 | BAND_L5, false, false, FAMILY_F10};
@@ -518,7 +518,7 @@ struct PlanSummary {
    *
    * The F10 firmware has no CFG-PM group and its module manual states that
    * power save is not supported (NEO-F10N integration manual
-   * UBXDOC-963802114-12193 R04, migration table, page 72), so neither the
+   * UBXDOC-963802114-12193 R04, appendix migration table, page 64), so neither the
    * mode nor the period key is written.
    */
   bool psm_unsupported;

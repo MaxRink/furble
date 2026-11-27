@@ -233,12 +233,26 @@ protocol core.
   fields the V6.3.2 section 2.7.4 and V4.2.0.3 section 1.6.4 formats share;
   never go back to a short sentence, and never write one by hand in the
   driver.
-- `GpsUbx` (`Furble::Ubx`) is the u-blox M10 codec: framing, Fletcher
-  checksum, `scan()`, the resynchronising `Stream`, every message furble uses,
-  `Detect`, the tick-wrap-safe `Settle` gate and `plan()`, which turns the GPS
-  settings into configuration keys under the M10 rules. Every message and key
-  cites the SPG 5.10 interface description section; keep that when adding
-  one. `GpsDemux` splits the shared UART stream into NMEA, CASIC and UBX
+- `GpsUbx` (`Furble::Ubx`) is the u-blox codec: framing, Fletcher checksum,
+  `scan()`, the resynchronising `Stream`, every message furble uses, `Detect`,
+  `CapsProbe`, the tick-wrap-safe `Settle` gate and `plan()`, which turns the
+  GPS settings into configuration keys under the receiver's rules. Every
+  message and key cites an interface description section and page; two are in
+  play, "IFD" for the M10 SPG 5.10 firmware and "F10-IFD" for the F10 SPG 6.00
+  one, and an added message or key must say which. The 4.9.20 table of the F10
+  document is the only place the four L5 signal keys are written down.
+- A band is a receiver capability, never a setting: the F10 firmware cannot run
+  one band of a constellation (NEO-F10N integration manual 2.1.3 page 10), so
+  `Caps` carries `BAND_*`, `plan()` writes the L5 rows only for a receiver that
+  advertised them, and an L1 receiver gets no L5 key written or deleted. One
+  unknown key refuses the whole VALSET it travels in, so a wrong guess costs
+  the batch, not one key (M10 IFD 3.10.5). `CAPS_UNKNOWN` grants nothing new and
+  takes nothing away, which keeps an unnamed but working M10-generation receiver
+  configuring as it always did.
+- A dual-band receiver has no GLONASS and no CFG-PM key at all (F10-IFD 4.9.20
+  pages 158 and 159; the configuration reference has no CFG-PM group), so
+  `gnssValid(mask, caps)` refuses GLONASS before it is written and `plan()`
+  leaves the power key list empty rather than sending an empty VALSET. `GpsDemux` splits the shared UART stream into NMEA, CASIC and UBX
   pieces and is the only demultiplexer; the driver dispatches its pieces.
   Both are covered by `gps-ubx` and fuzzed by `gps_ubx_fuzz`. `plan()` builds
   the signal keys from one table, and the driver keeps only its

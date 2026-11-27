@@ -55,11 +55,13 @@ by code review and the FauxNY test camera.
 
 Location tagging uses an M5Stack GPS unit on Grove Port A. M5Stack's own
 receivers are the AT6668/CASIC family, which the $PCAS and NMEA path covers with
-no per-unit protocol code. A u-blox M10 receiver is detected at GPS start by a
+no per-unit protocol code. A u-blox receiver is detected at GPS start by a
 UBX-MON-VER poll and configured over UBX; any other receiver keeps the CASIC and
-NMEA path. The stored default
-baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
-`GPS Baud` for the AT6668 units.
+NMEA path. The stored default baud is 9600; select `Auto` or a fixed 115200
+under `Settings` > `GPS` > `GPS Baud` for the AT6668 units. Which signal bands a
+u-blox receiver implements is measured from the receiver itself: an L1-only M10
+refuses the L5 capability request and stays on L1, and a dual-band F10 answers
+and runs both bands of each constellation it enables.
 
 | Unit | Chipset | Antenna | furble boards | Wiring | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -71,6 +73,7 @@ baud is 9600; select `Auto` or a fixed 115200 under `Settings` > `GPS` >
 | LilyGO T-Beam Supreme M10S | u-blox MAX-M10S | SMA | Not a furble board yet | On board | Receiver supported, board not ported. See plan 318. |
 | LilyGO T-Watch Ultra | u-blox MIA-M10Q | Built in | `lilygo-twatch-ultra` | On board | Ported in plan 387. The GNSS is on the UBX path through the pin seam; the receiver is on ALDO1/BLDO1 rails the image brings up. |
 | LilyGO T-LoRa Pager | u-blox MIA-M10Q | Built in | Not a furble board yet | On board | Receiver supported, board not ported. See plan 387. |
+| Generic dual-band UART module | u-blox NEO-F10N or other F10 | Dual-band L1/L5 antenna required | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. Both bands of each constellation run together, and there is no power save mode. |
 
 The M5Stack Core and the Waveshare ESP32-S3-ETH have no GPS UART. Grove
 Port A on the Core is the internal I2C bus that carries the IP5306 and the

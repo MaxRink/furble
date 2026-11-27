@@ -185,8 +185,8 @@ void planInvariants(std::mt19937 &rng, uint32_t seed, uint32_t iteration) {
   request.psm = static_cast<uint8_t>(rng() % 4);
   request.period_s = rng() % 60;
   request.ana = (rng() & 1) != 0;
-  request.caps.bands = static_cast<uint8_t>((rng() & 1) ? (Ubx::BAND_L1 | Ubx::BAND_L5)
-                                                        : Ubx::BAND_L1);
+  request.caps.bands =
+      static_cast<uint8_t>((rng() & 1) ? (Ubx::BAND_L1 | Ubx::BAND_L5) : Ubx::BAND_L1);
   request.caps.psm = (rng() & 1) != 0;
   request.caps.glo = (rng() & 1) != 0;
   request.caps.family = static_cast<uint8_t>(rng() % 3);

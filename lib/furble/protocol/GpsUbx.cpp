@@ -374,12 +374,12 @@ Caps capsFromVersion(const MonVer &ver) {
   const std::string protocol = ver.field("PROTVER");
   const std::string firmware = ver.field("FWVER");
   const std::string module = ver.field("MOD");
-  if ((protocol == "40.00") || (firmware.compare(0, 8, "SPG 6.00") == 0)
-      || (module == "NEO-F10N") || (module == "MAX-F10S") || (module == "DAN-F10N")) {
+  if ((protocol == "40.00") || (firmware.compare(0, 8, "SPG 6.00") == 0) || (module == "NEO-F10N")
+      || (module == "MAX-F10S") || (module == "DAN-F10N")) {
     return CAPS_F10;
   }
-  if ((protocol == "34.10") || (firmware.compare(0, 8, "SPG 5.10") == 0)
-      || (module == "MAX-M10S") || (module == "MIA-M10Q")) {
+  if ((protocol == "34.10") || (firmware.compare(0, 8, "SPG 5.10") == 0) || (module == "MAX-M10S")
+      || (module == "MIA-M10Q")) {
     return CAPS_M10;
   }
   return CAPS_UNKNOWN;
@@ -546,8 +546,8 @@ namespace {
 
 /** Major constellations in a mask: GPS, Galileo, BeiDou, GLONASS. */
 int majors(uint8_t mask) {
-  return ((mask & GNSS_MASK_GPS) != 0) + ((mask & GNSS_MASK_GAL) != 0) + ((mask & GNSS_MASK_BDS) != 0)
-         + ((mask & GNSS_MASK_GLO) != 0);
+  return ((mask & GNSS_MASK_GPS) != 0) + ((mask & GNSS_MASK_GAL) != 0)
+         + ((mask & GNSS_MASK_BDS) != 0) + ((mask & GNSS_MASK_GLO) != 0);
 }
 
 }  // namespace
@@ -607,14 +607,13 @@ Plan plan(const Request &request) {
   // the B1I exclusion cannot apply.
   const bool b1c = bds && (caps.dualBand() || glo);
   out.bands = out.gnss_refused ? 0 : static_cast<uint8_t>(caps.bands & (BAND_L1 | BAND_L5));
-  out.b1i_refused =
-      caps.dualBand() && bds && ((request.gnss_set & GNSS_MASK_BDS) != 0);
+  out.b1i_refused = caps.dualBand() && bds && ((request.gnss_set & GNSS_MASK_BDS) != 0);
 
   uint8_t psm = (request.psm <= PSM_ON_OFF) ? request.psm : PSM_OFF;
   if ((psm != PSM_OFF) && !caps.psm) {
     // The F10 firmware has no CFG-PM group at all (F10-IFD 4.9) and its module
     // manual states that power save is not supported (NEO-F10N integration
-    // manual UBXDOC-963802114-12193 R04, migration table, page 72).
+    // manual UBXDOC-963802114-12193 R04, appendix migration table, page 64).
     out.psm_unsupported = true;
     psm = PSM_OFF;
   }

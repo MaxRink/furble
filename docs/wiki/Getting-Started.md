@@ -89,10 +89,12 @@ remote. The GPS/BDS Unit v1.1 (AT6668) needs the baud rate set to 115200 under
 `Settings` > `GPS` > `GPS baud 115200`.
 
 The AT6668 units are all supported. For weak or indoor reception, the Unit-GPS
-with the external SMA antenna is the recommended drop in. A u-blox M10 receiver
-(MAX-M10S, MIA-M10Q or another M10 UART module) is detected automatically and
-configured over UBX; select `Auto` baud for it. M10 support is
-simulator-tested and hardware-untested. If the receiver has
+with the external SMA antenna is the recommended drop in. A u-blox receiver
+(MAX-M10S, MIA-M10Q or another M10 UART module, or a dual-band NEO-F10N) is
+detected automatically and configured over UBX; select `Auto` baud for it. A
+dual-band part needs a dual-band L1/L5 antenna and runs both bands of each
+constellation it enables. u-blox support is simulator-tested and
+hardware-untested. If the receiver has
 no fresh fix and the companion app is connected with phone GPS enabled, furble
 uses the phone fix. The phone also sends its horizontal accuracy, which furble
 keeps with the fix; the `255` sentinel means unknown rather than a zero-metre

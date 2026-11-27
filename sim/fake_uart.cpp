@@ -807,11 +807,10 @@ void furble_sim_uart_set_model(const char *model,
         dual ? "NEO-F10N" : ((receiverModel == "m10-mia") ? "MIA-M10Q" : "MAX-M10S");
     // The dual-band firmware implements the four L5 keys, has no CFG-PM group
     // and no GLONASS key (F10 IFD UBX-23002975 R02, 4.9.20 pages 158 and 159;
-    // NEO-F10N integration manual UBXDOC-963802114-12193 R04, migration table
-    // page 72). The probe is what discovers the difference.
-    m10Options.bands = dual
-                           ? static_cast<uint8_t>(Furble::Ubx::BAND_L1 | Furble::Ubx::BAND_L5)
-                           : Furble::Ubx::BAND_L1;
+    // NEO-F10N integration manual UBXDOC-963802114-12193 R04, appendix
+    // migration table, page 64). The probe is what discovers the difference.
+    m10Options.bands = dual ? static_cast<uint8_t>(Furble::Ubx::BAND_L1 | Furble::Ubx::BAND_L5)
+                            : Furble::Ubx::BAND_L1;
     m10.reset(m10Options, Furble::Sim::clockMillis());
     if (!railOn) {
       m10.setPower(false, Furble::Sim::clockMillis());

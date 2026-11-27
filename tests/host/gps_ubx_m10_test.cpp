@@ -348,7 +348,7 @@ void resetDual(VirtualM10 &m10, uint32_t now) {
  * plan that splits the bands of one constellation (NEO-F10N integration manual
  * UBXDOC-963802114-12193 R04, 2.1.3 page 10); and it has neither a CFG-PM key
  * nor a GLONASS key (same interface description 4.9, and the module manual's
- * migration table, page 72).
+ * appendix migration table, page 64).
  */
 void testDualBandVariant() {
   // MON-VER tells the two apart: protocol 34.10 against 40.00.
@@ -387,11 +387,23 @@ void testDualBandVariant() {
   for (const uint32_t key : l5) {
     VirtualM10 fresh;
     fresh.reset({}, 0);
-    check(acked(send(fresh, Ubx::valSet(Ubx::LAYER_RAM, {{key, 1}}), 10), false),
+    check(acked(send(fresh,
+                     Ubx::valSet(Ubx::LAYER_RAM,
+                                 {
+                                     {key, 1}
+    }),
+                     10),
+                false),
           "an L1 receiver refuses an L5 signal key");
     VirtualM10 freshDual;
     resetDual(freshDual, 0);
-    check(acked(send(freshDual, Ubx::valSet(Ubx::LAYER_RAM, {{key, 1}}), 10), true),
+    check(acked(send(freshDual,
+                     Ubx::valSet(Ubx::LAYER_RAM,
+                                 {
+                                     {key, 1}
+    }),
+                     10),
+                true),
           "a dual-band receiver accepts an L5 signal key");
     check(freshDual.value(key) == 1, "the dual-band receiver defaults the L5 key on");
   }
@@ -410,11 +422,29 @@ void testDualBandVariant() {
                    10),
               false),
         "splitting the two GPS bands is refused");
-  check(acked(send(plan, Ubx::valSet(Ubx::LAYER_RAM, {{Ubx::Key::SIGNAL_BDS_B1, 1}}), 20), false),
+  check(acked(send(plan,
+                   Ubx::valSet(Ubx::LAYER_RAM,
+                               {
+                                   {Ubx::Key::SIGNAL_BDS_B1, 1}
+  }),
+                   20),
+              false),
         "BeiDou B1I is refused on a dual-band receiver");
-  check(acked(send(plan, Ubx::valSet(Ubx::LAYER_RAM, {{Ubx::Key::SIGNAL_GLO_ENA, 1}}), 30), false),
+  check(acked(send(plan,
+                   Ubx::valSet(Ubx::LAYER_RAM,
+                               {
+                                   {Ubx::Key::SIGNAL_GLO_ENA, 1}
+  }),
+                   30),
+              false),
         "GLONASS is refused on a dual-band receiver");
-  check(acked(send(plan, Ubx::valSet(Ubx::LAYER_RAM, {{Ubx::Key::PM_OPERATEMODE, 2}}), 40), false),
+  check(acked(send(plan,
+                   Ubx::valSet(Ubx::LAYER_RAM,
+                               {
+                                   {Ubx::Key::PM_OPERATEMODE, 2}
+  }),
+                   40),
+              false),
         "power save is refused on a dual-band receiver");
   // The BandExclusion rule is not what refused those: the keys do not exist.
   check(!plan.hasBbr(Ubx::Key::SIGNAL_GLO_ENA), "the refused writes stored nothing");
@@ -422,21 +452,21 @@ void testDualBandVariant() {
   // A whole dual-band signal batch, as the driver builds it, is accepted and
   // reads back as written.
   const std::vector<Ubx::KeyValue> batch = {
-      {Ubx::Key::SIGNAL_GPS_ENA,    1},
-      {Ubx::Key::SIGNAL_GPS_L1CA,   1},
-      {Ubx::Key::SIGNAL_GPS_L5,     1},
-      {Ubx::Key::SIGNAL_GAL_ENA,    1},
-      {Ubx::Key::SIGNAL_GAL_E1,     1},
-      {Ubx::Key::SIGNAL_GAL_E5A,    1},
-      {Ubx::Key::SIGNAL_BDS_ENA,    1},
-      {Ubx::Key::SIGNAL_BDS_B1C,    1},
-      {Ubx::Key::SIGNAL_BDS_B2A,    1},
-      {Ubx::Key::SIGNAL_QZSS_ENA,   1},
-      {Ubx::Key::SIGNAL_QZSS_L1CA,  1},
-      {Ubx::Key::SIGNAL_QZSS_L5,    1},
-      {Ubx::Key::SIGNAL_QZSS_L1S,   1},
-      {Ubx::Key::SIGNAL_SBAS_ENA,   1},
-      {Ubx::Key::SIGNAL_SBAS_L1CA,  1},
+      {Ubx::Key::SIGNAL_GPS_ENA,   1},
+      {Ubx::Key::SIGNAL_GPS_L1CA,  1},
+      {Ubx::Key::SIGNAL_GPS_L5,    1},
+      {Ubx::Key::SIGNAL_GAL_ENA,   1},
+      {Ubx::Key::SIGNAL_GAL_E1,    1},
+      {Ubx::Key::SIGNAL_GAL_E5A,   1},
+      {Ubx::Key::SIGNAL_BDS_ENA,   1},
+      {Ubx::Key::SIGNAL_BDS_B1C,   1},
+      {Ubx::Key::SIGNAL_BDS_B2A,   1},
+      {Ubx::Key::SIGNAL_QZSS_ENA,  1},
+      {Ubx::Key::SIGNAL_QZSS_L1CA, 1},
+      {Ubx::Key::SIGNAL_QZSS_L5,   1},
+      {Ubx::Key::SIGNAL_QZSS_L1S,  1},
+      {Ubx::Key::SIGNAL_SBAS_ENA,  1},
+      {Ubx::Key::SIGNAL_SBAS_L1CA, 1},
   };
   check(acked(send(plan, Ubx::valSet(Ubx::LAYER_RAM | Ubx::LAYER_BBR, batch), 50), true),
         "a dual-band signal batch is accepted");

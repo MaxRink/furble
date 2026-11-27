@@ -230,9 +230,9 @@ void GPS::configureUbx(void) {
     ESP_LOGW(LOG_TAG, "GPS AssistNow Autonomous is not supported with BeiDou B1C, left off");
   }
   if (plan.bands != 0) {
-    ESP_LOGI(LOG_TAG, "GPS signals: %s, %s", (plan.bands & Ubx::BAND_L5) != 0 ? "L1 and L5" : "L1",
-             (plan.bands & Ubx::BAND_L5) != 0 ? "both bands of each enabled constellation"
-                                              : "L1 only");
+    ESP_LOGI(
+        LOG_TAG, "GPS signals: %s, %s", (plan.bands & Ubx::BAND_L5) != 0 ? "L1 and L5" : "L1",
+        (plan.bands & Ubx::BAND_L5) != 0 ? "both bands of each enabled constellation" : "L1 only");
   }
 
   constexpr uint8_t LAYERS = Ubx::LAYER_RAM | Ubx::LAYER_BBR;
@@ -442,8 +442,8 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       // A refused CFG-VALGET while the capability probe is out is the L1
       // answer: the firmware does not know one of the L5 keys (M10 IFD 3.10.4
       // page 53, F10-IFD 3.10.4 pages 54 and 55).
-      if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING)
-          && (ack.cls == Ubx::CLASS_CFG) && (ack.id == Ubx::ID_CFG_VALGET)) {
+      if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING) && (ack.cls == Ubx::CLASS_CFG)
+          && (ack.id == Ubx::ID_CFG_VALGET)) {
         m_CapsAnswerL5 = false;
         m_CapsAnswered = true;
         return;
@@ -466,8 +466,8 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
       uint8_t layers = 0;
       std::vector<Ubx::KeyValue> items;
       bool l5 = false;
-      if (Ubx::parseValSet(m_ConfigInFlight->payload.data(), m_ConfigInFlight->payload.size(), layers,
-                           items)) {
+      if (Ubx::parseValSet(m_ConfigInFlight->payload.data(), m_ConfigInFlight->payload.size(),
+                           layers, items)) {
         for (const auto &item : items) {
           l5 = l5 || Ubx::isL5Key(item.key);
         }

@@ -45,7 +45,7 @@ assert m10.ram.10310020 1
 assert gps.ubx.gnss 9
 # No CFG-PM group on this firmware: power save stays off and no PM key is sent,
 # which is why the receiver does not NAK the power batch (F10 interface
-# description 4.9; module manual, migration table, page 72).
+# description 4.9; module manual, appendix migration table, page 64).
 assert gps.ubx.psm 0
 assert-eventually 5000 gps.source uart
 assert gps.from_pvt 1

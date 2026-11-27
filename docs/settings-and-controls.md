@@ -176,13 +176,29 @@ deadline. In both cases a silent receiver is reported as absent, the external
 rail is dropped, and furble retries once after 60 seconds. The AT6668 path has
 simulator coverage but has not yet been verified against a live unit.
 
-A u-blox M10 receiver (MAX-M10S, MIA-M10Q or another M10 module) is found by a
-MON-VER poll when GPS starts and configured over UBX instead of `$PCAS`:
-Update rate, Constellation, Platform, GPS Signals, GPS Power Save and GPS
-AssistNow become M10 configuration keys written to its RAM and backup memory
-and read back. Standby uses the receiver's software standby, and Hot restart is
-a UBX restart. Any other receiver keeps the CASIC path unchanged. The M10 path
-is simulator-tested and hardware-untested.
+A u-blox receiver (MAX-M10S, MIA-M10Q or another M10 module, or a dual-band
+NEO-F10N) is found by a MON-VER poll when GPS starts and configured over UBX
+instead of `$PCAS`: Update rate, Constellation, Platform, GPS Signals, GPS Power
+Save and GPS AssistNow become UBX configuration keys written to its RAM and
+backup memory and read back. Standby uses the receiver's software standby, and
+Hot restart is a UBX restart. Any other receiver keeps the CASIC path unchanged.
+The UBX path is simulator-tested and hardware-untested.
+
+Which signal bands the receiver implements comes from the receiver, not from a
+setting. After MON-VER names the firmware family, furble asks for the four L5
+signal keys with one read-only request. An L1-only M10 refuses it and stays on
+L1. A dual-band F10 answers, and the planner then runs both bands of every
+constellation it enables: the two bands of a constellation cannot be enabled
+apart on that firmware, so there is no L1-only option to offer. Two controls
+follow the same answer:
+
+- The GPS Power Save row is refused for a receiver with no power save mode, so
+  a dual-band part runs at full power and the console says
+  `power_save: off (not implemented on this receiver)`. The GPS page's own
+  power controls are disabled in that case rather than promising a standby the
+  receiver does not have.
+- The receiver diagnostics page shows `ubx l1` or `ubx l1+l5`, with `(guess)`
+  until the receiver has confirmed the band.
 
 ### Time
 

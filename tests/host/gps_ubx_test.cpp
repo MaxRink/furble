@@ -544,8 +544,8 @@ void testPlan() {
   check(Ubx::plan(onoff).psm == Ubx::PSM_OFF, "unknown PSM value is off");
 
   // An invalid mask changes no signal and keeps the preset.
-  Ubx::Request bad = {0,      0xff, Ubx::GNSS_MASK_QZSS, Ubx::GNSS_MASK_ALL,
-                      Ubx::PSM_OFF, 10, true, Ubx::CAPS_M10};
+  Ubx::Request bad = {0,  0xff, Ubx::GNSS_MASK_QZSS, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF,
+                      10, true, Ubx::CAPS_M10};
   plan = Ubx::plan(bad);
   check(plan.gnss_refused && plan.signals.empty() && !listed(plan.unset, Ubx::Key::SIGNAL_GPS_ENA),
         "invalid mask leaves the signals alone");
@@ -656,7 +656,7 @@ void testDemux() {
  * NEO-F10N has, B1C and B2a with no B1I (data sheet UBX-23002117 R05, Table 4
  * page 5); its rate ceiling, 20 Hz for one constellation and 10 Hz for more
  * (data sheet Table 2 and Table 3 page 4); and its missing power save modes
- * (integration manual, migration table, page 72).
+ * (integration manual, appendix migration table, page 64).
  */
 void testDualBand() {
   check(Ubx::l5Keys().size() == 4 && Ubx::l5Keys()[0] == 0x10310004
@@ -664,8 +664,7 @@ void testDualBand() {
             && Ubx::l5Keys()[3] == 0x10310017,
         "the four L5 signal keys are the F10 Table 46 ids");
   check(Ubx::isL5Key(Ubx::Key::SIGNAL_GPS_L5) && Ubx::isL5Key(Ubx::Key::SIGNAL_QZSS_L5)
-            && !Ubx::isL5Key(Ubx::Key::SIGNAL_GPS_L1CA)
-            && !Ubx::isL5Key(Ubx::Key::SIGNAL_BDS_B1C),
+            && !Ubx::isL5Key(Ubx::Key::SIGNAL_GPS_L1CA) && !Ubx::isL5Key(Ubx::Key::SIGNAL_BDS_B1C),
         "isL5Key names only the L5 band keys");
 
   // MON-VER names the family: protocol 34.10 is the M10 firmware, 40.00 the
@@ -712,9 +711,14 @@ void testDualBand() {
         "the M10 ceilings are unchanged");
 
   // A dual-band plan writes both bands of each enabled constellation.
-  Ubx::Request dual = {0, 0xff, Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL, Ubx::GNSS_MASK_GPS
-                                                                          | Ubx::GNSS_MASK_GAL,
-                       Ubx::PSM_OFF, 10, true, Ubx::CAPS_F10};
+  Ubx::Request dual = {0,
+                       0xff,
+                       Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL,
+                       Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL,
+                       Ubx::PSM_OFF,
+                       10,
+                       true,
+                       Ubx::CAPS_F10};
   Ubx::Plan plan = Ubx::plan(dual);
   check(plan.bands == (Ubx::BAND_L1 | Ubx::BAND_L5), "a dual-band plan reports both bands");
   check(find(plan.signals, Ubx::Key::SIGNAL_GPS_L5) == 1
@@ -767,8 +771,14 @@ void testDualBand() {
         "a GLONASS mask on a dual-band receiver configures nothing");
 
   // The rate ceiling follows the bands, not the mask alone.
-  Ubx::Request fast = {50, 0xff, Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL, Ubx::GNSS_MASK_ALL,
-                       Ubx::PSM_OFF, 10, true, Ubx::CAPS_F10};
+  Ubx::Request fast = {50,
+                       0xff,
+                       Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL,
+                       Ubx::GNSS_MASK_ALL,
+                       Ubx::PSM_OFF,
+                       10,
+                       true,
+                       Ubx::CAPS_F10};
   plan = Ubx::plan(fast);
   check(plan.rate_clamped && plan.rate_ms == 100,
         "20 Hz on a multi-GNSS dual-band set is clamped to 10 Hz");
@@ -777,8 +787,8 @@ void testDualBand() {
   check(!plan.rate_clamped && plan.rate_ms == 50, "20 Hz on one dual-band constellation stands");
 
   // An L1 receiver is never sent an L5 key, not even as a delete.
-  Ubx::Request l1 = {0, 0xff, Ubx::GNSS_MASK_ALL, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF, 10, true,
-                     Ubx::CAPS_M10};
+  Ubx::Request l1 = {0,  0xff, Ubx::GNSS_MASK_ALL, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF,
+                     10, true, Ubx::CAPS_M10};
   plan = Ubx::plan(l1);
   check(plan.bands == Ubx::BAND_L1, "an L1 plan reports L1");
   bool anyL5 = false;
@@ -789,8 +799,7 @@ void testDualBand() {
     anyL5 = anyL5 || Ubx::isL5Key(key);
   }
   check(!anyL5, "an L1 receiver gets no L5 key, written or deleted");
-  check(find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 1
-            && !plan.power.empty(),
+  check(find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 1 && !plan.power.empty(),
         "an L1 receiver keeps GLONASS and power save");
 
   // The capability probe: two polls, then the L1 answer when nothing arrives.

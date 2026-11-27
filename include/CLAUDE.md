@@ -122,6 +122,10 @@ Public headers for the app layer in src/, one header per module
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
   documented public methods. Keep their wire format comments next to the API.
   `GPS::getBackend()` and `getUbxStatus()` are the UBX receiver surface.
+  `ubx_status_t.bands` is the measured signal band capability (`Ubx::BAND_*`),
+  with `bands_probed`, `family` and `psm_supported` beside it; `m_UbxCaps`
+  holds it under `m_UbxMutex`, and `m_CapsProbe` is GPS-task state like
+  `m_Detect`. Nothing outside the GPS task may write either.
   `m_Backend` is written only by the GPS task and by `enable()`/`disable()`
   with the task parked; the UBX identity, SOS and verify results sit under
   `m_UbxMutex`, and the NAV-PVT under `m_GPSMutex` with the parser it
