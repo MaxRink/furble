@@ -547,10 +547,11 @@ const board_caps_t TBEAM_SUPREME = {.mcu = "esp32s3",
                                     .ble = true,
                                     .ir = false,
                                     .sd = false,
-                                    .audio = false,
+                                    // The board carries a PCF8563-class chip, but
+                                    // this image reads no calendar, so rtc is the
+                                    // fitted-chip question and the row's own
+                                    // rtcOnBus stays false below.
                                     .rtc = true,
-                                    .rtcBatteryBacked = false,
-                                    .timedWake = "none",
                                     .vbus = true,
                                     .poe = false,
                                     // The row the firmware compiles: no RTC is
@@ -558,8 +559,6 @@ const board_caps_t TBEAM_SUPREME = {.mcu = "esp32s3",
                                     // calendar is not on the modelled bus.
                                     .rtcOnBus = false,
                                     .canPowerOff = true,
-                                    .ledActiveLow = false,
-                                    .irMarkLow = false,
                                     .gpsPinSource = "profile",
                                     .gpsRxPin = 9,
                                     .gpsTxPin = 8,
