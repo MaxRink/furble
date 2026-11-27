@@ -5918,6 +5918,24 @@ std::string UI::simQueryState(const char *key) {
   }
 #endif
 
+  if (query == "disabled_rollers") {
+    // How many rollers the current page holds in the disabled state. A setting
+    // page whose controls a receiver capability must not remove stays at zero,
+    // so a scenario can prove the control is still live on that receiver.
+    lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
+    if (page == nullptr) {
+      return "0";
+    }
+    uint32_t disabled = 0;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(page); i++) {
+      lv_obj_t *child = lv_obj_get_child(page, i);
+      if ((child != nullptr) && lv_obj_check_type(child, &lv_roller_class)
+          && lv_obj_has_state(child, LV_STATE_DISABLED)) {
+        disabled++;
+      }
+    }
+    return std::to_string(disabled);
+  }
   if (query == "page") {
     lv_obj_t *page = lv_menu_get_cur_main_page(m_MainMenu.main);
     if (page == m_MainMenu.page) {
@@ -9837,28 +9855,6 @@ void UI::showGPSWidgets(status_t *status, bool show) {
   }
 }
 
-/**
- * Disable the GPS power-save controls a receiver cannot honor.
- *
- * The receiver is identified after boot, so this runs when the GPS page opens.
- * Only a u-blox receiver that answered the capability probe without power save
- * support is refused the control; an unidentified receiver, the CASIC path and
- * the NMEA path keep the control they always had.
- */
-void UI::updateGPSPowerCapability(void) {
-  auto &gps = GPS::getInstance();
-  const auto ubx = gps.getUbxStatus();
-  const bool supported =
-      (gps.getBackend() != GPS::backend_t::UBX) || !ubx.bands_probed || ubx.psm_supported;
-  for (auto *widget : m_Status.gpsPowerWidgets) {
-    if (supported) {
-      lv_obj_remove_state(widget, LV_STATE_DISABLED);
-    } else {
-      lv_obj_add_state(widget, LV_STATE_DISABLED);
-    }
-  }
-}
-
 void UI::showIMUWidgets(bool show) {
   for (const auto *name : {m_LevelStr, m_IMUDataStr}) {
     auto &menu = m_Menu.at(name);
@@ -9892,15 +9888,6 @@ void UI::addGPSMenu(const menu_t &parent) {
 
   addSettingItem(menu.page, NULL, Settings::GPS);
   lv_menu_set_load_page_event(menu.main, menu.button, menu.page);
-  // The receiver is identified after boot, so the power-save gate is applied
-  // when the page is opened rather than when it is built.
-  lv_obj_add_event_cb(
-      menu.button,
-      [](lv_event_t *e) {
-        auto *ui = static_cast<UI *>(lv_event_get_user_data(e));
-        ui->updateGPSPowerCapability();
-      },
-      LV_EVENT_CLICKED, this);
 
   // add GPS baud control as a roller: Auto detects the receiver, or pin a rate
   const uint32_t storedBaud = Settings::load<Settings::GPS_BAUD>();
@@ -10035,9 +10022,6 @@ void UI::addGPSPowerMenu(const menu_t &parent) {
     lv_roller_set_visible_row_count(roller, 2);
     lv_roller_set_selected(roller, selected, LV_ANIM_OFF);
     lv_obj_add_event_cb(roller, handler, LV_EVENT_VALUE_CHANGED, &m_Status);
-    // Both rollers configure a receiver power save mode, so both follow the
-    // capability of the receiver that was detected.
-    m_Status.gpsPowerWidgets.push_back(roller);
   };
 
   const uint8_t policy = Settings::load<Settings::GPS_POWER>();

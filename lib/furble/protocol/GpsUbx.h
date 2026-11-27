@@ -431,7 +431,7 @@ constexpr uint8_t PSM_ON_OFF = 2;
  * bands of one constellation cannot be enabled apart: both are enabled or
  * disabled together, and an unsupported combination is answered with
  * UBX-ACK-NAK (NEO-F10N integration manual UBXDOC-963802114-12193 R04, 2.1.3
- * page 10 and the data sheet UBX-23002117 R05, 1.3 page 4).
+ * page 10 and the data sheet UBX-23002117 R05, 1.3 page 5).
  */
 constexpr uint8_t BAND_L1 = 0x01;
 constexpr uint8_t BAND_L5 = 0x02;
@@ -598,9 +598,9 @@ uint8_t maxRateHz(uint8_t mask);
  * Highest navigation rate for a mask on a receiver with these bands.
  *
  * An L1 receiver keeps the M10 figures (MAX-M10S data sheet UBX-20035208 R08,
- * Table 2 page 4). A dual-band receiver takes the F10 figures: 20 Hz for one
+ * Table 2 page 5). A dual-band receiver takes the F10 figures: 20 Hz for one
  * constellation and 10 Hz for more (NEO-F10N data sheet UBX-23002117 R05,
- * Table 2 and Table 3 page 4).
+ * Table 2 and Table 3 page 5).
  */
 uint8_t maxRateHz(uint8_t mask, const Caps &caps);
 
@@ -645,8 +645,8 @@ class Detect {
  * CFG-VALGET response by a receiver whose firmware knows them, and refused
  * with UBX-ACK-NAK by one whose firmware does not: both interface
  * descriptions state that this message NAKs when any key is unknown to the
- * firmware (IFD 3.10.4 page 53, F10-IFD 3.10.4 pages 54 and 55). The poll
- * writes nothing and needs no reset.
+ * firmware (IFD 3.10.4 page 53, F10-IFD 3.10.4 page 55 for VALGET and 3.10.3 page 52 for VALDEL).
+ * The poll writes nothing and needs no reset.
  *
  * The result is L1 until a positive answer arrives. A receiver that stops
  * answering part way through leaves furble at L1, so no L5 key is ever
@@ -675,11 +675,19 @@ class CapsProbe {
 
   Result result(void) const { return m_Result; }
   bool l5(void) const { return m_Result == Result::L5; }
+  /**
+   * Did the receiver answer, rather than the probe giving up?
+   *
+   * A timeout resolves to L1 for safety, which is not the same evidence as a
+   * NAK. The status report keeps the difference: silence is a guess.
+   */
+  bool answered(void) const { return m_Answered; }
   uint32_t deadline(void) const { return m_Deadline; }
   uint8_t attempts(void) const { return m_Attempts; }
 
  private:
   Result m_Result = Result::IDLE;
+  bool m_Answered = false;
   uint8_t m_Attempts = 0;
   uint32_t m_Deadline = 0;
 };

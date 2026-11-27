@@ -16,9 +16,10 @@ assert-eventually 3000 gps.ubx.verified 1
 # Nothing was NAKed, because nothing invalid was sent.
 assert m10.naks 0
 assert gps.ubx.l5_written 0
-# The signals batch is empty, so the receiver keeps the module preset: GPS,
-# Galileo and BeiDou with both bands.
-assert m10.ram.10310025 0
-assert m10.ram.10310018 0
+# The signals batch is empty, so the receiver keeps the module preset and no
+# GLONASS key is stored: m10.ram would read the preset's zero either way, while
+# BBR says whether furble ever wrote the key.
+assert m10.bbr.10310025 unset
+assert m10.bbr.10310018 unset
 assert-eventually 5000 gps.source uart
 exit

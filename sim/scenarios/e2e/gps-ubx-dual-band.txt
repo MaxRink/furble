@@ -30,18 +30,26 @@ assert gps.ubx.l5_written 1
 assert gps.ubx.l5_refused 0
 assert m10.ram.1031001f 1
 assert m10.ram.10310001 1
-assert m10.ram.10310004 1
 assert m10.ram.10310021 1
 assert m10.ram.10310007 1
-assert m10.ram.10310009 1
+# The L5 keys are asserted through BBR: m10.ram falls back to the f10 preset,
+# which already has them at 1, so a RAM read cannot fail. BBR holds a value only
+# when an accepted VALSET stored it, so these four prove furble wrote them.
+assert m10.bbr.10310004 1
+assert m10.bbr.10310009 1
+assert m10.bbr.10310028 1
+assert m10.bbr.10310017 1
+# BeiDou B1I is written off in the RAM|BBR signal batch, so an earlier
+# session's value cannot sit beside B1C = 1. BBR holds the zero furble wrote.
+assert m10.bbr.1031000d 0
+assert m10.ram.1031000d 0
 # QZSS follows GPS, both bands with it.
 assert m10.ram.10310024 1
 assert m10.ram.10310012 1
-assert m10.ram.10310017 1
 assert m10.ram.10310020 1
-# BeiDou is off in this mask, so its keys are written off and B1I is never
-# written at all on a dual-band part (NEO-F10N data sheet UBX-23002117 R05,
-# Table 4 page 5).
+# BeiDou is off in this mask, so its constellation key is written off, while
+# B1I stays zero on every dual-band plan (NEO-F10N data sheet UBX-23002117 R05,
+# Table 4 page 6).
 assert gps.ubx.gnss 57
 assert m10.ram.10310022 0
 # No CFG-PM group on this firmware: power save stays off and no PM key is sent,
@@ -51,4 +59,12 @@ assert gps.ubx.psm 0
 assert-eventually 5000 gps.source uart
 assert gps.from_pvt 1
 assert gps.ubx.fix_type 3
+# The GPS power page controls software standby and furble's own duty and rail
+# cycle, and the NEO-F10N supports software standby (IM-F10N appendix page 64)
+# even though it has no CFG-PM power save mode. They must stay live on this
+# receiver; a capability gate that disabled them would fail here.
+action nav gps_power
+wait 200
+assert ui.page gps_power
+assert ui.disabled_rollers 0
 exit

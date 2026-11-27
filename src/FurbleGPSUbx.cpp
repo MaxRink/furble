@@ -161,11 +161,28 @@ bool GPS::serviceCaps(uint32_t now) {
     return false;
   }
   const bool l5 = result == Ubx::CapsProbe::Result::L5;
-  const std::lock_guard<std::mutex> lock(m_UbxMutex);
-  m_UbxCaps.bands = l5 ? static_cast<uint8_t>(Ubx::BAND_L1 | Ubx::BAND_L5) : Ubx::BAND_L1;
-  m_UbxCapsProbed = true;
+  const bool answered = m_CapsProbe.answered();
+  {
+    const std::lock_guard<std::mutex> lock(m_UbxMutex);
+    if (l5 && (m_UbxCaps.family != Ubx::FAMILY_F10)) {
+      // The four L5 keys exist only in the dual-band firmware (M10 IFD 4.9.21
+      // page 152 has none, F10-IFD 4.9.20 pages 158 and 159 has all four), so a
+      // receiver that answers with them is the F10 family whatever MON-VER
+      // said. Take the whole family, not just the band: the same firmware has
+      // no CFG-PM group and no GLONASS key (F10-IFD 4.9, and the module manual's
+      // appendix migration table page 64), and writing those would NAK.
+      m_UbxCaps = Ubx::CAPS_F10;
+    } else {
+      m_UbxCaps.bands = l5 ? static_cast<uint8_t>(Ubx::BAND_L1 | Ubx::BAND_L5) : Ubx::BAND_L1;
+    }
+    // Only a real answer counts as evidence. A timeout also resolves to L1, for
+    // safety, but the status says it is a guess.
+    m_UbxCapsProbed = answered;
+  }
   ESP_LOGI(LOG_TAG, "GPS receiver bands: L1%s (%s)", l5 ? " and L5" : "",
-           l5 ? "the L5 signal keys are implemented" : "no L5 signal key in the firmware");
+           !answered ? "the receiver did not answer, assuming L1"
+           : l5      ? "the L5 signal keys are implemented"
+                     : "no L5 signal key in the firmware");
   return true;
 }
 
@@ -473,10 +490,14 @@ void GPS::serviceUbx(const uint8_t *frame, size_t length) {
         }
       }
       if (l5) {
+        // The batch carried L5 keys, but the refusal may belong to another key
+        // in the same batch. Say what was observed, not what is guessed, and
+        // drop L5 for the rest of the session so the next attempt is L1 clean.
         const std::lock_guard<std::mutex> lock(m_UbxMutex);
         m_UbxCaps.bands = Ubx::BAND_L1;
         m_UbxPlan.l5_refused = true;
-        ESP_LOGW(LOG_TAG, "GPS receiver refused the L5 signal keys, staying on L1");
+        ESP_LOGW(LOG_TAG,
+                 "GPS receiver refused a signal batch that carried L5 keys; L5 is off from here");
       }
     }
     const uint16_t settle = m_ConfigInFlight->settle_ms;

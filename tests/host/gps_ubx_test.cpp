@@ -655,7 +655,7 @@ void testDemux() {
  * integration manual UBXDOC-963802114-12193 R04, 2.1.3 page 10); the signals a
  * NEO-F10N has, B1C and B2a with no B1I (data sheet UBX-23002117 R05, Table 4
  * page 5); its rate ceiling, 20 Hz for one constellation and 10 Hz for more
- * (data sheet Table 2 and Table 3 page 4); and its missing power save modes
+ * (data sheet Table 2 and Table 3 page 5); and its missing power save modes
  * (integration manual, appendix migration table, page 64).
  */
 void testDualBand() {
@@ -727,9 +727,14 @@ void testDualBand() {
   check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B2A) == 99
             && listed(plan.unset, Ubx::Key::SIGNAL_BDS_B2A),
         "an undecided constellation has its L5 keys deleted from BBR");
-  check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1) == 99
-            && listed(plan.unset, Ubx::Key::SIGNAL_BDS_B1),
-        "B1I is never written on a dual-band receiver");
+  // The F10 firmware has the B1I key; the module has no B1I signal. Writing it
+  // off in the RAM|BBR batch removes the stale value an earlier furble left in
+  // RAM, which would otherwise sit beside B1C = 1 and get the batch refused for
+  // a BeiDou reason. A VALDEL alone would clear BBR only, and the driver sends
+  // deletes after writes, so the zero has to travel in `signals`.
+  check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1) == 0
+            && !listed(plan.unset, Ubx::Key::SIGNAL_BDS_B1),
+        "B1I is written off, not left to a BBR delete, on a dual-band receiver");
   check(find(plan.signals, Ubx::Key::SIGNAL_GLO_ENA) == 99
             && !listed(plan.unset, Ubx::Key::SIGNAL_GLO_ENA),
         "no GLONASS key is named on a dual-band receiver");
@@ -754,6 +759,11 @@ void testDualBand() {
   check(find(plan.signals, Ubx::Key::SIGNAL_BDS_B1C) == 1
             && find(plan.signals, Ubx::Key::SIGNAL_BDS_B2A) == 1 && plan.b1i_refused,
         "BeiDou on a dual-band receiver is B1C and B2a");
+  // The M10 rule that B1C refuses AssistNow Autonomous is an SPG 5.10
+  // statement. The F10 documents state no such exclusion (DS-F10N Table 5 page
+  // 6 lists ANA for GPS and Galileo), so ANA is written as asked.
+  check(plan.ana && find(plan.base, Ubx::Key::ANA_USE_ANA) == 1,
+        "AssistNow Autonomous survives BeiDou on a dual-band receiver");
 
   // Power save on a receiver that has none is reported, not written.
   dual.gnss = Ubx::GNSS_MASK_GPS;
@@ -786,6 +796,30 @@ void testDualBand() {
   plan = Ubx::plan(fast);
   check(!plan.rate_clamped && plan.rate_ms == 50, "20 Hz on one dual-band constellation stands");
 
+  // A request that leaves every constellation alone writes one L1 key, the B1I
+  // off switch a dual-band receiver needs, so it reports L1 and never L5. That
+  // is the contract: bands is what was written.
+  Ubx::Request untouched = {0, 0xff, 0, 0, Ubx::PSM_OFF, 10, true, Ubx::CAPS_F10};
+  plan = Ubx::plan(untouched);
+  bool l5Written = false;
+  for (const auto &item : plan.signals) {
+    l5Written = l5Written || Ubx::isL5Key(item.key);
+  }
+  check(
+      plan.bands == Ubx::BAND_L1 && !l5Written && find(plan.signals, Ubx::Key::SIGNAL_BDS_B1) == 0,
+      "an undecided request writes only the B1I off switch and claims L1");
+  untouched.gnss = Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL;
+  untouched.gnss_set = Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL;
+  plan = Ubx::plan(untouched);
+  check(!plan.signals.empty() && plan.bands == (Ubx::BAND_L1 | Ubx::BAND_L5)
+            && find(plan.signals, Ubx::Key::SIGNAL_GPS_L5) == 1,
+        "a plan that writes signals reports the band it wrote");
+  // A refused mask writes nothing and claims nothing.
+  untouched.gnss = Ubx::GNSS_MASK_GLO;
+  plan = Ubx::plan(untouched);
+  check(plan.gnss_refused && plan.signals.empty() && plan.bands == 0,
+        "a refused mask claims no band");
+
   // An L1 receiver is never sent an L5 key, not even as a delete.
   Ubx::Request l1 = {0,  0xff, Ubx::GNSS_MASK_ALL, Ubx::GNSS_MASK_ALL, Ubx::PSM_OFF,
                      10, true, Ubx::CAPS_M10};
@@ -812,6 +846,7 @@ void testDualBand() {
   check(probe.attempts() == 2 && probe.deadline() == 2100, "probe deadline");
   check(probe.service(2100, poll) == Ubx::CapsProbe::Result::L1 && !probe.l5(),
         "a silent receiver is L1");
+  check(!probe.answered(), "a timeout is not an answer, so the band stays a guess");
   probe.begin(0);
   probe.answered(true);
   check(probe.service(0, poll) == Ubx::CapsProbe::Result::L5 && probe.l5(),

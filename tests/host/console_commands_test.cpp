@@ -1501,6 +1501,10 @@ void testGPSDiagnostics(void) {
   // and the NAV-SAT wait gives up after its 1.5 s budget.
   gps.backend = Furble::GPS::backend_t::UBX;
   gps.ubx = {};
+  // The firmware starts at CAPS_UNKNOWN: L1 signals, power save and GLONASS
+  // still allowed, because those are the keys it has always written.
+  gps.ubx.bands = 1;
+  gps.ubx.psm_supported = true;
   gps.ubx.software = "ROM SPG 5.10 (7b202e)";
   gps.ubx.hardware = "000A0000";
   const Result bare = runDirect("gps ubx");
@@ -1515,9 +1519,10 @@ void testGPSDiagnostics(void) {
   // The band capability is reported before the configuration, whichever way it
   // is known, and a receiver that has not been asked says so.
   checkContains(bare.out, "family: unidentified", "an unnamed firmware prints unidentified");
-  checkContains(bare.out, "bands: unknown (MON-VER only, no L5 key written)",
+  checkContains(bare.out, "bands: L1 (MON-VER only, no L5 key written)",
                 "a band no receiver confirmed is reported as a hint");
-  checkContains(bare.out, "power_save_supported: false", "no capability means no power save");
+  checkContains(bare.out, "power_save_supported: true",
+                "the pre-probe capability still allows power save");
   check(!contains(bare.out, "rate_ms:"), "an unconfigured receiver prints no plan");
   checkContains(bare.out, "sos_restore: unknown", "the restore state starts unknown");
   checkContains(bare.out, "sos_backup: not tried", "no backup was tried");

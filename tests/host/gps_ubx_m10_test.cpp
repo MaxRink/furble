@@ -491,10 +491,71 @@ void testDualBandVariant() {
        70);
   check(single.maxRateHz() == 20, "one dual-band constellation publishes 20 Hz");
 
+  // The model reads the data sheet tables independently of the codec. Compare
+  // the two on every mask that names a major constellation, for both variants,
+  // so a change to one table without the other fails here.
+  const uint8_t masks[] = {
+      Ubx::GNSS_MASK_GPS,
+      Ubx::GNSS_MASK_GAL,
+      Ubx::GNSS_MASK_BDS,
+      Ubx::GNSS_MASK_GLO,
+      static_cast<uint8_t>(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL),
+      static_cast<uint8_t>(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GLO),
+      static_cast<uint8_t>(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_BDS),
+      static_cast<uint8_t>(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL | Ubx::GNSS_MASK_GLO),
+      static_cast<uint8_t>(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL | Ubx::GNSS_MASK_BDS),
+      static_cast<uint8_t>(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_BDS | Ubx::GNSS_MASK_GLO),
+      static_cast<uint8_t>(Ubx::GNSS_MASK_GPS | Ubx::GNSS_MASK_GAL | Ubx::GNSS_MASK_BDS
+                           | Ubx::GNSS_MASK_GLO),
+  };
+  for (const uint8_t mask : masks) {
+    // L1: drive a receiver into the mask, then read its published ceiling.
+    VirtualM10 table;
+    std::vector<Ubx::KeyValue> items;
+    for (uint8_t bit = 0; bit < 6; bit++) {
+      const uint8_t value = (mask & (1u << bit)) != 0 ? 1 : 0;
+      const uint32_t key = (bit == 0)   ? Ubx::Key::SIGNAL_GPS_ENA
+                           : (bit == 1) ? Ubx::Key::SIGNAL_BDS_ENA
+                           : (bit == 2) ? Ubx::Key::SIGNAL_GLO_ENA
+                           : (bit == 3) ? Ubx::Key::SIGNAL_GAL_ENA
+                           : (bit == 4) ? Ubx::Key::SIGNAL_QZSS_ENA
+                                        : Ubx::Key::SIGNAL_SBAS_ENA;
+      items.push_back({key, value});
+    }
+    if (((mask & Ubx::GNSS_MASK_BDS) != 0) && ((mask & Ubx::GNSS_MASK_GLO) != 0)) {
+      // B1I cannot run beside GLONASS, so the receiver would refuse the batch
+      // and the comparison would read the wrong state. Switch BeiDou to B1C the
+      // way the plan does.
+      items.push_back({Ubx::Key::SIGNAL_BDS_B1, 0});
+      items.push_back({Ubx::Key::SIGNAL_BDS_B1C, 1});
+    }
+    table.reset({}, 0);
+    send(table, Ubx::valSet(Ubx::LAYER_RAM, items), 10);
+    check(Ubx::maxRateHz(mask, Ubx::CAPS_M10) == table.maxRateHz(),
+          "the M10 codec ceiling matches the modelled data sheet table");
+  }
+  // Dual-band: single and multi-GNSS, on receivers whose masks the model can
+  // enter without splitting a band pair.
+  VirtualM10 dualSingle;
+  resetDual(dualSingle, 0);
+  send(dualSingle,
+       Ubx::valSet(Ubx::LAYER_RAM,
+                   {
+                       {Ubx::Key::SIGNAL_GAL_ENA,  0},
+                       {Ubx::Key::SIGNAL_BDS_ENA,  0},
+                       {Ubx::Key::SIGNAL_QZSS_ENA, 0},
+                       {Ubx::Key::SIGNAL_SBAS_ENA, 0}
+  }),
+       20);
+  check(Ubx::maxRateHz(Ubx::GNSS_MASK_GPS, Ubx::CAPS_F10) == dualSingle.maxRateHz(),
+        "the dual-band single-constellation ceiling matches the model");
+  check(Ubx::maxRateHz(Ubx::GNSS_MASK_MODULE_DEFAULT, Ubx::CAPS_F10) == plan.maxRateHz(),
+        "the dual-band multi-GNSS ceiling matches the model");
+
   // What the band costs: the dual-band part tracks at 21 mA where the L1 part
   // tracks at 9.5 mA, and neither figure is an L1-only measurement of the same
   // part, which the module cannot do (NEO-F10N data sheet UBX-23002117 R05,
-  // section 1.3 page 4 and Table 15 page 12; MAX-M10S data sheet UBX-20035208
+  // section 1.3 page 5 and Table 15 page 12; MAX-M10S data sheet UBX-20035208
   // R08, Table 15 page 13).
   VirtualM10 l1Power;
   l1Power.reset({}, 0);

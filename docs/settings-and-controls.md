@@ -189,16 +189,17 @@ setting. After MON-VER names the firmware family, furble asks for the four L5
 signal keys with one read-only request. An L1-only M10 refuses it and stays on
 L1. A dual-band F10 answers, and the planner then runs both bands of every
 constellation it enables: the two bands of a constellation cannot be enabled
-apart on that firmware, so there is no L1-only option to offer. Two controls
-follow the same answer:
+apart on that firmware, so there is no L1-only option to offer.
 
-- The GPS Power Save row is refused for a receiver with no power save mode, so
-  a dual-band part runs at full power and the console says
-  `power_save: off (not implemented on this receiver)`. The GPS page's own
-  power controls are disabled in that case rather than promising a standby the
-  receiver does not have.
-- The receiver diagnostics page shows `ubx l1` or `ubx l1+l5`, with `(guess)`
-  until the receiver has confirmed the band.
+The GPS Power Save row is not exposed in the LVGL UI at all: it is set from the
+console or the companion app. Its refusal on a receiver without a CFG-PM group
+is reported there as `power_save: off (not implemented on this receiver)`. The
+GPS page's own power controls are a different thing and stay live on every
+receiver: `Power saving > Receiver` selects software standby (RXM-PMREQ, which
+the dual-band part supports, NEO-F10N integration manual appendix page 64) or
+furble's own rail cycling, and `Sleep between fixes` sets that interval. The
+receiver diagnostics page shows `ubx l1` or `ubx l1+l5`, with `(guess)` until
+the receiver has confirmed the band.
 
 ### Time
 

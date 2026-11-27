@@ -330,8 +330,6 @@ class UI {
     lv_obj_t *gpsExtrapolate;
     /** Widgets which are only useful while GPS is enabled. */
     std::vector<lv_obj_t *> gpsWidgets;
-    /** GPS power-save controls, disabled for a receiver with no power save mode. */
-    std::vector<lv_obj_t *> gpsPowerWidgets;
     bool screenLocked;
     // last battery sample, its smoothed values and the displayed percent
     Platform::battery_t battery;
@@ -1394,17 +1392,6 @@ class UI {
   /** Show or hide the widgets which need GPS enabled. */
   static void showGPSWidgets(status_t *status, bool show);
 
-  /**
-   * Disable the power-save controls a receiver cannot honor.
-   *
-   * A u-blox receiver that reports no power save support has no CFG-PM group
-   * at all (F10 SPG 6.00 IFD UBX-23002975 R02, 4.9; NEO-F10N integration manual
-   * UBXDOC-963802114-12193 R04, appendix migration table, page 64), so offering the
-   * control would promise a setting the receiver refuses. The CASIC and NMEA
-   * receivers keep the control: the AT6668 honors $PCAS12 standby.
-   * Runs when the GPS page opens, which is after receiver detection.
-   */
-  void updateGPSPowerCapability(void);
   /** Show the header GPS icon only while GPS or the companion source is active. */
   static void updateGpsIcon(status_t *status);
 

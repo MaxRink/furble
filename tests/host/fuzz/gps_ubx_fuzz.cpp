@@ -221,9 +221,30 @@ void planInvariants(std::mt19937 &rng, uint32_t seed, uint32_t iteration) {
   }
   check((plan.psm == Ubx::PSM_OFF) || (!plan.psm_refused && !plan.psm_unsupported),
         "a power save mode the plan kept was not refused", seed, iteration);
+  // The clamp is applied to the mask the plan actually used, which is the
+  // module preset when the requested one was refused (GpsUbx.cpp plan()).
+  const uint8_t effective = plan.gnss_refused ? Ubx::GNSS_MASK_MODULE_DEFAULT : plan.gnss;
   if (plan.rate_ms != 0) {
-    check(plan.rate_ms >= (1000 / Ubx::maxRateHz(plan.gnss, request.caps)),
-          "the planned rate stays under the band ceiling", seed, iteration);
+    const uint8_t hz = Ubx::maxRateHz(effective, request.caps);
+    const uint16_t floor_ms = static_cast<uint16_t>((1000 + hz - 1) / hz);
+    check(plan.rate_ms >= floor_ms, "the planned rate stays under the band ceiling", seed,
+          iteration);
+  }
+  // Every L5 key moves with its constellation's L1 sibling, and no L5 key is
+  // written on a receiver that has no L5 band.
+  for (const auto &item : plan.signals) {
+    if (!Ubx::isL5Key(item.key)) {
+      continue;
+    }
+    const uint32_t partner = (item.key == Ubx::Key::SIGNAL_GPS_L5)    ? Ubx::Key::SIGNAL_GPS_L1CA
+                             : (item.key == Ubx::Key::SIGNAL_GAL_E5A) ? Ubx::Key::SIGNAL_GAL_E1
+                             : (item.key == Ubx::Key::SIGNAL_BDS_B2A) ? Ubx::Key::SIGNAL_BDS_B1C
+                                                                      : Ubx::Key::SIGNAL_QZSS_L1CA;
+    bool found = false;
+    for (const auto &other : plan.signals) {
+      found = found || ((other.key == partner) && (other.value == item.value));
+    }
+    check(found, "an L5 key matches its L1 sibling", seed, iteration);
   }
   check(!Ubx::valSet(Ubx::LAYER_RAM, plan.base).empty(), "the base batch encodes", seed, iteration);
   check(plan.signals.empty() || !Ubx::valSet(Ubx::LAYER_RAM, plan.signals).empty(),

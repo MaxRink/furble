@@ -45,9 +45,9 @@ constexpr uint32_t BACKUP_UA = 28;
 
 /*
  * The dual-band figures, NEO-F10N data sheet UBX-23002117 R05: cold start 28 s
- * and hot start 2 s in the multi-GNSS sets (Table 2 page 4), tracking current
+ * and hot start 2 s in the multi-GNSS sets (Table 2 page 5), tracking current
  * 21 mA for the default set with SBAS active (Table 15 page 12), software
- * standby 49 uA and hardware backup 31 uA (Table 16 page 12). The module cannot
+ * standby 49 uA and hardware backup 31 uA (Table 16 page 13). The module cannot
  * run single-band, so there is no L1-only figure to compare against.
  */
 constexpr uint32_t TTFF_COLD_DUAL_MS = 28000;
@@ -95,8 +95,8 @@ const std::map<uint32_t, uint64_t> &defaults(bool dual) {
    * The dual-band firmware, F10 SPG 6.00 with the NEO-F10N module preset: both
    * bands of GPS, Galileo, BeiDou and QZSS on, SBAS on (NEO-F10N integration
    * manual UBXDOC-963802114-12193 R04, 2.1.3 page 10 and data sheet
-   * UBX-23002117 R05, 1.3 page 4). BeiDou B1I is not a NEO-F10N signal, so it
-   * starts off (data sheet Table 4 page 5). There is no GLONASS key and no
+   * UBX-23002117 R05, 1.3 page 5). BeiDou B1I is not a NEO-F10N signal, so it
+   * starts off (data sheet Table 4 page 6). There is no GLONASS key and no
    * CFG-PM key in the F10 interface description at all (4.9.20 pages 158 and
    * 159; 4.9 has no CFG-PM group), which is what makes those writes NAK here.
    * The firmware version strings are the F10 shape; their exact characters on a
@@ -213,7 +213,7 @@ bool VirtualM10::valid(const std::map<uint32_t, uint64_t> &ram) const {
     // F10N integration manual UBXDOC-963802114-12193 R04, 2.1.3 page 10).
     // QZSS L1S is an augmentation signal rather than a band, so it is not part
     // of the pair, and B1I is not a NEO-F10N signal at all (data sheet
-    // UBX-23002117 R05, Table 4 page 5).
+    // UBX-23002117 R05, Table 4 page 6).
     if (on(Ubx::Key::SIGNAL_BDS_B1)) {
       return false;
     }
@@ -418,8 +418,8 @@ bool VirtualM10::outputting(uint32_t now) {
 
 uint8_t VirtualM10::maxRateHz(void) const {
   // The published ceilings, read independently of the firmware's own table:
-  // MAX-M10S data sheet UBX-20035208 R08, Table 2 page 4 for the L1 sets, and
-  // NEO-F10N data sheet UBX-23002117 R05, Table 2 and Table 3 page 4 for the
+  // MAX-M10S data sheet UBX-20035208 R08, Table 2 page 5 for the L1 sets, and
+  // NEO-F10N data sheet UBX-23002117 R05, Table 2 and Table 3 page 5 for the
   // dual-band sets.
   const auto on = [&](uint32_t key) { return value(key) != 0; };
   const bool gps = on(Ubx::Key::SIGNAL_GPS_ENA);

@@ -1290,9 +1290,11 @@ reads `mqtt.retry_delay`.
   `gps-ubx-standby` asserts it stays 0. `f10` is the dual-band variant: it
   has the four L5 signal keys, refuses a plan that splits a constellation's
   bands, and has no GLONASS key and no CFG-PM key at all, so those writes
-  NAK exactly as the documents say. `gps-ubx-dual-band`,
+  NAK exactly as the documents say. `f10-unnamed` is the same firmware behind
+  a MON-VER module string furble does not know, which is what the capability
+  probe has to settle. `gps-ubx-dual-band`, `gps-ubx-dual-band-unnamed`,
   `gps-ubx-dual-band-glonass-refused` and `gps-ubx-l1-only-refuses-l5` are
-  the three contract scenarios.
+  the four contract scenarios.
   Receiver detection writes up to two MON-VER polls at GPS start, so a scenario
   that asserts `uart.count 0` must clear the journal after detection settles.
   `seed gps_m10_backup` gives the modelled board a V_BCKP supply, which

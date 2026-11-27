@@ -30,7 +30,10 @@ assert m10.ram.10310021 1
 assert m10.ram.10310007 1
 assert m10.ram.10310024 1
 assert m10.ram.10310012 1
-assert m10.ram.10310017 0
 assert m10.ram.10310020 1
+# No L5 key was written or deleted on this receiver, so none is stored in BBR
+# and none was ever named in a VALDEL.
+assert m10.bbr.10310004 unset
+assert m10.bbr.10310017 unset
 assert-eventually 5000 gps.source uart
 exit

@@ -110,8 +110,9 @@ at GLONASS L1 (u-blox M10 SPG 5.10 Interface description, UBX-21035062 R03,
 the dual-band firmware that has them (u-blox F10 SPG 6.00 Interface
 description, UBX-23002975 R02, 4.9.20 pages 158 and 159, Table 46). A firmware
 that does not know a key refuses any VALSET, VALGET or VALDEL that names it
-with UBX-ACK-NAK (M10 IFD 3.10.4 page 53 and 3.10.5 page 55; F10 IFD 3.10.4
-pages 54 and 55), which is why the band is measured before it is written. See
+with UBX-ACK-NAK: 3.10.4 page 53 for VALSET and VALGET and 3.10.3 pages 51 and
+52 for VALDEL on the M10 firmware, and 3.10.4 page 55 with 3.10.3 page 52 on the
+F10 one. That is why the band is measured before any key is written. See
 [Signal bands](#signal-bands).
 
 `valueSize()` returns the byte count implied by the key, and 0 for a reserved
@@ -216,23 +217,25 @@ the driver demotes the receiver to L1 for the rest of the session and reports it
 | Constellation or mode | Excluded with | Who refuses | Citation |
 | :--- | :--- | :--- | :--- |
 | BeiDou B1I | BeiDou B1C and GLONASS L1OF | the M10 firmware, and furble never builds the pair | MAX-M10S data sheet UBX-20035208 R08, 1.3 note 13 page 6, and IM 2.1.3 |
-| BeiDou B1I | a dual-band receiver at all | the F10 module has B1C and B2a only, so the plan deletes B1I and never writes it | NEO-F10N data sheet UBX-23002117 R05, Table 4 page 5 |
+| BeiDou B1I | a dual-band receiver running B1C | the F10 module has B1C and B2a only, so the plan writes B1I off in the same RAM and BBR batch as the other signal keys, which clears a value an earlier furble left in RAM | NEO-F10N data sheet UBX-23002117 R05, Table 4 page 6 |
 | BeiDou B1C | cyclic tracking and on/off power save | the M10 firmware refuses the combination | UBX-22001426 R02 section 7 page 15, and the note 28 of the MAX-M10S data sheet Table 15 page 13 |
 | BeiDou B1C | AssistNow Autonomous | the M10 firmware does not cover it | UBX-22001426 R02 section 5.1.5 page 8 |
+| BeiDou B1C on a dual-band receiver | AssistNow Autonomous | nothing: that coverage note is about the M10 firmware, and the F10 data sheet lists ANA with no BeiDou caveat, so the plan leaves it on | NEO-F10N data sheet UBX-23002117 R05, Table 5 page 6 |
 | GPS L5 | GPS L1 C/A, per constellation | nothing: both bands of one constellation are enabled and disabled together, and a split is refused with UBX-ACK-NAK | NEO-F10N integration manual UBXDOC-963802114-12193 R04, 2.1.3 page 10 |
 | Galileo E5a, BeiDou B2a, QZSS L5 | their own L1 signal, same rule | as above | NEO-F10N integration manual R04, 2.1.3 page 10 |
-| QZSS and NavIC L5 | GPS disabled | the dual-band firmware, because QZSS is functional only with GPS | NEO-F10N integration manual R04, 2.1.3 page 10, and data sheet R05 Table 6 page 5 |
+| QZSS and NavIC L5 | GPS disabled | the dual-band firmware, because QZSS is functional only with GPS | NEO-F10N integration manual R04, 2.1.3 page 10, and data sheet R05 Table 6 page 6 |
 | GLONASS | the F10 firmware at all | no `CFG-SIGNAL-GLO-*` key exists in the F10 interface description | F10 IFD 4.9.20 pages 158 and 159, Table 46 |
 | Power save modes | the F10 firmware at all | no `CFG-PM-*` key exists in the F10 interface description | F10 IFD 4.9, and NEO-F10N integration manual R04, appendix migration table, page 64 |
+| No L5 key on an L1 firmware | every L5 write and delete | furble never names one; a VALDEL of an unknown key is NAKed too | F10-IFD 3.10.3 page 52 |
 
 The rate ceiling follows the band as well as the mask. An L1 receiver keeps the
 published M10 figures: 18 Hz for one constellation, 10 Hz for GPS and Galileo,
 6 Hz for GPS, Galileo and GLONASS, 8 Hz for GPS, Galileo and B1C, 4 Hz for four
 constellations and 3 Hz for the B1I default set (MAX-M10S data sheet
-UBX-20035208 R08, Table 2 and Table 3 page 4). A dual-band receiver takes the
+UBX-20035208 R08, Table 2 and Table 3 page 5). A dual-band receiver takes the
 two figures the F10 documents publish: 20 Hz for a single constellation and
 10 Hz for any multi-GNSS set (NEO-F10N data sheet UBX-23002117 R05, Table 2 and
-Table 3 page 4). `maxRateHz(mask, caps)` decides which table applies
+Table 3 page 5). `maxRateHz(mask, caps)` decides which table applies
 (`lib/furble/protocol/GpsUbx.h:605`).
 
 ## NAV-PVT

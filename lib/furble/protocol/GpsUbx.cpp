@@ -578,8 +578,8 @@ uint8_t maxRateHz(uint8_t mask, const Caps &caps) {
   if (!caps.dualBand()) {
     return maxRateHz(mask);
   }
-  // NEO-F10N data sheet UBX-23002117 R05, Table 2 page 4: 10 Hz in every
-  // multi-GNSS set. Table 3 page 4: 20 Hz for one constellation. The dual-band
+  // NEO-F10N data sheet UBX-23002117 R05, Table 2 page 5: 10 Hz in every
+  // multi-GNSS set. Table 3 page 5: 20 Hz for one constellation. The dual-band
   // firmware publishes no per-set table like the M10 one, so the two figures
   // it does publish are the whole ceiling.
   return (majors(mask) <= 1) ? 20 : 10;
@@ -594,7 +594,7 @@ uint8_t dynModelForPlatform(uint8_t platform) {
 Plan plan(const Request &request) {
   Plan out = {};
   const Caps &caps = request.caps;
-  // Bits the request leaves alone keep the module preset (DS 1.3).
+  // Bits the request leaves alone keep the module preset (DS-F10N 1.3 page 5).
   const uint8_t gnss = static_cast<uint8_t>((request.gnss & request.gnss_set)
                                             | (GNSS_MASK_MODULE_DEFAULT & ~request.gnss_set));
   out.gnss = gnss;
@@ -603,10 +603,12 @@ Plan plan(const Request &request) {
   const bool bds = (effective & GNSS_MASK_BDS) != 0;
   const bool glo = (effective & GNSS_MASK_GLO) != 0;
   // A dual-band firmware has no B1I signal (NEO-F10N data sheet UBX-23002117
-  // R05, Table 4 page 5), so B1C is the only L1-side BeiDou signal there and
+  // R05, Table 4 page 6), so B1C is the only L1-side BeiDou signal there and
   // the B1I exclusion cannot apply.
   const bool b1c = bds && (caps.dualBand() || glo);
-  out.bands = out.gnss_refused ? 0 : static_cast<uint8_t>(caps.bands & (BAND_L1 | BAND_L5));
+  // The band a plan reports is the band whose keys it actually queued, filled in
+  // as they are written below. A request that writes no key claims no band.
+  out.bands = 0;
   out.b1i_refused = caps.dualBand() && bds && ((request.gnss_set & GNSS_MASK_BDS) != 0);
 
   uint8_t psm = (request.psm <= PSM_ON_OFF) ? request.psm : PSM_OFF;
@@ -628,9 +630,12 @@ Plan plan(const Request &request) {
   // left behind would make the receiver reject a configuration that includes
   // B1C (RN 7.2 page 15, IFD 4.6 page 127).
   out.power_before_signals = b1c && caps.psm && (psm == PSM_OFF);
-  // AssistNow is not supported with B1C either (RN 5.1.5 page 8). B1I is the
-  // signal the service covers (DS-MIA table 5 page 6).
-  out.ana = request.ana && !b1c;
+  // AssistNow is not supported with B1C on the M10 firmware (RN 5.1.5 page 8),
+  // whose service covers B1I (DS-MIA table 5 page 6). The F10 documents state
+  // no such exclusion: the NEO-F10N data sheet lists AssistNow Autonomous for
+  // GPS L1C/A and Galileo E1 and says nothing about BeiDou (DS-F10N Table 5
+  // page 6), so a dual-band plan leaves ANA alone.
+  out.ana = request.ana && !(b1c && !caps.dualBand());
 
   uint16_t rate = request.rate_ms;
   if (rate != 0) {
@@ -717,19 +722,27 @@ Plan plan(const Request &request) {
       }
       const bool value = ((gnss & signal.need) == signal.need) && ((gnss & signal.clear) == 0);
       out.signals.push_back({signal.key, value ? 1u : 0u});
+      out.bands = static_cast<uint8_t>(out.bands | (isL5Key(signal.key) ? BAND_L5 : BAND_L1));
     };
     for (Signal signal : L1_SIGNALS) {
       // A firmware without GLONASS keys is never told about them, because a
-      // VALDEL of an unknown key is NAKed as well (F10-IFD 3.10.4 pages 54 and
-      // 55).
+      // VALDEL of an unknown key is NAKed as well (F10-IFD 3.10.3 page 52).
       if (!caps.glo
           && ((signal.key == Key::SIGNAL_GLO_ENA) || (signal.key == Key::SIGNAL_GLO_L1))) {
         continue;
       }
       if (dual && (signal.key == Key::SIGNAL_BDS_B1)) {
-        // B1I is not a dual-band signal (NEO-F10N data sheet UBX-23002117 R05,
-        // Table 4 page 5). A stale value is deleted, never written as one.
-        out.unset.push_back(signal.key);
+        // The F10 firmware does have this key (F10-IFD 4.9.20 page 158 lists
+        // CFG-SIGNAL-BDS_B1_ENA 0x1031000d); it is the NEO-F10N module that has
+        // no B1I signal (DS-F10N 1.3 Table 4 page 6). Write it off, in the same
+        // RAM|BBR batch as the other signal keys, because an earlier furble
+        // wrote B1I = 1 whenever BeiDou was on with GLONASS off: leaving that in
+        // RAM beside B1C = 1 is the combination the M10 data sheet forbids (note
+        // 13 page 6), and a refusal it caused would be blamed on the L5 keys in
+        // the same batch. A VALDEL would only clear BBR, and the driver sends
+        // the deletes after the writes, so the zero would not survive.
+        out.signals.push_back({signal.key, 0});
+        out.bands = static_cast<uint8_t>(out.bands | BAND_L1);
         continue;
       }
       if (dual && (signal.key == Key::SIGNAL_BDS_B1C)) {
@@ -753,7 +766,7 @@ Plan plan(const Request &request) {
   if (!caps.psm) {
     // No CFG-PM group on the firmware: neither the period nor the mode key is
     // written or deleted, because a VALDEL of an unknown key is NAKed (F10-IFD
-    // 3.10.4 pages 54 and 55).
+    // 3.10.3 page 52).
     return out;
   }
   if (psm == PSM_ON_OFF) {
@@ -772,6 +785,7 @@ Plan plan(const Request &request) {
 
 void CapsProbe::begin(uint32_t now) {
   m_Result = Result::WAITING;
+  m_Answered = false;
   m_Attempts = 1;
   m_Deadline = now + ATTEMPT_MS;
 }
@@ -780,6 +794,7 @@ void CapsProbe::answered(bool l5) {
   // A NAK is the receiver saying the key is unknown to its firmware, which is
   // the L1 answer. It ends the probe at once; there is nothing to wait for.
   m_Result = l5 ? Result::L5 : Result::L1;
+  m_Answered = true;
 }
 
 CapsProbe::Result CapsProbe::service(uint32_t now, bool &poll) {

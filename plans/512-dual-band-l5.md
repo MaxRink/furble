@@ -45,10 +45,10 @@ six.
 | :--- | :--- | :--- | ---: | :--- | :--- |
 | IFD | u-blox M10 SPG 5.10 Interface description, protocol 34.10 | UBX-21035062 R03, 27-Jun-2023 | 176 | <https://content.u-blox.com/sites/default/files/u-blox-M10-SPG-5.10_InterfaceDescription_UBX-21035062.pdf> | 1.2 page 10, 3.10.4 page 53, 3.10.5 page 55, 4.9.21 page 152 |
 | F10-IFD | u-blox F10 SPG 6.00 Interface description, protocol 40.00 | UBX-23002975 R02, 13-Jun-2024 | 181 | <https://content.u-blox.com/sites/default/files/documents/u-blox-F10-SPG-6.00_InterfaceDescription_UBX-23002975.pdf> | 1.2 page 10, 3.10.4 pages 54 and 55, 4.9.20 pages 158 and 159, the absent CFG-PM group |
-| DS-MAX | MAX-M10S data sheet, ROM SPG 5.10 | UBX-20035208 R08, 30-Jan-2026 | 24 | <https://content.u-blox.com/sites/default/files/MAX-M10S_DataSheet_UBX-20035208.pdf> | 1.3 note 13 page 6, Table 2 and 3 page 4, Table 15 and 16 page 13 |
+| DS-MAX | MAX-M10S data sheet, ROM SPG 5.10 | UBX-20035208 R08, 30-Jan-2026 | 24 | <https://content.u-blox.com/sites/default/files/MAX-M10S_DataSheet_UBX-20035208.pdf> | 1.3 note 13 page 6, Table 2 and 3 page 5, Table 15 and 16 page 13 |
 | IM-MAX | MAX-M10S integration manual | UBX-20053088 R05 | 102 | <https://content.u-blox.com/sites/default/files/MAX-M10S_IntegrationManual_UBX-20053088.pdf> | 2.1.3, 3.6.2 |
 | RN-M10 | u-blox M10 ROM 5.10 release notes | UBX-22001426 R02 | 15 | <https://content.u-blox.com/sites/default/files/u-blox-M10-ROM-5.10_ReleaseNotes_UBX-22001426.pdf> | 5.1.5 page 8, 7.2 page 15 |
-| DS-F10N | NEO-F10N data sheet, L1/L5 | UBX-23002117 R05, 09-Oct-2025 | 22 | <https://content.u-blox.com/sites/default/files/documents/NEO-F10N_DataSheet_UBX-23002117.pdf> | 1.1 and 1.3 pages 4 and 5, Table 2 and 3 page 4, Table 4 and 6 page 5, Table 15 and 16 page 12 |
+| DS-F10N | NEO-F10N data sheet, L1/L5 | UBX-23002117 R05, 09-Oct-2025 | 22 | <https://content.u-blox.com/sites/default/files/documents/NEO-F10N_DataSheet_UBX-23002117.pdf> | 1.1 and 1.3 pages 4 and 5, Table 2 and 3 page 5, Table 4 and 6 page 6, Table 15 page 12 and Table 16 page 13 |
 | IM-F10N | NEO-F10N integration manual | UBXDOC-963802114-12193 R04, 12-Dec-2024 | 72 | <https://content.u-blox.com/sites/default/files/documents/NEO-F10N_IntegrationManual_UBXDOC-963802114-12193.pdf> | 2.1.3 page 10, 2.1.4 page 11, appendix migration table page 64 |
 
 ## 3. The L5 signal keys
@@ -83,7 +83,7 @@ possible to disable one of the two bands of a constellation, both are enabled
 and disabled together, and an unsupported combination is refused with
 UBX-ACK-NAK (IM-F10N 2.1.3 page 10). The data sheet says the same: single-band
 operation is not supported, both L1 and L5 must be enabled or disabled for GPS,
-Galileo, BeiDou and QZSS (DS-F10N 1.3 page 4).
+Galileo, BeiDou and QZSS (DS-F10N 1.3 page 5).
 
 So the plan writes each L5 key with the same value as its L1 sibling and lets
 the constellation enable key do the switching, which is exactly how the L1
@@ -96,7 +96,7 @@ dual-band receiver would be a control the receiver refuses.
 | Constellation or signal | Cannot run with | Where it is enforced | Citation |
 | :--- | :--- | :--- | :--- |
 | BeiDou B1I | BeiDou B1C, GLONASS L1OF | receiver, and furble never builds it | DS-MAX 1.3 note 13 page 6; IM-MAX 2.1.3 |
-| BeiDou B1I | a NEO-F10N at all (it has B1C and B2a only) | furble deletes B1I and never writes it | DS-F10N Table 4 page 5 |
+| BeiDou B1I | a NEO-F10N running B1C (it has B1C and B2a only) | furble writes B1I off in the signal batch, so an earlier session's one cannot sit beside B1C in RAM | DS-F10N Table 4 page 6; F10-IFD 4.9.20 page 158 for the key |
 | BeiDou B1C | cyclic tracking and on/off power save | receiver | RN-M10 7.2 page 15; DS-MAX note 28 page 13 |
 | BeiDou B1C | AssistNow Autonomous | furble leaves ANA off | RN-M10 5.1.5 page 8 |
 | GPS L5 | GPS L1 C/A, as separate bands | receiver: both bands move together | IM-F10N 2.1.3 page 10 |
@@ -113,9 +113,11 @@ Two consequences are deliberate:
   as any invalid mask is: `gnss_refused` is set, no signal key is written, and
   the receiver keeps its preset. Dropping the GLONASS bit silently would give a
   different constellation set from the one on screen.
-- B1I is deleted from BBR on a dual-band receiver rather than written as zero,
-  so a value an earlier session stored cannot survive, and the plan never sends
-  a B1I write the module might refuse.
+- B1I is written off on a dual-band receiver, not deleted from BBR. A VALDEL
+  clears BBR only and the driver sends deletes after the writes, so the zero
+  would not survive; the key does exist in the F10 firmware (F10-IFD 4.9.20
+  page 158), so writing it in the RAM|BBR signal batch clears the stale one
+  without risking a refusal from a key the firmware does not know.
 
 ## 6. The update-rate ceiling
 
@@ -123,14 +125,14 @@ The ceiling follows the band as well as the mask.
 
 | Receiver | Set | Ceiling | Citation |
 | :--- | :--- | ---: | :--- |
-| M10, L1 | one constellation | 18 Hz | DS-MAX Table 3 page 4 |
-| M10, L1 | GPS and Galileo | 10 Hz | DS-MAX Table 2 page 4 |
-| M10, L1 | GPS, Galileo and GLONASS | 6 Hz | DS-MAX Table 2 page 4 |
-| M10, L1 | GPS, Galileo and B1C | 8 Hz | DS-MAX Table 2 page 4 |
-| M10, L1 | four constellations | 4 Hz | DS-MAX Table 2 page 4 |
-| M10, L1 | the B1I default set | 3 Hz | DS-MAX Table 2 page 4 |
-| F10, L1 and L5 | one constellation | 20 Hz | DS-F10N Table 3 page 4 |
-| F10, L1 and L5 | any multi-GNSS set | 10 Hz | DS-F10N Table 2 page 4 |
+| M10, L1 | one constellation | 18 Hz | DS-MAX Table 3 page 5 |
+| M10, L1 | GPS and Galileo | 10 Hz | DS-MAX Table 2 page 5 |
+| M10, L1 | GPS, Galileo and GLONASS | 6 Hz | DS-MAX Table 2 page 5 |
+| M10, L1 | GPS, Galileo and B1C | 8 Hz | DS-MAX Table 2 page 5 |
+| M10, L1 | four constellations | 4 Hz | DS-MAX Table 2 page 5 |
+| M10, L1 | the B1I default set | 3 Hz | DS-MAX Table 2 page 5 |
+| F10, L1 and L5 | one constellation | 20 Hz | DS-F10N Table 3 page 5 |
+| F10, L1 and L5 | any multi-GNSS set | 10 Hz | DS-F10N Table 2 page 5 |
 
 The dual-band firmware publishes two figures where the M10 publishes six, so
 `maxRateHz(mask, caps)` takes the dual-band ceiling whenever `BAND_L5` is set and
@@ -164,7 +166,7 @@ to cut that in half. The standby and backup figures are within a few
 microamps, so the duty-cycle and rail-cut policies that dominate furble's GPS
 energy budget keep working unchanged; what grows is the cost of every window in
 which the receiver actually navigates. furble cannot avoid it: the module
-cannot run single-band (DS-F10N 1.3 page 4), so "L1 only" is not a power setting
+cannot run single-band (DS-F10N 1.3 page 5), so "L1 only" is not a power setting
 on this hardware, it is a different part.
 
 The band is therefore not a reason to change any default that ships today: no
@@ -191,6 +193,12 @@ otherwise.
    3.10.4 page 53, F10 IFD 3.10.4 pages 54 and 55). Nothing is written, so the
    receiver keeps its configuration either way. Two polls 1000 ms apart, then
    L1.
+
+   An L5 answer adopts the whole F10 family, not just the band: the same
+   firmware has no CFG-PM group and no GLONASS key, so a receiver whose MON-VER
+   named no family would otherwise be sent keys it refuses. The confirmation
+   flag `bands_probed` is set only when the receiver actually answered; a
+   timeout also resolves to L1, and the console says the band is a guess.
 
 The configuration is built only after the probe answers (`GPS::serviceCaps`,
 called from `GPS::applyConfiguration`), so no L5 key reaches a receiver that has
@@ -221,10 +229,10 @@ Failure handling, which is the part that has to be honest:
 | Capability model | `BAND_L1`, `BAND_L5`, `FAMILY_*`, `Caps`, `CAPS_UNKNOWN`, `CAPS_M10`, `CAPS_F10`, `capsFromVersion()` | same |
 | Probe | `CapsProbe`, a two-poll one-shot with an L1 answer on silence | same |
 | Rules | `gnssValid(mask, caps)` refuses GLONASS without GLONASS keys; `maxRateHz(mask, caps)` takes the band ceiling | same |
-| Plan | `Request::caps`; the L5 rows follow their constellation; B1I is deleted and never written on a dual band; no CFG-PM key without power save; `PlanSummary::bands`, `psm_unsupported`, `b1i_refused`, `l5_refused` | same |
+| Plan | `Request::caps`; the L5 rows follow their constellation; B1I is written off on a dual band; no CFG-PM key without power save; `PlanSummary::bands`, `psm_unsupported`, `b1i_refused`, `l5_refused` | same |
 | Driver | MON-VER to caps, the probe stage in `serviceConfig`, NAK reporting, the demotion path, the new status fields | `src/FurbleGPSUbx.cpp`, `src/FurbleGPS.cpp`, `include/FurbleGPS.h` |
 | Console | `gps ubx` reports `family`, `bands` and its source, `power_save_supported`, `l5_signals`, and the B1I note | `src/FurbleConsole.cpp` |
-| UI | the receiver diagnostics page shows `ubx l1` or `ubx l1+l5` (with `(guess)` before the probe answers); the power-save rollers are disabled for a receiver that has no power save mode, refreshed when the GPS page opens | `src/FurbleUI.cpp`, `include/FurbleUI.h` |
+| UI | the receiver diagnostics page shows `ubx l1` or `ubx l1+l5` (with `(guess)` before the probe answers). No control is disabled: the GPS page's power controls drive software standby and furble's own duty cycle, which this part supports, and the setting that maps to CFG-PM is console and companion only | `src/FurbleUI.cpp` |
 
 There is no new setting, no NVS key and no wire id. The band is a capability,
 not a preference, and the settings contract gate stays as it is.
@@ -241,15 +249,18 @@ not a preference, and the settings contract gate stays as it is.
 The model refuses what the documents refuse: an L5 key on the L1 variant
 (unknown key), a plan that splits one constellation's bands, B1I on the dual
 variant, any GLONASS write and any power-save write on the dual variant. It also
-publishes its own rate ceiling per variant so the host test can check furble
-against the data sheet rather than against itself, and it answers the capability
-probe the way each firmware would.
+publishes its own rate ceiling per variant, read from the data sheet tables, and
+`testDualBandVariant()` compares that table with `Ubx::maxRateHz()` on eleven
+masks for the L1 variant and on both shapes for the dual one, so the two cannot
+drift apart silently. It answers the capability probe the way each firmware
+would.
 
-Three scenarios, one per behaviour:
+Four scenarios, one per behaviour:
 
 | Scenario | Receiver | What it proves |
 | :--- | :--- | :--- |
 | `sim/scenarios/e2e/gps-ubx-dual-band.txt` | `f10` | the probe is answered, `bands` is 3, the four L5 keys are written beside their L1 siblings, no PM key is sent, nothing is NAKed, the read-back matches |
+| `sim/scenarios/e2e/gps-ubx-dual-band-unnamed.txt` | `f10-unnamed` | the module string names no family, the L5 answer takes the whole F10 capability set, so no GLONASS key and no PM key is written, nothing is NAKed |
 | `sim/scenarios/e2e/gps-ubx-l1-only-refuses-l5.txt` | `m10` | the probe is refused with exactly one NAK, `bands` stays 1, no L5 key is written, the L1 configuration still verifies |
 | `sim/scenarios/e2e/gps-ubx-dual-band-glonass-refused.txt` | `f10` | a GLONASS mask is refused before it is written: `gnss_refused` is set, nothing is NAKed, the receiver keeps its preset |
 
@@ -260,7 +271,7 @@ Host:
 - `tests/host/gps_ubx_test.cpp` `testDualBand()`: the four key ids, `isL5Key`,
   `capsFromVersion()` for M10, F10, a module name without `PROTVER` and an
   unnamed firmware, `gnssValid()` with caps, both `maxRateHz()` tables, a
-  dual-band plan (L5 rows, deleted L5 rows, no B1I write, no GLONASS key, no PM
+  dual-band plan (L5 rows, deleted L5 rows, B1I written off, no GLONASS key, no PM
   key, both bands reported), a BeiDou plan, a power-save refusal, a GLONASS
   refusal, the rate clamp at 10 Hz and the 20 Hz single-constellation case, and
   an L1 plan that names no L5 key in either list. The whole `CapsProbe` state
@@ -268,8 +279,8 @@ Host:
 - `tests/host/gps_ubx_m10_test.cpp` `testDualBandVariant()`: MON-VER for both
   variants, the probe answer and the probe refusal, each L5 key accepted on the
   dual variant and refused on the L1 one, the four documented exclusions, a
-  whole dual-band signal batch accepted and read back, the two ceilings, and the
-  current and TTFF figures.
+  whole dual-band signal batch accepted and read back, the two ceilings, the
+  model against the codec on eleven masks, and the current and TTFF figures.
 - `tests/host/fuzz/gps_ubx_fuzz.cpp`: a fifth invariant builds a plan from a
   random request, including random capabilities, and fails if the plan names a
   key the capability says the firmware lacks, or plans a rate above the band
@@ -279,19 +290,24 @@ Without the change the first two suites do not compile against the new model,
 and the fuzz invariant fails on any L1 request, because the old plan wrote no L5
 key but also had no capability to check.
 
-Simulator: the three scenarios above, run with `sim/scripts/run-e2e.sh` and
+Simulator: the four scenarios above, run with `sim/scripts/run-e2e.sh` and
 registered in `sim/scenarios/manifest.json`. `check_sim_scenarios.py` passes.
+The dual-band scenario proves the L5 writes through `m10.bbr`, which holds a
+value only when an accepted VALSET stored it, where `m10.ram` would have read
+the model's own preset; it also opens the GPS power page and asserts
+`ui.disabled_rollers 0`, so a capability gate that removed a control the part
+supports fails there.
 
 ## 12. UNVERIFIED
 
 1. **NavIC L5.** The F10 table lists `CFG-SIGNAL-NAVIC_ENA` 0x10310026 and
    `NAVIC_L5_ENA` 0x1031001d (F10-IFD 4.9.20 page 159), and the NEO-F10N data
-   sheet lists NavIC SPS-L5 (Table 4 page 5), but furble has no NavIC bit in the
+   sheet lists NavIC SPS-L5 (Table 4 page 6), but furble has no NavIC bit in the
    constellation mask and does not write either key. Whether a production
    NEO-F10N ships NavIC on or off is not stated in the documents read.
 2. **What the L5 band actually costs on the bench.** The 21 mA against 9.5 mA
    comparison crosses two modules and two firmware families, and the F10N
-   cannot be configured single-band to measure the delta (DS-F10N 1.3 page 4).
+   cannot be configured single-band to measure the delta (DS-F10N 1.3 page 5).
    No measurement on any part is claimed here.
 3. **Whether the receiver NAKs an over-ceiling navigation rate.** Both data
    sheets give a maximum navigation update rate; neither says what a CFG-RATE
@@ -340,6 +356,7 @@ registered in `sim/scenarios/manifest.json`. `check_sim_scenarios.py` passes.
 | `docs/settings-and-controls.md` | the power-save control is disabled for a receiver without it |
 | `docs/sim.md` | the `f10` receiver model and its three scenarios |
 | `plans/README.md` | this plan's index row |
+| `plans/550-review-feedback.md` | the review record, with each finding and its disposition |
 
 ## 14. Implementation state
 

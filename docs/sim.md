@@ -1691,7 +1691,7 @@ save mode), so the VALSET and VALGET carrying it are
 refused. The firmware tells the fake when it switches the Port A rail, the one
 hardware boundary the host has no other way to see.
 
-Three scenarios cover the band model. `e2e/gps-ubx-dual-band.txt` puts an
+Four scenarios cover the band model. `e2e/gps-ubx-dual-band.txt` puts an
 `f10` on the port and asserts the probe is answered, `gps.ubx.bands` is 3, and
 the four L5 keys are written beside their L1 siblings with no CFG-PM write.
 `e2e/gps-ubx-l1-only-refuses-l5.txt` puts an `m10` there and asserts the
@@ -1699,6 +1699,9 @@ probe is refused with exactly one NAK, `gps.ubx.bands` stays 1, and the L1
 configuration still verifies. `e2e/gps-ubx-dual-band-glonass-refused.txt`
 seeds a GLONASS mask on the `f10` and asserts it is refused before anything
 is written, so nothing is NAKed and the receiver keeps its preset.
+`e2e/gps-ubx-dual-band-unnamed.txt` puts the same firmware behind a module
+string MON-VER does not name and asserts the L5 answer takes the whole F10
+capability set: no GLONASS key and no CFG-PM key is written.
 
 Queries: `m10.model`, `m10.state` (`off`, `on`, `stopped`, `standby`),
 `m10.start` (`cold`, `warm`, `hot`, `assisted`), `m10.fixed`, `m10.period_ms`,

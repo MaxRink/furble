@@ -658,10 +658,11 @@ void validateSeed(const std::string &name, const std::string &value) {
     return;
   } else if (name == "gps_model") {
     // The receiver on the port: the historic CASIC unit, a virtual L1-only
-    // u-blox MAX-M10S or MIA-M10Q, a virtual dual-band NEO-F10N, or a receiver
-    // that answers no binary protocol.
+    // u-blox MAX-M10S or MIA-M10Q, a virtual dual-band NEO-F10N (named, or
+    // behind an unknown module string), or a receiver that answers no binary
+    // protocol.
     if (value != "casic" && value != "m10" && value != "m10-mia" && value != "f10"
-        && value != "nmea") {
+        && value != "f10-unnamed" && value != "nmea") {
       std::cerr << "Invalid gps_model: " << value << '\n';
       std::exit(2);
     }
