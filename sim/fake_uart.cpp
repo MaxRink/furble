@@ -1075,6 +1075,7 @@ std::string furble_sim_text_query(const std::string &key) {
         {"saves",        quectel.saves      },
         {"backups",      quectel.backups    },
         {"restarts",     quectel.restarts   },
+        {"power_ons",    quectel.powerOns   },
         {"unknown",      quectel.unknown    },
     };
     for (const auto &counter : counters) {
@@ -1119,6 +1120,10 @@ std::string furble_sim_text_query(const std::string &key) {
       char text[16];
       std::snprintf(text, sizeof(text), "h%lx", static_cast<unsigned long>(unicore.settings().sys));
       return text;
+    }
+    if (key == "dyn") {
+      // CFGDYN DynModel: 0 portable, 1 static (UC 3.3 Table 3-41, page 58)
+      return std::to_string(unicore.settings().dyn);
     }
     if (key == "sentence") {
       std::string out;

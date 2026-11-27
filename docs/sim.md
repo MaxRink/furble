@@ -1706,12 +1706,25 @@ flag), `text.fw` (the build stamp, spaces as underscores so it reads as one
 token), `text.rate_ms`,
 `text.sentence` (the sentence rates as one token, in type order), `text.gnss`
 (Quectel search-mode flags as `gps/glonass/galileo/bds/qzss/sbas`, one character
-each), `text.sys` (the last Unicore system mask, `h` prefixed), `text.sleeping`,
-`text.gnss_off`, `text.standby_s`, `text.restarts`, and the counters
+each), `text.sys` (the last Unicore system mask, `h` prefixed), `text.dyn` (the last
+`$CFGDYN` DynModel, 0 portable and 1 static), `text.sleeping`,
+`text.gnss_off`, `text.standby_s`, `text.power_ons` (how many `$PAIR002`
+power-ons arrived), `text.restarts`, and the counters
 `text.commands`, `text.acks`, `text.naks`, `text.unsupported`,
 `text.bad_checksum`, `text.saves`, `text.backups`, `text.fails`,
 `text.resets` and `text.unknown`. A key that the dialect on the port does not
 have reads empty, so a scenario asserts the dialect it seeded.
+
+The driver's own vendor text status is read through the `gps.text.` keys, which
+are not the virtual receiver's view: `gps.text.configured`, `gps.text.model`,
+`gps.text.fw`, `gps.text.platform` (the `GPS_PLATFORM` value a command carried,
+0 when none did), `gps.text.acks`, `gps.text.naks`, `gps.text.timeouts`,
+`gps.text.save` (`saved`, `refused` or `not_tried`), `gps.text.standby`
+(`sent`, `refused` or `not_tried`), `gps.text.last` (the last operation and its
+verdict) and `gps.text.refused`, which names the planner refusals as one comma
+separated token in a fixed order: `gnss`, `rate`, `sbas`, `platform`, `standby`,
+or `none`. The last one is what proves a refusal reaches the user rather than
+only the log.
 
 Phase 2 adds the receiver model and its queries. `gps.receiver` reports
 `unknown`, `detecting`, `present` or `absent`, `gps.baud` reports the rate the

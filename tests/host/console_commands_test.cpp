@@ -1512,6 +1512,17 @@ void testGPSDiagnostics(void) {
   checkContains(noText.out, "save: not tried", "an unsaved receiver says so");
   checkContains(noText.out, "last: unknown none", "no command has finished yet");
 
+  // A configured receiver whose platform and standby settings asked for
+  // nothing says so rather than claiming a command was sent.
+  gps.text = {};
+  gps.text.configured = true;
+  const Result nothing = runDirect("gps text");
+  checkContains(nothing.out, "platform: not requested",
+                "a platform setting that sent nothing is not reported as sent");
+  checkContains(nothing.out, "standby: not requested",
+                "a standby that was never asked for is not reported as sent");
+  gps.text = {};
+
   // A configured Quectel receiver reports what the plan sent and how the last
   // command ended, including a refusal the driver reported rather than hid.
   gps.text.have_version = true;
@@ -1524,6 +1535,7 @@ void testGPSDiagnostics(void) {
   gps.text.sentences = 0;
   gps.text.sentences_set = true;
   gps.text.psm_refused = true;
+  gps.text.platform = 1;
   gps.text.acks = 7;
   gps.text.naks = 1;
   gps.text.save = 1;
@@ -1533,6 +1545,7 @@ void testGPSDiagnostics(void) {
   checkContains(configured.out, "model: LC29HAANR01A04S", "the version string is reported");
   checkContains(configured.out, "firmware: 2022/11/04 16:39:48", "the build stamp is reported");
   checkContains(configured.out, "rate_ms: 200", "the rate the plan sent is reported");
+  checkContains(configured.out, "platform: sent", "a platform command that went out is reported");
   checkContains(configured.out, "standby: refused", "a refused standby is reported");
   checkContains(configured.out, "save: saved", "a finished save is reported");
   checkContains(configured.out, "acks: 7", "the acknowledgement count is reported");

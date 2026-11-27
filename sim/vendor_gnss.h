@@ -20,6 +20,17 @@
  * and Unicore "UFirebird II Series Protocol Specification" UC-04-FB2 EN R1.5
  * (UC). A behaviour the documents do not state is marked as an assumption
  * where it is decided.
+ *
+ * How independent the doubles are: both use GpsText::parse() and
+ * GpsText::frame(), so they cannot falsify the framing or the checksum rule.
+ * That half is pinned instead by tests/host/gps_text_test.cpp, which reproduces
+ * fourteen literal examples from the two Quectel documents and the Unicore one
+ * byte for byte. What the doubles do own independently is the receiver side:
+ * which result code answers which command, which variant lacks a command, the
+ * state a configured receiver keeps, and what it saves. An announcement of
+ * acknowledgement is never assumed: each one follows its document, and a
+ * command the model does not implement is answered the way that vendor says an
+ * unknown command is answered.
  */
 
 namespace Furble {
@@ -53,7 +64,7 @@ class VirtualQuectel {
   struct Settings {
     uint16_t rate_ms = 1000;
     /* PAIR062 types 0 to 9. The default set is GGA, GLL, GSA, GSV, RMC, VTG,
-       which Q29 2.4.13 note 3 page 61 states. */
+       which Q29 2.4.13 note 3 page 62 states. */
     uint8_t sentence[10] = {1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
     bool gps = true;
     bool glonass = false;
@@ -109,6 +120,8 @@ class VirtualQuectel {
   uint32_t backups = 0;
   uint32_t restarts = 0;
   uint32_t unknown = 0;
+  /** $PAIR002 power-ons. A refused rail cut must leave this above zero. */
+  uint32_t powerOns = 0;
 
   /** Last $PAIR650 interval that was accepted, seconds. */
   uint32_t standbyS = 0;
@@ -157,6 +170,10 @@ class VirtualUnicore {
     uint8_t sentence[9] = {1, 1, 1, 1, 1, 1, 0, 0, 0};
     uint32_t sys = 0;
     uint32_t baud = 115200;
+    /* CFGDYN DynModel: 0 portable, 1 static (UC 3.3 Table 3-41, page 58). */
+    uint8_t dyn = 0;
+    /* StaticHoldThresh, the third CFGDYN field. */
+    uint16_t static_hold = 0;
   };
 
   void reset(const Options &options, uint32_t now);

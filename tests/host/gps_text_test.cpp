@@ -204,7 +204,10 @@ bool testMatch() {
         "an ack for another packet id is not this command's answer");
   check(GpsText::match(lineOf("$PAIR001,050,0*3F", "bad checksum"), fix)
             == GpsText::Verdict::BAD_REPLY,
-        "a corrupt ack is a malformed reply");
+        "a corrupt ack for this id is a malformed reply");
+  check(GpsText::match(lineOf("$PAIR001,062,0*3F", "stale id, bad checksum"), fix)
+            == GpsText::Verdict::NONE,
+        "a corrupt ack for another id is not this command's answer");
   check(GpsText::match(lineOf("$PAIR001,050*22", "short ack"), fix) == GpsText::Verdict::BAD_REPLY,
         "an ack without a result is malformed");
 
@@ -296,6 +299,89 @@ bool testSession() {
   check(session.service(0) == GpsText::Session::Step::WAIT, "and it keeps waiting");
   session.clear();
   check(!session.active(), "clear drops the command");
+
+  // result 5 is "busy, try again soon" (Q76 2.3.1 page 33), not a refusal
+  session.begin(fix, 0);
+  check(feed("$PAIR001,050,5*3B") == GpsText::Verdict::BUSY, "result 5 is busy");
+  check(session.service(0) == GpsText::Session::Step::WAIT, "busy re-arms instead of failing");
+  check(session.attempts() == 1, "busy does not spend an attempt");
+  GpsText::Session::Step step = GpsText::Session::Step::WAIT;
+  for (uint8_t i = 0; i < GpsText::Session::BUSY_MAX; i++) {
+    (void)feed("$PAIR001,050,5*3B");
+    step = session.service(0);
+  }
+  check(step == GpsText::Session::Step::FAILED,
+        "after the busy cap the command fails with its reason");
+  check(session.verdict() == GpsText::Verdict::BUSY, "the verdict keeps the reason");
+  check(!session.active(), "the session is closed after the busy cap");
+
+  // result 1 is bounded: a receiver that never finishes must not hold the queue
+  session.begin(fix, 0);
+  for (uint8_t i = 0; i < GpsText::Session::PENDING_MAX; i++) {
+    (void)feed("$PAIR001,050,1*3F");
+    check(session.service(0) == GpsText::Session::Step::WAIT, "pending keeps waiting");
+  }
+  check(feed("$PAIR001,050,1*3F") == GpsText::Verdict::PENDING, "one more pending answer");
+  check(session.service(0) == GpsText::Session::Step::TIMEOUT,
+        "past the pending cap the session gives up");
+  check(session.verdict() == GpsText::Verdict::STALLED, "the verdict is stalled, not unanswered");
+
+  return g_Failures == before;
+}
+
+// f. The settle window. A Unicore $OK names no command, so one that arrives
+// after its own command failed must not acknowledge the next one.
+bool testSettle() {
+  std::cout << "test: a late Unicore ack is dropped before the next command\n";
+  const int before = g_Failures;
+
+  GpsText::Settle settle;
+  check(!settle.armed() && settle.open(0), "an untouched gate is open");
+  settle.arm(1000, GpsText::Session::ACK_TIMEOUT_MS);
+  check(settle.armed() && !settle.open(1500), "a closed gate stays closed inside the window");
+  check(settle.remaining(1500) == 500, "the gate reports its remaining time");
+  check(settle.open(2000) && !settle.armed(), "the window expires after one timeout");
+  settle.arm(0, 1000);
+  check(!settle.open(999) && settle.open(1000), "the deadline is inclusive at the boundary");
+
+  auto lineOf = [](const char *text) {
+    GpsText::Line line;
+    const std::string wire = text;
+    (void)GpsText::parse(wire.data(), wire.size(), line);
+    return line;
+  };
+
+  check(GpsText::windowed(lineOf("$OK*04\r\n")), "a bare $OK can answer any Unicore command");
+  check(GpsText::windowed(lineOf("$FAIL,0*1E\r\n")), "a bare $FAIL can answer any Unicore command");
+  check(GpsText::windowed(lineOf("$CFGNAV,200*33\r\n")),
+        "a named Unicore reply names no port or id, so it is windowed too");
+  check(!GpsText::windowed(lineOf("$PDTINFO,UC6580,G1,R1*00\r\n")),
+        "identification is not an acknowledgement and is never windowed");
+  check(!GpsText::windowed(lineOf("$PAIR001,050,0*3E\r\n")),
+        "a Quectel ack names its packet id, so it is never windowed");
+  check(!GpsText::windowed(lineOf("$GPGGA,1*00\r\n")), "and NMEA is never windowed");
+
+  // the sequence the review drove: A times out, B starts, A's late $OK arrives
+  GpsText::Session session;
+  const GpsText::Command a = Unicore::messageRate(Unicore::MSG_GGA, 0);
+  const GpsText::Command b = Unicore::navRate(1000);
+  session.begin(a, 0);
+  check(session.service(1000) == GpsText::Session::Step::SEND, "the first command resends");
+  check(session.service(2000) == GpsText::Session::Step::SEND, "and resends again");
+  check(session.service(3000) == GpsText::Session::Step::TIMEOUT, "then times out");
+  GpsText::Settle gate;
+  gate.arm(3000, GpsText::Session::ACK_TIMEOUT_MS);
+  session.begin(b, 3000);
+  const GpsText::Line lateOk = lineOf("$OK*04\r\n");
+  check(!gate.open(3500) && GpsText::windowed(lateOk),
+        "the late ack is inside the window and is dropped");
+  check(session.service(3500) == GpsText::Session::Step::WAIT, "the next command is still waiting");
+  // The contrast: with no gate the same bytes ack a command that never
+  // answered them, which is the defect this window closes.
+  GpsText::Session ungated;
+  ungated.begin(b, 3000);
+  check(ungated.accept(lateOk) == GpsText::Verdict::ACKED,
+        "without the gate the late ack is credited to the next command");
 
   return g_Failures == before;
 }
@@ -389,6 +475,14 @@ bool testQuectelPlan() {
   check(Quectel::standby(15, standby) && standby.body == "PAIR650,15", "15 s is accepted");
   check(!Quectel::standby(Quectel::BACKUP_MAX_S + 1, standby), "past two years is refused");
 
+  check(Quectel::powerBackOn("LC29HAANR01A04S").body == "PAIR002",
+        "a refused cut powers the GNSS back on with PAIR002 (Q76 2.3.2 page 34)");
+  check(Quectel::powerBackOn("LC76GABNR02A01S").body == "PAIR002",
+        "an LC76G takes the same power-on");
+  check(Quectel::powerBackOn("LC86GABNR01A01S").body == "PAIR004",
+        "an LC86G has no PAIR002, so it takes the hot start (Q76 2.3.2 note page 34)");
+  check(Quectel::powerBackOn("").body == "PAIR004",
+        "an unread model takes the command every part documents");
   check(Quectel::restart(0).body == "PAIR004", "hot start is PAIR004");
   check(Quectel::restart(1).body == "PAIR005", "warm start is PAIR005");
   check(Quectel::restart(2).body == "PAIR006", "cold start is PAIR006");
@@ -459,14 +553,46 @@ bool testUnicorePlan() {
       !plan.gnss_refused && plan.commands.size() == 1 && plan.commands[0].body == "CFGSYS,h100010",
       "SBAS is bit 20 and BDS B1I is bit 4");
 
+  // the dynamic platform model is $CFGDYN (UC 3.3.20 Table 3-41 page 58)
+  check(Unicore::dynamicModel(Unicore::DYN_PORTABLE).body == "CFGDYN,1,0,0",
+        "portable is DynModel 0 (UC 3.3 Table 3-41 page 58)");
+  check(Unicore::dynamicModel(Unicore::DYN_STATIC).body == "CFGDYN,1,1,0",
+        "stationary is DynModel 1");
+  request = GpsText::Request();
+  request.platform = 1;
+  plan = Unicore::plan(request);
+  check(!plan.platform_refused && plan.platform == 1, "the Portable setting is accepted");
+  check(plan.commands.size() == 1 && plan.commands[0].body == "CFGDYN,1,0,0",
+        "Portable is sent as CFGDYN portable");
+  request = GpsText::Request();
+  request.platform = 2;
+  plan = Unicore::plan(request);
+  check(!plan.platform_refused && plan.platform == 2, "the Stationary setting is accepted");
+  check(plan.commands.size() == 1 && plan.commands[0].body == "CFGDYN,1,1,0",
+        "Stationary is sent as CFGDYN static");
+  request = GpsText::Request();
+  request.platform = 3;
+  plan = Unicore::plan(request);
+  check(plan.platform_refused && plan.commands.empty(),
+        "Pedestrian has no documented DynModel, so it is refused");
+  request = GpsText::Request();
+  request.platform = 4;
+  plan = Unicore::plan(request);
+  check(plan.platform_refused, "Vehicle has no documented DynModel, so it is refused");
+
   request = GpsText::Request();
   request.psm = GpsText::PSM_CYCLIC;
-  request.platform = 3;
   request.rate_ms = 2000;
   plan = Unicore::plan(request);
   check(plan.psm_refused, "Unicore documents no standby command, so it is refused");
-  check(plan.platform_refused, "Unicore documents no dynamic model, so it is refused");
-  check(plan.rate_refused, "2 s is outside CFGNAV's 50 to 1000 ms");
+  check(plan.rate_refused, "2 s is above CFGNAV's one second example");
+
+  // the 100 ms floor is furble's own ladder, not a documented CFGNAV bound
+  check(Unicore::NAV_RATE_MIN_MS == 100, "the floor is the shortest GPS_RATE interval");
+  request = GpsText::Request();
+  request.rate_ms = 50;
+  plan = Unicore::plan(request);
+  check(plan.rate_refused, "50 ms is below the ladder and is refused");
 
   GpsText::Command port;
   check(Unicore::port(115200, port) && port.body == "CFGPRT,1,0,115200,1,3",
@@ -550,6 +676,20 @@ bool testDemux() {
   }
   check(dropped, "an over-long vendor line is dropped a byte at a time");
 
+  // a finished line past the cap is dropped whole, so parse() never sees it
+  std::string longLine = "$PAIR001,";
+  longLine.append(GpsText::MAX_LINE + 20, '9');
+  longLine += "*3E\r\n";
+  pieces.clear();
+  const size_t longUsed =
+      GpsDemux::split(reinterpret_cast<const uint8_t *>(longLine.data()), longLine.size(), pieces);
+  check(longUsed == longLine.size(), "the whole over-long line is consumed");
+  bool sawVendor = false;
+  for (const auto &piece : pieces) {
+    sawVendor = sawVendor || (piece.kind == GpsDemux::Kind::VENDOR);
+  }
+  check(!sawVendor, "a terminated line past MAX_LINE never becomes a vendor piece");
+
   // a vendor line with no terminator yet is kept, and completed on the next read
   std::vector<uint8_t> buffer;
   const std::string tail = "$CFGSYS,h1001*00";
@@ -587,6 +727,7 @@ int main() {
   testParse();
   testMatch();
   testSession();
+  testSettle();
   testQuectelPlan();
   testUnicorePlan();
   testDemux();

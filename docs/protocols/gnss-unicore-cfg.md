@@ -26,7 +26,7 @@ The checksum is the XOR of every character between `$` and `*`. An input
 checksum is optional but is checked when present: a wrong one earns
 `$FAIL,1` and the command is not executed (UC 3.1 page 25, 3.2 page 31). The
 whole message is capped at 128 bytes (UC 3.1 page 24), which is
-`GpsText::MAX_LINE` (`lib/furble/protocol/GpsText.h:46`). Unsigned integers are
+`GpsText::MAX_LINE` (`lib/furble/protocol/GpsText.h:52`). Unsigned integers are
 decimal or hexadecimal with a leading `h` or `H` (UC 1.3 pages 3 and 4).
 
 ## Acknowledgements
@@ -60,6 +60,7 @@ the firmware version through `gps text`.
 | sentence rate | `CFGMSG,0,<id>,<rate>` | 3.10 to 3.12, 34-36 | ids 0 GGA, 1 GLL, 2 GSA, 3 GSV, 4 RMC, 5 VTG; rate 0 or 1 |
 | constellation | `CFGSYS,h<mask>` | 3.20 and 3.21, 44-46 | the receiver resets on it, so it is last in the queue |
 | save | `CFGSAVE` | 3.24, 47 | flash-version products only; do not power off for one second |
+| dynamic model | `CFGDYN,1,<0 or 1>,0` | 3.3.20, Table 3-41, 58 | 0 Portable, 1 Static; Pedestrian and Vehicle have no counterpart |
 | restart | `RESET,0,<mask>` | 3.5, 29 | h00 hot, h01 warm, h85 cold |
 | port and baud | `CFGPRT,1,0,<baud>,1,3` | 3.8 and 3.9, 31-33 | built and host-tested, not yet sent by a setting |
 
@@ -93,15 +94,20 @@ A mask that breaks a rule is refused before it is sent, and the driver logs it.
 
 ## What there is no command for
 
-UC R1.5 contains **no standby, sleep or power-save command**, and no dynamic
-platform model. Two settings therefore cannot be honoured on this part:
+UC R1.5 contains **no standby, sleep or power-save command**. `GPS_PSM` is
+therefore reported refused, the receiver keeps running for the whole duty cycle,
+and `configureUnicore()` logs that once.
 
-- `GPS_PSM` (standby) is reported refused, the receiver keeps running for the
-  whole duty cycle, and `configureUnicore()` logs that once.
-- `GPS_PLATFORM` is reported refused.
+The dynamic platform model does exist: `$CFGDYN,mask,DynModel,StaticHoldThresh`
+(UC 3.3.20, Table 3-41, page 58) takes DynModel 0 Portable or 1 Static, mask bit
+0 selecting it. furble sends `$CFGDYN,1,0,0` for Portable and `$CFGDYN,1,1,0` for
+Stationary, which are the two settings that map exactly. Pedestrian and Vehicle
+have no documented counterpart and are reported refused rather than
+approximated.
 
-Both are visible in `gps text`, which is the point: a setting that does nothing
-says so.
+Both the standby refusal and a platform refusal are visible in `gps text`, in the
+`refused:` line the Raw NMEA page renders, and in `gps.text.refused` in the
+simulator, which is the point: a setting that does nothing says so.
 
 ## The save path
 

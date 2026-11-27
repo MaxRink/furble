@@ -3,7 +3,7 @@
 Status: implemented. This plan lands the vendor text command seam
 (`lib/furble/protocol/GpsText.{h,cpp}`), the two dialects behind it
 (`GpsQuectel`, `GpsUnicore`), the `src/FurbleGPSText.cpp` backend of the GPS
-driver, a virtual receiver per vendor in the simulator, host coverage, seven
+driver, a virtual receiver per vendor in the simulator, host coverage, eight
 simulator scenarios and the documentation.
 
 Sources were read on 2026-11-27. Facts about this checkout were read at master
@@ -134,9 +134,9 @@ page 32, Q29 2.4 page 51).
 | sleep lock | `$PAIR382,1` | 2.3.30, 56 | 2.4.31, 80 | required before `$PAIR003` if the port must still answer |
 | SBAS | `$PAIR410,<0/1>` | 2.3.34, 60 | 2.4.35, 84 | not supported in fitness or swimming mode |
 | GNSS off | `$PAIR003` | 2.3.3, 34 | 2.4.3, 53 | |
-| GNSS on | `$PAIR002` | 2.3.2, 33 | 2.4.2, 52 | not sent by the driver; see 12.6 |
-| save navigation data | `$PAIR511` | 2.3.44, 67 | 2.4.45, 93 | above 1 Hz the GNSS must be off first |
-| save settings | `$PAIR513` | 2.3.45, 68 | 2.4.46, 94 | same rule |
+| GNSS on | `$PAIR002` | 2.3.2, 34 | 2.4.2, 52 | sent after a refused rail cut; an LC86G has no `$PAIR002` (Q76 2.3.2 note page 34) and takes `$PAIR004` |
+| save navigation data | `$PAIR511` | 2.3.44, 67-68 | 2.4.45, 93 | above 1 Hz the GNSS must be off first |
+| save settings | `$PAIR513` | 2.3.45, 68-69 | 2.4.46, 94 | same rule |
 | backup mode | `$PAIR650,<s>` | 2.3.46, 69 | 2.4.47, 95 | 0, or 10 s to 62208000 s |
 | baud rate | `$PAIR864,0,0,<baud>` | 2.3.56, 78 | 2.4.53, 100-101 | 9600 to 921600; reboot required |
 | restart | `$PAIR004` / `$PAIR005` / `$PAIR006` | 2.3.4 to 2.3.6, 34-36 | 2.4.4 to 2.4.6, 54-55 | hot, warm, cold |
@@ -179,6 +179,7 @@ pages 3 and 4).
 | fix rate | `$CFGNAV,<ms>,<ms>,` | 3.3, Tables 3-18 and 3-19, 43 | measRate must equal navRate or the receiver answers FAIL |
 | constellation | `$CFGSYS,h<mask>` | 3.3, Tables 3-20 and 3-21, 44-46 | resets the receiver; QZSS needs GPS, SBAS needs GPS or BDS |
 | NMEA version | `$CFGNMEA` | 3.3, Table 3-13, 40 | answered `,H52`; not sent by the driver |
+| dynamic model | `$CFGDYN,1,<0 or 1>,0` | 3.3.20, Table 3-41, 58 | 0 Portable, 1 Static; Pedestrian and Vehicle have no counterpart |
 | save | `$CFGSAVE` | 3.3, Table 3-24, 47 | flash-version products only; do not power off for 1 s |
 | clear | `$CFGCLR` | 3.3, Table 3-25, 47 | not sent by the driver |
 | restart | `$RESET,0,<mask>` | 3.2, Table 3-5, 29 | h00 hot, h01 warm, h85 or hFF cold |
@@ -190,11 +191,24 @@ signal table is L1 only and its settings have no L5 switch.
 
 ### 5.1 What Unicore does not have
 
-There is **no standby, sleep or power-save command anywhere in UC R1.5** and no
-dynamic platform model. Both are reported refused rather than approximated:
-`Unicore::plan()` sets `psm_refused` and `platform_refused`, and the driver logs
-each once. A user who selects Standby on a UC6580 gets a receiver that keeps
-running and a console line saying why, which is the behaviour this PR is for.
+There is **no standby, sleep or power-save command anywhere in UC R1.5**, so
+`Unicore::plan()` sets `psm_refused` and the driver logs it once. A user who
+selects Standby on a UC6580 gets a receiver that keeps running and a console line
+saying why, which is the behaviour this PR is for.
+
+The dynamic platform model does exist. `$CFGDYN,mask,DynModel,StaticHoldThresh`
+(UC 3.3.20, Table 3-41, page 58) takes DynModel 0 Portable and 1 Static, with
+mask bit 0 selecting it and the document's own example `$CFGDYN,1,0,0`. Those two
+values are exactly furble's Portable and Stationary, so `Unicore::plan()` queues
+them; Pedestrian and Vehicle have no documented counterpart and are reported
+refused. A reviewer found this: the earlier text of this section said the
+document had no dynamic model at all, which was wrong and is corrected here and
+in the three documents that repeated it.
+
+Every refusal the planner makes is visible in three places, not only the log:
+`gps text` on the console, the `refused:` line on the Raw NMEA page, and
+`gps.text.refused` in the simulator. The first two are what a user without a
+serial cable sees.
 
 ## 6. Integration points
 
@@ -253,7 +267,7 @@ scenarios read `text.<field>` for the model's own view.
 
 | Test | Covers |
 | :--- | :--- |
-| `gps-text` (host) | framing against six checksums the Quectel documents print, prefix routing including `$PCAS` and `$GPGGA` negatives, reply parsing, every Quectel result code, `$OK`/`$FAIL`, the session's ack, nack, timeout, retry and pending behaviour, both planners, and the demultiplexer's vendor pieces |
+| `gps-text` (host) | framing against six checksums the Quectel documents print, prefix routing including `$PCAS` and `$GPGGA` negatives, reply parsing, every Quectel result code, `$OK`/`$FAIL`, the session's ack, nack, timeout, retry, busy and pending-cap behaviour, the settle window against the late `$OK` sequence, both planners including `$CFGDYN` and the power-on after a refused cut, the demultiplexer's vendor pieces including the `MAX_LINE` bound on a terminated line |
 | `gps-text-sim` (host) | the same seam driven end to end against both virtual receivers: identification, a good command, a nacked command, an unsupported id, a corrupt checksum, a timeout, standby with a wake, the save path with a rail cut, and a whole planner queue |
 | `console-commands` (host) | `gps text` and the `backend:` line `gps status` prints |
 | `gps-ubx`, `gps-ubx-fuzz` | the existing three dialects still split byte for byte as before |
@@ -261,8 +275,9 @@ scenarios read `text.<field>` for the model's own view.
 | `gps-quectel-standby` (sim) | PAIR650 at 10 s, backup mode, no epochs, the wake fix |
 | `gps-quectel-refusals` (sim) | a refused PAIR050, the rest of the plan continuing, and the 5 s standby refusal |
 | `gps-quectel-save` (sim) | the save sequence, the rail cut, and the settings surviving it |
-| `gps-unicore` (sim) | detection, the eight-command plan, the system mask, the reset |
-| `gps-unicore-refusals` (sim) | no standby, no platform, no flash, and a silent part falling back to NMEA |
+| `gps-unicore` (sim) | detection, the nine-command plan including CFGDYN static, the system mask, the reset |
+| `gps-unicore-refusals` (sim) | no standby, no CFGDYN for Vehicle, a flashless save refusal, the refusal named in `gps.text.refused` and on the Raw NMEA page, and a silent part falling back to NMEA |
+| `gps-quectel-rail-refused` (sim) | the save powering the GNSS off, a refused cut, and the `$PAIR002` that brings it back |
 
 Every host test and every scenario fails without the driver: the host tests link
 `GpsText.cpp`, `GpsQuectel.cpp` and `GpsUnicore.cpp` and would not build, and the
@@ -291,12 +306,13 @@ firmware CI.
    builders `Quectel::baud()` and `Unicore::port()` exist and are host-tested,
    and no driver path sends them yet. The autobaud ladder still owns rate
    discovery.
-3. **`$PAIR002` (GNSS on) is built and unused.** The save path powers the GNSS
-   off before a rail cut and the rail does the rest, so there is nothing to turn
-   back on unless the cut is refused; UBX has the same problem and solves it with
-   CFG-RST start. The Quectel equivalent needs a device to confirm the receiver
-   accepts `$PAIR002` after a `$PAIR511` at a non-1 Hz rate, which is UNVERIFIED
-   (12.6), so the driver does not send it.
+3. **`$PAIR002` (GNSS on) is sent only after a refused cut.** The save path
+   powers the GNSS off before a rail cut and the rail does the rest, so there is
+   nothing to turn back on unless the cut is refused. That case is real (a Core2
+   on a low battery, or an IR hold) and used to leave the receiver fixless, so
+   `railOffOrRestart()` now sends `$PAIR002`, or `$PAIR004` on an LC86G. Whether
+   every part accepts it after `$PAIR511` at a non-1 Hz rate is UNVERIFIED
+   (12.6).
 
 ## 11. Documentation updated in this PR
 
@@ -335,11 +351,14 @@ firmware CI.
    BDS, QZSS, reserved). The examples cover GPS+Galileo+BDS, GPS alone and the
    full four, which is consistent, but no example prints Galileo and BDS
    together with GLONASS off.
-6. **`$PAIR002` after `$PAIR511` at more than 1 Hz.** The save order is
-   documented; whether the receiver needs a `$PAIR002` to come back when the rail
-   cut is refused is not. The driver therefore never sends it, and a refused cut
-   leaves the GNSS engine off until the next enable. That is a known gap, not a
-   verified behaviour.
+6. **`$PAIR002` after a refused rail cut.** Q76 2.3.44 note 2 page 69 documents
+   the re-power after a save at more than 1 Hz, and the driver now sends
+   `$PAIR002` whenever the cut it powered down for is refused, or `$PAIR004` on
+   an LC86G. That an LC86G really has no `$PAIR002` rests on Q76 2.3.2 note page
+   34, which the review read and this session could not re-read: the fetched
+   copy truncated before page 34. Whether every part accepts the frame after
+   `$PAIR511` at a non-1 Hz rate needs a device. The simulator covers the
+   sequence, not the silicon.
 7. **`$CFGNAV` with an empty `DRNavRate`.** UC 3.1 page 24 says an omitted
    parameter is an empty field before `,` or `,*`, and UC 3.3 page 43 says the
    parameter is invalid for non-integrated products. Whether a UC6580 accepts the
@@ -353,18 +372,28 @@ firmware CI.
    waits for it, but whether a cut at 1.1 s is safe on a part that answered
    slowly is unmeasured.
 10. **The `PENDING` result.** Result 1 means "being processed" (Q76 2.3.1 page
-    32). The session treats it as "keep waiting without spending an attempt" and
-    re-arms the one second deadline. How long a real MNL takes to move from 1 to
-    0 for a `$PAIR066` that reboots the GNSS engine is unmeasured.
+    33). The session treats it as "keep waiting without spending an attempt",
+    re-arms the one second deadline, and gives up after five answers as
+    `Verdict::STALLED` so a receiver that never finishes cannot hold the queue.
+    How long a real MNL takes to move from 1 to 0 for a `$PAIR066` that reboots
+    the GNSS engine is unmeasured, so five is a bound, not a measurement.
 11. **The `PAIR650` wake path.** The document says the module leaves backup mode
     when the timer expires (Q76 2.3.46 page 69) and that it cannot receive
     commands while it is there. Whether the first epoch after the wake is at the
     configured rate or needs a settling period is not stated, so the burst
     predictor may see one late or early burst per wake.
-12. **A Unicore `$OK` arriving late.** Because `$OK` carries no command name, an
-    acknowledgement that arrives after its session timed out would be taken for
-    the next command's answer. The one-in-flight rule makes the window small; it
-    is not zero.
+12. **`$CFGDYN` on a real UC6580.** UC 3.3.20 Table 3-41 page 58 defines
+    `$CFGDYN,1,0,0` for Portable and `$CFGDYN,1,1,0` for Static, and the model
+    accepts exactly that. Whether the part also wants a non-zero
+    StaticHoldThresh for the static model to hold, and whether it answers `$OK`
+    or says nothing, is not stated and needs a device.
+13. **A Unicore `$OK` arriving late.** Because `$OK` carries no command name, an
+    acknowledgement that arrives after its session failed would be taken for the
+    next command's answer. The driver now closes the seam for one second after a
+    Unicore failure and drops every windowed line inside it, which a host test
+    pins against the exact sequence. Whether a real part ever holds a reply for
+    longer than that second is unmeasured; if it does, the line would be dropped
+    rather than miscredited, which is the safe direction.
 
 ## 13. Sources
 
@@ -391,8 +420,12 @@ Repository citations, not URLs:
 
 Landed in this PR: the seam, the two dialects, the driver backend, the
 demultiplexer piece, detection, configuration, standby, save, restart, the
-console surface, the two virtual receivers, two host suites, seven scenarios and
-the documentation listed in section 11.
+console surface, the two virtual receivers, two host suites, eight scenarios and
+the documentation listed in section 11. The review of PR 552 added `$CFGDYN`,
+the power-on after a refused rail cut, the settle window, the busy and pending
+caps, the id-before-checksum match, the `MAX_LINE` bound on a terminated line,
+and the refusal line on the Raw NMEA page; `plans/552-review-feedback.md` answers
+every finding.
 
 Gates run before the PR: the host suite, the four GPS suites, the GPS fuzz
 target, `check_sim_scenarios.py`, `pre_review.py`, the doc token check and both

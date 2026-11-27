@@ -379,7 +379,8 @@ See `docs/power/board-power.md` and `plans/implemented/364-ext5v-rail.md`.
   text twin of `gps ubx`: the backend and dialect, the model and firmware from
   `$PQTMVERNO` or `$PDTINFO`, the constellation mask, fix rate, SBAS state,
   sentence set, platform and standby availability the plan sent, whether each
-  was refused because the part has no such command, the save state, the
+  was refused because the part has no such command or never asked for because
+  the setting was off, the save state, the
   acknowledgement, refusal and timeout counts, and the last command with its
   verdict. It reads no UART, so unlike `gps ubx` and `gps monhw` it never wakes
   a receiver.

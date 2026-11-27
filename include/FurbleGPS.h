@@ -168,11 +168,14 @@ class GPS {
     bool platform_refused; /**< the part has no mode for the platform setting */
     bool rate_refused;     /**< the rate is outside the part's documented range */
     bool psm_refused;      /**< standby is unsupported or out of range */
-    bool sentences_set;    /**< the sentence set was decided */
-    uint8_t sentences;     /**< the GpsText::SentenceSet that was sent */
-    uint32_t acks;         /**< acknowledged commands this session */
-    uint32_t naks;         /**< refused commands this session */
-    uint32_t timeouts;     /**< unanswered commands this session */
+    /** GPS_PLATFORM value a command carried: 1 Portable, 2 Stationary and so
+        on, 0 when the plan sent nothing for the setting. */
+    uint8_t platform;
+    bool sentences_set; /**< the sentence set was decided */
+    uint8_t sentences;  /**< the GpsText::SentenceSet that was sent */
+    uint32_t acks;      /**< acknowledged commands this session */
+    uint32_t naks;      /**< refused commands this session */
+    uint32_t timeouts;  /**< unanswered commands this session */
     /** Configuration save: 0 not tried, 1 saved, 2 refused or unanswered. */
     uint8_t save;
     /** Standby: 0 never asked, 1 sent, 2 refused by the part or the driver. */
@@ -596,8 +599,6 @@ class GPS {
   // The whole vendor save sequence, in one budget on the shutdown path. A rail
   // cut waits this long at most, whether or not the receiver answered.
   static constexpr uint32_t TEXT_SAVE_BUDGET_MS = 1500;
-  // How long each save frame waits for its own acknowledgement.
-  static constexpr uint32_t TEXT_SAVE_REPLY_MS = 250;
   static constexpr uint8_t BINARY_ATTEMPTS = 3;
   static constexpr size_t MAX_CONFIG_COMMANDS = 16;
   static constexpr size_t NAVX_PAYLOAD_SIZE = 44;
@@ -806,6 +807,7 @@ class GPS {
                        bool gnss_refused,
                        bool sbas,
                        bool sbas_refused,
+                       uint8_t platform,
                        bool platform_refused,
                        bool rate_refused,
                        bool psm_refused);
@@ -824,6 +826,13 @@ class GPS {
   void textSaveQueueBuild(void);
   /** Restart the receiver with the backend's own command. */
   bool textRestart(uint8_t mode);
+  /**
+   * Bring the GNSS engine back after a rail cut the board refused.
+   *
+   * Only acts when this driver powered the GNSS off for a save that no cut
+   * followed, which is the state a refused PMIC request leaves behind.
+   */
+  void textPowerBackOn(void);
   /** Drop the text identity, plan and counters. */
   void resetText(void);
   /** Which vendor answered the identification probes, if any. */
@@ -1173,6 +1182,9 @@ class GPS {
   GpsText::Session m_Text;
   mutable std::mutex m_TextMutex;
   text_status_t m_TextStatus = {};
+  // PAIR003 powered the GNSS engine off and no rail cut followed. GPS task
+  // only, cleared by the power-on or restart that brings the engine back.
+  bool m_TextStopped = false;
   // The configuration save in flight on the shutdown path. Its own session, so
   // a save never disturbs the configuration session; the GPS task is the only
   // writer and disable() runs with that task parked.

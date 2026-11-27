@@ -57,7 +57,7 @@ bool sentenceEnabled(GpsText::SentenceSet set, uint8_t type) {
       return fix || detail;
     case GpsText::SentenceSet::STANDARD:
       // "GGA, GLL, GSA, GSV, RMC and VTG messages are output by default"
-      // (Q29 2.4.13 note 3, page 61)
+      // (Q29 2.4.13 note 3, page 62)
       return true;
   }
   return true;
@@ -147,6 +147,17 @@ Command powerOn(void) {
   return ack(ID_POWER_ON, GpsText::Op::POWER, "PAIR002");
 }
 
+Command powerBackOn(const std::string &model) {
+  // LC86G answers nothing to PAIR002 (Q76 2.3.2 note page 34), so a hot start
+  // is the documented way back for it. Every other part, and a model furble
+  // could not read, takes the power-on or, when unknown, the hot start that all
+  // parts document.
+  if ((model.rfind("LC86G", 0) == 0) || model.empty() || (model == "error")) {
+    return restart(0);
+  }
+  return powerOn();
+}
+
 Command saveSettings(void) {
   return ack(ID_SAVE_SETTINGS, GpsText::Op::SAVE, "PAIR513");
 }
@@ -201,10 +212,11 @@ Plan plan(const GpsText::Request &request) {
   }
 
   if (request.platform != 0) {
-    // PAIR080 has normal, fitness, drone and swimming (Q76 2.3.23 page 50).
-    // Portable is normal and Pedestrian is fitness. Stationary and Vehicle have
-    // no documented equivalent, so the receiver is left alone rather than given
-    // a mode that means something else.
+    // PAIR080 is 0 normal, 1 fitness, 2 to 4 reserved, 5 drone, 6 reserved and
+    // 7 swimming (Q76 2.3.23 pages 50 and 51). Portable is normal and
+    // Pedestrian is fitness. Stationary and Vehicle have no documented
+    // equivalent, so the receiver is left alone rather than given a mode that
+    // means something else.
     if (request.platform == 1) {
       plan.commands.push_back(navMode(0));
     } else if (request.platform == 3) {

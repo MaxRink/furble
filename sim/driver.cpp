@@ -2060,6 +2060,64 @@ std::string queryValueUnscoped(const std::string &key) {
     if (sub == "degraded_retries") {
       return std::to_string(gps.getCycleStatusSnapshot().retries);
     }
+    if (sub.rfind("text.", 0) == 0) {
+      // The vendor text driver's own status, not the virtual receiver's view.
+      // A refusal flag is only ever set by the planner, so a regression that
+      // stopped publishing one fails here rather than passing silently.
+      const auto text = gps.getTextStatus();
+      const std::string field = sub.substr(5);
+      if (field == "configured") {
+        return text.configured ? "1" : "0";
+      }
+      if (field == "model") {
+        return text.model.empty() ? "none" : text.model;
+      }
+      if (field == "fw") {
+        return text.firmware.empty() ? "none" : text.firmware;
+      }
+      if (field == "platform") {
+        return std::to_string(text.platform);
+      }
+      if (field == "acks") {
+        return std::to_string(text.acks);
+      }
+      if (field == "naks") {
+        return std::to_string(text.naks);
+      }
+      if (field == "timeouts") {
+        return std::to_string(text.timeouts);
+      }
+      if (field == "save") {
+        return (text.save == 1) ? "saved" : ((text.save == 2) ? "refused" : "not_tried");
+      }
+      if (field == "standby") {
+        return (text.standby == 1) ? "sent" : ((text.standby == 2) ? "refused" : "not_tried");
+      }
+      if (field == "last") {
+        return std::string(Furble::GpsText::opName(static_cast<Furble::GpsText::Op>(text.last_op)))
+               + " "
+               + Furble::GpsText::verdictName(
+                   static_cast<Furble::GpsText::Verdict>(text.last_verdict));
+      }
+      if (field == "refused") {
+        // fixed order so one scenario token compares the whole set
+        std::string out;
+        const std::pair<bool, const char *> flags[] = {
+            {text.gnss_refused,     "gnss"    },
+            {text.rate_refused,     "rate"    },
+            {text.sbas_refused,     "sbas"    },
+            {text.platform_refused, "platform"},
+            {text.psm_refused,      "standby" },
+        };
+        for (const auto &flag : flags) {
+          if (flag.first) {
+            out += (out.empty() ? "" : ",");
+            out += flag.second;
+          }
+        }
+        return out.empty() ? "none" : out;
+      }
+    }
     if (sub.rfind("config.", 0) == 0) {
       const std::string field = sub.substr(7);
       const size_t dot = field.find('.');

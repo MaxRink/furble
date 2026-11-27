@@ -112,6 +112,8 @@ const char *verdictName(Verdict verdict) {
       return "bad_reply";
     case Verdict::TIMEOUT:
       return "timeout";
+    case Verdict::STALLED:
+      return "stalled";
     case Verdict::NONE:
       break;
   }
@@ -258,28 +260,40 @@ Verdict match(const Line &line, const Command &command) {
   if (!bare && (line.name != command.ack)) {
     return Verdict::NONE;
   }
-  if (!line.checksum_ok || !line.terminated) {
-    return Verdict::BAD_REPLY;
-  }
 
+  /*
+   * Compare the acknowledged packet id before the checksum. A PAIR001 for
+   * another command says nothing about this one even when the line is corrupt,
+   * and one flipped bit on the UART must not turn into "the receiver refused
+   * your setting" for a command it never answered.
+   */
+  uint32_t id = 0;
+  uint32_t result = 0;
+  const bool pairAck = (line.name == "PAIR001");
   if (command.dialect == Dialect::QUECTEL) {
-    /*
-     * $PAIR001,<CommandID>,<Result> (Q76 2.3.1 page 32, Q29 2.4.1 page 51).
-     * An ack for another packet id says nothing about this command, so it is
-     * not a verdict at all.
-     */
-    if (line.name == "PAIR001") {
+    if (pairAck) {
       if (line.fields.size() < 2) {
         return Verdict::BAD_REPLY;
       }
-      uint32_t id = 0;
-      uint32_t result = 0;
       if (!parseUint(line.fields[0], id) || !parseUint(line.fields[1], result)) {
         return Verdict::BAD_REPLY;
       }
       if ((command.ack_id != 0) && (id != command.ack_id)) {
         return Verdict::NONE;
       }
+    }
+  }
+
+  if (!line.checksum_ok || !line.terminated) {
+    return Verdict::BAD_REPLY;
+  }
+
+  if (command.dialect == Dialect::QUECTEL) {
+    /*
+     * $PAIR001,<CommandID>,<Result> (Q76 2.3.1 pages 32 and 33, Q29 2.4.1
+     * page 51).
+     */
+    if (pairAck) {
       switch (result) {
         case 0:
           return Verdict::ACKED;
@@ -334,6 +348,8 @@ void Session::begin(const Command &command, uint32_t now) {
   m_Command = command;
   m_Active = true;
   m_Attempts = 1;
+  m_Pending = 0;
+  m_Busy = 0;
   m_Deadline = now + ACK_TIMEOUT_MS;
   m_Verdict = Verdict::NONE;
 }
@@ -342,6 +358,8 @@ void Session::clear(void) {
   m_Command = Command();
   m_Active = false;
   m_Attempts = 0;
+  m_Pending = 0;
+  m_Busy = 0;
   m_Deadline = 0;
   m_Verdict = Verdict::NONE;
 }
@@ -354,16 +372,38 @@ Session::Step Session::service(uint32_t now) {
     m_Active = false;
     return Step::ACKED;
   }
+  if (m_Verdict == Verdict::PENDING) {
+    // the receiver accepted the packet and is still working on it (Q76 2.3.1
+    // result 1), so this is not a lost line and does not consume an attempt. It
+    // is bounded all the same: a receiver that never finishes must not hold the
+    // queue forever.
+    m_Verdict = Verdict::NONE;
+    if (m_Pending >= PENDING_MAX) {
+      m_Active = false;
+      m_Verdict = Verdict::STALLED;
+      return Step::TIMEOUT;
+    }
+    m_Pending++;
+    m_Deadline = now + ACK_TIMEOUT_MS;
+    return Step::WAIT;
+  }
+  if (m_Verdict == Verdict::BUSY) {
+    // "MNL service is busy, you can try again soon" (Q76 2.3.1 result 5). That
+    // is a retry, not a refusal, so the deadline is re-armed without spending
+    // an attempt until the cap is reached.
+    m_Verdict = Verdict::NONE;
+    if (m_Busy >= BUSY_MAX) {
+      m_Active = false;
+      m_Verdict = Verdict::BUSY;
+      return Step::FAILED;
+    }
+    m_Busy++;
+    m_Deadline = now + ACK_TIMEOUT_MS;
+    return Step::WAIT;
+  }
   if (refused(m_Verdict)) {
     m_Active = false;
     return Step::FAILED;
-  }
-  if (m_Verdict == Verdict::PENDING) {
-    // the receiver accepted the packet and is still working on it (Q76 2.3.1
-    // result 1), so this is not a lost line and does not consume an attempt
-    m_Verdict = Verdict::NONE;
-    m_Deadline = now + ACK_TIMEOUT_MS;
-    return Step::WAIT;
   }
   if (static_cast<int32_t>(now - m_Deadline) < 0) {
     return Step::WAIT;
@@ -396,6 +436,22 @@ Verdict Session::accept(const Line &line) {
   }
   m_Verdict = verdict;
   return verdict;
+}
+
+bool windowed(const Line &line) {
+  if (line.dialect == Dialect::QUECTEL) {
+    // a PAIR001 names its packet id, so it cannot answer the wrong command
+    return false;
+  }
+  if (line.dialect != Dialect::UNICORE) {
+    return false;
+  }
+  if (line.name == "PDTINFO") {
+    // identification is not an acknowledgement, drop it and a late answer can
+    // never name the receiver
+    return false;
+  }
+  return true;
 }
 
 }  // namespace GpsText

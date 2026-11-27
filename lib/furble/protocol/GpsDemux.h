@@ -21,9 +21,11 @@
  *
  * A vendor command line is a complete '$' sentence whose name starts a Quectel
  * $PAIR or $PQTM message or a Unicore $CFG, $OK, $FAIL or $PDTINFO one; see
- * GpsText.h. Those names never collide with a standard NMEA talker, and a line
- * that does not finish inside GpsText::MAX_LINE is dropped a byte at a time like
- * a frame that fails its checksum, so a runaway line cannot grow the buffer.
+ * GpsText.h. Those names never collide with a standard NMEA talker. A finished
+ * line longer than GpsText::MAX_LINE, terminator included, is dropped whole, so
+ * parse() never sees more than the cap. A line that has not finished by the cap
+ * loses its '$' and the search resumes, which bounds the buffer: the tail is
+ * then ordinary NMEA text, and the NMEA parser rejects it on its checksum.
  */
 
 namespace Furble {

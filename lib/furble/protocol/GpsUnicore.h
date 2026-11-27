@@ -30,8 +30,16 @@ using GpsText::Command;
 constexpr uint32_t BAUD_MIN = 9600;
 constexpr uint32_t BAUD_MAX = 921600;
 
-/** Fix interval bounds, milliseconds (UC 3.3 Table 3-19, page 43). */
-constexpr uint16_t NAV_RATE_MIN_MS = 50;
+/**
+ * Fix interval bounds, milliseconds.
+ *
+ * Table 3-19 prints the examples 1000, 200 and 100 for MeasRate and NavRate and
+ * states no range (UC 3.3, page 43), so the bounds are furble's own: the
+ * shortest interval its GPS_RATE ladder asks for, 100 ms (include/FurbleGPS.h,
+ * RATE_MS), and one second, which is the table's first example. The 50 in that
+ * table is the DRNavRate 20 Hz example and is not a navigation rate.
+ */
+constexpr uint16_t NAV_RATE_MIN_MS = 100;
 constexpr uint16_t NAV_RATE_MAX_MS = 1000;
 
 /**
@@ -67,6 +75,15 @@ constexpr uint32_t SYS_QZSS_L1CA = 1UL << 16;
 constexpr uint32_t SYS_QZSS_L5 = 1UL << 18;
 constexpr uint32_t SYS_SBAS = 1UL << 20;
 
+/**
+ * $CFGDYN lock point mask and dynamic model values (UC 3.3 Table 3-41,
+ * page 58). Bit 0 selects DynModel; StaticHoldThresh is left at 0 because
+ * furble has no setting for it.
+ */
+constexpr uint8_t DYN_MASK_MODEL = 0x01;
+constexpr uint8_t DYN_PORTABLE = 0;
+constexpr uint8_t DYN_STATIC = 1;
+
 /** Reset clear masks (UC 3.2 Table 3-5, page 29). */
 constexpr uint32_t CLEAR_HOT = 0x00;
 constexpr uint32_t CLEAR_WARM = 0x01;
@@ -81,7 +98,8 @@ struct Plan {
   uint8_t sentences = 0;     /**< the GpsText::SentenceSet that was sent */
   bool sentences_set = false;
   bool rate_refused = false;     /**< the rate is outside CFGNAV's range */
-  bool platform_refused = false; /**< Unicore documents no dynamic model */
+  bool platform_refused = false; /**< the setting has no documented DynModel */
+  uint8_t platform = 0;          /**< GPS_PLATFORM value sent with CFGDYN, 0 none */
   bool psm_refused = false;      /**< Unicore documents no standby command */
   std::vector<Command> commands; /**< send order */
 };
@@ -116,6 +134,16 @@ bool gnssSupported(uint8_t mask);
 /** $CFGPRT,1,0,<baud>,1,3: keep UNICORE input, add NMEA output (UC 3.3 Table 3-9, page 32). */
 bool port(uint32_t baud, Command &out);
 
+/**
+ * $CFGDYN,1,<DynModel>,0: portable or static lock point (UC 3.3 Table 3-41,
+ * page 58).
+ *
+ * DynModel 0 is Portable and 1 is Static, which is exactly furble's Portable
+ * and Stationary platform values. Pedestrian and Vehicle have no documented
+ * counterpart and are refused rather than approximated.
+ */
+Command dynamicModel(uint8_t model);
+
 /** $CFGSAVE: write the configuration to flash (UC 3.3 Table 3-24, page 47). */
 Command save(void);
 
@@ -128,10 +156,11 @@ Command restart(uint8_t mode);
 /**
  * Turn the settings into the command queue.
  *
- * Order: the sentence set, the navigation rate, then the constellation mask,
- * which resets the receiver (UC 3.3, page 44), so it goes last. Standby and the
- * dynamic platform model have no documented command in UC R1.5 and are reported
- * refused rather than approximated.
+ * Order: the sentence set, the navigation rate, the dynamic model, then the
+ * constellation mask, which resets the receiver (UC 3.3, page 44), so it goes
+ * last. Standby has no documented command in UC R1.5 and is reported refused
+ * rather than approximated; the platform setting uses $CFGDYN, and the two
+ * values it cannot express are refused.
  */
 Plan plan(const GpsText::Request &request);
 

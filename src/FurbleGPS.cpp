@@ -1154,6 +1154,13 @@ void GPS::railOffOrRestart(void) {
     sendUbx(Ubx::cfgRst(Ubx::RST_HOT, Ubx::RST_MODE_GNSS_START));
   }
   m_UbxStopped = false;
+  if (!cut) {
+    // The same for a vendor text part: the save sent PAIR003, so a refused cut
+    // leaves a powered receiver with its GNSS engine off and nothing else
+    // turns it back on.
+    textPowerBackOn();
+  }
+  m_TextStopped = false;
 }
 
 void GPS::beginResync(uint32_t now) {
@@ -1836,6 +1843,7 @@ void GPS::serviceConfig(void) {
       {
         const GpsText::Verdict verdict = m_Text.verdict();
         const GpsText::Op op = m_ConfigInFlight->text_command.op;
+        const GpsText::Dialect dialect = m_ConfigInFlight->text_command.dialect;
         ESP_LOGW(LOG_TAG, "GPS %s refused: %s", GpsText::opName(op), GpsText::verdictName(verdict));
         {
           const std::lock_guard<std::mutex> lock(m_TextMutex);
@@ -1844,19 +1852,34 @@ void GPS::serviceConfig(void) {
           m_TextStatus.naks++;
         }
         finishConfigCommand(CONFIG_NACKED);
+        // A Unicore $OK names no command (UC 3.2 page 30), so the failure
+        // closes the seam for one second: an acknowledgement of this command
+        // must not be credited to the next one.
+        if (dialect == GpsText::Dialect::UNICORE) {
+          m_ConfigSettle.arm(Platform::getInstance().tick(), GpsText::Session::ACK_TIMEOUT_MS);
+        }
         return;
       }
       case GpsText::Session::Step::TIMEOUT:
       {
         const GpsText::Op op = m_ConfigInFlight->text_command.op;
-        ESP_LOGW(LOG_TAG, "GPS %s went unanswered", GpsText::opName(op));
+        const GpsText::Dialect dialect = m_ConfigInFlight->text_command.dialect;
+        const GpsText::Verdict verdict = m_Text.verdict();
+        if (verdict == GpsText::Verdict::STALLED) {
+          ESP_LOGW(LOG_TAG, "GPS %s stayed in processing, giving up", GpsText::opName(op));
+        } else {
+          ESP_LOGW(LOG_TAG, "GPS %s went unanswered", GpsText::opName(op));
+        }
         {
           const std::lock_guard<std::mutex> lock(m_TextMutex);
           m_TextStatus.last_op = static_cast<uint8_t>(op);
-          m_TextStatus.last_verdict = static_cast<uint8_t>(GpsText::Verdict::TIMEOUT);
+          m_TextStatus.last_verdict = static_cast<uint8_t>(verdict);
           m_TextStatus.timeouts++;
         }
         finishConfigCommand(CONFIG_TIMEOUT);
+        if (dialect == GpsText::Dialect::UNICORE) {
+          m_ConfigSettle.arm(Platform::getInstance().tick(), GpsText::Session::ACK_TIMEOUT_MS);
+        }
         return;
       }
       case GpsText::Session::Step::IDLE:

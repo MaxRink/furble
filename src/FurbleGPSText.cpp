@@ -44,6 +44,7 @@ GpsText::Dialect GPS::textIdentity(void) const {
 void GPS::resetText(void) {
   m_TextIdentity.store(static_cast<uint8_t>(GpsText::Dialect::NONE));
   m_Text.clear();
+  m_TextStopped = false;
   m_TextSave.clear();
   m_TextSaveQueue.clear();
   m_TextSaveNext = 0;
@@ -92,6 +93,13 @@ void GPS::serviceText(const uint8_t *data, size_t length) {
     // A corrupt line is dropped rather than half believed: the retry covers a
     // lost acknowledgement, and a broken line may never identify a receiver.
     ESP_LOGW(LOG_TAG, "GPS vendor reply %s failed its checksum", line.name.c_str());
+    return;
+  }
+  if (!m_ConfigSettle.open(Platform::getInstance().tick()) && GpsText::windowed(line)) {
+    // A Unicore $OK names no command (UC 3.2 page 30), so one that arrives
+    // after its command failed would be credited to the next one. The window
+    // is armed by that failure and this drops what falls inside it.
+    ESP_LOGW(LOG_TAG, "GPS vendor reply %s arrived inside the settle window", line.name.c_str());
     return;
   }
 
@@ -164,12 +172,14 @@ void GPS::serviceText(const uint8_t *data, size_t length) {
     m_TextStatus.last_verdict = verdictByte(verdict);
     if (verdict == GpsText::Verdict::ACKED) {
       m_TextStatus.acks++;
-    } else {
+    } else if (GpsText::refused(verdict)) {
+      // a "being processed" answer is neither an acknowledgement nor a refusal
       m_TextStatus.naks++;
     }
+    // The line belongs to the configuration session, so it does not also go to
+    // the save session: one bare $OK must not be counted twice.
+    return;
   }
-  // The save sequence has its own session, so a save acknowledgement never
-  // reaches the configuration queue.
   if (m_TextSave.active()) {
     const GpsText::Verdict saved = m_TextSave.accept(line);
     if (saved == GpsText::Verdict::ACKED) {
@@ -215,6 +225,7 @@ void GPS::publishTextPlan(const GpsText::Request &request,
                           bool gnss_refused,
                           bool sbas,
                           bool sbas_refused,
+                          uint8_t platform,
                           bool platform_refused,
                           bool rate_refused,
                           bool psm_refused) {
@@ -225,6 +236,7 @@ void GPS::publishTextPlan(const GpsText::Request &request,
   m_TextStatus.gnss_refused = gnss_refused;
   m_TextStatus.sbas = sbas;
   m_TextStatus.sbas_refused = sbas_refused;
+  m_TextStatus.platform = platform;
   m_TextStatus.platform_refused = platform_refused;
   m_TextStatus.rate_refused = rate_refused;
   m_TextStatus.psm_refused = psm_refused;
@@ -300,8 +312,11 @@ void GPS::configureQuectel(void) {
   for (const auto &command : plan.commands) {
     enqueueTextConfig(command);
   }
+  // Only Portable and Pedestrian have a PAIR080 mode, so those are the settings
+  // that reach the receiver.
+  const uint8_t platform = plan.platform_refused ? 0 : request.platform;
   publishTextPlan(request, plan.rate_ms, plan.gnss, plan.gnss_refused, plan.sbas, plan.sbas_refused,
-                  plan.platform_refused, plan.rate_refused, psm_refused);
+                  platform, plan.platform_refused, plan.rate_refused, psm_refused);
 
   // The receiver's own rate, so the burst predictor expects what it will do.
   const uint16_t interval = (plan.rate_ms != 0) ? plan.rate_ms : RATE_MS[1];
@@ -325,7 +340,9 @@ void GPS::configureUnicore(void) {
     ESP_LOGW(LOG_TAG, "GPS constellation mask 0x%02x breaks a Unicore rule, left alone", plan.gnss);
   }
   if (plan.platform_refused) {
-    ESP_LOGW(LOG_TAG, "GPS platform setting has no Unicore dynamic model, left alone");
+    ESP_LOGW(LOG_TAG,
+             "GPS platform setting has no Unicore dynamic model, left alone (CFGDYN has portable "
+             "and static only)");
   }
   if (plan.psm_refused) {
     ESP_LOGW(LOG_TAG, "GPS standby has no documented Unicore command, the receiver stays awake");
@@ -337,7 +354,7 @@ void GPS::configureUnicore(void) {
   for (const auto &command : plan.commands) {
     enqueueTextConfig(command);
   }
-  publishTextPlan(request, plan.rate_ms, plan.gnss, plan.gnss_refused, false, false,
+  publishTextPlan(request, plan.rate_ms, plan.gnss, plan.gnss_refused, false, false, plan.platform,
                   plan.platform_refused, plan.rate_refused, plan.psm_refused);
 
   const uint16_t interval = (plan.rate_ms != 0) ? plan.rate_ms : RATE_MS[1];
@@ -387,16 +404,20 @@ void GPS::textSaveQueueBuild(void) {
   if (getBackend() == backend_t::QUECTEL) {
     // A fix rate above 1 Hz needs the GNSS engine off before it saves, and the
     // lock is what keeps the port answering a command after PAIR003 (Q76
-    // 2.3.30 page 56, 2.3.45 note 2 page 68). Sent in that order whatever the
+    // 2.3.30 page 56, 2.3.45 note 2 page 69). Sent in that order whatever the
     // rate, because the cost is three short frames and the rail is going away.
     m_TextSaveQueue.push_back(Quectel::lockSleep());
     m_TextSaveQueue.push_back(Quectel::powerOff());
+    // PAIR003 powers the GNSS engine off (Q76 2.3.3 page 34). If the rail cut
+    // that follows is refused, railOffOrRestart() is the only path that can
+    // bring it back, so the state is carried until it does.
+    m_TextStopped = true;
     m_TextSaveQueue.push_back(Quectel::saveSettings());
     m_TextSaveQueue.push_back(Quectel::saveParameters());
     if (!Platform::hasGpsBackupSupply()) {
       // "If the backup domain cannot be powered ... this command needs to be
       // sent every time the parameters are modified" (Q76 2.3.44 note 1 page
-      // 67).
+      // 68).
       m_TextSaveQueue.push_back(Quectel::saveNavigation());
     }
     return;
@@ -536,6 +557,9 @@ void GPS::textSaveBlocking(void) {
   if (!done) {
     m_TextSaveRefused = true;
   }
+  // the verdict before the session is cleared, so a refusal the receiver stated
+  // is reported as that refusal rather than as an unanswered frame
+  const GpsText::Verdict result = m_TextSave.verdict();
   m_TextSave.clear();
   m_TextSaveQueue.clear();
   m_RailOffPending = false;
@@ -544,7 +568,29 @@ void GPS::textSaveBlocking(void) {
     m_TextStatus.save = m_TextSaveRefused ? 2 : 1;
     m_TextStatus.last_op = opByte(GpsText::Op::SAVE);
     m_TextStatus.last_verdict =
-        verdictByte(m_TextSaveRefused ? GpsText::Verdict::TIMEOUT : GpsText::Verdict::ACKED);
+        verdictByte(m_TextSaveRefused
+                        ? ((result != GpsText::Verdict::NONE) ? result : GpsText::Verdict::TIMEOUT)
+                        : GpsText::Verdict::ACKED);
+  }
+}
+
+void GPS::textPowerBackOn(void) {
+  if (!m_TextStopped) {
+    return;
+  }
+  // The save powered the GNSS engine off and the cut that was supposed to
+  // follow did not happen, so the receiver is powered with no GNSS. On a
+  // Quectel part that is PAIR002 (Q76 2.3.2 page 34) or, where that command
+  // does not exist, a hot start (Q76 2.3.4 page 34).
+  m_TextStopped = false;
+  if (getBackend() != backend_t::QUECTEL) {
+    return;
+  }
+  const GpsText::Command command = Quectel::powerBackOn(getTextStatus().model);
+  ESP_LOGW(LOG_TAG, "GPS rail stayed on after PAIR003, sending %s to restart the GNSS engine",
+           command.body.c_str());
+  if (!sendText(command)) {
+    ESP_LOGE(LOG_TAG, "GPS %s write failed, the GNSS engine stays off", command.body.c_str());
   }
 }
 

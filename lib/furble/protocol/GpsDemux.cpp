@@ -112,6 +112,13 @@ size_t split(const uint8_t *data, size_t length, std::vector<Piece> &out) {
             }
             return at;
           }
+          if ((end - at) > GpsText::MAX_LINE) {
+            // a finished line past the cap is dropped whole: parse() is never
+            // handed more than MAX_LINE, whatever the terminator says
+            out.push_back({Kind::DROP, at, end - at});
+            at = end;
+            continue;
+          }
           out.push_back({Kind::VENDOR, at, end - at});
           at = end;
           continue;

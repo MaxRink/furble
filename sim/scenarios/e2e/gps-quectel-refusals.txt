@@ -9,6 +9,7 @@
 seed gps true
 seed gps_model quectel
 seed gps_quectel_no_fix_rate true
+seed gps_quectel_no_search_mode true
 seed gps_gnss 1
 seed gps_rate 2
 seed gps_power 1
@@ -16,14 +17,20 @@ seed gps_duty 5
 wait 8000
 assert gps.backend quectel
 
-# The plan is the fix rate, SBAS and the search mode. The rate command comes
-# back refused.
+# The plan is the fix rate, SBAS and the search mode. The rate command and the
+# search mode both come back refused, with result 3 for the command this part
+# does not have (Q29 2.4.15 note 4 page 65).
 assert-eventually 5000 gps.config.0.state NACKED
 assert_min text.naks 1
 assert text.rate_ms 1000
+assert-eventually 5000 gps.config.2.state NACKED
+assert_min text.unsupported 1
 
-# A refused command does not stop the rest of the plan.
-assert-eventually 5000 gps.config.2.state ACKED
+# A refused command does not stop the rest of the plan, and a refusal the
+# receiver stated is not a refusal the planner made.
+assert-eventually 5000 gps.config.1.state ACKED
+assert gps.text.refused none
+assert_min gps.text.naks 2
 
 # The refused rate left the receiver at its own 1 Hz, and 5 s is not a
 # documented backup interval, so nothing was sent and the receiver is still

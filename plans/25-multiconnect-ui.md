@@ -243,7 +243,7 @@ typedef struct {
 } multiselect_t;
 ```
 
-Save it once in `doConnect` (`src/FurbleUI.cpp:8794-8828`) after the activate
+Save it once in `doConnect` (`src/FurbleUI.cpp:8629-8663`) after the activate
 loop. Load and apply it in the `addConnectMenu` refresh callback
 (`src/FurbleUI.cpp:1434-1458`), right where each item is created: if the camera
 name matches an entry, call `camera->setActive(true)` and
@@ -320,7 +320,7 @@ comes back the row says connected again.
 ### RSSI
 
 `Camera` does not expose RSSI. `m_Client` is protected
-(`lib/furble/Camera.h:708`). `NimBLEClient::getRssi()` exists and returns `int`
+(`lib/furble/Camera.h:653`). `NimBLEClient::getRssi()` exists and returns `int`
 (esp-nimble-cpp 2.5.0, `components/esp-nimble-cpp/src/NimBLEClient.h:65`).
 
 Add to `lib/furble/Camera.h` next to `isConnected()` at line 119:
@@ -374,7 +374,7 @@ snapshot from that PR instead.
 - `getTargets()` hands out a reference to a vector that `Control::disconnect`
   clears (`src/FurbleControl.cpp:242`). A timer tick that runs during a
   disconnect can walk a stale vector. Re-fetch every tick, and pause the timer
-  in `doDisconnect` (`src/FurbleUI.cpp:8830-8876`) as well as in the page leave
+  in `doDisconnect` (`src/FurbleUI.cpp:8665-8711`) as well as in the page leave
   handler.
 - `NimBLEClient::getRssi()` blocks. Measured cost is unknown until it is tried
   on hardware. Mitigation is above.

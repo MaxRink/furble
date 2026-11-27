@@ -5637,6 +5637,26 @@ std::string UI::simQueryState(const char *key) {
       return (page == nmeaPage && valid) ? "yes" : "no";
     }
 
+    // The refusal names the Raw NMEA page renders, as one comma separated
+    // token, so a scenario can assert that a setting the part cannot take is
+    // shown to the user and not only logged. "none" means the page is not open,
+    // the label is missing, or nothing was refused.
+    if (field == "nmea.refusals") {
+      const std::string config = labelText(m_NMEA.config);
+      const size_t start = config.find("refused: ");
+      if (start == std::string::npos) {
+        return "none";
+      }
+      const size_t begin = start + std::strlen("refused: ");
+      const size_t end = config.find('\n', begin);
+      const std::string list = config.substr(begin, (end == std::string::npos) ? end : end - begin);
+      std::string out;
+      for (const char c : list) {
+        out += (c == ' ') ? ',' : c;
+      }
+      return out.empty() ? "none" : out;
+    }
+
     return "";
   }
 
@@ -10382,6 +10402,53 @@ void UI::gpsDataStop(lv_event_t *e) {
  * Sentence capture only runs while the page is open. Binary configuration
  * status is shown alongside the captured sentences.
  */
+namespace {
+
+/**
+ * Names of the settings the active receiver refused, space separated.
+ *
+ * The two backends publish their refusals in different structs, so this reads
+ * whichever one configured the receiver and returns an empty string when the
+ * configuration was complete. It is the only place the device screen shows a
+ * refusal by name, and it is free so the captureless page timer can call it.
+ */
+std::string gpsConfigRefusals(GPS &gps) {
+  std::string out;
+  const auto backend = gps.getBackend();
+  if ((backend == GPS::backend_t::QUECTEL) || (backend == GPS::backend_t::UNICORE)) {
+    const auto text = gps.getTextStatus();
+    if (text.gnss_refused) {
+      out += "gnss ";
+    }
+    if (text.rate_refused) {
+      out += "rate ";
+    }
+    if (text.sbas_refused) {
+      out += "sbas ";
+    }
+    if (text.platform_refused) {
+      out += "platform ";
+    }
+    if (text.psm_refused) {
+      out += "standby ";
+    }
+  } else if (backend == GPS::backend_t::UBX) {
+    const auto ubx = gps.getUbxStatus();
+    if (ubx.gnss_refused) {
+      out += "gnss ";
+    }
+    if (ubx.psm_refused) {
+      out += "standby ";
+    }
+  }
+  if (!out.empty()) {
+    out.pop_back();
+  }
+  return out;
+}
+
+}  // namespace
+
 void UI::addGPSNMEAMenu(const menu_t &parent) {
   menu_t &menu = addMenu(m_GPSNMEAStr, NULL, true, parent);
   m_Status.gpsWidgets.push_back(menu.button);
@@ -10460,8 +10527,16 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         }
         for (const auto &entry : gps.getConfigStatus()) {
           char line[48];
-          snprintf(line, sizeof(line), "cfg %02X/%02X %s x%u", entry.class_id, entry.message_id,
-                   GPS::configStateName(entry.state), static_cast<unsigned>(entry.attempts));
+          if (entry.class_id == 0) {
+            // A vendor text command has no class: the operation fills the
+            // message column, so name it rather than print a bare number.
+            snprintf(line, sizeof(line), "cfg %s %s x%u",
+                     GpsText::opName(static_cast<GpsText::Op>(entry.message_id)),
+                     GPS::configStateName(entry.state), static_cast<unsigned>(entry.attempts));
+          } else {
+            snprintf(line, sizeof(line), "cfg %02X/%02X %s x%u", entry.class_id, entry.message_id,
+                     GPS::configStateName(entry.state), static_cast<unsigned>(entry.attempts));
+          }
           if (!config.empty()) {
             config += '\n';
           }
@@ -10469,6 +10544,13 @@ void UI::addGPSNMEAMenu(const menu_t &parent) {
         }
         if (config.empty()) {
           config = "cfg empty";
+        }
+        // A setting the part refused is otherwise only in the log. The refusal
+        // names go last so the first line stays a command result and the
+        // existing diag.nmea check keeps reading the same shape.
+        const std::string refusals = gpsConfigRefusals(gps);
+        if (!refusals.empty()) {
+          config += "\nrefused: " + refusals;
         }
         if (config != ui->m_NMEA.configText) {
           ui->m_NMEA.configText = config;

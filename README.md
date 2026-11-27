@@ -640,7 +640,7 @@ and runs both bands of each constellation it enables.
 | u-blox M10 (MAX-M10S, MIA-M10Q, M10 UART modules) | Module dependent | Simulator-tested, hardware-untested. Detected automatically; UBX configuration, NAV-PVT accuracy, power save, software standby and AssistNow Autonomous. |
 | u-blox dual-band (NEO-F10N and other F10 UART modules) | Dual-band L1/L5 | Simulator-tested, hardware-untested. L1 and L5 signals of GPS, Galileo, BeiDou and QZSS, no power save mode, no GLONASS. |
 | Quectel LC76G, LC29H (module or a breakout of one) | Module dependent | Simulator-tested, hardware-untested. Detected automatically; `$PAIR` and `$PQTM` configuration of rate, sentence set, constellation, SBAS, platform, timed backup mode and save on shutdown. |
-| Unicore UC6580 | Module dependent | Simulator-tested, hardware-untested. Detected automatically; `$CFG` configuration of rate, sentence set and constellation, restart and save on shutdown. No standby: UC R1.5 documents none, and furble reports that rather than pretending. |
+| Unicore UC6580 | Module dependent | Simulator-tested, hardware-untested. Detected automatically; `$CFG` configuration of rate, sentence set, constellation, the Portable and Stationary dynamic models, restart and save on shutdown. No standby: UC R1.5 documents none, and furble reports that rather than pretending. |
 
 See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera

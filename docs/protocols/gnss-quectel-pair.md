@@ -28,7 +28,10 @@ driver obeys the narrower one and reports the refusal.
 The checksum is the 8-bit XOR of every character between but not including the
 `$` and the `*` (Q76 2.1 Table 3, page 12). A vendor line is capped at
 `GpsText::MAX_LINE` = 128 bytes (`lib/furble/protocol/GpsText.h:46`), the Unicore
-bound, which is generous for a Quectel sentence.
+bound, which is generous for a Quectel sentence. The splitter enforces the cap on
+a finished line too: a terminated vendor line longer than that, terminator
+included, is dropped whole rather than parsed, so `GpsText::parse()` never sees
+more than the cap.
 
 ## Acknowledgements
 
@@ -92,17 +95,23 @@ is refused in fitness and swimming mode (Q76 2.3.34 note page 60).
 
 `PAIR650` accepts 0 or 10 s to 62208000 s (Q76 2.3.46 page 69). furble's duty
 ladder offers 5, 10 and 15 s, so 5 s cannot be expressed. `Quectel::standby()`
-(`lib/furble/protocol/GpsQuectel.h:144`) refuses it and the driver reports the
+(`lib/furble/protocol/GpsQuectel.h:155`) refuses it and the driver reports the
 refusal rather than sending a value the receiver will reject with result 4.
 
 ## The save path
 
 Above 1 Hz the GNSS engine must be powered off before `PAIR513` or `PAIR511`,
 and `PAIR382,1` has to go first so the port still accepts the save (Q76 2.3.45
-note 2 page 68, 2.3.30 note 2 page 56). The driver sends `PAIR382,1`, `PAIR003`,
+note 2 page 69, 2.3.30 note 2 page 56). The driver sends `PAIR382,1`, `PAIR003`,
 `PAIR513`, `PQTMSAVEPAR` and, when the board has no backup supply, `PAIR511`
 (`src/FurbleGPSText.cpp:406`). It does so whatever the fix rate: the extra frames
 are short and the rail is about to be cut.
+
+If the board then refuses the cut, the receiver is powered with its GNSS engine
+off. Q76 2.3.44 note 2 page 69 documents the re-power after a save, so the driver
+sends `$PAIR002` when the cut is refused (`Quectel::powerBackOn()`), or `$PAIR004`
+hot start on an LC86G, which has no `$PAIR002` (Q76 2.3.2 note page 34). Without
+that frame the receiver would stay fixless until the next power cycle.
 
 ## Simulation
 

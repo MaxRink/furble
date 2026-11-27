@@ -42,6 +42,12 @@ namespace GpsText {
  * Unicore caps every message at 128 bytes (UC 3.1, page 24). Quectel states no
  * cap, and its longest sentence furble sends is a $PQTMCFGMSGRATE set at about
  * 40 bytes, so the Unicore bound covers both with room for the reply.
+ *
+ * The splitter enforces it on a finished line as well as on a partial one: a
+ * terminated vendor line longer than this, terminator included, is dropped
+ * whole rather than parsed, so parse() never sees more than the cap. An
+ * unterminated line past the cap loses one byte per pass and its tail is NMEA
+ * text, which the NMEA parser then rejects on its own checksum.
  */
 constexpr size_t MAX_LINE = 128;
 
@@ -175,6 +181,7 @@ enum class Verdict : uint8_t {
   BUSY,        /**< PAIR result 5: the receiver asked for a retry */
   BAD_REPLY,   /**< answered this command, but malformed or a bad checksum */
   TIMEOUT,     /**< no reply after every attempt */
+  STALLED,     /**< kept answering "being processed" past the cap */
 };
 
 /** Short token for a verdict, for the console and the logs. Never null. */
@@ -206,12 +213,63 @@ struct Command {
  * Decide whether a reply answers a command.
  *
  * A PAIR001 ack carries the acknowledged packet id and a result code (Q76
- * 2.3.1 page 32, Q29 2.4.1 page 51). A PQTM reply repeats the command name and
- * starts its fields with OK or ERROR (Q76 2.4 page 95 onward). Unicore answers
- * with a bare $OK or $FAIL,<code> and repeats the command name only when the
- * answer carries data (UC 3.2 pages 30 and 31).
+ * 2.3.1 pages 32 and 33, Q29 2.4.1 page 51). A PQTM reply repeats the command
+ * name and starts its fields with OK or ERROR (Q76 2.4 page 95 onward). Unicore
+ * answers with a bare $OK or $FAIL,<code> and repeats the command name only when
+ * the answer carries data (UC 3.2 pages 30 and 31).
+ *
+ * A PAIR001 whose packet id is not the command's is Verdict::NONE whatever its
+ * checksum: one corrupted byte in another command's acknowledgement must not
+ * end this command as a refusal.
  */
 Verdict match(const Line &line, const Command &command);
+
+/**
+ * A window in which a Unicore acknowledgement would be ambiguous.
+ *
+ * A Unicore $OK carries no command name (UC 3.2 page 30), so a reply that
+ * arrives after its command timed out would be credited to the command that
+ * follows. After a failure the driver arms this for ACK_TIMEOUT_MS and drops
+ * whatever arrives inside it. The gate costs one second only after a failed
+ * command, and it is only armed on a Unicore receiver, where the ambiguity
+ * exists.
+ */
+class Settle {
+ public:
+  void arm(uint32_t now, uint32_t ms) {
+    m_Until = now + ms;
+    m_Armed = true;
+  }
+  void clear(void) { m_Armed = false; }
+  bool armed(void) const { return m_Armed; }
+  /** Has the window passed? Disarms itself once it has. */
+  bool open(uint32_t now) {
+    if (m_Armed && (static_cast<int32_t>(now - m_Until) >= 0)) {
+      m_Armed = false;
+    }
+    return !m_Armed;
+  }
+  uint32_t remaining(uint32_t now) const {
+    const int32_t left = static_cast<int32_t>(m_Until - now);
+    return (m_Armed && (left > 0)) ? static_cast<uint32_t>(left) : 0;
+  }
+
+ private:
+  uint32_t m_Until = 0;
+  bool m_Armed = false;
+};
+
+/**
+ * Could this line answer a command in flight?
+ *
+ * True for the lines that carry no way to identify the command they belong to:
+ * a bare $OK or $FAIL, and a reply that repeats a $CFG command name. The driver
+ * drops those while its Settle window is closed, so a reply to a failed command
+ * cannot be credited to the next one. Identification replies are not
+ * acknowledgements and always pass, so a late $PDTINFO still names the
+ * receiver. A Quectel line always passes: a PAIR001 names its packet id.
+ */
+bool windowed(const Line &line);
 
 /**
  * The timeout and retry state machine for one command in flight.
@@ -226,13 +284,34 @@ class Session {
   /**
    * Time to wait for a reply. Unicore states no bound. Quectel answers a PAIR
    * command as soon as the MNL accepts it and returns 1 while it is still
-   * processing (Q76 2.3.1 page 32), and the retry exists for a lost line, so
+   * processing (Q76 2.3.1 page 33), and the retry exists for a lost line, so
    * one second matches the UBX acknowledgement bound the driver already uses.
    */
   static constexpr uint32_t ACK_TIMEOUT_MS = 1000;
 
   /** Send attempts, the first included. Same count as the CASIC path. */
   static constexpr uint8_t ATTEMPTS = 3;
+
+  /**
+   * How many "being processed" answers one command may collect.
+   *
+   * Result 1 means the receiver is still working (Q76 2.3.1 page 33) and does
+   * not spend an attempt, so without a cap a receiver that never finishes would
+   * hold the queue forever. Five answers at one second each is five seconds of
+   * grace, well past the longest documented gap, and then the command ends as
+   * Verdict::STALLED.
+   */
+  static constexpr uint8_t PENDING_MAX = 5;
+
+  /**
+   * How many "busy, try again" answers one command may collect.
+   *
+   * Result 5 means the MNL service is busy and the host may try again soon
+   * (Q76 2.3.1 page 33). It is a retry, not a refusal, so it re-arms the
+   * deadline without spending an attempt, up to this many times; then the
+   * command ends as FAILED with Verdict::BUSY.
+   */
+  static constexpr uint8_t BUSY_MAX = 3;
 
   enum class Step : uint8_t {
     IDLE,    /**< nothing in flight */
@@ -260,11 +339,17 @@ class Session {
   uint8_t attempts(void) const { return m_Attempts; }
   uint32_t deadline(void) const { return m_Deadline; }
   Verdict verdict(void) const { return m_Verdict; }
+  /** "Being processed" answers this command has collected. */
+  uint8_t pending(void) const { return m_Pending; }
+  /** "Busy, try again" answers this command has collected. */
+  uint8_t busy(void) const { return m_Busy; }
 
  private:
   Command m_Command;
   bool m_Active = false;
   uint8_t m_Attempts = 0;
+  uint8_t m_Pending = 0;
+  uint8_t m_Busy = 0;
   uint32_t m_Deadline = 0;
   Verdict m_Verdict = Verdict::NONE;
 };

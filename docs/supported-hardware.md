@@ -196,10 +196,12 @@ hidden: `PAIR650` has no setting below 10 seconds, so the 5 second duty interval
 is refused, and the LC29H (BA, CA, DA, EA) variants do not implement `PAIR066`,
 so a constellation change there comes back refused. The Unicore support covers
 detection, fix rate (`$CFGNAV`), the NMEA sentence set (`$CFGMSG`), the
-constellation mask (`$CFGSYS`), restart and `$CFGSAVE`. UC R1.5 documents no
-standby command and no dynamic platform model, so both settings are reported
-refused on that part. Both paths are verified against virtual receivers in the
-simulator only; no Quectel or Unicore hardware has been tested.
+constellation mask (`$CFGSYS`), the dynamic platform model (`$CFGDYN`, Portable
+and Stationary only), restart and `$CFGSAVE`. UC R1.5 documents no standby
+command, so that setting is reported refused on that part, and Pedestrian and
+Vehicle have no `$CFGDYN` counterpart and are refused too. Both paths are
+verified against virtual receivers in the simulator only; no Quectel or Unicore
+hardware has been tested.
 
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
 checked against the firmware GPS support in `src/FurbleGPS.cpp`. The u-blox M10

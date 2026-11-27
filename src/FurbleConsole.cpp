@@ -1727,8 +1727,18 @@ int gpsText(void) {
            text.sbas_refused ? " (refused in this navigation mode)" : "");
     printf("sentences: %u%s\n", static_cast<unsigned>(text.sentences),
            text.sentences_set ? "" : " (left alone)");
-    printf("platform: %s\n", text.platform_refused ? "refused" : "sent");
-    printf("standby: %s\n", text.psm_refused ? "refused" : "available");
+    // Three states each, because "sent" is wrong when the setting asked for
+    // nothing: a value of 0 means no command carried it.
+    const char *platform = "not requested";
+    if (text.platform_refused) {
+      platform = "refused";
+    } else if (text.platform != 0) {
+      platform = "sent";
+    }
+    const char *standby =
+        text.psm_refused ? "refused" : ((text.standby == 1) ? "sent" : "not requested");
+    printf("platform: %s\n", platform);
+    printf("standby: %s\n", standby);
   } else {
     printf("configured: no\n");
   }

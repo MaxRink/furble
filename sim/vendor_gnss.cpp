@@ -205,6 +205,7 @@ std::vector<uint8_t> VirtualQuectel::handle(const std::string &line, uint32_t no
   switch (id) {
     case 2:  // PAIR002 power on
       m_GnssOff = false;
+      powerOns++;
       m_FirstFixAt = now + TTFF_MS;
       return ack(2, 0);
     case 3:  // PAIR003 power off
@@ -560,6 +561,22 @@ std::vector<uint8_t> VirtualUnicore::handle(const std::string &line, uint32_t no
     // (UC 3.3 page 44)
     resets++;
     m_FirstFixAt = now + TTFF_MS;
+    return ok();
+  }
+  if (parsed.name == "CFGDYN") {
+    // $CFGDYN,<mask>,<DynModel>,<StaticHoldThresh> (UC 3.3 Table 3-41,
+    // page 58). Bit 0 selects DynModel, 0 is portable and 1 static.
+    uint32_t mask = 0;
+    uint32_t dyn = 0;
+    uint32_t hold = 0;
+    if ((f.size() < 3) || !number(f[0], mask) || !number(f[1], dyn) || !number(f[2], hold)) {
+      return fail(0);
+    }
+    if (((mask & 0x1U) == 0) || (dyn > 1) || (hold > 65535)) {
+      return fail(0);
+    }
+    m_Settings.dyn = static_cast<uint8_t>(dyn);
+    m_Settings.static_hold = static_cast<uint16_t>(hold);
     return ok();
   }
   if (parsed.name == "CFGSAVE") {

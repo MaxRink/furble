@@ -266,6 +266,22 @@ bool testUnicore() {
 
   check(link.run(Unicore::messageRate(Unicore::MSG_GGA, 0)) == GpsText::Verdict::ACKED,
         "a sentence rate is acknowledged");
+
+  // $CFGDYN, the dynamic platform model the document does have
+  // (UC 3.3.20 Table 3-41 page 58)
+  check(link.run(Unicore::dynamicModel(Unicore::DYN_PORTABLE)) == GpsText::Verdict::ACKED,
+        "CFGDYN portable is acknowledged");
+  check(receiver.settings().dyn == 0, "the model is portable");
+  check(link.run(Unicore::dynamicModel(Unicore::DYN_STATIC)) == GpsText::Verdict::ACKED,
+        "CFGDYN static is acknowledged");
+  check(receiver.settings().dyn == 1, "the model is static");
+  GpsText::Command badDyn;
+  badDyn.dialect = GpsText::Dialect::UNICORE;
+  badDyn.op = GpsText::Op::NAV_MODE;
+  badDyn.body = "CFGDYN,0,0,0";
+  badDyn.ack = "OK";
+  check(link.run(badDyn) == GpsText::Verdict::PARAM, "an empty CFGDYN mask is a $FAIL,0");
+  check(receiver.settings().dyn == 1, "the refused write leaves the model alone");
   check(receiver.settings().sentence[0] == 0, "GGA is off in the model");
 
   check(link.run(Unicore::system(GpsText::GNSS_GPS | GpsText::GNSS_GAL)) == GpsText::Verdict::ACKED,
@@ -281,8 +297,9 @@ bool testUnicore() {
   qzss.op = GpsText::Op::GNSS;
   qzss.body = "CFGSYS,h10000";
   qzss.ack = "CFGSYS";
+  const uint32_t failsBefore = receiver.fails;
   check(link.run(qzss) == GpsText::Verdict::PARAM, "QZSS without GPS is a $FAIL,0");
-  check(receiver.fails == 1, "the receiver refused it once");
+  check(receiver.fails == (failsBefore + 1), "the receiver refused it once and nothing else");
 
   // a mismatched CFGNAV is the documented FAIL case
   GpsText::Command unequal;

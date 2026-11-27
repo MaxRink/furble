@@ -124,6 +124,15 @@ bool port(uint32_t baud, Command &out) {
   return true;
 }
 
+Command dynamicModel(uint8_t model) {
+  // $CFGDYN,1,<DynModel>,0 (UC 3.3 Table 3-41, page 58). A mask of 1 selects
+  // DynModel only, and the document's own example prints 0 for Portable.
+  const uint8_t dyn = (model == DYN_STATIC) ? DYN_STATIC : DYN_PORTABLE;
+  return command(GpsText::Op::NAV_MODE,
+                 "CFGDYN," + std::to_string(DYN_MASK_MODEL) + "," + std::to_string(dyn) + ",0",
+                 "OK");
+}
+
 Command save(void) {
   return command(GpsText::Op::SAVE, "CFGSAVE", "OK");
 }
@@ -167,7 +176,18 @@ Plan plan(const GpsText::Request &request) {
   }
 
   if (request.platform != 0) {
-    plan.platform_refused = true;
+    // DynModel 0 Portable and 1 Static (UC 3.3 Table 3-41, page 58) are
+    // furble's Portable and Stationary. Pedestrian and Vehicle have no
+    // documented counterpart, so those stay refused.
+    if (request.platform == 1) {
+      plan.platform = 1;
+      plan.commands.push_back(dynamicModel(DYN_PORTABLE));
+    } else if (request.platform == 2) {
+      plan.platform = 2;
+      plan.commands.push_back(dynamicModel(DYN_STATIC));
+    } else {
+      plan.platform_refused = true;
+    }
   }
 
   if (request.psm != GpsText::PSM_OFF) {

@@ -30,7 +30,7 @@ namespace Quectel {
 using GpsText::Command;
 
 /** Packet ids this driver sends or matches. The id is the command's own id. */
-constexpr uint16_t ID_ACK = 1;             /* Q76 2.3.1 page 32 */
+constexpr uint16_t ID_ACK = 1;             /* Q76 2.3.1 page 33 */
 constexpr uint16_t ID_POWER_ON = 2;        /* Q76 2.3.2 page 33 */
 constexpr uint16_t ID_POWER_OFF = 3;       /* Q76 2.3.3 page 34 */
 constexpr uint16_t ID_HOT_START = 4;       /* Q76 2.3.4 page 34 */
@@ -124,9 +124,20 @@ Command baud(uint32_t baud);
 /** $PAIR382,1 (Q76 2.3.30 page 56): keep the command port alive across PAIR003. */
 Command lockSleep(void);
 
-/** $PAIR003 / $PAIR002: GNSS subsystem off and on (Q76 2.3.3 page 34, 2.3.2 page 33). */
+/** $PAIR003 / $PAIR002: GNSS subsystem off and on (Q76 2.3.3 page 34, 2.3.2 page 34). */
 Command powerOff(void);
 Command powerOn(void);
+
+/**
+ * The command that brings the GNSS engine back after a refused rail cut.
+ *
+ * PAIR003 powers the GNSS system off (Q76 2.3.3 page 34) and PAIR002 powers it
+ * on again (Q76 2.3.2 page 34). An LC86G has no PAIR002, so the documented way
+ * back on that part is the hot start, PAIR004 (Q76 2.3.4 page 34). Every other
+ * part takes the power-on, and an unidentified model takes the hot start,
+ * which every part documents.
+ */
+Command powerBackOn(const std::string &model);
 
 /** $PAIR513 and $PQTMSAVEPAR: save settings to flash (Q76 2.3.45 page 68, 2.4.3 page 98). */
 Command saveSettings(void);

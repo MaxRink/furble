@@ -1,0 +1,27 @@
+# A rail cut the PMIC refuses on a Quectel part. The save powers the GNSS engine
+# off with PAIR003 (Q76 2.3.3 page 34), the cut that was supposed to follow does
+# not happen, and the receiver would stay powered with no GNSS for the rest of
+# the session. The driver must send PAIR002 (Q76 2.3.2 page 34), which is the
+# re-power Q76 2.3.44 note 2 page 69 documents after a save. Plan 388.
+seed gps true
+seed gps_model quectel
+seed gps_power 2
+seed gps_duty 10
+seed gps_rail_refused true
+seed gps_gnss 1
+seed gps_rate 1
+wait 6000
+assert gps.backend quectel
+
+# The save powers the engine off and the refused cut is answered with a
+# power-on, not left as a receiver that prints nothing.
+assert-eventually-virtual 20000 text.power_ons 1
+assert-eventually 5000 text.gnss_off 0
+
+# The receiver is still the same one, still fixing: the power-on restarted the
+# engine rather than the session.
+assert_min text.saves 2
+assert-eventually 5000 gps.source uart
+wait 6000
+assert_min gps.fresh_fixes_parsed 1
+exit

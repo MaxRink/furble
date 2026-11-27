@@ -94,6 +94,7 @@ class GPS {
     bool platform_refused;
     bool rate_refused;
     bool psm_refused;
+    uint8_t platform;
     bool sentences_set;
     uint8_t sentences;
     uint32_t acks;

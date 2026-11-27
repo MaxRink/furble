@@ -412,8 +412,9 @@ station. `wifi connect` and `wifi disconnect` act immediately, and
 - `gps text` reports a Quectel `$PAIR`/`$PQTM` or Unicore `$CFG` receiver: the
   backend and dialect, the model and firmware from `$PQTMVERNO` or `$PDTINFO`,
   the constellation mask, fix rate, SBAS state, sentence set, platform and
-  standby availability the plan sent, which of those the part refused, the save
-  state, the acknowledgement, refusal and timeout counts, and the last command
+  standby availability the plan sent, which of those the part refused and which
+  the setting never asked for, the save state, the acknowledgement, refusal and
+  timeout counts, and the last command
   with its verdict. It reads no UART, so it never wakes a receiver.
 - `gps power on | off` drives the external 5V rail, for rail-cut experiments.
 
