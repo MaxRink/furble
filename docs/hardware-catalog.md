@@ -136,50 +136,54 @@ onboard or on a short Grove cable.
 
 ### Case, battery and enclosure status
 
-A finished-article purchase has three separate questions: is it enclosed, does a
-cell come with it, and does the cell survive a rail-cut reboot. The third one is
-what decides hot versus cold GNSS, so a backup domain matters as much as the
-capacity. Status checked on 2026-11-26.
+A finished-article purchase asks three separate questions: is it enclosed, does a
+cell come with it, and does the cell survive a rail-cut reboot. Only the first
+two are tabulated, because no vendor page answers the third, and it is the one
+that decides hot against cold GNSS. The documented backup-domain facts live in
+plan 318 for the boards that have one. Status checked on 2026-11-26.
 
 | Device | Case | Battery in the box | Note |
 | :--- | :--- | :--- | :--- |
-| LilyGO T-Deck Plus | none | 2000 mAh | Bare board. The box lists the radio and an external antenna only [56]. |
+| LilyGO T-Deck Plus | none | 2000 mAh | Bare board. The box lists the radio and an external antenna only [1]. |
 | LilyGO T-Deck Pro | none | 1400 to 1500 mAh | Bare board, same family. |
-| LilyGO T-LoRa Pager | included, 106x89x23 mm | 1500 mAh | BQ25896 charger, BQ27220 gauge, LilyGoLib sets 750 mA [57]. Lanyard point and a quarter-inch screw boss. |
-| LilyGO T-Watch Ultra | included, watch body and strap | 1100 mAh | POWER and BOOT are the only buttons, so operation is touch-only [58]. |
-| Waveshare AMOLED 1.75 | the -B trim includes a protective case; the base and -G do not | none in any trim | So a case and onboard GNSS are mutually exclusive official trims [59]. |
-| Waveshare AMOLED 1.75C | included, CNC aluminium | selectable | The -1.75C trim includes the cell, the -1.75C-EN does not. Neither has GNSS [60]. |
-| M5Stack Core2 | included | 500 mAh | Add the M5GO Battery Bottom2 v1.3, SKU A014-C-V13, 500 mAh at 3.7 V, 8.46 USD sale and 9.95 USD list, for 1000 mAh total [61]. |
-| M5Stack CoreS3 | included | 500 mAh | No battery base for this model. |
+| LilyGO T-LoRa Pager | included, 106x89x23 mm | 1500 mAh | BQ25896 charger, BQ27220 gauge, LilyGoLib sets 750 mA [56]. Lanyard point and a quarter-inch screw boss. |
+| LilyGO T-Watch Ultra | included, watch body and strap | 1100 mAh | POWER and BOOT are the only buttons, so operation is touch-only [3]. |
+| Waveshare AMOLED 1.75 | the -B trim includes a protective case; the base and -G do not | none in any trim | So a case and onboard GNSS are mutually exclusive official trims [16]. |
+| Waveshare AMOLED 1.75C | included, CNC aluminium | selectable | The -1.75C trim includes the cell, the -1.75C-EN does not. Neither has GNSS [57]. |
+| M5Stack Core2 | included | 500 mAh | Add the M5GO Battery Bottom2 v1.3, SKU A014-C-V13, 500 mAh at 3.7 V, 8.46 USD sale and 9.95 USD list, for 1000 mAh total [58]. |
+| M5Stack CoreS3 | included | 500 mAh | Add the M5GO Battery Bottom3, SKU A014-D, 500 mAh with an IR emitter and a ten LED bar, 7.61 USD sale and 8.95 USD list, for 1000 mAh total [60]. |
 | M5Stack Cardputer K132 | included | 120 mAh, plus 1400 mAh in the base | End of life [53]. |
-| M5Stack Cardputer Adv | included | 1500 mAh | 56 keys at 160 gf [62]. |
-| M5StickS3 | included | 250 mAh | Grove socket at the base, so a GPS unit attaches without opening the shell. Rated 0 to 40 C [63]. |
+| M5Stack Cardputer Adv | included | 1500 mAh | 56 keys at 160 gf [22]. |
+| M5StickS3 | included | 250 mAh | Grove socket at the base, so a GPS unit attaches without opening the shell. Rated 0 to 40 C [59]. |
 | M5Stack Dial v1.1 | included | none, 1.25 mm 2P socket | The cell is a separate buy [21]. |
-| Heltec Wireless Tracker V2 | none | none, SH1.25 2P plus solar input | Board, antenna, connector and headers only [64]. |
+| Heltec Wireless Tracker V2 | none | none, SH1.25 2P plus solar input | Board, antenna, connector and headers only [13]. |
 | Seeed Wio Tracker L1 Pro | included, PC+ABS moulded | 2000 mAh | Was 3D printed, now injection moulded [8]. |
 
 Case is the one attribute no firmware can add. The T-Deck family is where the
 case is strictly third-party: community STLs, small shops and second-hand
 sellers, with no official shell and therefore no guaranteed fit around the
-trackball or the antenna. The Heltec Tracker V2 has neither an official nor a
-common shell.
+trackball or the antenna. The Heltec Tracker V2 ships bare too, but Heltec lists
+a solar case accessory for it at 45.20 USD [13], so enclosure there is a
+separate purchase rather than a search.
 
 ### Ranked for a carried camera remote
 
 Ranked on "in a pocket, on a walk, tagging photographs today", so a device that
 runs furble counts for more than better silicon.
 
-1. M5StickS3 plus Unit GPS v1.1, 21.50 USD plus 9.95 USD [10][63]. The only listed device that is a
-   finished article and runs furble today.
+1. M5StickS3 plus Unit GPS v1.1, 21.50 USD plus 9.95 USD [10][59]. The smallest
+   finished article that runs furble today, and the only current one.
 2. LilyGO T-LoRa Pager, 87.35 USD [5]. The best finished pocket article here:
    sealed body, 1500 mAh, a gauge, an onboard M10, and a keyboard plus encoder.
    Blocked only by the board port.
-3. LilyGO T-Deck Plus, 70.99 USD [1]. The best input and the largest cell for the
-   money, and an onboard M10, but it is a bare board.
-4. M5Stack Cardputer Adv, 29.90 USD [62]. Enclosed with a keyboard, but no PSRAM and
+3. LilyGO T-Deck Plus, 70.99 USD [1]. The best input of the ESP32 devices, and
+   the largest cell among them at 2000 mAh, with an onboard M10, but it is a
+   bare board. The Wio L1 Pro matches the capacity for 47.90 USD and is not
+   portable to furble [8].
+4. M5Stack Cardputer Adv, 29.90 USD [22]. Enclosed with a keyboard, but no PSRAM and
    GNSS only on a Grove cable.
 5. LilyGO T-Watch Ultra, 90.34 USD [55]. Self-contained with GNSS, but touch-only.
-6. M5Stack Core2 plus Bottom2, 49.90 plus 8.46 USD [10][61]. Runs today, but BLE 4.2 and out of
+6. M5Stack Core2 plus Bottom2, 49.90 plus 8.46 USD [10][58]. Runs today, but BLE 4.2 and out of
    production.
 
 Two caveats that decide between the top two. The StickS3 GPS is a dongle, so the
@@ -188,9 +192,9 @@ rates it 0 to 40 C. The Pager needs a board port, but the UBX driver it needs
 already exists for the M10, so the GNSS side of that port is not new work.
 
 Neither is a glove device. The Pager and Cardputer keys are phone-keyboard
-sized, the T-Deck trackball is worse through a glove, and the touch-only options
-are unusable gloved. The glove-tolerant controls in this catalog are the
-StickS3 buttons and the Core2 front zones.
+sized, the T-Deck trackball is worse through a glove, and capacitive touch is
+poor gloved on every touch model here. The only glove-tolerant control in this
+catalog is the pair of physical buttons on the StickS3.
 
 ### Pager or T-Deck Plus
 
@@ -204,7 +208,7 @@ The Plus still wins on two points that matter in cold weather. It has the
 larger cell, 2000 mAh against 1500 mAh, and it has a touchscreen in addition to
 the keyboard and trackball, which the Pager lacks entirely. The Pager wins on
 power instrumentation, since it carries a fuel gauge where the Plus measures the
-cell with an ADC on IO04 [56].
+cell with an ADC on IO04 [1].
 
 ### Unverified in this section
 
@@ -213,8 +217,9 @@ cell with an ADC on IO04 [56].
   but no vendor page states it.
 - Which price sits at which end of the Waveshare 1.75 and 1.75C ranges. The
   per-trim pricing is rendered by script on both pages.
-- Which u-blox part the T-Deck Plus u-blox trim ships, since the store also
-  offers an L76K trim.
+- Which u-blox part the T-Deck Plus u-blox trim ships. The row above records
+  MIA-M10Q from the vendor wiki twice, and the store also offers an L76K trim,
+  so the trim is not the same purchase.
 - Absence of PSRAM on the Cardputer, Cardputer Adv and Dial, which is derived
   from the ESP32-S3FN8 part number rather than stated on the product page.
 
@@ -596,27 +601,23 @@ Fetched on 2026-11-01. Prices are from the vendor page unless marked.
 55. LilyGO T-Watch Ultra variants, 90.34 USD, re-read 2026-11-13:
     https://lilygo.cc/products/t-watch-ultra.json
 
-Sources 56 to 64 were fetched on 2026-11-26 for the enclosure and battery
-section, and are the only ones in this catalog from that date.
+Sources 56 to 60 were fetched on 2026-11-26 for the enclosure and battery
+section, and are the only ones in this catalog from that date. The rows that
+cite an older number reuse a source already listed above rather than repeating
+a URL that has since been reused, and [1] is the canonical T-Deck Plus URL
+because the short form redirects to it.
 
-56. LilyGO T-Deck Plus box contents, built-in 2000 mAh and the battery ADC on
-    IO04: https://lilygo.cc/products/t-deck-plus
-57. LilyGO T-LoRa Pager enclosure, 1500 mAh, BQ25896 and BQ27220, and the
+56. LilyGO T-LoRa Pager enclosure, 1500 mAh, BQ25896 and BQ27220, and the
     LilyGoLib charge current:
     https://wiki.lilygo.cc/products/t-lora-series/t-lora-pager/ and
     https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGoLib/master/docs/hardware/lilygo-t-lora-pager.md
-58. LilyGO T-Watch Ultra enclosure, strap, 1100 mAh and button set:
-    https://wiki.lilygo.cc/products/t-watch-series/t-watch-ultra/
-59. Waveshare ESP32-S3-Touch-AMOLED-1.75 trims, protective case in -B and GNSS
-    in -G: https://www.waveshare.com/esp32-s3-touch-amoled-1.75.htm
-60. Waveshare ESP32-S3-Touch-AMOLED-1.75C aluminium case, battery present and
+57. Waveshare ESP32-S3-Touch-AMOLED-1.75C aluminium case, battery present and
     absent trims: https://www.waveshare.com/esp32-s3-touch-amoled-1.75c.htm
-61. M5GO Battery Bottom2 v1.3, SKU A014-C-V13, 500 mAh at 3.7 V, TP4057, 8.46
+58. M5GO Battery Bottom2 v1.3, SKU A014-C-V13, 500 mAh at 3.7 V, TP4057, 8.46
     USD sale and 9.95 USD list:
     https://shop.m5stack.com/products/m5go-battery-bottom2-for-core2-only-v1-3
-62. M5Stack Cardputer Adv, 1500 mAh and 160 gf keys:
-    https://shop.m5stack.com/products/m5stack-cardputer-adv-version-esp32-s3
-63. M5StickS3, 21.50 USD, 250 mAh and the 0 to 40 C rating:
+59. M5StickS3, 21.50 USD, 250 mAh and the 0 to 40 C rating:
     https://shop.m5stack.com/products/m5sticks3-esp32s3-mini-iot-dev-kit
-64. Heltec Wireless Tracker V2 box contents and dimensions:
-    https://heltec.org/project/wireless-tracker-v2/
+60. M5GO Battery Bottom3, SKU A014-D, 500 mAh, IR emitter and 7.61 USD sale and
+    8.95 USD list:
+    https://shop.m5stack.com/products/m5go-battery-bottom3-for-cores3-only
