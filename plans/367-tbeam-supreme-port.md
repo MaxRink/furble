@@ -247,8 +247,8 @@ Recorded on this branch, macOS host, no device attached:
 - `python3 tools/derive_sim_heap.py --env lilygo-tbeam-supreme` records the
   boot heap in `sim/coverage/board_heap.json`: 47,312 static DRAM, 284,208 bytes
   at app start, 86,944 attributable and 197,264 derived free.
-- Host suite: `ctest` 222 of 222 pass, including `board-profile` and
-  `board-profile-tbeam`.
+- Host suite: `ctest` 224 of 224 pass on the rebased tree, including
+  `board-profile` and `board-profile-tbeam`.
 - The two simulator scenarios named above pass on a build made with
   `FURBLE_SIM_FURBLE_BOARD=FURBLE_LILYGO_TBEAM_SUPREME`, run through
   `sim/scripts/run-e2e.sh` with `FURBLE_SIM_BOARD_ID=lilygo-tbeam-supreme`.
