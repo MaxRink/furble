@@ -258,7 +258,7 @@ remediation batches. The batch is named in each GATED-ON tag.
   when isBonded. Source: plan 96 A4, `lib/furble/CanonEOSRemote.cpp:64`,
   `lib/furble/Sony.cpp:34-84`, `lib/furble/CanonEOSSmart.cpp:42-44`. READY-NOW.
   Untested vendor, code review plus FauxNY only.
-  State: the write-with-response half is fixed in this tranche, 56f0d4e9. Both
+  State: the write-with-response half is fixed in this tranche, da73ed7e. Both
   Canon roles identify through `CanonEOS::writePrefix()`, which now asks for the
   ATT response, and `CanonEOSSmart::_connect()` waits for the response on the
   final accept byte. Every one of those writes is part of the identity exchange,
@@ -358,7 +358,7 @@ remediation batches. The batch is named in each GATED-ON tag.
   and MQTT_PASS over the BLE companion service; return a set/unset indicator
   and keep writes write-only, matching console and REST. Source: plan 96 C6,
   `src/FurbleCompanionService.cpp:787-915`. GATED-ON: wifi restack.
-  State: fixed in this tranche, 2c47add0. `settingValue()` answers the
+  State: fixed in this tranche, 7850d818. `settingValue()` answers the
   word `set` or `unset` for `WIFI_PSK` and `MQTT_PASS`, in the setting's own
   `SETTING_STRING` type, for both the single read and the catalog, so no client
   needs a new wire type and no reader receives the credential. Writes are
@@ -430,7 +430,7 @@ remediation batches. The batch is named in each GATED-ON tag.
   range one step higher, or suspend step-down, while WiFi is connected.
   Two-line condition in sampleAdaptivePower. Source: plan 96 D2. GATED-ON:
   wifi restack.
-  State: fixed in this tranche, a74135d1. `Control::sampleAdaptivePower()`
+  State: fixed in this tranche, 642dff29. `Control::sampleAdaptivePower()`
   reads a station probe the WiFi service installs and will not step below P6
   while it answers connected; a link already at P3 comes back up one step on the
   next sample instead of waiting for an RSSI decision that a strong signal never
