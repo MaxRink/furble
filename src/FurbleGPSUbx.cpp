@@ -31,6 +31,10 @@ const char *GPS::backendName(backend_t backend) {
       return "nmea";
     case backend_t::UBX:
       return "ubx";
+    case backend_t::QUECTEL:
+      return "quectel";
+    case backend_t::UNICORE:
+      return "unicore";
   }
   return "unknown";
 }
@@ -89,25 +93,60 @@ bool GPS::sendUbx(const std::vector<uint8_t> &frame) {
 }
 
 /**
- * Poll MON-VER (IFD 3.14.9). Every u-blox receiver answers it whatever its
- * configuration, and the AT6668 and L76K ignore a UBX frame, so the poll is
- * the one byte sequence that tells the two apart without disturbing either.
+ * Send the identification probes: UBX-MON-VER (IFD 3.14.9), $PQTMVERNO (Q76
+ * 2.4.5 page 100) and $PDTINFO (UC 3.2 page 26).
+ *
+ * Every u-blox receiver answers MON-VER whatever its configuration. A Quectel
+ * part answers the PQTM version query, a Unicore part answers the product
+ * information query, and the AT6668 and L76K answer none of the three, so they
+ * keep the NMEA backend. All three go out in one window, so the fallback costs
+ * the same two seconds it always did instead of one window per vendor.
  */
 void GPS::startDetect(uint32_t now) {
   m_Backend.store(static_cast<uint8_t>(backend_t::DETECTING));
   m_Detect.begin(now);
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  m_TextIdentity.store(static_cast<uint8_t>(GpsText::Dialect::NONE));
+#endif
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  sendIdentifyProbes();
+#else
+  // The text probes belong to a backend this build does not have; a u-blox
+  // receiver still identifies itself over UBX.
   sendUbx(Ubx::pollMonVer());
+#endif
 }
 
 bool GPS::serviceDetect(uint32_t now) {
   if (getBackend() != backend_t::DETECTING) {
     return true;
   }
+
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  // A vendor text answer decides at once: the receiver that answered will never
+  // answer another vendor's probe, so waiting out the window only delays its
+  // configuration.
+  switch (textIdentity()) {
+    case GpsText::Dialect::QUECTEL:
+      m_Backend.store(static_cast<uint8_t>(backend_t::QUECTEL));
+      return true;
+    case GpsText::Dialect::UNICORE:
+      m_Backend.store(static_cast<uint8_t>(backend_t::UNICORE));
+      return true;
+    case GpsText::Dialect::NONE:
+      break;
+  }
+#endif
+
   bool poll = false;
   const Ubx::Detect::Result result = m_Detect.service(now, poll);
   if (result == Ubx::Detect::Result::WAITING) {
     if (poll) {
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+      sendIdentifyProbes();
+#else
       sendUbx(Ubx::pollMonVer());
+#endif
     }
     return false;
   }
@@ -115,8 +154,8 @@ bool GPS::serviceDetect(uint32_t now) {
     m_Backend.store(static_cast<uint8_t>(backend_t::UBX));
     return true;
   }
-  // No UBX answer. Keep the path furble always had.
-  ESP_LOGI(LOG_TAG, "GPS receiver did not answer MON-VER, using the NMEA backend");
+  // No vendor answered. Keep the path furble always had.
+  ESP_LOGI(LOG_TAG, "GPS receiver answered no identification probe, using the NMEA backend");
   m_Backend.store(static_cast<uint8_t>(backend_t::NMEA));
   return true;
 }
@@ -348,6 +387,13 @@ void GPS::pollUbxSatellites(void) {
 }
 
 bool GPS::beginSaveOnShutdown(uint32_t now) {
+  const backend_t backend = getBackend();
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if ((backend == backend_t::QUECTEL) || (backend == backend_t::UNICORE)) {
+    // A text part saves with its own command, which never stops the GNSS first.
+    return textSave(now);
+  }
+#endif
   // A rail that is already off has nothing left to save. A late duty request
   // can arrive just after the cut, and must not mark the backup as refused.
   // A rail the board cannot cut must not lose a running receiver to a GNSS
@@ -376,6 +422,14 @@ bool GPS::beginSaveOnShutdown(uint32_t now) {
 }
 
 void GPS::saveOnShutdownBlocking(void) {
+  const backend_t backend = getBackend();
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if ((backend == backend_t::QUECTEL) || (backend == backend_t::UNICORE)) {
+    // disable() parks the GPS task first, so the text save can read the UART.
+    textSaveBlocking();
+    return;
+  }
+#endif
   const uint32_t start = Platform::getInstance().tick();
   if (!beginSaveOnShutdown(start)) {
     return;

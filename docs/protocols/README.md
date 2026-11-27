@@ -10,6 +10,8 @@ close.
 | :--- | :--- | :--- | :--- |
 | UBX | furble to a u-blox M10 receiver | configuration and fix readout | [UBX](gnss-ubx.md) |
 | CASIC and `$PCAS` | furble to an AT6668 receiver | configuration, standby, ephemeris cache | [CASIC and PCAS](gnss-casic-pcas.md) |
+| Quectel `$PAIR` and `$PQTM` | furble to an LC76G or LC29H receiver | configuration, backup mode, save | [Quectel $PAIR and $PQTM](gnss-quectel-pair.md) |
+| Unicore `$CFG` | furble to a UC6580 receiver | configuration, restart, save | [Unicore $CFG](gnss-unicore-cfg.md) |
 | NMEA 0183 | receiver to furble | fix, satellites, DOP | [NMEA](gnss-nmea.md) |
 | Camera BLE, Sony, Nikon, Canon and the other vendors | furble to the camera as a central | advertisement matching, pairing, shutter and focus | [Camera remotes](camera-remotes.md) |
 | IR remote | furble to the camera as an emitter | Nikon, Sony and Canon shutter | [IR remote](ir-remote.md) |

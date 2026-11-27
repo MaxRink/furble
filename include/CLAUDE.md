@@ -133,6 +133,16 @@ Public headers for the app layer in src/, one header per module
   GATT cache is broken. `attach()` runs during GATT construction and must not
   read `CompanionGatt` state; `update()` runs from the companion service task
   and never under `CompanionGatt::m_Mutex`.
+- `FurbleGPS` reports a vendor text receiver through `getTextStatus()`, the
+  text twin of `getUbxStatus()`: identity from `$PQTMVERNO` or `$PDTINFO`, what
+  the plan sent, which settings the part refused, and the ack, nack and timeout
+  counts. `m_TextIdentity` is written on the GPS task and by
+  `enable()`/`disable()` with the task parked; `m_TextStatus` and the counters
+  are guarded by `m_TextMutex`, so the console never reads a torn snapshot.
+  `m_Text` is the configuration session and `m_TextSave` a second, separate one
+  for the shutdown save, because a save must not disturb a configuration
+  command in flight. `backend_t::QUECTEL` and `UNICORE` join the enum, so a new
+  `switch` over it must handle all six values.
 - `FurbleGPS` exposes the CASIC binary test path and AID-INI injection as
   documented public methods. Keep their wire format comments next to the API.
   `GPS::getBackend()` and `getUbxStatus()` are the UBX receiver surface.

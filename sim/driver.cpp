@@ -488,6 +488,10 @@ void validateSeed(const std::string &name, const std::string &value) {
       "gps_m10_backup",
       "gps_m10_flash",
       "gps_m10_hot",
+      "gps_quectel_no_fix_rate",
+      "gps_quectel_no_search_mode",
+      "gps_unicore_no_flash",
+      "gps_unicore_silent",
       "sd_gpx",
       "imu_trigger",
       "ivl_sleep",
@@ -660,10 +664,10 @@ void validateSeed(const std::string &name, const std::string &value) {
   } else if (name == "gps_model") {
     // The receiver on the port: the historic CASIC unit, a virtual L1-only
     // u-blox MAX-M10S or MIA-M10Q, a virtual dual-band NEO-F10N (named, or
-    // behind an unknown module string), or a receiver that answers no binary
-    // protocol.
+    // behind an unknown module string), a receiver that answers no binary
+    // protocol, or one of the vendor text parts of plan 388.
     if (value != "casic" && value != "m10" && value != "m10-mia" && value != "f10"
-        && value != "f10-unnamed" && value != "nmea") {
+        && value != "f10-unnamed" && value != "nmea" && value != "quectel" && value != "unicore") {
       std::cerr << "Invalid gps_model: " << value << '\n';
       std::exit(2);
     }
@@ -2055,6 +2059,64 @@ std::string queryValueUnscoped(const std::string &key) {
     if (sub == "degraded_retries") {
       return std::to_string(gps.getCycleStatusSnapshot().retries);
     }
+    if (sub.rfind("text.", 0) == 0) {
+      // The vendor text driver's own status, not the virtual receiver's view.
+      // A refusal flag is only ever set by the planner, so a regression that
+      // stopped publishing one fails here rather than passing silently.
+      const auto text = gps.getTextStatus();
+      const std::string field = sub.substr(5);
+      if (field == "configured") {
+        return text.configured ? "1" : "0";
+      }
+      if (field == "model") {
+        return text.model.empty() ? "none" : text.model;
+      }
+      if (field == "fw") {
+        return text.firmware.empty() ? "none" : text.firmware;
+      }
+      if (field == "platform") {
+        return std::to_string(text.platform);
+      }
+      if (field == "acks") {
+        return std::to_string(text.acks);
+      }
+      if (field == "naks") {
+        return std::to_string(text.naks);
+      }
+      if (field == "timeouts") {
+        return std::to_string(text.timeouts);
+      }
+      if (field == "save") {
+        return (text.save == 1) ? "saved" : ((text.save == 2) ? "refused" : "not_tried");
+      }
+      if (field == "standby") {
+        return (text.standby == 1) ? "sent" : ((text.standby == 2) ? "refused" : "not_tried");
+      }
+      if (field == "last") {
+        return std::string(Furble::GpsText::opName(static_cast<Furble::GpsText::Op>(text.last_op)))
+               + " "
+               + Furble::GpsText::verdictName(
+                   static_cast<Furble::GpsText::Verdict>(text.last_verdict));
+      }
+      if (field == "refused") {
+        // fixed order so one scenario token compares the whole set
+        std::string out;
+        const std::pair<bool, const char *> flags[] = {
+            {text.gnss_refused,     "gnss"    },
+            {text.rate_refused,     "rate"    },
+            {text.sbas_refused,     "sbas"    },
+            {text.platform_refused, "platform"},
+            {text.psm_refused,      "standby" },
+        };
+        for (const auto &flag : flags) {
+          if (flag.first) {
+            out += (out.empty() ? "" : ",");
+            out += flag.second;
+          }
+        }
+        return out.empty() ? "none" : out;
+      }
+    }
     if (sub.rfind("config.", 0) == 0) {
       const std::string field = sub.substr(7);
       const size_t dot = field.find('.');
@@ -2147,6 +2209,10 @@ std::string queryValueUnscoped(const std::string &key) {
     // The virtual M10's own view: state, start type, counters and its
     // configuration database (m10.ram.<hex key>, m10.bbr.<hex key>).
     return furble_sim_m10_query(key.substr(std::char_traits<char>::length("m10.")));
+  }
+  if (prefixed("text.")) {
+    // The virtual vendor text receiver on the port, Quectel or Unicore.
+    return furble_sim_text_query(key.substr(std::char_traits<char>::length("text.")));
   }
   if (prefixed("uart.")) {
     const std::string sub = key.substr(std::char_traits<char>::length("uart."));
@@ -3124,6 +3190,10 @@ void applyScenarioSettings(void) {
   if (irBurst != scenarioSettings.end()) {
     hwSetIrBurstMs(parseUnsigned(irBurst->second));
   }
+  furble_sim_uart_set_text_variant(scenarioSettingIsTrue("gps_quectel_no_fix_rate"),
+                                   scenarioSettingIsTrue("gps_quectel_no_search_mode"),
+                                   scenarioSettingIsTrue("gps_unicore_no_flash"),
+                                   scenarioSettingIsTrue("gps_unicore_silent"));
   const auto model = scenarioSettings.find("gps_model");
   if (model != scenarioSettings.end()) {
     const auto unknown = scenarioSettings.find("gps_m10_unknown_key");

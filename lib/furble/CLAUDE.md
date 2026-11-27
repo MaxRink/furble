@@ -233,6 +233,27 @@ protocol core.
   fields the V6.3.2 section 2.7.4 and V4.2.0.3 section 1.6.4 formats share;
   never go back to a short sentence, and never write one by hand in the
   driver.
+- `GpsText` (`Furble::GpsText`) is the vendor text command seam behind
+  `GpsQuectel` ($PAIR and $PQTM) and `GpsUnicore` ($CFG): the `$` body `*`
+  checksum CR LF frame, the XOR checksum, reply parsing into a name and fields,
+  acknowledgement matching, and the one-command-in-flight `Session` with its one
+  second timeout and three attempts. The vendor half is a `Dialect` value and a
+  command table, not an interface: a vtable and two objects cost DRAM the 4 MB
+  images do not have, and the two dialects differ in a name set and an
+  acknowledgement shape. That shape is why the seam exists and why it is worth
+  reading: a Quectel ack names the packet id it acknowledges, while a Unicore
+  `$OK` and `$FAIL` name nothing (UC 3.2 pages 30 and 31), so only one command
+  may be in flight there. `match()` returns a verdict, never a bare bool:
+  unsupported, parameter error, busy and a bad checksum are different outcomes
+  for the user. Every command in `GpsQuectel.h` and `GpsUnicore.h` cites its
+  document, section and page, and both planners turn the GPS settings into a
+  command queue the way `Ubx::plan()` does. `gps-text` and `gps-text-sim` cover
+  them; the documents and the UNVERIFIED list are in plans/388.
+  `FURBLE_GPS_TEXT=0` compiles the two dialects and the driver backend out of
+  a build whose flash slot cannot take them (the Core debug profile, about
+  20 KB): the seam stays for the splitter, the driver keeps stubs, and no text
+  command is ever sent. The define is absent everywhere else, so an
+  `#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT` guard is the contract.
 - `GpsUbx` (`Furble::Ubx`) is the u-blox codec: framing, Fletcher checksum,
   `scan()`, the resynchronising `Stream`, every message furble uses, `Detect`,
   `CapsProbe`, the tick-wrap-safe `Settle` gate and `plan()`, which turns the
@@ -252,8 +273,17 @@ protocol core.
 - A dual-band receiver has no GLONASS and no CFG-PM key at all (F10-IFD 4.9.20
   pages 158 and 159; the configuration reference has no CFG-PM group), so
   `gnssValid(mask, caps)` refuses GLONASS before it is written and `plan()`
-  leaves the power key list empty rather than sending an empty VALSET. `GpsDemux` splits the shared UART stream into NMEA, CASIC and UBX
-  pieces and is the only demultiplexer; the driver dispatches its pieces.
+  leaves the power key list empty rather than sending an empty VALSET.
+- `GpsDemux` splits the shared UART stream into NMEA, CASIC, UBX and vendor
+  text pieces and is the only demultiplexer; the driver dispatches its pieces. A
+  vendor piece is one complete line whose name starts a Quectel `$PAIR` or
+  `$PQTM` message or a Unicore `$CFG`, `$OK`, `$FAIL` or `$PDTINFO` one, which
+  no standard NMEA talker collides with, so the CASIC `$PCAS` text path is
+  untouched. A line that never terminates is dropped a byte at a time past
+  `GpsText::MAX_LINE`, so it cannot grow the receive buffer. `lineEnd()` returns
+  a bool plus an out parameter for a reason: a complete line can end exactly at
+  the end of the buffer, and a sentinel return value reads that as "not
+  finished".
   Both are covered by `gps-ubx` and fuzzed by `gps_ubx_fuzz`. `plan()` builds
   the signal keys from one table, and the driver keeps only its
   `PlanSummary`; the 4 MB Core debug image has little flash to spare. `plan()`

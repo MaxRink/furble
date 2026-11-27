@@ -426,6 +426,15 @@ void GPS::enable(void) {
   wakeGPSService(m_Queue);
   const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
 
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  // The vendor text backend's fixed state lives on the heap, not in .bss: about
+  // 300 bytes that the classic ESP32 DRAM budget cannot spare. It is allocated
+  // here, before the UART task is woken and before any gate measures free bytes,
+  // and released at the end of disable(). A failed allocation leaves the text
+  // backends off and the NMEA and UBX paths untouched.
+  (void)ensureTextState();
+#endif
+
   m_AidMode.store(Settings::load<Settings::GPS_ASSIST>());
   loadAidCache();
   loadEphemerisCache();
@@ -442,6 +451,9 @@ void GPS::enable(void) {
   m_EphReplayArmed = false;
   m_MonHwPending = false;
   resetUbx();
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  resetText();
+#endif
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
     m_ConfigStatusCount = 0;
@@ -780,15 +792,50 @@ void GPS::serviceCycle(void) {
 
   if (m_RailOffPending) {
     bool answered = false;
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+    // A text state is only absent while GPS is off or after a failed
+    // allocation, so the queue is empty then and the UBX branch answers.
+    const bool textSave =
+        (m_TextState != nullptr) && (text().save_session.active() || !text().save_queue.empty());
+    if (textSave) {
+      // A vendor text save in flight steps its own sequence.
+      answered = textSaveService(now);
+      if (answered) {
+        const std::lock_guard<std::mutex> save(m_TextMutex);
+        text().status.save = text().save_refused ? 2 : 1;
+      }
+    } else {
+      const std::lock_guard<std::mutex> ubx(m_UbxMutex);
+      answered = m_UbxSosBackup != 0;
+    }
+#else
     {
       const std::lock_guard<std::mutex> ubx(m_UbxMutex);
       answered = m_UbxSosBackup != 0;
     }
+#endif
     if (answered || tickReached(now, m_RailOffDeadline)) {
       if (!answered) {
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+        if ((m_TextState == nullptr) || text().save_queue.empty()) {
+          const std::lock_guard<std::mutex> ubx(m_UbxMutex);
+          m_UbxSosBackup = 2;
+        } else {
+          text().save_refused = true;
+          const std::lock_guard<std::mutex> save(m_TextMutex);
+          text().status.save = 2;
+        }
+#else
         const std::lock_guard<std::mutex> ubx(m_UbxMutex);
         m_UbxSosBackup = 2;
+#endif
       }
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+      if (m_TextState != nullptr) {
+        text().save_session.clear();
+        text().save_queue.clear();
+      }
+#endif
       m_RailOffPending = false;
       enterRailOff(now);
     }
@@ -806,9 +853,11 @@ void GPS::serviceCycle(void) {
   // A duty cycle waits until the receiver is identified and its configuration
   // has gone out, so standby never collides with a command in flight, and the
   // standby command matches the backend: RXM-PMREQ for u-blox, $PCAS12 only for
-  // the NMEA (CASIC) backend.
+  // the NMEA (CASIC) backend, PAIR650 for Quectel, and a reported refusal for a
+  // Unicore part, which documents no standby command.
   const backend_t backend = getBackend();
-  const bool identified = (backend == backend_t::NMEA) || (backend == backend_t::UBX);
+  const bool identified = (backend == backend_t::NMEA) || (backend == backend_t::UBX)
+                          || (backend == backend_t::QUECTEL) || (backend == backend_t::UNICORE);
   const bool configIdle =
       !m_ConfigPending && !m_ConfigInFlight.has_value() && m_ConfigQueue.empty();
   // The UI can push a fix after the cycle has already parked the receiver for
@@ -825,15 +874,30 @@ void GPS::serviceCycle(void) {
     acquirePowerLock();
 
     if ((m_PowerPolicy == POWER_STANDBY) && (m_DutySeconds > 0)) {
-      if (backend == backend_t::UBX) {
-        // RXM-PMREQ software standby for the duty interval (IFD 3.16.6). The
-        // force flag is required (MAX-M10S integration manual 3.6.3.2), and V_IO
-        // stays up, so BBR and the RTC survive and the wake is a hot start.
-        sendUbx(
-            Ubx::pmReq({static_cast<uint32_t>(m_DutySeconds) * 1000,
-                        Ubx::PMREQ_FLAG_BACKUP | Ubx::PMREQ_FLAG_FORCE, Ubx::PMREQ_WAKE_UARTRX}));
-      } else if (backend == backend_t::NMEA) {
-        sendCommand("PCAS12," + std::to_string(m_DutySeconds));
+      switch (backend) {
+        case backend_t::UBX:
+          // RXM-PMREQ software standby for the duty interval (IFD 3.16.6). The
+          // force flag is required (MAX-M10S integration manual 3.6.3.2), and
+          // V_IO stays up, so BBR and the RTC survive and the wake is a hot
+          // start.
+          sendUbx(
+              Ubx::pmReq({static_cast<uint32_t>(m_DutySeconds) * 1000,
+                          Ubx::PMREQ_FLAG_BACKUP | Ubx::PMREQ_FLAG_FORCE, Ubx::PMREQ_WAKE_UARTRX}));
+          break;
+        case backend_t::QUECTEL:
+        case backend_t::UNICORE:
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+          // The vendor layer decides whether this part and this interval can do
+          // standby at all, and it reports the refusal rather than pretending.
+          textStandby(now);
+#endif
+          break;
+        case backend_t::NMEA:
+          sendCommand("PCAS12," + std::to_string(m_DutySeconds));
+          break;
+        case backend_t::UNKNOWN:
+        case backend_t::DETECTING:
+          break;
       }
       enterStandby(now);
       return;
@@ -1123,6 +1187,19 @@ void GPS::railOffOrRestart(void) {
     sendUbx(Ubx::cfgRst(Ubx::RST_HOT, Ubx::RST_MODE_GNSS_START));
   }
   m_UbxStopped = false;
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if (!cut) {
+    // The same for a vendor text part: the save sent PAIR003, so a refused cut
+    // leaves a powered receiver with its GNSS engine off and nothing else
+    // turns it back on.
+    textPowerBackOn();
+  }
+  if (m_TextState != nullptr) {
+    // disable() reaches here with the state already gone when GPS was never
+    // enabled, which is the common boot path on a board with GPS switched off.
+    text().stopped = false;
+  }
+#endif
 }
 
 void GPS::beginResync(uint32_t now) {
@@ -1348,6 +1425,14 @@ void GPS::restart(uint8_t mode) {
     sendUbx(Ubx::cfgRst(MASKS[mode], Ubx::RST_MODE_GNSS_ONLY));
     return;
   }
+
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if ((getBackend() == backend_t::QUECTEL) || (getBackend() == backend_t::UNICORE)) {
+    // PAIR004/005/006, or $RESET with a hot, warm or cold clear mask.
+    textRestart(mode);
+    return;
+  }
+#endif
 
   sendCommand("PCAS10," + std::to_string(mode));
 }
@@ -1585,21 +1670,36 @@ void GPS::startConfigCommand(void) {
   }
 
   m_ConfigInFlight = std::move(m_ConfigQueue.front());
+  // The guard and the one accessor, with no call between them: the reference
+  // then outlives every call below, so nothing else touches the optional.
+  if (!m_ConfigInFlight.has_value()) {
+    return;
+  }
+  binary_command_t &config = m_ConfigInFlight.value();
   m_ConfigQueue.pop_front();
   m_ConfigAttempts = 1;
   m_ConfigSent = Platform::getInstance().tick();
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
 
+  const uint8_t status_index = config.status_index;
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
-    auto &status = m_ConfigStatus[m_ConfigInFlight->status_index];
+    auto &status = m_ConfigStatus[status_index];
     status.state = CONFIG_SENT;
     status.attempts = m_ConfigAttempts;
-    m_ConfigInFlightStatus = m_ConfigInFlight->status_index;
+    m_ConfigInFlightStatus = status_index;
   }
 
-  if (!sendConfigFrame(*m_ConfigInFlight)) {
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if (config.text) {
+    // The vendor text layer owns the acknowledgement timeout and the retry, so
+    // it starts with the first send rather than after it.
+    text().session.begin(config.text_command, m_ConfigSent);
+  }
+#endif
+
+  if (!sendConfigFrame(config)) {
     ESP_LOGW(LOG_TAG, "GPS binary command write failed");
   }
 }
@@ -1614,6 +1714,11 @@ void GPS::finishConfigCommand(config_state_t state) {
   m_ConfigAttempts = 0;
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if (command.text) {
+    text().session.clear();
+  }
+#endif
 
   bool sendFallback = false;
   {
@@ -1764,7 +1869,89 @@ void GPS::serviceConfig(void) {
     return;
   }
 #endif
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if (m_ConfigInFlight.has_value()) {
+    // The one accessor, immediately after the guard and before any call.
+    binary_command_t &config = m_ConfigInFlight.value();
+    if (config.text) {
+      // As in startConfigCommand: read the three fields the branches need before
+      // the session call, whose opaque body is enough to make the checker
+      // distrust the optional.
+      const GpsText::Op text_op = config.text_command.op;
+      const GpsText::Dialect text_dialect = config.text_command.dialect;
+      const uint16_t text_settle = config.text_command.settle_ms;
+      const uint32_t now = Platform::getInstance().tick();
+      switch (text().session.service(now)) {
+        case GpsText::Session::Step::SEND:
+          m_ConfigSent = now;
+          {
+            const std::lock_guard<std::mutex> lock(m_ConfigMutex);
+            m_ConfigStatus[m_ConfigInFlightStatus].attempts = text().session.attempts();
+          }
+          if (!sendConfigFrame(config)) {
+            ESP_LOGW(LOG_TAG, "GPS text retry write failed");
+          }
+          return;
+        case GpsText::Session::Step::ACKED:
+        {
+          finishConfigCommand(CONFIG_ACKED);
+          if (text_settle != 0) {
+            m_ConfigSettle.arm(Platform::getInstance().tick(), text_settle);
+          }
+          return;
+        }
+        case GpsText::Session::Step::FAILED:
+        {
+          const GpsText::Verdict verdict = text().session.verdict();
+          const GpsText::Op op = text_op;
+          const GpsText::Dialect dialect = text_dialect;
+          ESP_LOGW(LOG_TAG, "GPS %s refused: %s", GpsText::opName(op),
+                   GpsText::verdictName(verdict));
+          {
+            const std::lock_guard<std::mutex> lock(m_TextMutex);
+            text().status.last_op = static_cast<uint8_t>(op);
+            text().status.last_verdict = static_cast<uint8_t>(verdict);
+            text().status.naks++;
+          }
+          finishConfigCommand(CONFIG_NACKED);
+          // A Unicore $OK names no command (UC 3.2 page 30), so the failure
+          // closes the seam for one second: an acknowledgement of this command
+          // must not be credited to the next one.
+          if (dialect == GpsText::Dialect::UNICORE) {
+            m_ConfigSettle.arm(Platform::getInstance().tick(), GpsText::Session::ACK_TIMEOUT_MS);
+          }
+          return;
+        }
+        case GpsText::Session::Step::TIMEOUT:
+        {
+          const GpsText::Op op = text_op;
+          const GpsText::Dialect dialect = text_dialect;
+          const GpsText::Verdict verdict = text().session.verdict();
+          if (verdict == GpsText::Verdict::STALLED) {
+            ESP_LOGW(LOG_TAG, "GPS %s stayed in processing, giving up", GpsText::opName(op));
+          } else {
+            ESP_LOGW(LOG_TAG, "GPS %s went unanswered", GpsText::opName(op));
+          }
+          {
+            const std::lock_guard<std::mutex> lock(m_TextMutex);
+            text().status.last_op = static_cast<uint8_t>(op);
+            text().status.last_verdict = static_cast<uint8_t>(verdict);
+            text().status.timeouts++;
+          }
+          finishConfigCommand(CONFIG_TIMEOUT);
+          if (dialect == GpsText::Dialect::UNICORE) {
+            m_ConfigSettle.arm(Platform::getInstance().tick(), GpsText::Session::ACK_TIMEOUT_MS);
+          }
+          return;
+        }
+        case GpsText::Session::Step::IDLE:
+        case GpsText::Session::Step::WAIT:
+          return;
+      }
+    }
+  }
 
+#endif  // FURBLE_GPS_TEXT
   if (m_ConfigInFlight.has_value()) {
     const uint32_t now = Platform::getInstance().tick();
     if ((now - m_ConfigSent) < configAckTimeout()) {
@@ -1795,7 +1982,8 @@ void GPS::serviceConfig(void) {
 }
 
 void GPS::applyConfiguration(void) {
-  if (getBackend() == backend_t::UBX) {
+  const backend_t backend = getBackend();
+  if (backend == backend_t::UBX) {
 #if FURBLE_GPS_L5
     if ((m_CapsProbe.result() == Ubx::CapsProbe::Result::IDLE)
         || (m_CapsProbe.result() == Ubx::CapsProbe::Result::WAITING)) {
@@ -1808,6 +1996,16 @@ void GPS::applyConfiguration(void) {
     configureUbx();
     return;
   }
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if (backend == backend_t::QUECTEL) {
+    configureQuectel();
+    return;
+  }
+  if (backend == backend_t::UNICORE) {
+    configureUnicore();
+    return;
+  }
+#endif
   if (m_AidMode.load() != 0) {
     // Assistance goes out before configuration, because a sentence prune
     // could remove messages the assistance path relies on.
@@ -1818,6 +2016,11 @@ void GPS::applyConfiguration(void) {
 }
 
 bool GPS::sendConfigFrame(const binary_command_t &command) {
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if (command.text) {
+    return sendText(command.text_command);
+  }
+#endif
   if (command.ubx) {
     return sendUbx(Ubx::frame(command.class_id, command.message_id, command.payload));
   }
@@ -2368,8 +2571,9 @@ void GPS::disable(void) {
   }
   wakeGPSService(m_Queue);
   const std::lock_guard<std::mutex> serviceLock(m_ServiceMutex);
-  // A planned power cut: let a u-blox receiver without V_BCKP save its BBR
-  // while the rail is still up.
+  // A planned power cut: let a receiver without a backup supply save its
+  // configuration while the rail is still up. UBX uses UPD-SOS, Quectel saves
+  // with PAIR513 and PQTMSAVEPAR, Unicore with CFGSAVE.
   saveOnShutdownBlocking();
   FURBLE_SIM_GPS_STATE("off");
   m_ConfigPending = false;
@@ -2384,6 +2588,9 @@ void GPS::disable(void) {
   m_ReceiverState.store(static_cast<uint8_t>(receiver_state_t::UNKNOWN));
   m_DetectedBaud.store(0);
   resetUbx();
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  resetText();
+#endif
   m_EphCapture = false;
   m_EphPollActive = false;
   m_EphReplayArmed = false;
@@ -2419,6 +2626,13 @@ void GPS::disable(void) {
   m_Fix.store(static_cast<uint8_t>(Fix::NONE));
   m_Source.store(SOURCE_NONE);
   m_Satellites.store(0);
+
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  // Everything that reads the text state has finished: the save path above, the
+  // rail restart, resetText() and the console, which sees an empty record from
+  // here on. Give the bytes back while GPS is off.
+  freeTextState();
+#endif
 }
 
 bool GPS::setRailPower(bool enable) {
@@ -3111,6 +3325,13 @@ void GPS::processSerial(const uint8_t *data, size_t length) {
         Console::gpsBinary(bytes, piece.length);
         serviceUbx(bytes, piece.length);
         break;
+      case GpsDemux::Kind::VENDOR:
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+        // A Quectel $PAIR/$PQTM or Unicore $CFG line: the identification answer
+        // and the acknowledgement of the command in flight.
+        serviceText(bytes, piece.length);
+#endif
+        break;
       case GpsDemux::Kind::DROP:
         break;
     }
@@ -3141,10 +3362,10 @@ void GPS::serviceSerial(void) {
     const uint32_t passedBefore = getCounters().passed;
     const uint32_t pvtBefore = m_UbxPvtCount.load();
 
-    // processSerial demultiplexes NMEA and CASIC frames. NMEA bytes route
-    // through processNmea, which does the console echo, TinyGPSPlus encode and
-    // sentence capture. Burst and fix sequence tracking stay here so they run
-    // once per read pass.
+    // processSerial demultiplexes NMEA text, CASIC and UBX frames and vendor
+    // command lines. NMEA bytes route through processNmea, which does the
+    // console echo, TinyGPSPlus encode and sentence capture. Burst and fix
+    // sequence tracking stay here so they run once per read pass.
     processSerial(buffer.data(), bytes);
 
     // Only a checksum-valid NMEA sentence starts or extends a burst. Line
@@ -3203,9 +3424,16 @@ void GPS::setSatelliteCapture(bool capture) {
   }
   m_SatCapture.store(capture);
 
-  if (!m_Enabled || (getBackend() == backend_t::UBX)) {
+  if (!m_Enabled) {
+    return;
+  }
+
+  const backend_t backend = getBackend();
+  if ((backend == backend_t::UBX) || (backend == backend_t::UNICORE)
+      || (backend == backend_t::QUECTEL)) {
     // A u-blox receiver prints GSA and GSV by default, and $PCAS03 means
-    // nothing to it.
+    // nothing to it. The vendor text parts decide their sentence set in the
+    // configuration queue, so this page does not rewrite it under the driver.
     return;
   }
 
@@ -3236,9 +3464,16 @@ void GPS::pollMonHw(void) {
     std::lock_guard<std::mutex> lock(m_MonHwMutex);
     m_MonHwHave = false;
   }
-  if (getBackend() == backend_t::UBX) {
-    // CASIC MON-HW is not a UBX message
-    return;
+  {
+    const backend_t backend = getBackend();
+    if ((backend == backend_t::UBX) || (backend == backend_t::QUECTEL)
+        || (backend == backend_t::UNICORE)) {
+      // MON-HW is a CASIC message. A u-blox receiver has no such message, and
+      // neither Quectel nor Unicore documents this layout. UNKNOWN, DETECTING
+      // and NMEA still poll: the console command is the CASIC path's own tool,
+      // and it must work before the receiver has been identified.
+      return;
+    }
   }
   m_MonHwPending.store(true);
 

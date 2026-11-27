@@ -1632,6 +1632,7 @@ add_executable(gps_ubx_test
                gps_ubx_test.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsDemux.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsText.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
 target_include_directories(gps_ubx_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
 target_compile_options(gps_ubx_test PRIVATE -Wall -Wextra -Werror)
@@ -1649,9 +1650,35 @@ add_executable(gps_ubx_fuzz
                ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/gps_ubx_fuzz.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsDemux.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsText.cpp
                ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp)
 target_include_directories(gps_ubx_fuzz PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
 target_compile_options(gps_ubx_fuzz PRIVATE -Wall -Wextra -Werror)
+# The vendor text command seam and the two dialects behind it: Quectel $PAIR and
+# $PQTM, Unicore $CFG. Pure code, so the framing, checksum, ack matching, timeout
+# and retry policy and both planners are pinned without a UART.
+add_executable(gps_text_test
+               gps_text_test.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsCasic.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsDemux.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsQuectel.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsText.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsUbx.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsUnicore.cpp)
+target_include_directories(gps_text_test PRIVATE ${FURBLE_ROOT}/lib/furble/protocol)
+target_compile_options(gps_text_test PRIVATE -Wall -Wextra -Werror)
+# The simulator's virtual Quectel and Unicore receivers, driven directly.
+add_executable(gps_text_sim_test
+               gps_text_sim_test.cpp
+               ${FURBLE_ROOT}/sim/vendor_gnss.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsQuectel.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsText.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsUnicore.cpp)
+target_include_directories(gps_text_sim_test PRIVATE ${FURBLE_ROOT}/sim
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/lib/furble/protocol)
+target_compile_options(gps_text_sim_test PRIVATE -Wall -Wextra -Werror)
+
 # The status freshness predicate is pure logic. Keeping it in a header target
 # proves the fix/age boundary without pulling TinyGPSPlus and the UART in.
 add_executable(gps_fix_freshness_test gps_fix_freshness_test.cpp)
@@ -2676,6 +2703,7 @@ add_executable(console_commands_test
                ${FURBLE_ROOT}/lib/furble/Fujifilm.cpp
                ${FURBLE_ROOT}/lib/furble/FujifilmBasic.cpp
                ${FURBLE_PROTOCOL_DIR}/FujifilmProtocol.cpp
+               ${FURBLE_PROTOCOL_DIR}/GpsText.cpp
                ${FURBLE_PROTOCOL_DIR}/ProvisionTLV.cpp
                ${FURBLE_ROOT}/src/FurbleUIGesture.cpp
                ${HOST_NIMBLE_DIR}/MockNimBLE.cpp
@@ -2844,6 +2872,8 @@ if(BUILD_TESTING)
   add_test(NAME gps-casic COMMAND gps_casic_test)
   add_test(NAME gps-ubx COMMAND gps_ubx_test)
   add_test(NAME gps-ubx-m10 COMMAND gps_ubx_m10_test)
+  add_test(NAME gps-text COMMAND gps_text_test)
+  add_test(NAME gps-text-sim COMMAND gps_text_sim_test)
   add_test(NAME gps-ubx-fuzz COMMAND gps_ubx_fuzz --seed 1 --iterations 300)
   add_test(NAME gps-fix-freshness COMMAND gps_fix_freshness_test)
   add_test(NAME fault-tooling COMMAND fault_tooling_test)

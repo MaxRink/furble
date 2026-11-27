@@ -121,6 +121,12 @@ bool furble_sim_uart_rail_on(void);
 void furble_sim_uart_set_rail(bool on);
 // Virtual M10 observability, see furble_sim_m10_query in sim/fake_uart.cpp.
 std::string furble_sim_m10_query(const std::string &key);
+// The documented gaps of the virtual vendor text parts: LC76G (PA) refuses
+// PAIR050, LC29H (BA) and friends refuse PAIR066, a flashless Unicore product
+// refuses CFGSAVE, and a silent Unicore part answers nothing at all.
+void furble_sim_uart_set_text_variant(bool noFixRate, bool noSearch, bool noFlash, bool silent);
+// Virtual Quectel and Unicore observability, see furble_sim_text_query.
+std::string furble_sim_text_query(const std::string &key);
 /** Are receiver bytes or a receive event still waiting for the GPS task? */
 bool furble_sim_uart_rx_pending(void);
 #endif

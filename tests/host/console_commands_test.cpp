@@ -169,7 +169,8 @@ const std::vector<SubcommandContract> SUBCOMMANDS = {
     {"power",        "expected stats, log or off",                                               "",                     {"stats", "log", "off"}               },
     {"perf",         "expected tasks, heap or lvgl",                                             "",                     {"tasks", "heap", "lvgl"}             },
     {"gps",
-     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power",    "",
+     "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx, text or "
+     "power",                                                                                    "",
      {"on", "off", "raw", "send", "binary", "config", "aid", "sats", "platform", "monhw", "ubx",
       "power"}                                                                                                                                                 },
     {"time",         "usage: time status | flush",                                               "",                     {"status", "flush"}                   },
@@ -1340,7 +1341,8 @@ void testGPS(void) {
   check(bogus.rc != 0, "an unknown gps subcommand fails");
   checkContains(
       bogus.out,
-      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power",
+      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx, text or "
+      "power",
       "an unknown gps subcommand lists the accepted ones");
 }
 
@@ -1496,6 +1498,70 @@ void testGPSDiagnostics(void) {
   checkContains(noUbx.out, "ubx: no u-blox receiver identified",
                 "gps ubx says when no u-blox receiver was identified");
   check(gps.ubxSatPolls == 0, "gps ubx does not poll NAV-SAT without a u-blox receiver");
+
+  // gps text. The vendor text twin: identity, plan and command outcome, and a
+  // backend it can name without a receiver.
+  gps.backend = Furble::GPS::backend_t::QUECTEL;
+  gps.text = {};
+  const Result noText = runDirect("gps text");
+  check(noText.rc == 0, "gps text returns success without an answer");
+  checkContains(noText.out, "backend: quectel", "gps text names the detected backend");
+  checkContains(noText.out, "dialect: quectel", "gps text names the dialect");
+  checkContains(noText.out, "model: unknown", "an unreported model prints unknown");
+  checkContains(noText.out, "configured: no", "an unconfigured receiver says so");
+  checkContains(noText.out, "save: not tried", "an unsaved receiver says so");
+  checkContains(noText.out, "last: unknown none", "no command has finished yet");
+
+  // A configured receiver whose platform and standby settings asked for
+  // nothing says so rather than claiming a command was sent.
+  gps.text = {};
+  gps.text.configured = true;
+  const Result nothing = runDirect("gps text");
+  checkContains(nothing.out, "platform: not requested",
+                "a platform setting that sent nothing is not reported as sent");
+  checkContains(nothing.out, "standby: not requested",
+                "a standby that was never asked for is not reported as sent");
+  gps.text = {};
+
+  // A configured Quectel receiver reports what the plan sent and how the last
+  // command ended, including a refusal the driver reported rather than hid.
+  gps.text.have_version = true;
+  gps.text.model = "LC29HAANR01A04S";
+  gps.text.firmware = "2022/11/04 16:39:48";
+  gps.text.configured = true;
+  gps.text.rate_ms = 200;
+  gps.text.gnss = 0x09;
+  gps.text.sbas = true;
+  gps.text.sentences = 0;
+  gps.text.sentences_set = true;
+  gps.text.psm_refused = true;
+  gps.text.platform = 1;
+  gps.text.acks = 7;
+  gps.text.naks = 1;
+  gps.text.save = 1;
+  gps.text.last_op = static_cast<uint8_t>(Furble::GpsText::Op::SENTENCES);
+  gps.text.last_verdict = static_cast<uint8_t>(Furble::GpsText::Verdict::ACKED);
+  const Result configured = runDirect("gps text");
+  checkContains(configured.out, "model: LC29HAANR01A04S", "the version string is reported");
+  checkContains(configured.out, "firmware: 2022/11/04 16:39:48", "the build stamp is reported");
+  checkContains(configured.out, "rate_ms: 200", "the rate the plan sent is reported");
+  checkContains(configured.out, "platform: sent", "a platform command that went out is reported");
+  checkContains(configured.out, "standby: refused", "a refused standby is reported");
+  checkContains(configured.out, "save: saved", "a finished save is reported");
+  checkContains(configured.out, "acks: 7", "the acknowledgement count is reported");
+  checkContains(configured.out, "last: sentences acked", "the last command and verdict print");
+  gps.backend = Furble::GPS::backend_t::UNICORE;
+  gps.text = {};
+  const Result unicore = runDirect("gps text");
+  checkContains(unicore.out, "backend: unicore", "the Unicore backend has its own name");
+  checkContains(unicore.out, "dialect: unicore", "the Unicore dialect has its own name");
+  gps.text = {};
+  gps.backend = Furble::GPS::backend_t::NMEA;
+
+  // gps status reports the backend the detection found, on the command every
+  // backend shares.
+  const Result status = runDirect("gps");
+  checkContains(status.out, "backend: nmea", "the gps summary reports the detected backend");
 
   // A u-blox receiver that has not answered yet: no fix, nothing configured,
   // and the NAV-SAT wait gives up after its 1.5 s budget.

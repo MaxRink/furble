@@ -1,0 +1,30 @@
+# The Quectel standby policy. PAIR650 takes 0 or 10 s to two years, so furble's
+# 10 s duty interval is the shortest one this part accepts. The receiver enters
+# backup mode, stops printing epochs, wakes on its own timer and produces a
+# fresh fix. Plan 388.
+seed gps true
+seed gps_model quectel
+seed gps_power 1
+seed gps_duty 10
+seed gps_rate 1
+wait 6000
+assert gps.backend quectel
+assert-eventually 5000 gps.source uart
+
+# The duty request is pushed by the UI once a fix is accepted, so this waits for
+# the cycle to park the receiver rather than for a fixed command count.
+assert-eventually-virtual 15000 gps.state standby
+assert text.backups 1
+assert text.standby_s 10
+assert text.sleeping 1
+
+# Backup mode is not a rail cut: the module keeps its RAM, so no save is needed
+# and none is asked for.
+assert text.saved 0
+
+# After the receiver's own wake the burst must produce a parser-accepted fix.
+# The cycle then parks the receiver again, so this asserts the fix and not the
+# sleep flag: a duty cycle spends part of every period in backup mode.
+wait 12000
+assert_min gps.duty_wake_fixes_parsed 1
+exit

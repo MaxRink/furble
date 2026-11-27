@@ -991,8 +991,16 @@ const char *GPS::backendName(backend_t backend) {
       return "nmea";
     case backend_t::UBX:
       return "ubx";
+    case backend_t::QUECTEL:
+      return "quectel";
+    case backend_t::UNICORE:
+      return "unicore";
   }
   return "unknown";
+}
+
+GPS::text_status_t GPS::getTextStatus(void) const {
+  return ConsoleHost::gps().text;
 }
 
 GPS::ubx_status_t GPS::getUbxStatus(void) const {

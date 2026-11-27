@@ -388,10 +388,14 @@ no page of their own.
 ![Raw NMEA page](img/gps-nmea.png)
 
 Raw NMEA shows the sentences arriving from the receiver, the fix state, and error
-counters, binary configuration status, and a Hot restart button. Auto baud
-probing requires two checksummed NMEA sentences; an unsuccessful probe marks the
-receiver absent and cuts the external rail before one delayed retry. Auto
-detection has simulator coverage and is pending live AT6668 verification.
+counters, binary configuration status, and a Hot restart button. When the
+receiver cannot take a setting, the configuration block ends with a `refused:`
+row naming it, so a Quectel, Unicore or u-blox part that refused the rate, the
+constellation, the platform or standby says so on the device rather than only in
+the log. Auto baud probing requires two checksummed NMEA sentences; an
+unsuccessful probe marks the receiver absent and cuts the external rail before
+one delayed retry. Auto detection has simulator coverage and is pending live
+AT6668 verification.
 
 ### Time
 

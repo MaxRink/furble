@@ -1,0 +1,13 @@
+# A Unicore part that answers no command at all. None of the three
+# identification probes is answered, so furble keeps the CASIC and NMEA path
+# rather than guessing: the receiver still supplies fixes, and nothing is
+# configured on it. Plan 388.
+seed gps true
+seed gps_model unicore
+seed gps_unicore_silent true
+wait 8000
+assert gps.backend nmea
+assert gps.receiver present
+assert_min text.commands 1
+assert-eventually 5000 gps.source uart
+exit

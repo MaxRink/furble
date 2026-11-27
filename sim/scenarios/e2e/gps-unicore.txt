@@ -1,0 +1,39 @@
+# A Unicore UC6580 on the port. $PDTINFO identifies it, and the Unicore backend
+# configures it with $CFGMSG per sentence, $CFGNAV for the fix rate, $CFGDYN for
+# the dynamic model and $CFGSYS for the constellation, each answered by a bare
+# $OK. Plan 388.
+seed gps true
+seed gps_model unicore
+seed gps_nmea true
+seed gps_rate 2
+seed gps_gnss 35
+seed gps_constel 0
+seed gps_platform 2
+wait 8000
+assert gps.backend unicore
+assert text.version UC6580_G1B1L1E1
+assert text.fw R6.0.3.0Build7926
+assert text.fails 0
+
+# Six sentence rates, the navigation rate, the dynamic model and the system
+# mask, all acknowledged.
+assert-eventually 5000 gps.config.0.state ACKED
+assert-eventually 5000 gps.config.8.state ACKED
+assert text.fails 0
+assert_min text.acks 9
+
+# Stationary is CFGDYN DynModel 1 (UC 3.3 Table 3-41 page 58), and the driver
+# reports what it sent.
+assert text.dyn 1
+assert gps.text.platform 2
+
+# What the receiver kept: 500 ms, GGA and RMC only, GPS L1CA, BDS B1I and SBAS.
+assert text.rate_ms 500
+assert text.sentence 100010000
+assert text.sys h100011
+
+# CFGSYS resets the receiver (UC 3.3 page 44), and it keeps fixing afterwards.
+assert_min text.resets 1
+assert-eventually 5000 gps.source uart
+assert_min gps.fresh_fixes_parsed 1
+exit

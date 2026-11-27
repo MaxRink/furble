@@ -239,7 +239,20 @@ or UART, so its validity rules and start types are tested where the scenarios
 rely on them; `testB1cConfigOrder()` replays the signal and power writes in
 both orders and proves the receiver NAKs the wrong one. `gps-casic` covers
 `Casic::sentenceCommand()`, so a `$PCAS03` body that stops before its fourteen
-rate fields fails here. `tests/test_gnss_command_contract.py` is the source
+rate fields fails here. `gps-text` covers the vendor text seam
+(`lib/furble/protocol/GpsText.{h,cpp}`) and both dialects behind it
+(`GpsQuectel`, `GpsUnicore`): framing against checksums the Quectel documents
+print, prefix routing with `$PCAS` and `$GPGGA` negatives, reply parsing, every
+Quectel result code, `$OK` and `$FAIL`, the session's ack, nack, timeout, retry
+and "processing" behaviour, both planners and the demultiplexer's vendor
+pieces. `gps-text-sim` drives the same seam end to end against
+`sim/vendor_gnss.cpp`, so a model that stops answering like the documented part
+fails there rather than only in a scenario. Both take their facts from
+plans/388, which cites the Quectel and Unicore documents by section and page.
+`gps-text` also pins that the `GpsText` constellation and power-save values
+equal the `Ubx` ones, because they are one stored setting. `console-commands`
+covers `gps text` and the `backend:` line the `gps` summary prints.
+`tests/test_gnss_command_contract.py` is the source
 half of the same rule: `$PCAS10` only inside `GPS::restart()`, no hand-written
 `$PCAS03` in the driver, and `$PCAS04` bounded at the seven values both CASIC
 revisions agree on. `gps_ubx_fuzz` checks `Ubx::Stream` against a reference

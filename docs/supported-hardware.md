@@ -136,10 +136,12 @@ and the feature matrix.
 
 Location tagging uses a GPS unit on Grove Port A. M5Stack's own receivers are
 the AT6668/CASIC family, which the $PCAS and NMEA path covers with no per-unit
-protocol code. A u-blox receiver is detected at GPS start by a UBX-MON-VER poll
-and configured over UBX; any other receiver keeps the CASIC and NMEA path. The
-stored default baud is 9600; select `Auto` or a fixed 115200 under `Settings` >
-`GPS` > `GPS Baud` for the AT6668 units.
+protocol code. At GPS start furble sends three identification probes in one
+window: a UBX-MON-VER poll, `$PQTMVERNO` for a Quectel part and `$PDTINFO` for a
+Unicore part. Whichever one answers decides the configuration backend, and a
+receiver that answers none keeps the CASIC and NMEA path with no extra delay.
+The stored default baud is 9600; select `Auto` or a fixed 115200 under
+`Settings` > `GPS` > `GPS Baud` for the AT6668 units.
 
 Which signal bands a u-blox receiver implements is measured, not assumed. After
 MON-VER names the firmware family, furble asks the receiver for the four L5
@@ -161,6 +163,8 @@ for both bands of each enabled constellation. The answer appears as `bands` in
 | Generic dual-band UART module | u-blox NEO-F10N or other F10 | Dual-band L1/L5 antenna required | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. Both bands of each constellation run together and there is no power save mode. See [ublox-neo-f10n.md](components/ublox-neo-f10n.md). |
 | LilyGO T-Beam Supreme M10S | u-blox MAX-M10S | SMA | T-Beam Supreme image | On board, RX 9 / TX 8 | Simulator-tested, hardware-untested. Detected by the UBX-MON-VER poll; the factory default 38400 baud needs `Auto` or an explicit 38400. GPIO7 is not an enable on this trim and furble drives no enable pin. |
 | LilyGO T-Beam Supreme L76K | Quectel L76K, `$PCAS` | SMA | T-Beam Supreme image | On board, RX 9 / TX 8 | Simulator-tested, hardware-untested. Keeps the NMEA and `$PCAS` backend. GPIO7 is this trim's WAKE_UP input and furble leaves it undriven. |
+| Quectel LC76G or LC29H module, or a breakout of one | Quectel LC76G, LC29H | Module dependent | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. Detected by `$PQTMVERNO`; configured over `$PAIR` and `$PQTM`. |
+| Unicore UC6580 module, or a breakout of one | Unicore UC6580 | Module dependent | All five | Grove Port A, 3.3 V logic | Simulator-tested, hardware-untested. Detected by `$PDTINFO`; configured over `$CFG`. |
 
 The M5Stack Core and the Waveshare ESP32-S3-ETH have no GPS UART. Grove
 Port A on the Core is the internal I2C bus that carries the IP5306 and the
@@ -184,10 +188,34 @@ been tested. A board that keeps the receiver's V_BCKP supplied defines
 `FURBLE_GPS_BACKUP_SUPPLY`; no supported board does.
 the T-Beam Supreme is the first whose vendor states that the 18650 backs the
 
+The Quectel support covers detection, fix rate (`$PAIR050`), the NMEA sentence
+set (`$PAIR062`), the constellation mask (`$PAIR066`), SBAS (`$PAIR410`), the
+navigation mode (`$PAIR080`), timed backup mode (`$PAIR650`), restart and the
+`$PAIR513` and `$PQTMSAVEPAR` save on shutdown. Two gaps are reported rather than
+hidden: `PAIR650` has no setting below 10 seconds, so the 5 second duty interval
+is refused, and the LC29H (BA, CA, DA, EA) variants do not implement `PAIR066`,
+so a constellation change there comes back refused. The Unicore support covers
+detection, fix rate (`$CFGNAV`), the NMEA sentence set (`$CFGMSG`), the
+constellation mask (`$CFGSYS`), the dynamic platform model (`$CFGDYN`, Portable
+and Stationary only), restart and `$CFGSAVE`. UC R1.5 documents no standby
+command, so that setting is reported refused on that part, and Pedestrian and
+Vehicle have no `$CFGDYN` counterpart and are refused too. Both paths are
+verified against virtual receivers in the simulator only; no Quectel or Unicore
+hardware has been tested.
+
+One build does not carry the backend at all: `m5stack-core-debug` compiles it out
+(`FURBLE_GPS_TEXT=0`) because its fixed OTA slot cannot hold the debug image and
+the backend together. That build still reads NMEA from either part and still
+configures a u-blox receiver, and it does not send `$PAIR` or `$CFG` commands.
+Every other environment keeps the backend.
+
 Source: the M5Stack product pages for each unit (docs.m5stack.com), cross
 checked against the firmware GPS support in `src/FurbleGPS.cpp`. The u-blox M10
 documents are listed in `plans/implemented/321-ublox-m10-driver.md`, and the
-dual-band ones in `plans/512-dual-band-l5.md`.
+dual-band ones in `plans/512-dual-band-l5.md`. The two text protocols are in
+[docs/protocols/gnss-quectel-pair.md](protocols/gnss-quectel-pair.md) and
+[docs/protocols/gnss-unicore-cfg.md](protocols/gnss-unicore-cfg.md), and the
+driver plan is [plans/388-gnss-vendor-text.md](../plans/388-gnss-vendor-text.md).
 
 ## Related references
 

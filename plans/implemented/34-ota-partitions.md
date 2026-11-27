@@ -433,11 +433,11 @@ boot:
    component update.
 4. **Control task alive.** The task created at `src/main.cpp:517` is running and
    its queue accepts a no-op. `Control::sendCommand`
-   (`src/FurbleControl.cpp:690`) is a zero-timeout `xQueueSend`, so a full
+   (`src/FurbleControl.cpp:682-707`) is a zero-timeout `xQueueSend`, so a full
    queue means the control task is not draining, which means the shutter will
    not work.
 5. **UI loop ticking**, in a GUI build. `UI::task`
-   (`src/FurbleUI.cpp:13664-13733`) has completed at least 100 iterations, which
+   (`src/FurbleUI.cpp:13759-13828`) has completed at least 100 iterations, which
    at the 5 ms `LOOP_ACTIVE_MS` delay is about half a second of a live LVGL handler.
    In a `FURBLE_NO_DISPLAY` build from `plans/33-wifi-hub.md`, substitute the
    headless loop.

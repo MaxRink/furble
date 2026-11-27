@@ -1,0 +1,38 @@
+# The Unicore gaps, reported rather than faked. UC R1.5 documents no standby
+# command, and $CFGDYN expresses only Portable and Static, so a standby policy
+# and a Pedestrian or Vehicle platform leave the receiver alone. A flashless
+# product refuses CFGSAVE. Plan 388.
+seed gps true
+seed gps_model unicore
+seed gps_power 2
+seed gps_duty 10
+seed gps_platform 4
+seed gps_psm 1
+seed gps_unicore_no_flash true
+seed gps_gnss 1
+seed gps_rate 1
+wait 8000
+assert gps.backend unicore
+
+# The configuration went out and was acknowledged; the standby and the platform
+# were refused before either reached the UART.
+assert-eventually 5000 gps.config.0.state ACKED
+assert text.resets 1
+assert text.dyn 0
+
+# The driver's own status names both refusals, and so does the device screen:
+# the Raw NMEA page carries a refused line above its command list.
+assert gps.text.refused platform,standby
+assert gps.text.platform 0
+action nav nmea
+wait 1200
+assert ui.page nmea
+assert ui.diag.nmea.refusals platform,standby
+
+# A flashless product answers CFGSAVE with $FAIL,0, so the save is refused and
+# nothing claims it was saved.
+assert-eventually-virtual 20000 gps.text.save refused
+assert text.saved 0
+assert text.saves 0
+assert_min text.fails 1
+exit

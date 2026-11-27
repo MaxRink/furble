@@ -624,9 +624,12 @@ but Pairing, Shutter Release, Focus and GPS are crossed, so it is not a
 supported model. Location tagging needs an M5Stack GPS unit on Grove Port A.
 The M5Stack units are the AT6668/CASIC family, so one set of $PCAS and NMEA
 support covers them all. u-blox receivers are detected by a MON-VER poll and
-configured over UBX. After detection furble asks the receiver which signal bands
-it implements: an L1-only M10 refuses the question and stays on L1, while a
-dual-band F10 answers and runs both bands of each constellation it enables.
+configured over UBX, Quectel by `$PQTMVERNO` over `$PAIR` and `$PQTM`, and Unicore
+by `$PDTINFO` over `$CFG`. All three identification probes go out in one window,
+so a receiver that answers none keeps the NMEA path with no extra delay. After
+detection furble asks a u-blox receiver which signal bands it implements: an
+L1-only M10 refuses the question and stays on L1, while a dual-band F10 answers
+and runs both bands of each constellation it enables.
 
 | Unit | Antenna | Status |
 | :--- | :--- | :--- |
@@ -636,6 +639,8 @@ dual-band F10 answers and runs both bands of each constellation it enables.
 | [Mini GPS/BDS Unit](https://shop.m5stack.com/products/mini-gps-bds-unit) | Ceramic patch | End of life, 9600 baud. |
 | u-blox M10 (MAX-M10S, MIA-M10Q, M10 UART modules) | Module dependent | Simulator-tested, hardware-untested. Detected automatically; UBX configuration, NAV-PVT accuracy, power save, software standby and AssistNow Autonomous. |
 | u-blox dual-band (NEO-F10N and other F10 UART modules) | Dual-band L1/L5 | Simulator-tested, hardware-untested. L1 and L5 signals of GPS, Galileo, BeiDou and QZSS, no power save mode, no GLONASS. |
+| Quectel LC76G, LC29H (module or a breakout of one) | Module dependent | Simulator-tested, hardware-untested. Detected automatically; `$PAIR` and `$PQTM` configuration of rate, sentence set, constellation, SBAS, platform, timed backup mode and save on shutdown. |
+| Unicore UC6580 | Module dependent | Simulator-tested, hardware-untested. Detected automatically; `$CFG` configuration of rate, sentence set, constellation, the Portable and Stationary dynamic models, restart and save on shutdown. No standby: UC R1.5 documents none, and furble reports that rather than pretending. |
 
 See [docs/supported-hardware.md](docs/supported-hardware.md) for the full unit
 matrix. GPS support can be enabled in `furble` in `Settings->GPS`, the camera
@@ -681,7 +686,16 @@ Three more settings apply only to a u-blox M10 receiver and are set from the
 serial console or the companion app, not the device menus: `gps_gnss` (the
 constellation mask, 0 follows Constellation), `gps_psm` (power save: off,
 cyclic tracking or on/off, default off) and `gps_ana` (AssistNow Autonomous,
-default off).
+default off). `gps_gnss` also selects the mask a Quectel or Unicore receiver is
+given, and both read `Power saving` and `Platform` too: where the part has no
+command for one of them, furble says so instead of sending nothing. On a Quectel
+part, `Power saving` needs the 10 or 15 second duty interval, because backup
+mode has no setting below 10 seconds and the 5 second interval is refused.
+
+Run `gps` to see which backend was detected, and `gps text` to see a
+Quectel or Unicore receiver's identity, the plan it was given, and how each
+command ended. Both are described in
+[docs/console-commands.md](docs/console-commands.md#gps).
 
 `Settings->Time` selects the local time zone. The default UTC keeps the previous
 camera clock behaviour. The Time page also shows local time with its offset and

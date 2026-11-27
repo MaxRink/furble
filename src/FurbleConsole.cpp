@@ -1420,6 +1420,11 @@ int gpsStatus(void) {
 
   printf("enabled: %s\n", boolStr(gps.isEnabled()));
   printf("receiver: %s\n", GPS::receiverStateName(gps.getReceiverState()));
+  // The identification result, on the command every backend shares, so a text
+  // part reports where the u-blox one already did.
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  printf("backend: %s\n", GPS::backendName(gps.getBackend()));
+#endif
   printf("detected_baud: %lu\n", static_cast<unsigned long>(gps.getDetectedBaud()));
   printf("fix: %s\n", boolStr(status.fix));
   printf("satellites: %lu\n", static_cast<unsigned long>(status.satellites));
@@ -1687,6 +1692,72 @@ const char *gpsPsmName(uint8_t psm) {
  * the configuration that was sent and read back, power save, the backup
  * state and the constellations of one NAV-SAT poll.
  */
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+/** Printable name of a vendor text dialect. */
+const char *gpsTextDialectName(GpsText::Dialect dialect) {
+  switch (dialect) {
+    case GpsText::Dialect::QUECTEL:
+      return "quectel";
+    case GpsText::Dialect::UNICORE:
+      return "unicore";
+    case GpsText::Dialect::NONE:
+      break;
+  }
+  return "none";
+}
+
+/**
+ * The vendor text receiver: identity from $PQTMVERNO or $PDTINFO, what the last
+ * configuration sent, and how every command ended. The text twin of gpsUbx().
+ */
+int gpsText(void) {
+  auto &gps = GPS::getInstance();
+  const auto backend = gps.getBackend();
+  printf("backend: %s\n", GPS::backendName(backend));
+  const auto text = gps.getTextStatus();
+  const GpsText::Dialect dialect = (backend == GPS::backend_t::QUECTEL) ? GpsText::Dialect::QUECTEL
+                                   : (backend == GPS::backend_t::UNICORE)
+                                       ? GpsText::Dialect::UNICORE
+                                       : GpsText::Dialect::NONE;
+  printf("dialect: %s\n", gpsTextDialectName(dialect));
+  printf("model: %s\n", text.model.empty() ? "unknown" : text.model.c_str());
+  printf("firmware: %s\n", text.firmware.empty() ? "unknown" : text.firmware.c_str());
+  if (text.configured) {
+    printf("gnss: 0x%02x%s\n", text.gnss, text.gnss_refused ? " (refused, receiver default)" : "");
+    printf("rate_ms: %u%s\n", static_cast<unsigned>(text.rate_ms),
+           text.rate_refused ? " (refused, out of range)" : "");
+    printf("sbas: %s%s\n", boolStr(text.sbas),
+           text.sbas_refused ? " (refused in this navigation mode)" : "");
+    printf("sentences: %u%s\n", static_cast<unsigned>(text.sentences),
+           text.sentences_set ? "" : " (left alone)");
+    // Three states each, because "sent" is wrong when the setting asked for
+    // nothing: a value of 0 means no command carried it.
+    const char *platform = "not requested";
+    if (text.platform_refused) {
+      platform = "refused";
+    } else if (text.platform != 0) {
+      platform = "sent";
+    }
+    const char *standby =
+        text.psm_refused ? "refused" : ((text.standby == 1) ? "sent" : "not requested");
+    printf("platform: %s\n", platform);
+    printf("standby: %s\n", standby);
+  } else {
+    printf("configured: no\n");
+  }
+  printf("save: %s\n", (text.save == 1) ? "saved" : (text.save == 2) ? "refused" : "not tried");
+  printf("standby_state: %s\n", (text.standby == 1)   ? "sent"
+                                : (text.standby == 2) ? "refused"
+                                                      : "not tried");
+  printf("acks: %lu\n", static_cast<unsigned long>(text.acks));
+  printf("naks: %lu\n", static_cast<unsigned long>(text.naks));
+  printf("timeouts: %lu\n", static_cast<unsigned long>(text.timeouts));
+  printf("last: %s %s\n", GpsText::opName(static_cast<GpsText::Op>(text.last_op)),
+         GpsText::verdictName(static_cast<GpsText::Verdict>(text.last_verdict)));
+  return 0;
+}
+#endif  // FURBLE_GPS_TEXT
+
 int gpsUbx(void) {
   auto &gps = GPS::getInstance();
   printf("backend: %s\n", GPS::backendName(gps.getBackend()));
@@ -1859,6 +1930,12 @@ int cmdGPS(int argc, char **argv) {
     return gpsUbx();
   }
 
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+  if (!strcmp(argv[1], "text")) {
+    return gpsText();
+  }
+#endif
+
   if (!strcmp(argv[1], "power")) {
     if ((argc < 3) || !parseBool(argv[2], value)) {
       return fail("usage: gps power on | off");
@@ -1867,7 +1944,12 @@ int cmdGPS(int argc, char **argv) {
   }
 
   return fail(
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
+      "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx, text or "
+      "power");
+#else
       "expected on, off, raw, send, binary, config, aid, sats, platform, monhw, ubx or power");
+#endif
 }
 
 void cmdPowerStats(void) {
