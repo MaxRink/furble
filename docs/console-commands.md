@@ -367,7 +367,9 @@ See `docs/power/board-power.md` and `plans/implemented/364-ext5v-rail.md`.
   (waits up to 1.5 s). The poll is UART traffic, so it wakes a receiver that is
   in software standby. On any other receiver it prints its backend (`unknown`,
   `detecting` or `nmea`) and `ubx: no u-blox receiver identified`, then stops.
-  The UBX path is simulator-tested and hardware-untested.
+  A healthy L1-only receiver reports one NAK, the signal-band capability request
+  it refuses; the `bands` line names the exchange. The UBX path is
+  simulator-tested and hardware-untested.
 - `gps power on | off` drives the external 5V rail, for rail-cut experiments.
 
 ## time
