@@ -112,7 +112,7 @@ visible in the UI log and in the console.
 
 Callers, all checked:
 
-- `UI::doPowerOff()` (`src/FurbleUI.cpp:13500-13553`) already treated a false return
+- `UI::doPowerOff()` (`src/FurbleUI.cpp:13616-13669`) already treated a false return
   as "stay alive": it logs `Power off failed, resuming.`, restores the PM1
   watchdog and clears `m_PoweringOff`. No change was needed.
 - `Platform::powerOffUntil()` forwards a `seconds == 0` request to `powerOff()`

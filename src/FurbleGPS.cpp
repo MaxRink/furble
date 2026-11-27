@@ -1676,28 +1676,27 @@ void GPS::startConfigCommand(void) {
   m_ConfigNavxAcked = false;
   m_NavxPayloadValid = false;
 
-  // One pointer, taken straight after the assignment, for everything below.
-  // .value() is the checked access clang-tidy understands; a member optional
-  // cannot be proven engaged after a call, and the text session and the status
-  // lock both count as calls.
-  binary_command_t *const command = &m_ConfigInFlight.value();
+  // Read the field the status row needs once, straight after the assignment:
+  // the status lock is a call, and a member optional cannot be proven engaged
+  // across one. .value() is the checked access the checker understands.
+  const uint8_t status_index = m_ConfigInFlight->status_index;
   {
     const std::lock_guard<std::mutex> lock(m_ConfigMutex);
-    auto &status = m_ConfigStatus[command->status_index];
+    auto &status = m_ConfigStatus[status_index];
     status.state = CONFIG_SENT;
     status.attempts = m_ConfigAttempts;
-    m_ConfigInFlightStatus = command->status_index;
+    m_ConfigInFlightStatus = status_index;
   }
 
 #if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
-  if (command->text) {
+  if (m_ConfigInFlight.value().text) {
     // The vendor text layer owns the acknowledgement timeout and the retry, so
     // it starts with the first send rather than after it.
-    text().session.begin(command->text_command, m_ConfigSent);
+    text().session.begin(m_ConfigInFlight.value().text_command, m_ConfigSent);
   }
 #endif
 
-  if (!sendConfigFrame(*command)) {
+  if (!sendConfigFrame(m_ConfigInFlight.value())) {
     ESP_LOGW(LOG_TAG, "GPS binary command write failed");
   }
 }
@@ -1869,9 +1868,12 @@ void GPS::serviceConfig(void) {
 #endif
 #if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if (m_ConfigInFlight.has_value() && m_ConfigInFlight->text) {
-    // As in startConfigCommand: one checked access, because the session call
-    // below is enough to make the checker distrust the optional.
-    binary_command_t *const command = &m_ConfigInFlight.value();
+    // As in startConfigCommand: read the three fields the branches need before
+    // the session call, whose opaque body is enough to make the checker
+    // distrust the optional.
+    const GpsText::Op text_op = m_ConfigInFlight->text_command.op;
+    const GpsText::Dialect text_dialect = m_ConfigInFlight->text_command.dialect;
+    const uint16_t text_settle = m_ConfigInFlight->text_command.settle_ms;
     const uint32_t now = Platform::getInstance().tick();
     switch (text().session.service(now)) {
       case GpsText::Session::Step::SEND:
@@ -1880,24 +1882,23 @@ void GPS::serviceConfig(void) {
           const std::lock_guard<std::mutex> lock(m_ConfigMutex);
           m_ConfigStatus[m_ConfigInFlightStatus].attempts = text().session.attempts();
         }
-        if (!sendConfigFrame(*command)) {
+        if (!sendConfigFrame(m_ConfigInFlight.value())) {
           ESP_LOGW(LOG_TAG, "GPS text retry write failed");
         }
         return;
       case GpsText::Session::Step::ACKED:
       {
-        const uint16_t settle = command->text_command.settle_ms;
         finishConfigCommand(CONFIG_ACKED);
-        if (settle != 0) {
-          m_ConfigSettle.arm(Platform::getInstance().tick(), settle);
+        if (text_settle != 0) {
+          m_ConfigSettle.arm(Platform::getInstance().tick(), text_settle);
         }
         return;
       }
       case GpsText::Session::Step::FAILED:
       {
         const GpsText::Verdict verdict = text().session.verdict();
-        const GpsText::Op op = command->text_command.op;
-        const GpsText::Dialect dialect = command->text_command.dialect;
+        const GpsText::Op op = text_op;
+        const GpsText::Dialect dialect = text_dialect;
         ESP_LOGW(LOG_TAG, "GPS %s refused: %s", GpsText::opName(op), GpsText::verdictName(verdict));
         {
           const std::lock_guard<std::mutex> lock(m_TextMutex);
@@ -1916,8 +1917,8 @@ void GPS::serviceConfig(void) {
       }
       case GpsText::Session::Step::TIMEOUT:
       {
-        const GpsText::Op op = command->text_command.op;
-        const GpsText::Dialect dialect = command->text_command.dialect;
+        const GpsText::Op op = text_op;
+        const GpsText::Dialect dialect = text_dialect;
         const GpsText::Verdict verdict = text().session.verdict();
         if (verdict == GpsText::Verdict::STALLED) {
           ESP_LOGW(LOG_TAG, "GPS %s stayed in processing, giving up", GpsText::opName(op));

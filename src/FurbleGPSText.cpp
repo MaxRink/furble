@@ -19,6 +19,7 @@
  */
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <new>
 #include <string>
 
@@ -54,32 +55,29 @@ bool GPS::ensureTextState(void) {
   const std::lock_guard<std::mutex> lock(m_TextMutex);
   if (m_TextState == nullptr) {
     // Before any gate measures free bytes: enable() calls this first, and the
-    // UART task cannot reach a text path until enable() has published it.
-    // Owned by this singleton and released in freeTextState(), the same shape
-    // as the MQTT and OTA state stores; NOLINT because the analyzer wants a
-    // smart pointer for a lifetime that ends with the driver, not the scope.
-    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
-    m_TextState = new (std::nothrow) text_state_t();
-    if (m_TextState == nullptr) {
+    // UART task cannot reach a text path until enable() has published it. The
+    // allocation goes straight into an owner, so the only raw pointer is the
+    // singleton member that freeTextState() hands back to one.
+    std::unique_ptr<text_state_t> state(new (std::nothrow) text_state_t());
+    if (!state) {
       ESP_LOGE(LOG_TAG, "GPS text backend state allocation failed, the text backends stay off");
       return false;
     }
+    m_TextState = state.release();
   }
   return true;
 }
 
 void GPS::freeTextState(void) {
-  text_state_t *state = nullptr;
+  std::unique_ptr<text_state_t> state;
   {
     const std::lock_guard<std::mutex> lock(m_TextMutex);
-    state = m_TextState;
+    state.reset(m_TextState);
     m_TextState = nullptr;
   }
-  // Outside the lock: a destructor may run while a reader waits, and a reader
+  // Outside the lock: the destructor may run while a reader waits, and a reader
   // that already copied the pointer cannot exist here, because disable() holds
   // the service mutex and the only other reader takes this mutex.
-  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
-  delete state;
 }
 
 void GPS::resetText(void) {

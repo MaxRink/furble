@@ -140,7 +140,7 @@ is correct. Verify they are re-enabled after release.
   Confirm that path covers the bulb page too, and add an explicit release on page
   exit if it does not.
 - A disconnect during an exposure must cancel the timer. `doDisconnect` is at
-  `src/FurbleUI.cpp:8704-8750`. Add the timer pause there, next to the existing
+  `src/FurbleUI.cpp:8815-8861`. Add the timer pause there, next to the existing
   `lv_timer_pause(m_ConnectTimer)`.
 - Long exposures interact with the inactivity timer at
   `src/FurbleUI.cpp:2094-2112`, which only dims the display today. Dimming during
