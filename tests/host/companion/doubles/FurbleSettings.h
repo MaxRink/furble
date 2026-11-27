@@ -87,6 +87,14 @@ class Settings {
     IVL_SLEEP,
     IVL_SLEEP_THR,
     TIMEZONE,
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+    MQTT,
+    MQTT_URI,
+    MQTT_USER,
+    MQTT_PASS,
+    MQTT_BASE,
+    MQTT_HA,
+#endif
 #if defined(FURBLE_WEBUI) && FURBLE_WEBUI
     WEB_UI,
 #endif
@@ -115,6 +123,11 @@ class Settings {
   static bool validNetworkString(type_t type, const std::string &value);
   /** The closed theme set the UI offers and the SD importer accepts. */
   static bool validTheme(const std::string &value);
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+  // Defined by src/FurbleNetworkSettings.cpp, which this test links against
+  // this header when the target defines FURBLE_MQTT.
+  static bool validMQTTString(type_t type, const std::string &value);
+#endif
   static constexpr uint32_t BAUD_AUTO = 0;
   static constexpr uint32_t BAUD_9600 = 9600;
   static constexpr uint32_t BAUD_115200 = 115200;
@@ -281,6 +294,33 @@ template <>
 struct Furble::Settings::storage_type<Furble::Settings::TIMEZONE> {
   using type = uint8_t;
 };
+
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::MQTT> {
+  using type = bool;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::MQTT_URI> {
+  using type = std::string;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::MQTT_USER> {
+  using type = std::string;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::MQTT_PASS> {
+  using type = std::string;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::MQTT_BASE> {
+  using type = std::string;
+};
+template <>
+struct Furble::Settings::storage_type<Furble::Settings::MQTT_HA> {
+  using type = bool;
+};
+#endif
 
 template <>
 struct Furble::Settings::storage_type<Furble::Settings::MULTICONNECT> {

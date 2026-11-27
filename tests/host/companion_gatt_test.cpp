@@ -27,6 +27,7 @@
 #include "FurbleCompanionService.h"
 #include "FurbleControl.h"
 #include "FurbleGPS.h"
+#include "FurbleMQTT.h"
 #include "FurbleSettings.h"
 #include "FurbleUI.h"
 #include "NimBLEDevice.h"
@@ -369,6 +370,200 @@ void testPasswordLoadFailureDeniesPrivilegedWrites(void) {
         "failed initial password enable cannot report success");
   unsetService.deinit();
   Furble::Settings::setPasswordSaveResult(true);
+}
+
+// A secret setting is write-only over the companion link: a client that holds
+// the companion password may still set the WiFi passphrase, and no read (single
+// or list) returns the stored text. The answer is the same set/unset word the
+// console prints, so the value stays a SETTING_STRING a client already renders
+// (plans/96 C6). Red-first evidence: before the redaction, the op-1 record
+// carried the passphrase itself.
+void testCompanionSecretRedaction(void) {
+  std::cout << "test: companion secret reads are redacted\n";
+  NimBLEDevice::resetMock();
+
+  const std::string passphrase = "correct-horse-battery";
+  Furble::Settings::save<std::string>(Furble::Settings::WIFI_PSK, passphrase);
+
+  MockCentral central;
+  CompanionService service(central);
+  central.attach(service);
+  service.init();
+  central.connect();
+
+  auto containsPassphrase = [&](const std::vector<std::vector<uint8_t>> &records) {
+    const std::string needle(passphrase);
+    for (const auto &record : records) {
+      const std::string text(record.begin(), record.end());
+      if (text.find(needle) != std::string::npos) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Op 1, the single-setting read the app's editor uses.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 53, 0}), "companion routes a WiFi passphrase read");
+  check(central.indications().size() == 1, "the passphrase read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    const std::string value(record.begin() + 4, record.end());
+    check(record.size() == 4 + 3 && record[0] == 0 && record[1] == 53 && record[2] == 3,
+          "the passphrase read reports an OK SETTING_STRING record");
+    check(value == "set", "a stored passphrase reads back as set");
+  }
+  check(!containsPassphrase(central.indications()), "the passphrase itself never crosses the link");
+
+  // Op 0, the full catalog, which the app lists before an editor is opened.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {0, 0, 0}), "companion routes a settings list read");
+  check(!central.indications().empty(), "the settings list produced records");
+  check(!containsPassphrase(central.indications()), "the catalog does not leak the passphrase");
+  bool listed = false;
+  for (const auto &record : central.indications()) {
+    if ((record.size() >= 4) && (record[1] == 53)) {
+      listed = true;
+      const std::string value(record.begin() + 4, record.begin() + 4 + record[3]);
+      check(record[0] == 0 && record[2] == 3, "the catalog lists the passphrase as a string");
+      check(value == "set", "the catalog reports the passphrase as set");
+    }
+  }
+  check(listed, "the catalog still lists the passphrase row so an app can set it");
+
+  // The write half is unchanged: a new passphrase still lands in the store.
+  const std::string replacement = "new-passphrase";
+  std::vector<uint8_t> writeRecord {2, 53, static_cast<uint8_t>(replacement.size())};
+  writeRecord.insert(writeRecord.end(), replacement.begin(), replacement.end());
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, writeRecord), "companion routes a WiFi passphrase write");
+  check(Furble::Settings::load<std::string>(Furble::Settings::WIFI_PSK) == replacement,
+        "a companion passphrase write still reaches the store");
+  check(central.indications().size() == 1 && central.indications()[0][0] == 0,
+        "the passphrase write is acknowledged");
+
+  // An unset secret reads as unset, not as an empty string a client could write
+  // back as the credential.
+  Furble::Settings::save<std::string>(Furble::Settings::WIFI_PSK, "");
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 53, 0}), "companion routes the cleared passphrase read");
+  check(central.indications().size() == 1, "the cleared passphrase read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    check(std::string(record.begin() + 4, record.end()) == "unset",
+          "a cleared passphrase reads back as unset");
+  }
+
+  // Release the shutter timer init() created, so this case leaves nothing for
+  // LeakSanitizer to find.
+  service.deinit();
+  central.disconnect();
+  NimBLEDevice::resetMock();
+}
+
+// The broker password is the second secret over this link, and the only one
+// whose redaction is compiled out unless FURBLE_MQTT is defined. No host target
+// defined it, so the arm and its fixture were both untested; companion_gatt_test
+// defines it now, which is the configuration the Core2, StickS3, headless and
+// Waveshare images build (PR 534 review F3). Deliberately unguarded: if the
+// target ever drops FURBLE_MQTT, Settings::MQTT_PASS stops existing and this
+// file stops compiling, rather than the coverage disappearing quietly.
+void testCompanionMqttPassRedaction(void) {
+  std::cout << "test: companion MQTT password reads are redacted\n";
+  NimBLEDevice::resetMock();
+
+  const std::string brokerPassword = "broker-hunter2";
+  const std::string brokerUri = "mqtt://broker.example:1883";
+  Furble::Settings::save<std::string>(Furble::Settings::MQTT_PASS, brokerPassword);
+  Furble::Settings::save<std::string>(Furble::Settings::MQTT_URI, brokerUri);
+
+  MockCentral central;
+  CompanionService service(central);
+  central.attach(service);
+  service.init();
+  central.connect();
+
+  auto containsPassword = [&](const std::vector<std::vector<uint8_t>> &records) {
+    for (const auto &record : records) {
+      const std::string text(record.begin(), record.end());
+      if (text.find(brokerPassword) != std::string::npos) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Op 1, the single-setting read.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 59, 0}), "companion routes an MQTT password read");
+  check(central.indications().size() == 1, "the MQTT password read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    const std::string value(record.begin() + 4, record.end());
+    check(record.size() == 4 + 3 && record[0] == 0 && record[1] == 59 && record[2] == 3,
+          "the MQTT password read reports an OK SETTING_STRING record");
+    check(value == "set", "a stored MQTT password reads back as set");
+  }
+  check(!containsPassword(central.indications()),
+        "the MQTT password itself never crosses the link");
+
+  // Op 0, the catalog the app lists before an editor is opened.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {0, 0, 0}), "companion routes the MQTT settings list");
+  check(!containsPassword(central.indications()),
+        "the MQTT catalog does not leak the broker password");
+  bool listed = false;
+  for (const auto &record : central.indications()) {
+    if ((record.size() >= 4) && (record[1] == 59)) {
+      listed = true;
+      const std::string value(record.begin() + 4, record.begin() + 4 + record[3]);
+      check(record[0] == 0 && record[2] == 3, "the MQTT catalog lists the password as a string");
+      check(value == "set", "the MQTT catalog reports the password as set");
+    }
+  }
+  check(listed, "the MQTT catalog still lists the password row so an app can set it");
+
+  // The broker address stays readable. It is the endpoint a user needs to see,
+  // and the item records its userinfo as a separate open caveat rather than a
+  // read to redact, so a future change that redacts it fails here.
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 57, 0}), "companion routes an MQTT URI read");
+  check(central.indications().size() == 1, "the MQTT URI read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    check(std::string(record.begin() + 4, record.end()) == brokerUri,
+          "the broker address stays readable");
+  }
+
+  // The write half is unchanged, and it reaches the MQTT reload fan-out.
+  const std::string replacement = "broker-replacement";
+  std::vector<uint8_t> writeRecord {2, 59, static_cast<uint8_t>(replacement.size())};
+  writeRecord.insert(writeRecord.end(), replacement.begin(), replacement.end());
+  const unsigned reloadsBefore = Furble::MQTT::reloadCount();
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, writeRecord), "companion routes an MQTT password write");
+  check(Furble::Settings::load<std::string>(Furble::Settings::MQTT_PASS) == replacement,
+        "a companion MQTT password write still reaches the store");
+  check(central.indications().size() == 1 && central.indications()[0][0] == 0,
+        "the MQTT password write is acknowledged");
+  check(Furble::MQTT::reloadCount() == reloadsBefore + 1,
+        "an MQTT password write still reloads the broker settings");
+
+  // A cleared password reads as unset, not as an empty string a client could
+  // write back as the credential.
+  Furble::Settings::save<std::string>(Furble::Settings::MQTT_PASS, "");
+  central.clearEvents();
+  check(central.write(SETTINGS_UUID, {1, 59, 0}), "companion routes the cleared MQTT read");
+  check(central.indications().size() == 1, "the cleared MQTT password read returns one record");
+  if (central.indications().size() == 1) {
+    const auto &record = central.indications()[0];
+    check(std::string(record.begin() + 4, record.end()) == "unset",
+          "a cleared MQTT password reads back as unset");
+  }
+
+  service.deinit();
+  central.disconnect();
+  NimBLEDevice::resetMock();
 }
 
 void testCompanionGattFlow(void) {
@@ -1116,6 +1311,8 @@ int main(void) {
   FurbleHostTaskScope taskScope;
   testPasswordLoadFailureDeniesPrivilegedWrites();
   testAuthDisconnectRace();
+  testCompanionSecretRedaction();
+  testCompanionMqttPassRedaction();
   testCompanionGattFlow();
   testCompanionCameras();
   if (g_Failures != 0) {

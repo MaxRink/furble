@@ -136,6 +136,13 @@ the rotation instead of finding the previous address again. The host then sees
 a new peripheral identity and builds a fresh cache. Pair once more with the
 companion password.
 
+A stored secret never travels back to a client. The WiFi passphrase and the MQTT
+password read as `set` or `unset`, matching the console and the WebUI, and the
+companion service sends neither as text. Both settings stay writable, so an app
+can still provision them once it holds the companion password. The broker URI
+stays readable because it carries the address a user needs to see; userinfo
+inside it remains a separate open item.
+
 Camera IDs are stable across catalog reordering and deletion. Selection is the
 same in-memory Multi-Connect target set used by the on-device Cameras page. A
 scan updates only transient scan results, so it does not hide saved cameras.

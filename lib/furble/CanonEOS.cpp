@@ -41,7 +41,13 @@ bool CanonEOS::writePrefix(const NimBLEUUID &serviceUUID,
   std::vector<uint8_t> buffer(length + 1, 0);
   buffer[0] = prefix;
   memcpy(&buffer[1], data, length);
-  return gattWrite(serviceUUID, characteristicUUID, buffer.data(), length + 1, false);
+  // Every call site is an identity write in the connect sequence: the client
+  // name, the UUID and the two accept bytes. A write without response only
+  // proves the PDU was sent, so a body that refused the identity step still let
+  // the connect report success (plans/96 A4). The ATT response is the only
+  // acknowledgement this link gets, and asking for it costs one round trip on a
+  // link that is already up.
+  return gattWrite(serviceUUID, characteristicUUID, buffer.data(), length + 1, true);
 }
 
 size_t CanonEOS::getSerialisedBytes(void) const {

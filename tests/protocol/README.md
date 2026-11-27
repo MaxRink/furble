@@ -23,6 +23,14 @@ Non-list responses use:
 status, id, type, length, value
 ~~~
 
+`WIFI_PSK` (wire id 53) and `MQTT_PASS` (wire id 59) are write-only, so their
+get and list fixtures pin the word the firmware answers instead of the stored
+credential: `settings/response-get-53.bin` and its list record carry `unset`,
+and the `-set` suffixed pair carries `set`. Both words are pinned because they
+are different lengths, so the value length and the trailing flags byte move
+with them. `COMPANION_PASSWORD` keeps the older shape: a get is refused with
+`SETTING_READ_ONLY` and the setting never appears in a list.
+
 Trigger fixtures use the fixed four-byte packet from the Android protocol:
 version, operation, hold_ms in little-endian order. Non-timed operations set
 hold_ms to zero.

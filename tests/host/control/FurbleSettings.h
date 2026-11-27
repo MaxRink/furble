@@ -75,17 +75,33 @@ struct Settings::storage_type<Settings::CONN_SAVER> {
   using type = bool;
 };
 
+// The two values a host test has to be able to move. Both keep the fresh-device
+// default, so every other control test sees the shim it always saw: adaptive
+// transmit power off, and a +3 dBm cap.
+inline bool &hostAdaptiveEnabled(void) {
+  static bool value = false;
+  return value;
+}
+
+inline esp_power_level_t &hostTxPower(void) {
+  static esp_power_level_t value = ESP_PWR_LVL_P3;
+  return value;
+}
+
 template <>
 inline bool Settings::load<bool>(type_t type) {
   // SLEEP_CONN defaults on so setState() never holds the (no-op) sleep lock.
   // Every other boolean Control reads defaults off on a fresh device.
+  if (type == TX_ADAPTIVE) {
+    return hostAdaptiveEnabled();
+  }
   return type == SLEEP_CONN;
 }
 
 template <>
 inline esp_power_level_t Settings::load<esp_power_level_t>(type_t type) {
   (void)type;
-  return ESP_PWR_LVL_P3;
+  return hostTxPower();
 }
 
 inline bool Settings::sleepConnEffective(void) {

@@ -551,9 +551,15 @@ The coordinator assigns `P-xxx` identifiers when these rows are merged into
 - **Change:** floor the adaptive TX range one step higher, or suspend step-down,
   while the station is connected.
 - **Current behavior:** the adaptive policy steps through P3, P6 and P9 on RSSI
-  hysteresis (`src/FurbleControl.cpp:30-33`, `:1136-1306`). Camera-side RSSI is
-  measured on the camera's transmissions, so it does not see Wi-Fi bursts on the
-  shared front end.
+  hysteresis (`src/FurbleControl.cpp:35-45`, `Control::sampleAdaptivePower`).
+  Camera-side RSSI is measured on the camera's transmissions, so it does not see
+  Wi-Fi bursts on the shared front end. The floor is implemented: while the
+  station reports connected, the policy will not step below P6, and a link that
+  is already at P3 comes back up one step on the next sample. The floor is
+  clamped to the user's own transmit-power cap, so a P3 setting still means P3.
+  The station state reaches Control through the probe the WiFi service installs
+  (`Control::setWifiConnectedProbe`), so Control carries no WiFi dependency.
+  `control-adaptive-floor` pins the decision; the radio outcome is still owed.
 - **Evidence:** `inferred`, matching `plans/96-wifi-bt-ble-hardening.md:360-364`
   (item D2).
 - **Estimated saving:** negative. This deliberately spends BLE TX power to avoid

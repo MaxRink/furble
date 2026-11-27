@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <string>
 #include <utility>
 
@@ -24,7 +25,13 @@ namespace Furble {
 
 namespace {
 
+#if defined(FURBLE_HOST_RSSI_SAMPLE_INTERVAL_MS)
+// Host tests shrink only the cadence so a three-sample policy step is not
+// fifteen seconds of wall clock. Every policy number below is unchanged.
+constexpr uint32_t RSSI_SAMPLE_INTERVAL_MS = FURBLE_HOST_RSSI_SAMPLE_INTERVAL_MS;
+#else
 constexpr uint32_t RSSI_SAMPLE_INTERVAL_MS = 5000;
+#endif
 constexpr float RSSI_FILTER_ALPHA = 0.25f;
 constexpr int8_t RSSI_STEP_DOWN_DBM = -60;
 constexpr int8_t RSSI_STEP_UP_DBM = -80;
@@ -36,6 +43,15 @@ constexpr std::array<esp_power_level_t, 3> POWER_LEVELS = {
     ESP_PWR_LVL_P6,
     ESP_PWR_LVL_P9,
 };
+
+// The WiFi station probe, installed by the WiFi service at init. Null until it
+// does, which reads as "no station" and leaves the adaptive floor where it was.
+std::atomic<bool (*)(void)> g_WifiConnectedProbe {nullptr};
+
+bool wifiConnected(void) {
+  const auto probe = g_WifiConnectedProbe.load(std::memory_order_acquire);
+  return (probe != nullptr) && probe();
+}
 
 int powerIndex(esp_power_level_t power) {
   for (size_t i = 0; i < POWER_LEVELS.size(); i++) {
@@ -1692,7 +1708,26 @@ void Control::sampleAdaptivePower(void) {
       current = capIndex;
     }
 
-    if (weakestRssi > RSSI_STEP_DOWN_DBM) {
+    // The policy's floor. BLE and WiFi share one 2.4 GHz front end, so while
+    // the station is connected a step to the bottom of the range buys a
+    // retry on a busy channel rather than an energy saving: the floor moves up
+    // one step but never above the user's own cap (plans/96 D2, W-18 in
+    // docs/power/wifi-coex.md). The probe is read once per sample, so a station
+    // that comes up mid-session takes effect on the next one.
+    const int floorIndex = std::min(wifiConnected() ? 1 : 0, capIndex);
+
+    if (current < floorIndex) {
+      // Already below a raised floor. A strong RSSI never asks for a step up,
+      // so waiting for the RSSI decision would leave the link at the bottom for
+      // the rest of the session. This is the safety clamp, not a signal
+      // decision, so it skips the hysteresis.
+      m_RssiStrongSamples = 0;
+      m_RssiWeakSamples = 0;
+      m_AdaptivePower = POWER_LEVELS[floorIndex];
+      nextIndex = floorIndex;
+      next = POWER_LEVELS[floorIndex];
+      step = true;
+    } else if (weakestRssi > RSSI_STEP_DOWN_DBM) {
       m_RssiWeakSamples = 0;
       if (m_RssiStrongSamples < UINT8_MAX) {
         m_RssiStrongSamples++;
@@ -1702,7 +1737,7 @@ void Control::sampleAdaptivePower(void) {
       }
 
       m_RssiStrongSamples = 0;
-      if (current > 0) {
+      if (current > floorIndex) {
         nextIndex = current - 1;
         next = POWER_LEVELS[nextIndex];
         m_AdaptivePower = next;
@@ -1752,6 +1787,10 @@ void Control::resetAdaptiveState(void) {
 
 TxPower Control::savedTxPower(void) {
   return txPower(Settings::load<esp_power_level_t>(Settings::TX_POWER));
+}
+
+void Control::setWifiConnectedProbe(bool (*probe)(void)) {
+  g_WifiConnectedProbe.store(probe, std::memory_order_release);
 }
 
 void Control::applyPower(esp_power_level_t power) {

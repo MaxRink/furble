@@ -533,16 +533,16 @@ This is a documentation and build consistency item, not a separate power lever.
 ### OS-02 Lengthen the control task queue timeout
 
 - **Change:** Implemented at 250 ms. `Control::task()` blocks in `xQueueReceive`
-  for 250 ms (`src/FurbleControl.cpp:484`) instead of 50 ms, unconditionally
+  for 250 ms (`src/FurbleControl.cpp:585`) instead of 50 ms, unconditionally
   rather than only when the state machine is idle; commands still wake the queue
   immediately.
-- **Current behavior:** 250 ms (`src/FurbleControl.cpp:484`), which is 4 wakes
+- **Current behavior:** 250 ms (`src/FurbleControl.cpp:585`), which is 4 wakes
   per second used for `reapZombieTargets()`, `sampleAdaptivePower()`, and
   liveness checks. Commands themselves wake the queue immediately.
 - **Evidence:** inferred (code-read). `sampleAdaptivePower()` is rate limited to 5 s
-  by `RSSI_SAMPLE_INTERVAL_MS` (`src/FurbleControl.cpp:27`) against
-  `m_LastRssiSample` (`src/FurbleControl.cpp:1607`), and the zombie reclaim
-  deadline is the timestamp `m_ZombieDeadline` (`src/FurbleControl.cpp:1197`), so
+  by `RSSI_SAMPLE_INTERVAL_MS` (`src/FurbleControl.cpp:33`) against
+  `m_LastRssiSample` (`src/FurbleControl.cpp:1623`), and the zombie reclaim
+  deadline is the timestamp `m_ZombieDeadline` (`src/FurbleControl.cpp:1213`), so
   the tick is a service cadence, not a correctness deadline.
 - **Estimated saving:** Low. A task wake and context switch is on the order of
   tens of microseconds, so 4 wakes per second instead of 20 is well below
@@ -555,7 +555,7 @@ This is a documentation and build consistency item, not a separate power lever.
   `control-zombie-cancel`, `control-interleave`, and the simulator connect and
   reconnect scenarios. Confirm the reclaim deadline still fires within its
   documented bound.
-- **Citation:** `src/FurbleControl.cpp:27`, `484`, `1515`, `1227`,
+- **Citation:** `src/FurbleControl.cpp:31`, `484`, `1515`, `1227`,
   `include/FurbleControl.h:88`, `98`.
 
 ### OS-03 Lengthen the per-target queue timeout

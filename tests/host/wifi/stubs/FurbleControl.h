@@ -13,5 +13,9 @@ class Control {
   };
   static Control &getInstance();
   state_t getState() const;
+  // The adaptive transmit floor is a Control-side policy and is covered by
+  // control-adaptive-floor. This target only needs src/FurbleWiFi.cpp to
+  // compile, so the install is a no-op here.
+  static void setWifiConnectedProbe(bool (*probe)(void)) { (void)probe; }
 };
 }  // namespace Furble

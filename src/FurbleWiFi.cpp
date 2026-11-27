@@ -1075,6 +1075,13 @@ void eventHandler(void *, esp_event_base_t eventBase, int32_t eventId, void *eve
 }  // namespace
 
 void WiFi::init(void) {
+  // Tell the BLE side whether the station is up. The adaptive transmit policy
+  // floors its step-down while WiFi is connected, because both radios share one
+  // 2.4 GHz front end and a step that is comfortable on an idle channel costs a
+  // retry once the station is transmitting. Registered before the early return
+  // below: a station the user enables later must still reach the policy.
+  Control::setWifiConnectedProbe([]() { return g_Connected.load(std::memory_order_acquire); });
+
   // Do not create the netif, handlers, or worker when the station is off. A
   // disabled Wi-Fi setting costs a 4 KB task, a netif, and an NVS read at boot
   // for a radio the user does not use. connect() starts the module lazily.

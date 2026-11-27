@@ -268,6 +268,13 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   on after a cut that followed a GNSS stop, `railOffOrRestart()` sends GNSS
   start. `m_UbxStopped` records that stop; only `railOffOrRestart()` clears
   it, because `disable()` runs `resetUbx()` between the stop and the cut.
+- The companion settings read is redacted for the two credentials. `WIFI_PSK`
+  and `MQTT_PASS` answer the word `set` or `unset` in `settingValue()`; the
+  stored text never crosses the characteristic, matching the console and the
+  WebUI. Writes are unaffected, so the settings stay write-only rather than
+  read-only. Keep `MQTT_URI` readable: it is the broker address, and userinfo
+  inside it is a separate open item. Any new secret setting belongs in
+  `secretIndicator()` too (plans/96 C6).
 - `CompanionService::m_Mutex` serializes the status and camera notification
   caches and all
   trigger rate and held-command state, including timer and disconnect release.
@@ -371,6 +378,11 @@ Application layer on top of lib/furble. Headers live in include/, sources here.
   Every NVS write of the access point runs under `g_ApStorageMutex`. A clear
   bumps `g_ApGeneration` and cancels the queued work; a save captured under an
   older generation is dropped, so a clear is never undone.
+  `WiFi::init()` installs `Control::setWifiConnectedProbe()` before its own
+  early return, so the adaptive transmit floor applies to a station the user
+  enables after boot as well as to one that was on at boot. The probe reads
+  `g_Connected`, which is lock-free, and it is the only WiFi state the BLE side
+  gets.
   `IP_EVENT_STA_LOST_IP` clears `g_GotIp` and the cached address on the same
   task and notifies the worker, without stopping the station, the NTP client or
   the driver: esp-netif resets the address to 0 before it posts the event, and

@@ -2167,8 +2167,16 @@ target_include_directories(companion_gatt_test
                                   ${FURBLE_ROOT}/lib/blowfish
                                   ${HOST_NIMBLE_DIR}
                                   ${HOST_PEER_DIR})
+# The MQTT settings arms only exist when FURBLE_MQTT is defined, and no host
+# target compiled the companion service with it: companion_gatt_test,
+# companion_fuzz and boundary_companion_test all built the no-MQTT
+# configuration used by the StickC, StickC Plus and Core images, while the
+# Core2, StickS3, headless and Waveshare images define it. Every MQTT settings
+# arm, including the MQTT password redaction, was therefore compiled out of
+# every test (PR 534 review F3). FURBLE_MQTT is defined here now, with the MQTT
+# double in companion/doubles/FurbleMQTT.h so no broker code is linked.
 target_compile_definitions(companion_gatt_test PRIVATE FURBLE_NO_DISPLAY
-                                                       FURBLE_HOST_COMPANION_TEST)
+                                                       FURBLE_HOST_COMPANION_TEST FURBLE_MQTT=1)
 # Omitted designated-initializer members are value initialized, so the glibc
 # struct tm tail in the Canon and Lumix time helpers is not a real gap.
 target_compile_options(companion_gatt_test PRIVATE -Wall -Wextra -Werror -Wno-format
@@ -2223,6 +2231,30 @@ target_compile_options(control_conn_saver_test PRIVATE
                        -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
                        -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
 target_link_libraries(control_conn_saver_test PRIVATE furble_host_camera)
+
+# The adaptive transmit policy floors its step-down while the WiFi station is
+# connected. The WiFi service installs the probe on device; this drives it
+# directly and asserts the level the radio is asked for.
+# FURBLE_HOST_RSSI_SAMPLE_INTERVAL_MS shrinks only the sample cadence, so a
+# three-sample policy step is milliseconds instead of fifteen seconds.
+add_executable(control_adaptive_floor_test
+               control_adaptive_floor_test.cpp
+               ${FURBLE_ROOT}/src/FurbleControl.cpp
+               ${FURBLE_ROOT}/src/FurbleTimezone.cpp
+               ${HOST_CONTROL_DIR}/control_shim.cpp)
+target_include_directories(control_adaptive_floor_test BEFORE PRIVATE
+                           ${HOST_CONTROL_DIR}
+                           ${FURBLE_ROOT}/include
+                           ${HOST_NIMBLE_DIR}
+                           ${HOST_PEER_DIR}
+                           ${FURBLE_ROOT}/lib/furble)
+target_compile_definitions(control_adaptive_floor_test
+                           PRIVATE FURBLE_HOST_CONTROL_TEST
+                                   FURBLE_HOST_RSSI_SAMPLE_INTERVAL_MS=1)
+target_compile_options(control_adaptive_floor_test PRIVATE
+                       -include ${HOST_CONTROL_DIR}/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter)
+target_link_libraries(control_adaptive_floor_test PRIVATE furble_host_camera)
 
 # Pin the transmit power mapping between the ESP-IDF setting and the camera
 # library TxPower through the public Control API.
@@ -2784,6 +2816,7 @@ if(BUILD_TESTING)
 
   add_test(NAME control-disconnect COMMAND control_disconnect_test)
   add_test(NAME control-conn-saver COMMAND control_conn_saver_test)
+  add_test(NAME control-adaptive-floor COMMAND control_adaptive_floor_test)
   add_test(NAME tx-power-mapping COMMAND tx_power_mapping_test)
 
   # Teardown wedge regression (plan 148). Bounded by a hard timeout so a
@@ -2961,6 +2994,32 @@ target_include_directories(peer_contract_test PRIVATE
                            ${SONY_LUMIX_DJI_PEER_INCLUDE_DIRS})
 target_link_libraries(peer_contract_test PRIVATE Threads::Threads)
 add_test(NAME peer-contract COMMAND peer_contract_test)
+
+# Pins that every Canon identity write in the connect sequence waits for the ATT
+# response. Both roles identify with the shared CanonEOS::writePrefix() helper, so
+# the peer's per-write `response` flag is the observation: with a write without
+# response the connect sequence cannot tell a refused identity step from an
+# accepted one (plans/96 A4, plans/97-followups.md batch 4).
+add_executable(canon_identity_ack_test
+               canon_identity_ack_test.cpp
+               ${CANON_NIKON_PEER_DIR}/CanonSmartVirtualCamera.cpp
+               ${CANON_NIKON_PEER_DIR}/CanonRemoteVirtualCamera.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOS.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOSSmart.cpp
+               ${FURBLE_ROOT}/lib/furble/CanonEOSRemote.cpp
+               ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos_shim.cpp)
+target_link_libraries(canon_identity_ack_test PRIVATE furble_host_camera)
+target_include_directories(canon_identity_ack_test BEFORE PRIVATE
+                           ${HOST_NIMBLE_DIR}
+                           ${CANON_NIKON_PEER_INCLUDE_DIRS}
+                           ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e
+                           ${FURBLE_ROOT}/lib/furble
+                           ${FURBLE_ROOT}/include)
+target_compile_options(canon_identity_ack_test PRIVATE
+                       -include ${CMAKE_CURRENT_SOURCE_DIR}/control_e2e/freertos/FreeRTOS.h
+                       -Wall -Wextra -Werror -Wno-format -Wno-unused-parameter
+                       -Wno-unused-lambda-capture)
+add_test(NAME canon-identity-ack COMMAND canon_identity_ack_test)
 
 # Sim-first boundary conformance. Each target compiles the production driver or
 # service path unchanged and replaces only the lowest hardware boundary. These

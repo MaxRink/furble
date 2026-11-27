@@ -95,7 +95,7 @@ src/FurbleControl.cpp:131-135 at the reviewed head
   }
 ```
 
-`Control::sendCommand` (`src/FurbleControl.cpp:666-691`) has no log at all; it
+`Control::sendCommand` (`src/FurbleControl.cpp:682-707`) has no log at all; it
 returns the queue status, and the console turns a failure into
 `fail("control queue full")` (`src/FurbleConsole.cpp:169-171`). The conclusion
 for plan 374 stands, the attribution does not.

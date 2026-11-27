@@ -14,6 +14,11 @@ protocol core.
   is one subclass pair (.h/.cpp): Fujifilm Basic/Secure, CanonEOS
   Smart/Remote, Nikon Smart/Remote, Sony, the Ricoh Imaging family (RICOH and
   PENTAX K), Panasonic Lumix, DJI Osmo, and FauxNY (software test camera).
+- `CanonEOS::writePrefix()` is the identity exchange for both Canon roles and
+  always waits for the ATT response. Nothing else acknowledges that the camera
+  accepted this client, so a write without response promotes a body that refused
+  the identity step as paired (plans/96 A4). Do not relax it to save a round
+  trip on the connect path.
 - `Ricoh` owns the shared Ricoh Imaging GATT family. PENTAX K bodies reuse its
   persisted `Camera::Type::RICOH`, security flow, UUIDs, and command bytes until
   hardware testing proves a model-specific delta.

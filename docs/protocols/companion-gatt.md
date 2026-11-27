@@ -117,9 +117,21 @@ records only, one trailing flags byte
 | `flags` | bit 0 needs restart, bit 1 dangerous | `include/FurbleCompanionService.h:236-237` |
 
 A malformed length, an op other than 0 to 2, or a non-zero length on op 0 or 1
-produces `SETTING_BAD_LENGTH` (`src/FurbleCompanionService.cpp:1053-1061`). An
+produces `SETTING_BAD_LENGTH` (`src/FurbleCompanionService.cpp:1082-1090`). An
 unknown id produces `SETTING_UNKNOWN_ID`
-(`src/FurbleCompanionService.cpp:1093-1097`).
+(`src/FurbleCompanionService.cpp:1123-1127`).
+
+### Secret settings
+
+`WIFI_PSK` (wire id 53) and `MQTT_PASS` (wire id 59) are write-only over this
+link. A get or a list answers the word `set` or `unset` in the setting's own
+`SETTING_STRING` type, the same answer the console prints, instead of the stored
+credential (`src/FurbleCompanionService.cpp:900-915`, both arms call
+`secretIndicator()` at `src/FurbleCompanionService.cpp:109`). A client needs no
+new wire type to render it, and it has nothing secret to echo back into an
+editor. Writes are unchanged, so a client that holds the companion password can
+still set both, and `COMPANION_PASSWORD` keeps its existing shape: it never
+appears in a list and a get is rejected.
 
 Command responses and list records are indicated, and unsolicited state events
 are notified. That split is deliberate and is the same one settings versus status
@@ -198,7 +210,7 @@ The four packets and their sizes are `AUTH_VERSION` 0x01, `AUTH_OP_BEGIN` 0x00,
 `AUTH_OP_PROOF` 0x01 and `AUTH_OP_RESULT` 0x02, with a challenge of two plus
 sixteen bytes, a proof of two plus sixteen and a result of three
 (`include/FurbleCompanionService.h:62-68`). The exchange runs in
-`handleAuth()` (`src/FurbleCompanionService.cpp:610-667`).
+`handleAuth()` (`src/FurbleCompanionService.cpp:628-685`).
 
 | Result value | Meaning |
 | ---: | :--- |

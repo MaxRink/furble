@@ -158,7 +158,7 @@ release that gets through. That makes case 1 the damaging one, and it is why the
 intervalometer and the shutter lock matter even though they are not the busiest
 producers.
 
-`allConnectedLocked` (`src/FurbleControl.cpp:806-836`) is not part of this. It
+`allConnectedLocked` (`src/FurbleControl.cpp:822-852`) is not part of this. It
 decides whether the machine stays `STATE_ACTIVE`; it does not gate the send and
 does not drop anything. The other refusal in `sendCameraCommand` is a target
 whose link is down, which is intended: the press went with the connection.

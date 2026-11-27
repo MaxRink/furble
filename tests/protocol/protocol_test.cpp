@@ -265,6 +265,47 @@ void checkSettings(const std::string &root, const fs::path &golden) {
     if (FurbleProtocolTest::settingIsWriteOnly(setting)) {
       require(get == Bytes({4, setting.wire_id, type, 0}),
               setting.symbol + " write-only get response changed");
+    } else if (FurbleProtocolTest::settingAnswersSecretIndicator(setting)) {
+      // The firmware answers the console's set/unset word, in the setting's own
+      // type, instead of the stored credential. Both words are pinned because
+      // they are different lengths: the value length and the trailing flags
+      // move, which is exactly what a client reads positionally.
+      for (const bool stored : {false, true}) {
+        const auto indicator = FurbleProtocolTest::secretIndicatorValue(stored);
+        const std::string suffix = stored ? "set" : "";
+        const std::string label = setting.symbol + (stored ? " set" : " unset");
+
+        const auto secretGet =
+            fixture(golden, settingFile("response-get", setting.wire_id, suffix));
+        require(secretGet[0] == 0 && secretGet[1] == setting.wire_id && secretGet[2] == type
+                    && secretGet[3] == indicator.size(),
+                label + " get response header changed");
+        expectBytes(Bytes(secretGet.begin() + 4, secretGet.end()), indicator,
+                    label + " get response value");
+
+        const auto secretList =
+            fixture(golden, settingFile("response-list", setting.wire_id, suffix));
+        require(isValidListResponse(secretList), label + " list response is not a list TLV");
+        require(secretList[0] == 0 && secretList[1] == setting.wire_id && secretList[2] == type
+                    && secretList[3] == indicator.size(),
+                label + " list response header changed");
+        expectBytes(Bytes(secretList.begin() + 4, secretList.begin() + 4 + indicator.size()),
+                    indicator, label + " list response value");
+        require(secretList.size() == static_cast<size_t>(4 + indicator.size() + 1)
+                    && secretList[4 + indicator.size()] == flags,
+                label + " list response trailing flags changed");
+      }
+      // The point of the answer: the sample value a client used to get is not
+      // in the corpus for this setting at all.
+      for (const bool stored : {false, true}) {
+        const std::string suffix = stored ? "set" : "";
+        for (const std::string &operation : {"response-get", "response-list"}) {
+          const auto secret = fixture(golden, settingFile(operation, setting.wire_id, suffix));
+          require(
+              std::search(secret.begin(), secret.end(), value.begin(), value.end()) == secret.end(),
+              setting.symbol + " fixture still carries the stored value");
+        }
+      }
     } else {
       require(get[0] == 0 && get[1] == setting.wire_id && get[2] == type && get[3] == value.size(),
               setting.symbol + " get response header changed");

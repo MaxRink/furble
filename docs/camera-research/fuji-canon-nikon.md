@@ -292,7 +292,10 @@ and [Remote](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bf
   plus `{02}`. It waits up to 60 s for indication `02` accept or `03` reject.
   Reject deletes the local bond. The final `0001000a` write `{01}` commits the
   pairing, then mode `00030010-0000-1000-0000-d8492fffa821` gets `{02}` for
-  shooting.
+  shooting. Every one of those identity writes is write-with-response: a write
+  without response only proves the PDU was sent, so a refused identity step
+  used to be indistinguishable from an accepted one (plans/96 A4). The camera's
+  ATT response is the only acknowledgement this exchange gets.
 - Shutter writes to `00030030-0000-1000-0000-d8492fffa821`: `{00 01}` press,
   `{00 02}` release. These are the official app's AF plus release pair, not a
   plain release. Focus press and release use `{00 03}` AF_ON and `{00 04}`
@@ -315,7 +318,9 @@ and [Remote](https://github.com/MaxRink/furble/blob/965f299f0f43c38fe45e4680f1bf
 
 - Discovery matches `00050000-0000-1000-0000-d8492fffa821`.
 - After NimBLE secure connection, write prefix `03` plus Furble name to
-  `00050002-0000-1000-0000-d8492fffa821`.
+  `00050002-0000-1000-0000-d8492fffa821`, with response. The identify write is
+  the connect sequence's only evidence that the camera accepted this client,
+  and a write without response cannot fail on a refusal (plans/96 A4).
 - Control characteristic `00050003-0000-1000-0000-d8492fffa821` accepts one-byte
   write-with-response commands: press `0x8c` (`0x80` shutter plus `0x0c`
   control), release `0x0c`, focus press `0x4c` (`0x40` focus plus control),

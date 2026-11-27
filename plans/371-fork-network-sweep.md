@@ -73,7 +73,7 @@ master's push time while also being identical to it.
    (`src/FurbleControl.cpp:156`, `:212-215`) fails `xQueueSend` with a zero timeout and
    only logs, so a release can be lost when a target queue of eight entries
    (`include/FurbleControl.h:98`) is full. `Control::sendCommand`
-   (`src/FurbleControl.cpp:666-691`) routes camera commands per target, and
+   (`src/FurbleControl.cpp:682-707`) routes camera commands per target, and
    `Control::sendCameraCommand` drops a camera command for a target whose link
    is not active and logs at debug level, by design, to stop a press replaying
    after a reconnect. A press accepted just before a link drop therefore loses
