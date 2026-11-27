@@ -7,10 +7,10 @@ what the value controls, what supports the shipped number, why the proposed
 decision record, not an implementation plan: nothing here is queued for a
 follow-up PR.
 
-The proposal came from plan 371, action item 2: `zhuimeng2026-hub/furble`
-commit `78a9a7b5` (2026-11-17) raises the default to 400 ms and migrates stored
-values, on the claim that 30 ms "is too short for the camera to acquire focus
-and start the shutter".
+The proposal came from action item 2 of `plans/371-fork-network-sweep.md:65-68`:
+`zhuimeng2026-hub/furble` commit `78a9a7b5` (2026-11-17) raises the default to
+400 ms and migrates stored values, on the claim that 30 ms "is too short for the
+camera to acquire focus and start the shutter".
 
 ## What the number controls
 
