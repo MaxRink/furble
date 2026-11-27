@@ -113,16 +113,16 @@ Core2 v1.1.
 | Fact | Document | Code | State |
 | :--- | :--- | :--- | :--- |
 | 7-bit address 0x34 (8-bit 0x68/0x69 shifted right) | section 6.3, page 18 | `lib/hal/AXP2101.h:33` | VERIFIED |
-| REG 00 bit 5 VBUS good, bit 3 battery present | section 6.13.2.1, page 31 | `lib/hal/AXP2101.cpp:28-29`, `lib/hal/AXP2101.cpp:82`, `lib/hal/AXP2101.cpp:91` | VERIFIED, and `AXP2101_Class.cpp` line 202, `:207` test the same bits |
-| REG 01 bits 6:5 are the charge direction, 01 charging, 10 discharging, 00 standby, 11 reserved | section 6.13.2.2, page 31 | `lib/hal/AXP2101.cpp:117-136` | VERIFIED, and `AXP2101_Class.cpp` line 155, `:162` decode the same field |
-| REG 34 bits 7:6 are the ADC debug channel select and bits 5:0 are vbat[13:8]; REG 35 is vbat[7:0], 1 mV per count | sections 6.10 page 28 and 6.13.2.30 page 40 | `lib/hal/AXP2101.cpp:95-103` | VERIFIED, and `AXP2101_Class.cpp` line 590, `:596` mask 0x3F the same way |
+| REG 00 bit 5 VBUS good, bit 3 battery present | section 6.13.2.1, page 31 | `lib/hal/AXP2101.cpp:28-29`, `lib/hal/AXP2101.cpp:82`, `lib/hal/AXP2101.cpp:91` | VERIFIED, and `AXP2101_Class.cpp` line 202 and line 207 test the same bits |
+| REG 01 bits 6:5 are the charge direction, 01 charging, 10 discharging, 00 standby, 11 reserved | section 6.13.2.2, page 31 | `lib/hal/AXP2101.cpp:117-136` | VERIFIED, and `AXP2101_Class.cpp` line 155 and line 162 decode the same field |
+| REG 34 bits 7:6 are the ADC debug channel select and bits 5:0 are vbat[13:8]; REG 35 is vbat[7:0], 1 mV per count | sections 6.10 page 28 and 6.13.2.30 page 40 | `lib/hal/AXP2101.cpp:95-103` | VERIFIED, and `AXP2101_Class.cpp` line 590 and line 596 mask 0x3F the same way |
 | REG A4 is the battery percentage, read only | section 6.13.2.88, page 57 | `lib/hal/AXP2101.cpp:105-115` | VERIFIED |
-| Gauge module enable is REG 18 bit 3 | section 6.13.2.14, page 34 | `lib/hal/AXP2101.cpp:30`, `lib/hal/AXP2101.cpp:106` | VERIFIED; `AXP2101_Class.cpp` lines 98 to 100 writes bit 1 as the charger enable, so the two bits are distinct fields |
+| Gauge module enable is REG 18 bit 3 | section 6.13.2.14, page 34 | `lib/hal/AXP2101.cpp:30`, `lib/hal/AXP2101.cpp:106` | VERIFIED; `AXP2101_Class.cpp` lines 98 to 100 write bit 1 as the charger enable, so the two bits are distinct fields |
 | DCDC enables REG 80 bits 0 to 4 | section 6.13.2.68, page 50 | `lib/hal/AXP2101.cpp:51-55` | VERIFIED |
-| LDO enables REG 90 bits 0 to 7 (ALDO1-4, BLDO1, BLDO2, CPUSLDO, DLDO1) and REG 91 bit 0 (DLDO2) | sections 6.13.2.75 and 6.13.2.76, page 53 | `lib/hal/AXP2101.cpp:56-66` | VERIFIED; `AXP2101_Class.cpp` lines 53 to 59 uses `1 << num` over 0x92 to 0x97 for the same six outputs |
-| Six LDO voltage registers REG 92 to 97, 500 mV at code 0 to 3500 mV at code 30 in 100 mV steps, code 31 reserved | sections 6.13.2.77 to 6.13.2.82, pages 54 and 55 | `lib/hal/AXP2101.cpp:162-172` | VERIFIED; `AXP2101_Class.cpp` lines 44 to 50 subtracts 500 mV and clamps at 0x1E, the same encoding |
+| LDO enables REG 90 bits 0 to 7 (ALDO1-4, BLDO1, BLDO2, CPUSLDO, DLDO1) and REG 91 bit 0 (DLDO2) | sections 6.13.2.75 and 6.13.2.76, page 53 | `lib/hal/AXP2101.cpp:56-66` | VERIFIED; `AXP2101_Class.cpp` lines 53 to 59 use `1 << num` over 0x92 to 0x97 for the same six outputs |
+| Six LDO voltage registers REG 92 to 97, 500 mV at code 0 to 3500 mV at code 30 in 100 mV steps, code 31 reserved | sections 6.13.2.77 to 6.13.2.82, pages 54 and 55 | `lib/hal/AXP2101.cpp:162-172` | VERIFIED; `AXP2101_Class.cpp` lines 44 to 50 subtract 500 mV and clamps at 0x1E, the same encoding |
 | Backup cell charger enable REG 18 bit 2, termination voltage REG 6A bits 2:0, 2.6 V to 3.3 V in 100 mV steps | section 6.12.2 page 29 and 6.13.2.67 page 50 | `lib/hal/AXP2101.cpp:174-185` | VERIFIED |
-| Power key latch REG 49 bits 3:0, write 1 to clear; enables REG 41 bits 3:0 | sections 6.13.2.44 page 44 and 6.13.2.41 page 42 | `lib/hal/AXP2101.cpp:36-40`, `lib/hal/AXP2101.cpp:187-206` | VERIFIED; `AXP2101_Class.cpp` lines 212 to 213 reads `0x49` masked 0x0C and writes the same bits back, and `:350` clears the status block with 0xFF, which only a write-1-to-clear register accepts |
+| Power key latch REG 49 bits 3:0, write 1 to clear; enables REG 41 bits 3:0 | sections 6.13.2.44 page 44 and 6.13.2.41 page 42 | `lib/hal/AXP2101.cpp:36-40`, `lib/hal/AXP2101.cpp:187-206` | VERIFIED; `AXP2101_Class.cpp` lines 212 to 213 read `0x49` masked 0x0C and writes the same bits back, and `:350` clears the status block with 0xFF, which only a write-1-to-clear register accepts |
 | Soft power off REG 10 bit 0, restart REG 10 bit 1 | section 6.13.2.7, page 32 | `lib/hal/AXP2101.cpp:208-210` | VERIFIED; `AXP2101_Class.cpp` line 167 sets the same bit |
 | VRTC has no enable bit anywhere in the register list | sections 6.13.1 page 29 and 6.13.2 page 31 onwards | `lib/hal/AXP2101.h:36-52` | VERIFIED |
 | Identity: REG 03 reads 0x4A | no revision 1.0 or 1.4 definition; revision 0.1 section 8.1 page 19 gives chip_id 01_0111, 0x47 on A and 0x57 on B | `lib/hal/AXP2101.cpp:25-27` | CORROBORATED: M5Unified 0.2.20 `AXP2101_Class.cpp` lines 31 to 34 rejects any value but 0x4A, so two vendor sources agree the shipping part answers 0x4A. No datasheet revision does, and the row stays open as C-19a |
@@ -151,14 +151,14 @@ disagree with the document.
 
 Document: SLUUBD4A, April 2016, revised November 2022, 91 pages. Re-read as text
 this pass: Table 2-1 page 17, sections 2.7 to 2.12 page 23, sections 2.21 to
-2.26 page 25, sections 5.1 and 5.3 page 63, page 64.
+2.27 page 25, sections 5.1 and 5.3 page 63, page 64.
 
 | Fact | Document | Code | State |
 | :--- | :--- | :--- | :--- |
 | A standard command is a two-byte word at an even command code, least significant byte at the lower code | section 2.1, Table 2-1, page 17 | `lib/hal/BQ27220.cpp:32-38` | VERIFIED |
 | Voltage() is 0x08 and 0x09, unsigned, mV, 0 to 6000 mV | section 2.6, page 22 | `lib/hal/BQ27220.cpp:14` | VERIFIED |
 | BatteryStatus() is 0x0A and 0x0B | section 2.7, page 23 | `lib/hal/BQ27220.cpp:15` | VERIFIED |
-| BatteryStatus() low byte bit 3 is BATTPRES and bit 0 is DSG | Table 2-6 page 23 | `lib/hal/BQ27220.cpp:21-22` | VERIFIED with a caveat, see the confusing-section row below |
+| BatteryStatus() low byte bit 3 is BATTPRES and bit 0 is DSG | Table 2-6 page 23 | `lib/hal/BQ27220.cpp:21-22` | VERIFIED with a caveat, see the confusing-section row below and the `bq27220.md` note on the text render |
 | Current() is 0x0C and 0x0D, signed, mA, updated every second | section 2.8, page 23 | `lib/hal/BQ27220.cpp:16`, `lib/hal/BQ27220.cpp:58` | VERIFIED |
 | TimeToEmpty() is 0x16 and 0x17, minutes, and 65535 means the battery is not being discharged | section 2.11, page 23 | `lib/hal/BQ27220.cpp:17`, `lib/hal/BQ27220.h:32` | VERIFIED |
 | StateOfCharge() is 0x2C and 0x2D, an unsigned percentage "with a range of 0 to 100", and the field has no out-of-range sentinel | section 2.21, page 25 | `lib/hal/BQ27220.cpp:18`, `lib/hal/BQ27220.cpp:59-70` | VERIFIED, and the clamp defect above is fixed against it |
@@ -263,7 +263,7 @@ recorded in `docs/components/m5pm1.md`; M5Unified 0.2.20 `M5PM1_Class.cpp`.
 
 | Fact | Document | Code | State |
 | :--- | :--- | :--- | :--- |
-| `DEVICE_ID` is 0x00 and `PWR_CFG` is 0x06, reset 0x17 with the 5 V boost off | register list page 6 to 11, section 2 register (7) page 13 | `sim/hardware_model.cpp:643-662` | VERIFIED, and `M5PM1_Class.cpp` line 15, `:18` name the same two addresses. The simulator shim comment that named 0x00 is defect 3 above |
+| `DEVICE_ID` is 0x00 and `PWR_CFG` is 0x06, reset 0x17 with the 5 V boost off | register list page 6 to 11, section 2 register (7) page 13 | `sim/hardware_model.cpp:643-662` | VERIFIED, and `M5PM1_Class.cpp` line 15 and line 18 name the same two addresses. The simulator shim comment that named 0x00 is defect 3 above |
 | `PWR_CFG` bit 0 charge, bit 1 DCDC, bit 2 LDO, bit 3 boost, bit 4 LED | section 2 register (7), page 13 | `sim/hardware_model.cpp:645-649` | VERIFIED, and `M5PM1_Class.cpp` lines 40 to 44 names the same five bits |
 | `I2C_CFG` 0x09, `SLP_TO` bits 3:0 with 0 disabling idle sleep | section 2 register (10), page 15 | `M5PM1_Class.cpp` line 64 | VERIFIED |
 | The first I2C transaction after idle sleep fails and must be retried once | section 2 register (10) note 2, page 15 | `src/FurblePlatform.cpp:685-697` and the `m5pm1Access` wrapper | VERIFIED |
