@@ -19,6 +19,16 @@ CHECKER = module_from_spec(SPEC)
 sys.modules[SPEC.name] = CHECKER
 SPEC.loader.exec_module(CHECKER)
 
+# The block every pull request workflow must carry. The last component gives
+# every non-pull-request event its own group, because the default queue: single
+# replaces a pending run in the same group even when cancel-in-progress is
+# false.
+CONCURRENCY_BLOCK = (
+    "concurrency:\n"
+    f"  group: {CHECKER.CONCURRENCY_GROUP}\n"
+    "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n"
+)
+
 
 class CheckCIWorkflowsTest(unittest.TestCase):
   def test_release_upload_job_has_scoped_write_permission(self):
@@ -111,6 +121,83 @@ class CheckCIWorkflowsTest(unittest.TestCase):
         checked += 1
         self.assertEqual(CHECKER.lint_workflow(path), [], path.name)
     self.assertGreater(checked, 0)
+
+  def test_concurrency_contract_is_structural(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request:
+    paths: [src/**]
+  workflow_dispatch:
+"""
+        + CONCURRENCY_BLOCK
+    )
+    self.assertEqual(errors, [])
+
+  def test_pull_request_workflow_without_concurrency_is_rejected(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request:
+    paths: [src/**]
+  workflow_dispatch:
+"""
+    )
+    self.assertIn("pull_request workflow has no concurrency block", errors)
+
+  def test_concurrency_group_requires_a_non_pull_request_run_key(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request:
+    paths: [src/**]
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+"""
+    )
+    self.assertIn(
+        "concurrency group must be the workflow, the ref and a run key for "
+        "non-pull-request events",
+        errors,
+    )
+
+  def test_concurrency_queue_with_a_cancellable_cancel_is_rejected(self):
+    errors = self.lint(
+        """name: test
+on:
+  pull_request:
+    paths: [src/**]
+  workflow_dispatch:
+"""
+        + CONCURRENCY_BLOCK
+        + "  queue: max\n"
+    )
+    self.assertIn(
+        "concurrency queue cannot be combined with a cancel-in-progress "
+        "that can evaluate true",
+        errors,
+    )
+
+  def test_concurrency_queue_with_a_false_cancel_is_allowed(self):
+    errors = self.lint(
+        """name: test
+on:
+  push:
+    tags: ["v*"]
+concurrency:
+  group: pages
+  cancel-in-progress: false
+  queue: max
+"""
+    )
+    self.assertEqual(errors, [])
+
+  def test_release_and_pages_are_exempt_from_the_pull_request_contract(self):
+    for name in ("release.yml", "pages.yml"):
+      document = CHECKER._load_workflow(ROOT / ".github" / "workflows" / name)
+      self.assertEqual(CHECKER._lint_concurrency(document), [], name)
 
   def test_branches_ignore_is_a_base_branch_filter(self):
     errors = self.lint(
@@ -251,6 +338,7 @@ triggers: &events
   workflow_dispatch:
 on: *events
 """
+        + CONCURRENCY_BLOCK
     )
     self.assertEqual(errors, [])
     self.assertEqual(
@@ -292,6 +380,7 @@ jobs:
           echo "pull_request:"
           echo "pull-requests: write"
 """
+        + CONCURRENCY_BLOCK
     )
     self.assertEqual(errors, [])
 
@@ -309,6 +398,7 @@ jobs:
           echo "pull_request:"
           echo "pull-requests: write"
 """
+        + CONCURRENCY_BLOCK
     )
     self.assertEqual(errors, [])
 

@@ -374,13 +374,18 @@ workflow, choose **Run workflow**, and select the branch. Android dispatches
 run unit tests and an APK build by default; enable `run_emulator` when the
 slower emulator smoke test is needed. CI checks this trigger policy with
 `python3 tools/check_ci_workflows.py`.
-Every pull request workflow groups its runs on
-`${{ github.workflow }}-${{ github.ref }}` and cancels in progress only for
-`pull_request`, so a newer head stops the run it supersedes. Push to master,
-release tags and manual dispatch are never cancelled, and the ref of a stacked
-pull request is its own merge ref, so a stack and its base never cancel each
-other. The evidence and the exact expressions are in
-[plans/392-ci-concurrency.md](plans/392-ci-concurrency.md).
+Every pull request workflow groups its runs on the workflow, the ref and a run
+key that only `pull_request` collapses to `shared`, with `cancel-in-progress`
+set to `${{ github.event_name == 'pull_request' }}`. A newer head stops the run
+it supersedes. Push, release tag, schedule and dispatch runs key the group on
+`github.run_id`, so each keeps a private slot: GitHub replaces a pending run in
+the same group whatever `cancel-in-progress` says, so a shared group would cancel
+master pushes. The ref of a stacked pull request is its own merge ref, so a stack
+and its base never cancel each other. Re-run the newest run of a workflow only: a
+re-run re-enters its group, and re-running an older run on a pull request can
+cancel the current head. The evidence is in
+[plans/392-ci-concurrency.md](plans/392-ci-concurrency.md), and
+`tools/check_ci_workflows.py` asserts the exact expressions.
 Node.js is also required for the installer event-flow regression in
 `tests/test_check_ci_workflows.py`; the standard GitHub-hosted Ubuntu runner
 provides it.

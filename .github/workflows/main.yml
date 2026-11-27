@@ -17,11 +17,12 @@ on:
 permissions:
   contents: read
 
-# A newer run for the same ref supersedes the previous one, so a stale pull
-# request run stops instead of queueing. Push to master and manual dispatch
-# keep cancel-in-progress false, so an in-flight run is never cancelled.
+# A newer pull request run for the same ref supersedes the previous one, so a
+# stale pull request run stops instead of queueing. Every other event keys its
+# own group on the run, so a push, schedule or dispatch run is never cancelled
+# and never replaces a pending run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'shared' || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

@@ -184,6 +184,7 @@ def _lint_document(document: Mapping[str, Any]) -> list[str]:
   errors: list[str] = []
   if "pull_request_target" in blocks:
     errors.append("uses pull_request_target")
+  errors.extend(_lint_concurrency(document))
   if "pull_request" not in blocks:
     return errors
   pull_request = blocks["pull_request"]
@@ -196,6 +197,58 @@ def _lint_document(document: Mapping[str, Any]) -> list[str]:
   if _permission_requests_write(document):
     errors.append("requests pull-requests: write for pull_request runs")
   errors.extend(_lint_firmware_change_filter(document))
+  return errors
+
+
+# One constant group per workflow and ref lets a newer pull request run
+# supersede the previous one. Every other event keys its group on
+# ``github.run_id`` instead: the default ``queue: single`` replaces a pending
+# run in the same group even when ``cancel-in-progress`` is false, so a shared
+# group would cancel master pushes, tag publishes, schedules and dispatches.
+CONCURRENCY_GROUP = (
+    "${{ github.workflow }}-${{ github.ref }}-"
+    "${{ github.event_name == 'pull_request' && 'shared' || github.run_id }}"
+)
+CONCURRENCY_CANCEL_IN_PROGRESS = "${{ github.event_name == 'pull_request' }}"
+
+
+def _lint_concurrency(document: Mapping[str, Any]) -> list[str]:
+  """Check the pull request concurrency contract.
+
+  ``release.yml`` and ``pages.yml`` carry no ``pull_request`` trigger, so the
+  pull request rules do not apply to them and neither file needs a group keyed
+  on the run. The queue rule applies to every workflow, because the limit it
+  guards is repository wide.
+  """
+
+  errors: list[str] = []
+  concurrency = document.get("concurrency")
+  if concurrency is not None and not isinstance(concurrency, Mapping):
+    return ["concurrency must be a mapping"]
+  if isinstance(concurrency, Mapping) and "queue" in concurrency:
+    cancel = concurrency.get("cancel-in-progress")
+    if cancel is not None and str(cancel).strip() != "false":
+      errors.append(
+          "concurrency queue cannot be combined with a cancel-in-progress "
+          "that can evaluate true"
+      )
+  if "pull_request" not in _event_blocks(document):
+    return errors
+  if not isinstance(concurrency, Mapping):
+    errors.append("pull_request workflow has no concurrency block")
+    return errors
+  if str(concurrency.get("group", "")).strip() != CONCURRENCY_GROUP:
+    errors.append(
+        "concurrency group must be the workflow, the ref and a run key for "
+        "non-pull-request events"
+    )
+  if (
+      str(concurrency.get("cancel-in-progress", "")).strip()
+      != CONCURRENCY_CANCEL_IN_PROGRESS
+  ):
+    errors.append(
+        "concurrency cancel-in-progress must be the pull_request expression"
+    )
   return errors
 
 

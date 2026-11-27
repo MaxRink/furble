@@ -42,11 +42,17 @@ claim against the code, not against a plan doc.
 
 CI trigger changes must keep validation workflows usable for stacked pull
 requests. Keep pull request jobs path-filtered and read-only for fork safety,
-keep the `${{ github.workflow }}-${{ github.ref }}` concurrency group on every
-pull request workflow, and run `python3 tools/check_ci_workflows.py` after
-changing workflow triggers. `cancel-in-progress` is true only for
-`pull_request`: push, release tags and manual dispatch always finish. The ref of
-a stacked pull request is its own merge ref, so a stack never cancels its base.
+keep the concurrency group every pull request workflow carries, and run
+`python3 tools/check_ci_workflows.py` after changing workflow triggers. That
+group is the workflow, the ref and a run key: `pull_request` collapses the key to
+`shared`, so a newer head cancels the run it supersedes, and every other event
+keys on `github.run_id`, so push, release tag, schedule and dispatch runs each
+keep a private slot and are never cancelled. The run key is not optional: the
+default `queue: single` replaces a pending run in the same group whatever
+`cancel-in-progress` says, so a shared group would cancel master pushes. The ref
+of a stacked pull request is its own merge ref, so a stack never cancels its
+base. `tools/check_ci_workflows.py` asserts the exact group and
+`cancel-in-progress` and rejects `queue` beside a cancellable run.
 The pre-review gate is `python3 tools/pre_review.py --base origin/master`; run
 it before pushing. It includes clang-format 21 on the changed C and C++ files, the coupling
 ratchet, the datasheet citation gate and the documentation citation gate: a
