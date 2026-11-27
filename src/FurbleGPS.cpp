@@ -1689,14 +1689,14 @@ void GPS::startConfigCommand(void) {
   }
 
 #if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
-  if (m_ConfigInFlight.value().text) {
+  if (m_ConfigInFlight->text) {
     // The vendor text layer owns the acknowledgement timeout and the retry, so
     // it starts with the first send rather than after it.
-    text().session.begin(m_ConfigInFlight.value().text_command, m_ConfigSent);
+    text().session.begin(m_ConfigInFlight->text_command, m_ConfigSent);
   }
 #endif
 
-  if (!sendConfigFrame(m_ConfigInFlight.value())) {
+  if (!sendConfigFrame(*m_ConfigInFlight)) {
     ESP_LOGW(LOG_TAG, "GPS binary command write failed");
   }
 }
@@ -1882,7 +1882,7 @@ void GPS::serviceConfig(void) {
           const std::lock_guard<std::mutex> lock(m_ConfigMutex);
           m_ConfigStatus[m_ConfigInFlightStatus].attempts = text().session.attempts();
         }
-        if (!sendConfigFrame(m_ConfigInFlight.value())) {
+        if (!sendConfigFrame(*m_ConfigInFlight)) {
           ESP_LOGW(LOG_TAG, "GPS text retry write failed");
         }
         return;
