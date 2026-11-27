@@ -270,7 +270,7 @@ easy to get wrong:
 Disarm before anything that intentionally stops the firmware, otherwise the PM1
 resets a device the user asked to switch off:
 
-- `Platform::powerOff()` (`src/FurblePlatform.cpp:905-964`). Call
+- `Platform::powerOff()` (`src/FurblePlatform.cpp:791-850`). Call
   `watchdogEnable(false)` before `m_M5PM1.shutdown()` at line 76.
 - The Theme page restart button, which calls `esp_restart()` at
   `src/FurbleUI.cpp:1990`. A reset re-runs `Platform::getInstance()` and
