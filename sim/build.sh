@@ -374,9 +374,14 @@ for source in \
   "$ROOT/src/FurbleGPS.cpp" \
   "$ROOT/src/FurbleGPSUbx.cpp" \
   "$ROOT/src/FurbleMemoryPressure.cpp" \
+  "$ROOT/src/FurbleOTA.cpp" \
+  "$ROOT/src/FurbleOTAAdmission.cpp" \
+  "$ROOT/src/FurbleOTACommand.cpp" \
+  "$ROOT/src/FurbleOTAHTTPS.cpp" \
   "$ROOT/src/FurbleOTAMQTT.cpp" \
   "$ROOT/src/FurbleOTAPartitionSink.cpp" \
   "$ROOT/src/FurbleOTAReplayStore.cpp" \
+  "$ROOT/src/FurbleOTAStatus.cpp" \
   "$ROOT/src/FurbleIMU.cpp" \
   "$ROOT/src/FurblePower.cpp" \
   "$ROOT/src/FurbleProvision.cpp" \

@@ -12,6 +12,7 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
+#include <memory>
 #include <new>
 #include <utility>
 
@@ -43,6 +44,8 @@
 #include "FurbleGPS.h"
 #include "FurbleMQTTMemory.h"
 #include "FurbleMemoryPressure.h"
+#include "FurbleOTACommand.h"
+#include "FurbleOTAStatus.h"
 #include "FurbleSettings.h"
 #include "FurbleTaskWatchdog.h"
 #include "FurbleTypes.h"
@@ -50,6 +53,10 @@
 #include "protocol/CameraListProtocol.h"
 
 namespace Furble {
+
+struct MQTTInstance final: MQTT {
+  MQTTInstance() = default;
+};
 
 namespace {
 
@@ -276,11 +283,54 @@ ConnectClass classifyFailure(int32_t error_type, int32_t connect_return_code) {
 }  // namespace
 
 MQTT &MQTT::getInstance(void) {
-  static MQTT instance;
-  return instance;
+  // The singleton is created in MQTT::init() at app_main. Keeping it in the
+  // heap returns its static DRAM to the boot heap on every MQTT profile; the
+  // allocation happens before the owner gate, so that gate sees the same free
+  // bytes it saw when the object lived in .bss.
+  static std::unique_ptr<MQTTInstance> instance = std::make_unique<MQTTInstance>();
+  return *instance;
+}
+
+MQTT::~MQTT() {
+  if (m_HoldTimer != nullptr) {
+    esp_timer_stop(m_HoldTimer);
+    esp_timer_delete(m_HoldTimer);
+    m_HoldTimer = nullptr;
+  }
+  if (m_IntervalTimer != nullptr) {
+    esp_timer_stop(m_IntervalTimer);
+    esp_timer_delete(m_IntervalTimer);
+    m_IntervalTimer = nullptr;
+  }
+  if (m_EventQueue != nullptr) {
+#if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
+    && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+    if (m_EventQueueWithCaps) {
+      vQueueDeleteWithCaps(m_EventQueue);
+    } else
+#endif
+    {
+      vQueueDelete(m_EventQueue);
+    }
+    m_EventQueue = nullptr;
+  }
+  if (m_Incoming != nullptr) {
+    heap_caps_free(m_Incoming);
+    m_Incoming = nullptr;
+    m_Received = nullptr;
+  }
+  // The client itself belongs to esp-mqtt and is destroyed by stopClient().
+  // The process is exiting here and a host double may already have recycled
+  // the handle, so the destructor does not touch it.
 }
 
 void MQTT::init(void) {
+  // Create the OTA status record here, before the owner gate measures free
+  // bytes. The record moved from .bss to the heap, so this keeps the gate's
+  // view of free RAM unchanged and keeps the allocation out of the command and
+  // publish paths.
+  (void)OTA::StatusStore::getInstance();
+
   // The saved camera list is loaded on demand by publishCameras() and
   // publishDiscovery(). Loading it here made MQTT take about 5 KiB even when
   // the start gate then refused the client.
@@ -628,6 +678,18 @@ void MQTT::taskStep(void) {
       publishGPS(false);
     }
   }
+
+  // The OTA engine has no task of its own. Advance one stage or one download
+  // poll per owner iteration whether or not the broker is connected, so a
+  // broker outage cannot freeze a running transfer in busy(): no command could
+  // reach the handler to abort it, and the staged image would be held until the
+  // broker came back. A download link that really died fails the poll instead,
+  // which is the documented clean abort. publishOTAStatus() still gates the
+  // topic on the broker, so nothing is published while it is down.
+  if (m_OTAHandler != nullptr) {
+    m_OTAHandler->step();
+    publishOTAStatus();
+  }
 }
 
 #if defined(FURBLE_MQTT_HOST_TEST)
@@ -788,6 +850,8 @@ void MQTT::loadTopics(void) {
   m_ConnectCommandTopic = m_RootTopic + "/cmd/connect";
   m_DisconnectCommandTopic = m_RootTopic + "/cmd/disconnect";
   m_LocationCommandTopic = m_RootTopic + "/cmd/location";
+  m_OTACommandTopic = m_RootTopic + "/cmd/ota";
+  m_OTAStatusTopic = m_RootTopic + "/state/ota";
   m_HomeAssistantTopic = "homeassistant/device/furble_" + m_ID + "/config";
 }
 
@@ -856,6 +920,7 @@ bool MQTT::startClient(void) {
   if ((m_EventQueue == nullptr) && inPsram(MQTTMemory::EVENT_QUEUE_BLOCK_BYTES)) {
     m_EventQueue = xQueueCreateWithCaps(EVENT_QUEUE_LENGTH, sizeof(queued_event_t),
                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    m_EventQueueWithCaps = m_EventQueue != nullptr;
   }
 #endif
   if (m_EventQueue == nullptr) {
@@ -886,7 +951,8 @@ bool MQTT::startClient(void) {
     if (copies == nullptr) {
       return false;
     }
-    // Placement new into the heap_caps block above, which is never freed.
+    // Placement new into the heap_caps block above. It is retained for the
+    // process lifetime and released by the destructor.
     auto *events = static_cast<queued_event_t *>(copies);
     // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
     m_Received = new (events + 1) queued_event_t();
@@ -1239,6 +1305,10 @@ void MQTT::handleData(const queued_event_t &event) {
     publishError("retained MQTT command rejected");
     return;
   }
+  if (topic == m_OTACommandTopic) {
+    handleOTA(event);
+    return;
+  }
   handleCommand(topic, payload);
 }
 
@@ -1447,6 +1517,130 @@ void MQTT::handleLocation(const std::string &payload) {
 
   m_HaveExternalLocation = true;
   ESP_LOGI(MQTT_LOG_TAG, "Accepted external GPS fix.");
+}
+
+void MQTT::attachOTAHandler(OTA::Command::Handler *handler) {
+  m_OTAHandler = handler;
+  m_OTAStatusPayload.clear();
+  m_OTAStatusRevision = 0;
+}
+
+void MQTT::setOTABootReport(const OTA::BootReport &report) {
+  m_OTABootReport = report;
+}
+
+void MQTT::handleOTA(const queued_event_t &event) {
+  if (m_OTAHandler == nullptr) {
+    publishOTAUnavailable();
+    return;
+  }
+
+  OTA::Command::Meta meta;
+  meta.retained = event.retain;
+  meta.duplicate = event.dup;
+
+  const OTA::Command::Handler::Result result =
+      m_OTAHandler->onMessage(meta, event.data, static_cast<size_t>(event.data_len));
+  if (result.refusal != OTA::Refusal::None) {
+    const std::string message = std::string("ota ")
+                                + OTA::actionName(m_OTAHandler->status().command)
+                                + " refused: " + OTA::refusalName(result.refusal);
+    publishError(message);
+  }
+  publishOTAStatus();
+}
+
+void MQTT::publishOTAStatus(void) {
+  if (m_OTAHandler == nullptr) {
+    return;
+  }
+
+  const OTA::Status status = m_OTAHandler->status();
+  // Keep the console's copy current even with the broker down, so `ota status`
+  // can report a transfer that continued through an outage.
+  OTA::StatusStore::getInstance().set(status);
+
+  if (!m_Connected.load()) {
+    return;
+  }
+
+  const std::string payload = OTA::statusJson(status);
+  const uint32_t revision = m_OTAHandler->revision();
+  if ((payload == m_OTAStatusPayload) && (revision == m_OTAStatusRevision)) {
+    return;
+  }
+
+  // A final result is retained; live progress is not. The handler also marks
+  // the first checking record of a new update retained, which replaces the
+  // previous retained result instead of leaving it on the broker.
+  if (!publish(m_OTAStatusTopic, payload, 1, m_OTAHandler->statusRetained())) {
+    return;
+  }
+  m_OTAStatusPayload = payload;
+  m_OTAStatusRevision = revision;
+}
+
+void MQTT::publishOTAUnavailable(void) {
+  OTA::Status status;
+  status.reason = OTA::Refusal::TransportUnavailable;
+  status.outcome = OTA::Outcome::Refused;
+  status.command = OTA::Action::Update;
+  std::snprintf(status.installedVersion, sizeof(status.installedVersion), "%s", FURBLE_VERSION);
+  status.boot = m_OTABootReport;
+  OTA::StatusStore::getInstance().set(status);
+
+  const std::string payload = OTA::statusJson(status);
+  if (payload == m_OTAStatusPayload) {
+    return;
+  }
+  if (publish(m_OTAStatusTopic, payload, 1, false)) {
+    m_OTAStatusPayload = payload;
+    m_OTAStatusRevision = 0;
+  }
+  publishError("ota transport not linked in this build");
+}
+
+OTA::Conditions MQTT::OTAContext::conditions(void) {
+  OTA::Conditions conditions;
+
+  const Control &control = Control::getInstance();
+  conditions.cameraSessionActive = control.getState() != Control::STATE_IDLE;
+  conditions.intervalometerRunning = UI::getIntervalometerState() != 0;
+  conditions.linkReady = m_Owner.m_Connected.load() && m_Owner.networkReady();
+
+  auto &platform = Platform::getInstance();
+  const Platform::battery_caps_t caps = platform.getBatteryCaps();
+  conditions.batteryKnown = caps.level;
+  conditions.batteryPercent = platform.readBattery().level;
+
+  // External power from a VBUS measurement, never from `caps.charging`. That
+  // field is the board's *capability*, true on every board that can report a
+  // charge state, so reading it here exempted the 30 percent floor on the
+  // StickS3, the Core2 and the Tough. The charge flag is no better: M5Unified
+  // maps a failed charge-status read to "charging". `getBatteryStatus()` reports
+  // 0 where the board cannot sense VBUS, so those boards keep the floor.
+  int16_t vbus = platform.getBatteryStatus().vbus;
+  if (vbus == 0) {
+    // The first transaction after the PMIC idle sleep only wakes it, so a zero
+    // reading is retried once. A zero that survives the retry reads as battery
+    // power, which is the safe direction for a multi-megabyte flash write.
+    vbus = platform.getBatteryStatus().vbus;
+  }
+  conditions.charging = OTA::externalPowerPresent(vbus);
+
+  // No partition read is linked in this build. The HTTPS adapter checks the
+  // real inactive slot capacity when it opens the image, so this stays true
+  // until the composition supplies a partition-backed answer.
+  conditions.slotAvailable = true;
+  return conditions;
+}
+
+const char *MQTT::OTAContext::installedVersion(void) {
+  return FURBLE_VERSION;
+}
+
+OTA::BootReport MQTT::OTAContext::bootReport(void) {
+  return m_Owner.m_OTABootReport;
 }
 
 bool MQTT::sendCommand(Control::cmd_t command) {

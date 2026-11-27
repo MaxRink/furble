@@ -1,9 +1,11 @@
 # 115b - HTTPS OTA delivery and OTA-over-MQTT
 
-Status: design only. The transport-independent OTA engine from
-`plans/implemented/115-ota-engine.md` landed in PR #168. This document is the delivery
-follow-up: HTTPS transport, user-facing status, and an MQTT command trigger on
-top of `plans/33-wifi-hub.md` PR33c.
+Status: 115b host slice implemented, see Implementation status below. The
+transport-independent OTA engine from `plans/implemented/115-ota-engine.md`
+landed in PR #168. This document is the delivery follow-up: HTTPS transport,
+user-facing status, and an MQTT command trigger on top of
+`plans/33-wifi-hub.md` PR33c. The real HTTPS download and the Home Assistant
+end-to-end flow remain hardware work.
 
 **Split delivery.** The HTTPS adapter, precondition policy, and MQTT
 `cmd/ota` topic handler are Codex-implementable and host-testable with mock
@@ -152,3 +154,124 @@ client coverage that these handler tests plug into once #66 lands.
 - Publish `BASE/ID/cmd/ota` from Home Assistant / `mosquitto_pub` and watch
   `state/ota` progress on a dashboard, camera link surviving the outage.
 - The rollback path on a deliberately broken image.
+
+## Implementation status
+
+The host-testable delivery slice landed. It adds no network fetch, no flash
+write and no partition table change, so nothing here was validated on hardware.
+
+Implemented:
+
+- `include/FurbleOTAHTTPS.h` / `src/FurbleOTAHTTPS.cpp`: `OTA::HTTPS::Adapter`
+  behind the existing `OTA::Transport` seam, over an injected
+  `OTA::HTTPS::Client` with the shape of the advanced `esp_https_ota` call
+  sequence. The adapter owns the https-only URL rule, the resume offset, the
+  announced image length bounds, the inactive slot capacity check, and the
+  stable reason labels for a wrong size, a digest mismatch, an invalid
+  signature, an interrupted transfer and a failed apply. `abort()` is
+  idempotent and keeps the root cause instead of overwriting it.
+- `include/FurbleOTAAdmission.h` / `src/FurbleOTAAdmission.cpp`: the enforced
+  precondition policy, in evaluation order: busy, camera session,
+  intervalometer, link, slot, battery. The 30 percent floor from the earlier
+  admission gate is kept, and a charging board is exempt. `compareVersions()`
+  compares dotted numeric versions, ignores a `v` prefix and a `-` or `+`
+  suffix, and treats an installed `dev+g<hash>` build as older than a release.
+- `include/FurbleOTACommand.h` / `src/FurbleOTACommand.cpp`: the documented
+  `cmd/ota` handler. The payload grammar is `status`, `check`,
+  `check <https-url>`, `abort`, or a bare `https://` URL. Retained commands are
+  refused. The identical URL is idempotent while an update runs, after a
+  successful update, and for a `DUP` redelivery after a failure; a fresh
+  command retries a failed transfer from its confirmed checkpoint.
+- `include/FurbleOTAStatus.h` / `src/FurbleOTAStatus.cpp`: the flat `state/ota`
+  record, its JSON formatter, its console formatter and the mutex-guarded
+  `StatusStore` shared by the MQTT publisher and the console.
+- `src/FurbleMQTT.cpp`: routes `cmd/ota` with the retain and duplicate
+  metadata, advances one engine stage or download poll per owner iteration,
+  publishes `state/ota` with the retained policy (final result retained, live
+  progress not, one retained `checking` record to clear a stale result), and
+  answers `transport_unavailable` when no handler is attached.
+  `attachOTAHandler()`, `setOTABootReport()` and `otaContext()` are the
+  composition seam for the hardware transport and the boot health evaluation.
+- `src/FurbleConsole.cpp`: `ota status` prints the shared record.
+- Tests: `ota-https` (adapter and engine over a scripted client, including a
+  complete update, a wrong size, a bad digest, a bad signature, an interrupted
+  transfer with a resumed retry and an apply failure), `ota-mqtt-handler`
+  (payload parsing, every refusal, version comparison, duplicate delivery,
+  check without a download, retained policy, transport detail and a rollback
+  after a failed health check), the `mqtt-owner` `cmd/ota` block (mock MQTT
+  events through the production topic route and HTTPS adapter), and the
+  `console-commands` `ota status` case, which compiles under the same
+  `FURBLE_MQTT` guard as the command and is asserted through
+  `OTA::formatStatus` in `ota-mqtt-handler`.
+
+Deviations from the plan text:
+
+- No `esp_https_ota` call, no `PRIV_REQUIRES` change and no network fetch. The
+  scope was the host-testable adapter, and the user authority for this slice
+  excluded a real download. The firmware adapter is the next hardware slice.
+- `ota status` is built only with `FURBLE_MQTT`. The MQTT handler is the only
+  producer of the record, so a console-only image cannot start an update and
+  the record never leaves idle, while the command and the status module cost
+  2.4 KB of flash. The 4 MB Core debug lane fits master with 784 bytes free
+  (1,740,016 of its 1,740,800-byte slot by `check_size_budget.py`), so it
+  cannot hold them: this slice measured 1,741,921 bytes of program size
+  locally and 1,741,581 in CI, 781 over the slot at `checkprogsize`. Scoping
+  the command to the hub puts the lane back at 1,740,016 with 784 bytes free,
+  the same bin size as master. Hub builds keep the command and its six-line
+  output unchanged. Two behavior-preserving
+  alternatives were measured and rejected: `-Oz` instead of `-Os` on that lane
+  came out 16 bytes larger, and a leaner formatter saved about 1 KB against the
+  1.1 KB the local image needed, with no margin left.
+- No `OTA_URL` or `OTA_CHANNEL` setting. Without a manifest source the settings
+  have no consumer. `check` therefore requires an explicit URL or the last URL
+  the device was given.
+- The console group is `status` only. `check`, `update`, `rollback` and
+  `confirm` need the linked transport and the boot health composition, so they
+  are not advertised as working commands.
+- Boot health is reported, not executed. `setOTABootReport()` records the
+  verdict the plan 125 evaluator will produce. `app_main` still does not arm
+  the health check or call the mark-valid API, so the plan 34 rollback risk
+  remains open until that composition lands.
+- `slotAvailable` is `true` in the MQTT context because no partition read is
+  linked. The adapter's slot capacity check is authoritative for the image.
+- Plan 130's signed `FOA1` envelope remains the reserved update path. The
+  `cmd/ota` topic in this slice carries the documented bare command form and
+  does not dispatch a signed envelope.
+- External power is a VBUS measurement, not the board's charge capability and
+  not the charge flag. The first draft of the composition read
+  `battery_caps_t::charging`, which is a compile-time constant and made the 30
+  percent floor unreachable on the StickS3, the Core2 and the Tough. The
+  independent review caught it; see
+  [115-review-feedback.md](115-review-feedback.md). `OTA::externalPowerPresent()`
+  is the rule, and a board without VBUS sense keeps the floor.
+- The OTA status store and the MQTT singleton live in the heap, not in .bss.
+  The slice linked a 188-byte store plus its 8-byte guard into the image, and
+  the MQTT singleton that holds the handler, the context and the status payload
+  grew by about 43 bytes. `waveshare-s3-eth-debug` measured 56,096 on master
+  with 224 bytes of headroom, so the 288-byte slice failed
+  `check_size_budget.py` while every host suite passed. Both owners are now
+  heap allocated: the MQTT singleton (952 bytes) at `MQTT::init()`, which is
+  before the owner gate and therefore leaves that gate's free-byte measurement
+  unchanged, and the status store (188 bytes) at console start and in
+  `MQTT::init()`. `MQTT::~MQTT()` releases the event queue, the event copies
+  block and the two timers, so a host leak check sees no retained allocation
+  after the singleton is destroyed. Static DRAM falls to 55,256 on that env, so the recorded
+  56,320-byte budget is unchanged and the image keeps 1,064 bytes of headroom.
+  The release profile falls to 46,136 at its 48,128-byte budget. The saving
+  applies to every MQTT profile and to every console build, not only to the
+  debug image. See [115-review-feedback.md](115-review-feedback.md).
+- The engine advances once per MQTT owner iteration whether or not the broker is
+  connected. Gating the step on the connection froze a running transfer in
+  `busy()` during an outage, with no command able to abort it. Only the publish
+  is gated on the broker.
+
+Remaining hardware validation:
+
+- Link a real `esp_https_ota` client, then update over WiFi from the Pages
+  manifest, reboot into the other slot, and read `ota status`.
+- Pull the AP mid-download: clean abort, running image untouched, retry resumes
+  from the confirmed checkpoint.
+- Publish `cmd/ota` from Home Assistant or `mosquitto_pub` and watch
+  `state/ota` progress while the camera link survives.
+- A deliberately broken image: failed health check, rollback to the old slot,
+  and `state/ota` reporting `slot: aborted` with the rollback action.

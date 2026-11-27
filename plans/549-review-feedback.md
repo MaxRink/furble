@@ -51,7 +51,7 @@ The premise is right and most of the hardware research is right: every pin I cou
 
 ### What I could not run
 
-Neither firmware environment (no build, and the PR states the component manager fails at configure time), so no size or stack measurement exists anywhere. The four simulator scenarios: the CMake sim target hardcodes `FURBLE_M5STICKS3` (`sim/CMakeLists.txt:257-264`), a LilyGO simulator binary has to come from `sim/build.sh`, and none existed here; the scenarios are also marked uncertified in the manifest. `clang-format`, as above.
+Neither firmware environment (no build, and the PR states the component manager fails at configure time), so no size or stack measurement exists anywhere. The four simulator scenarios: the CMake sim target hardcodes `FURBLE_M5STICKS3` (`sim/CMakeLists.txt:262-269`), a LilyGO simulator binary has to come from `sim/build.sh`, and none existed here; the scenarios are also marked uncertified in the manifest. `clang-format`, as above.
 
 ### Verdict
 

@@ -339,7 +339,8 @@ implementations, which build on the seams plans 365 (T-Beam Supreme) introduces.
 | [114-flasher-provisioning.md](implemented/114-flasher-provisioning.md) | Browser WebSerial transport and settings step for the landed provisioning parser. Archived: merged as #537 (`70efa7c7`); the browser transport landed. See [391](391-plan-closeout-decisions.md). |
 | [537-review-feedback.md](implemented/537-review-feedback.md) | Review-feedback record for the WebSerial provisioning step, PR #537. Archived with plan 114b, PR #537. See [391](391-plan-closeout-decisions.md). |
 | [115-ota-engine.md](implemented/115-ota-engine.md) | Transport-independent OTA lifecycle, implemented by PR #168 |
-| [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | HTTPS delivery and OTA-over-MQTT follow-up. HTTPS delivery and OTA-over-MQTT follow-up. Deferred: the engine landed in #168, the delivery paths did not (D25). See [391](391-plan-closeout-decisions.md). |
+| [115-ota-update-mqtt.md](115-ota-update-mqtt.md) | HTTPS delivery and OTA-over-MQTT follow-up. Deferred on master: the engine landed in #168, the delivery paths did not (D25). This branch implements the host-testable slice, the enforced preconditions, `cmd/ota` and `state/ota`; the HTTPS download stays hardware-gated. See [391](391-plan-closeout-decisions.md). |
+| [115-review-feedback.md](115-review-feedback.md) | Review record for the 115b slice: VBUS external power and stepping through a broker outage |
 | [130-ota-mqtt-contract.md](implemented/130-ota-mqtt-contract.md) | Signed, replay-safe OTA-over-MQTT envelope and chunk policy |
 | [131-ota-replay-store.md](implemented/131-ota-replay-store.md) | Durable two-slot anti-rollback replay journal |
 | [132-ota-partition-sink.md](implemented/132-ota-partition-sink.md) | Ordered, digest-verified inactive-partition sink |

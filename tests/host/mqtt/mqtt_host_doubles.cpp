@@ -1,5 +1,6 @@
 #include "mqtt_host_dependencies.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -57,10 +58,14 @@ extern "C" size_t heap_caps_get_largest_free_block(uint32_t caps) {
   return (caps & MALLOC_CAP_SPIRAM) != 0 ? g_PsramLargest : g_HeapLargest;
 }
 
-// Fails like a pool whose largest block is too small; never frees, like the
-// owner's event copies.
+// Fails like a pool whose largest block is too small. The matching free is
+// the production destructor's release of the retained event copies.
 extern "C" void *heap_caps_malloc(size_t size, uint32_t caps) {
   return size <= heap_caps_get_largest_free_block(caps) ? std::malloc(size) : nullptr;
+}
+
+extern "C" void heap_caps_free(void *ptr) {
+  std::free(ptr);
 }
 
 namespace Furble {
@@ -106,6 +111,14 @@ Platform &Platform::getInstance(void) {
 
 void Platform::setBattery(const battery_t &battery) {
   getInstance().m_Battery = battery;
+}
+
+void Platform::setBatteryCaps(const battery_caps_t &caps) {
+  getInstance().m_Caps = caps;
+}
+
+void Platform::setBatteryStatus(const battery_status_t &status) {
+  getInstance().m_Status = status;
 }
 
 GPS &GPS::getInstance(void) {
@@ -239,6 +252,19 @@ extern "C" esp_err_t esp_timer_stop(esp_timer_handle_t handle) {
   return ESP_OK;
 }
 
+extern "C" esp_err_t esp_timer_delete(esp_timer_handle_t handle) {
+  if (handle == nullptr) {
+    return ESP_FAIL;
+  }
+  handle->active = false;
+  const auto found = std::find(g_Timers.begin(), g_Timers.end(), handle);
+  if (found != g_Timers.end()) {
+    g_Timers.erase(found);
+  }
+  delete handle;
+  return ESP_OK;
+}
+
 namespace host_mqtt_timer {
 
 void reset(void) {
@@ -301,6 +327,10 @@ extern "C" QueueHandle_t xQueueCreate(UBaseType_t length, UBaseType_t item_size)
     return nullptr;
   }
   return new HostQueue {item_size, length, {}};
+}
+
+extern "C" void vQueueDelete(QueueHandle_t queue) {
+  delete static_cast<HostQueue *>(queue);
 }
 
 extern "C" BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t) {

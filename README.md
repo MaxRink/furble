@@ -320,6 +320,17 @@ stay up when discovery is skipped. See
 [MQTT and Home Assistant](docs/settings-and-controls.md#mqtt-8-mb-debugconsole-builds)
 for the full setting list.
 
+The hub also accepts `cmd/ota` with `status`, `check`, `check <url>`, `abort`
+or an HTTPS URL, and reports progress and the final result on `state/ota`.
+Updates are refused while a camera session or the intervalometer is active, on
+a down link, below 30 percent battery unless charging, and when the release is
+not newer or does not fit the inactive slot. The payload, the reasons and the
+retained policy are in
+[MQTT and Home Assistant](docs/protocols/mqtt.md#ota-command-and-status). No
+HTTPS download is linked in this build, so the topic reports
+`transport_unavailable` and `ota status` still shows the last attempt and the
+boot rollback verdict.
+
 The same 8 MB and 16 MB profiles include an opt-in authenticated HTTPS WebUI.
 It stays closed until a companion password is configured. On the M5StickS3
 debug image, WiFi plus Bluetooth left about 6.8 KiB of internal RAM free before
@@ -448,6 +459,7 @@ interval start | stop | status       Timer page workflow
 bulb start | stop | status           Bulb page workflow
 display status | mode | brightness   display workflow
 mqtt status | connect | disconnect | discovery clear
+ota status                         last OTA attempt, boot rollback (MQTT builds)
 shutter press | release | hold <ms>
 focus press | release
 ir fire [protocol]                  fire the IR emitter

@@ -25,18 +25,45 @@
 #include <mqtt_client.h>
 
 #include "FurbleControl.h"
+#include "FurbleOTACommand.h"
 #include "FurblePlatform.h"
 #include "FurbleSettings.h"
 #include "interval.h"
+#endif
+
+#if defined(FURBLE_MQTT_HOST_TEST)
+#include "FurbleOTACommand.h"
 #endif
 
 struct cJSON;
 
 namespace Furble {
 
+/**
+ * Heap owner for the MQTT singleton.
+ *
+ * The singleton is large (about a kilobyte of strings, topic caches and the
+ * OTA handler state) and it is created in MQTT::init() during app_main.
+ * Keeping it off .bss returns that static DRAM to the boot heap on every MQTT
+ * profile. The allocation happens before the owner gate, so the gate measures
+ * the same free bytes it measured while the object lived in .bss. The type
+ * exists only to reach the private constructor; nothing else constructs it.
+ */
+struct MQTTInstance;
+
 class MQTT {
  public:
   static MQTT &getInstance(void);
+
+  /**
+   * Release the retained event queue and copies block.
+   *
+   * Runtime teardown keeps them alive so a stopped client can still deliver a
+   * late callback. At destruction no callback can arrive, so the retained
+   * blocks are released. Without this, moving the singleton to the heap turns
+   * them into a host leak-check finding.
+   */
+  ~MQTT();
 
   MQTT(MQTT const &) = delete;
   MQTT(MQTT &&) = delete;
@@ -72,6 +99,35 @@ class MQTT {
   bool isConfigured(void) const;
   bool isConnected(void) const { return m_Connected.load(); }
 
+  /**
+   * Attach the OTA command handler.
+   *
+   * The handler is owned by the composition that links the HTTPS transport,
+   * not by MQTT. Call this before the broker session starts, or from the owner
+   * task; the pointer is read on the owner task only. Without a handler the
+   * `cmd/ota` topic still answers, with the documented
+   * `transport_unavailable` refusal, so a dashboard can discover the build.
+   */
+  void attachOTAHandler(OTA::Command::Handler *handler);
+
+  /**
+   * Record the boot health verdict the OTA composition evaluated.
+   *
+   * Ownership stays with the composition; MQTT copies the value so the
+   * `state/ota` payload and `ota status` can report a rollback even though the
+   * update itself finished on a previous boot.
+   */
+  void setOTABootReport(const OTA::BootReport &report);
+
+  /**
+   * Context the OTA composition builds its handler on.
+   *
+   * The handler needs battery, control, intervalometer and link observations
+   * from this owner task, so the composition passes this reference instead of
+   * re-implementing the platform reads. The lifetime is the MQTT singleton.
+   */
+  OTA::Command::Context &otaContext(void) { return m_OTAContext; }
+
 #if defined(FURBLE_MQTT_HOST_TEST)
   /** Run one production MQTT task iteration without creating a host task. */
   void hostTaskStep(void);
@@ -87,6 +143,7 @@ class MQTT {
 
  private:
   MQTT() = default;
+  friend struct MQTTInstance;
 
   static constexpr uint32_t TASK_PERIOD_MS = 1000;
   // A rejected shutter or focus release leaves the camera held, so retry it on
@@ -160,6 +217,14 @@ class MQTT {
   void handleData(const queued_event_t &event);
   void handleCommand(const std::string &topic, const std::string &payload);
   void handleLocation(const std::string &payload);
+  /** Route one `cmd/ota` delivery to the attached handler and report it. */
+  void handleOTA(const queued_event_t &event);
+  /**
+   * Publish `state/ota` when the handler revision or payload changed, and keep
+   * the shared status store current for the console.
+   */
+  void publishOTAStatus(void);
+  void publishOTAUnavailable(void);
 
   bool networkReady(void) const;
   /** Internal storage the next client start must allocate beyond its floor. */
@@ -225,6 +290,10 @@ class MQTT {
   mutable std::mutex m_LifecycleMutex;
   TaskHandle_t m_Task = nullptr;
   QueueHandle_t m_EventQueue = nullptr;
+#if defined(CONFIG_SPIRAM) && defined(CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM) \
+    && CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM
+  bool m_EventQueueWithCaps = false;
+#endif
   // eventHandler builds each event here, not on the 3 KiB esp-mqtt client
   // stack. Allocated with the queue and never freed, because a stopped client
   // may still deliver a late callback; the mutex covers overlapping clients.
@@ -323,7 +392,34 @@ class MQTT {
   std::string m_ConnectCommandTopic;
   std::string m_DisconnectCommandTopic;
   std::string m_LocationCommandTopic;
+  std::string m_OTACommandTopic;
+  std::string m_OTAStatusTopic;
   std::string m_HomeAssistantTopic;
+
+  /**
+   * Runtime observations for the OTA preconditions.
+   *
+   * A nested class can read the owner's private connection state, so the
+   * battery, control, intervalometer and link answers all come from the same
+   * task snapshot. The values are read only when a command needs them.
+   */
+  class OTAContext final: public OTA::Command::Context {
+   public:
+    explicit OTAContext(MQTT &owner) : m_Owner(owner) {}
+
+    OTA::Conditions conditions(void) override;
+    const char *installedVersion(void) override;
+    OTA::BootReport bootReport(void) override;
+
+   private:
+    MQTT &m_Owner;
+  };
+
+  OTAContext m_OTAContext {*this};
+  OTA::Command::Handler *m_OTAHandler = nullptr;
+  OTA::BootReport m_OTABootReport {};
+  std::string m_OTAStatusPayload;
+  uint32_t m_OTAStatusRevision = 0;
 };
 
 }  // namespace Furble

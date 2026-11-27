@@ -57,6 +57,7 @@
 #include "FurbleIMU.h"
 #include "FurbleIR.h"
 #include "FurbleMemoryPressure.h"
+#include "FurbleOTAStatus.h"
 #include "FurblePlatform.h"
 #include "FurblePower.h"
 #include "FurbleProvision.h"
@@ -3626,6 +3627,28 @@ int cmdFlash(int argc, char **argv) {
 #endif
 }
 
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+/**
+ * Report the last OTA attempt and the boot rollback verdict.
+ *
+ * The record is produced by the MQTT handler, so this read-only command is
+ * built with the hub. A console-only image has no transport that can start an
+ * update and the record stays idle, while the status module plus this command
+ * costs 2.4 KB of flash on the 4 MB Core debug lane, which has 1.3 KB of
+ * program-size headroom and 784 bytes at its slot.
+ */
+int cmdOTA(int argc, char **argv) {
+  if ((argc != 2) || strcmp(argv[1], "status") != 0) {
+    return fail("usage: ota status");
+  }
+
+  const OTA::Status status = OTA::StatusStore::getInstance().get();
+  const std::string report = OTA::formatStatus(status);
+  fputs(report.c_str(), stdout);
+  return 0;
+}
+#endif
+
 /** Build a command table entry, argtable is unused, every command parses argv. */
 constexpr esp_console_cmd_t command(const char *name,
                                     const char *help,
@@ -3678,6 +3701,7 @@ const esp_console_cmd_t COMMANDS[] = {
     command("disconnect", "Disconnect all cameras", cmdDisconnect),
 #if defined(FURBLE_MQTT) && FURBLE_MQTT
     command("mqtt", "mqtt status | connect | disconnect | discovery clear", cmdMQTT),
+    command("ota", "ota status, last update and boot rollback state", cmdOTA),
 #endif
     command("motion", "motion status | scale [0.25-4.0] (IMU motion source)", cmdMotion),
     command("shutter", "shutter press | release | hold <ms>", cmdShutter),
@@ -3832,6 +3856,15 @@ void task(void) {
 }  // namespace
 
 void Console::init(void) {
+  // Allocate the OTA status record at console start in hub builds, not on the
+  // first `ota status`, so the command path never allocates. The record lives
+  // in the heap because console builds count every byte of .bss against their
+  // static DRAM budget. A console-only image has no OTA command, so it does
+  // not create the record at all.
+#if defined(FURBLE_MQTT) && FURBLE_MQTT
+  (void)OTA::StatusStore::getInstance();
+#endif
+
   startTransport();
 
   esp_console_config_t config = ESP_CONSOLE_CONFIG_DEFAULT();

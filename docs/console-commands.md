@@ -76,6 +76,7 @@ About page and exposed through companion BLE Device Information.
 | `multiconnect` | `list`, `select <index>`, `deselect <index>`, or `clear`. |
 | `disconnect` | Disconnect all cameras. |
 | `mqtt` | `status`, `connect`, `disconnect`, or `discovery clear`; MQTT broker control. |
+| `ota` | `status` reports the last OTA attempt, the available version and the boot rollback verdict. See below. |
 | `shutter` | `press`, `release`, or `hold <ms>`. |
 | `interval` | `interval start \| stop \| status`; the Timer page workflow. |
 | `bulb` | `bulb start \| stop \| status`; the Bulb page workflow. |
@@ -560,6 +561,34 @@ heap_trace: stopped, 3 records held
 
 `debug <target>` dumps internal state for one subsystem: `control`,
 `camera [idx]`, `ble`, `heap`, `tasks`, `power`, `gps`, `settings`, or `all`.
+
+## ota
+
+`ota status` prints the shared OTA status record, one fact per line. The
+command is built with the MQTT hub, which is the only producer of the record;
+console-only images leave it out.
+
+```
+ota: idle, error none
+progress: 0 percent, 0 of 0 bytes
+command: none, result none, reason none, detail none
+installed: 1.2.0
+available: 1.3.0, update yes
+slot: undefined, boot no_action, failure none
+```
+
+`ota`, `error`, `reason` and `detail` separate the engine lifecycle, the coarse
+engine error, the precondition refusal and the delivery-specific failure. For
+example a rejected signature reads `ota: error`, `error verification_failed`
+and `detail signature_invalid`. `slot` and `boot` report the boot health
+verdict, so a rolled-back image reads `slot: aborted`. `undefined` means no
+composition has read the partition state yet.
+
+The command is read-only and works in every console build, including a build
+without a linked HTTPS transport. An update is started from the MQTT
+`cmd/ota` topic; the `check`, `update`, `rollback` and `confirm` console
+subcommands remain follow-up work. The topic and payload are documented in
+[MQTT and Home Assistant](protocols/mqtt.md#ota-command-and-status).
 
 ## flash preflight
 

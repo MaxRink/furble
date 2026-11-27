@@ -42,8 +42,15 @@ struct FurbleSimTimer {
 using esp_timer_handle_t = FurbleSimTimer *;
 
 inline std::vector<FurbleSimTimer *> &furbleSimTimerRegistry(void) {
-  static std::vector<FurbleSimTimer *> timers;
-  return timers;
+  // The IDF timer service is initialised once and never torn down, so a timer
+  // can be deleted from a destructor that runs during static teardown. This
+  // vector is constructed after the MQTT singleton, because creating the first
+  // timer does it, so a function-local vector would already be destroyed when
+  // that singleton's destructor deleted its timers, and the erase would walk
+  // freed storage. Keep the registry for the process lifetime.
+  // NOLINTNEXTLINE(cppcoreguidelines-owning-memory): process lifetime, as IDF does
+  static auto *timers = new std::vector<FurbleSimTimer *>();
+  return *timers;
 }
 
 inline std::thread &furbleSimTimerDispatcher(void) {

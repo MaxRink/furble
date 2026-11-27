@@ -88,7 +88,12 @@ add_executable(mqtt_owner_test
                boot_timeline_host_stub.cpp
                ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
                ${FURBLE_ROOT}/src/FurbleMQTT.cpp
-               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp)
+               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp
+               ${FURBLE_ROOT}/src/FurbleOTA.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAAdmission.cpp
+               ${FURBLE_ROOT}/src/FurbleOTACommand.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAHTTPS.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAStatus.cpp)
 target_include_directories(mqtt_owner_test BEFORE PRIVATE
                            ${HOST_MQTT_DIR}
                            ${FURBLE_ROOT}/include
@@ -134,7 +139,11 @@ add_executable(mqtt_fuzz
                boot_timeline_host_stub.cpp
                ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
                ${FURBLE_ROOT}/src/FurbleMQTT.cpp
-               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp)
+               ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp
+               ${FURBLE_ROOT}/src/FurbleOTA.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAAdmission.cpp
+               ${FURBLE_ROOT}/src/FurbleOTACommand.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAStatus.cpp)
 target_include_directories(mqtt_fuzz BEFORE PRIVATE
                            ${HOST_MQTT_DIR}
                            ${FURBLE_ROOT}/include
@@ -1469,6 +1478,31 @@ target_include_directories(ota_state_machine_test PRIVATE ${FURBLE_ROOT}/include
 target_compile_options(ota_state_machine_test PRIVATE -Wall -Wextra -Werror -Wno-format
                                                         -Wno-unused-parameter)
 
+# HTTPS delivery policy behind the existing transport seam. The client double
+# scripts open, every download poll and the verify/apply result, so a complete
+# update, a wrong size, a bad digest or signature and an interrupted transfer
+# with a resumed retry run with no socket, TLS stack or flash access.
+add_executable(ota_https_test
+               ota_https_test.cpp
+               ${FURBLE_ROOT}/src/FurbleOTA.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAHTTPS.cpp)
+target_include_directories(ota_https_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(ota_https_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                              -Wno-unused-parameter)
+
+# The documented `cmd/ota` payload, the precondition policy and the
+# `state/ota` status record. The production parser, policy, engine and JSON
+# formatter run against a scripted transport, manifest source and context.
+add_executable(ota_mqtt_handler_test
+               ota_command_test.cpp
+               ${FURBLE_ROOT}/src/FurbleOTA.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAAdmission.cpp
+               ${FURBLE_ROOT}/src/FurbleOTACommand.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAStatus.cpp)
+target_include_directories(ota_mqtt_handler_test PRIVATE ${FURBLE_ROOT}/include)
+target_compile_options(ota_mqtt_handler_test PRIVATE -Wall -Wextra -Werror -Wno-format
+                                                    -Wno-unused-parameter)
+
 # Transport-neutral MQTT OTA envelope and delivery policy. This is production
 # source compiled directly into the host test, so simulator and firmware use
 # the same parser, chunk ledger, and retained/replay policy.
@@ -2625,6 +2659,9 @@ add_executable(console_commands_test
                ${FURBLE_ROOT}/src/FurbleBootTimeline.cpp
                ${FURBLE_ROOT}/src/FurbleConsole.cpp
                ${FURBLE_ROOT}/src/FurbleMemoryPressure.cpp
+               ${FURBLE_ROOT}/src/FurbleOTA.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAAdmission.cpp
+               ${FURBLE_ROOT}/src/FurbleOTAStatus.cpp
                ${FURBLE_ROOT}/src/FurbleControl.cpp
                ${FURBLE_ROOT}/src/FurbleTimezone.cpp
                ${FURBLE_ROOT}/src/FurbleIMU.cpp
@@ -2791,6 +2828,8 @@ if(BUILD_TESTING)
   add_test(NAME ethernet-transport COMMAND ethernet_test)
   add_test(NAME poe-power-model COMMAND poe_power_model_test)
   add_test(NAME ota-state-machine COMMAND ota_state_machine_test)
+  add_test(NAME ota-https COMMAND ota_https_test)
+  add_test(NAME ota-mqtt-handler COMMAND ota_mqtt_handler_test)
   add_test(NAME lumix-teardown-drop COMMAND lumix_teardown_drop_test)
   add_test(NAME ota-mqtt-protocol COMMAND ota_mqtt_protocol_test)
   add_test(NAME ota-mqtt-admission COMMAND ota_mqtt_admission_test)
