@@ -687,9 +687,13 @@ class GPS {
     uint16_t settle_ms = 0;
     // A vendor text command (GpsText) instead of a CASIC or UBX frame. The
     // body, acknowledgement name and settle time live in text_command, and
-    // class_id and message_id are unused for it.
+    // class_id and message_id are unused for it. Both fields follow the
+    // capability: their std::string is most of this struct's copy and destroy
+    // code, which a text-off build must not carry.
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
     bool text = false;
     GpsText::Command text_command;
+#endif
   } binary_command_t;
 
   static_assert(sizeof(aid_cache_t) == 56, "AID cache layout changed");

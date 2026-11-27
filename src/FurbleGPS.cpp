@@ -1988,6 +1988,7 @@ void GPS::applyConfiguration(void) {
     configureUbx();
     return;
   }
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if (backend == backend_t::QUECTEL) {
     configureQuectel();
     return;
@@ -1996,6 +1997,7 @@ void GPS::applyConfiguration(void) {
     configureUnicore();
     return;
   }
+#endif
   if (m_AidMode.load() != 0) {
     // Assistance goes out before configuration, because a sentence prune
     // could remove messages the assistance path relies on.
@@ -2006,9 +2008,11 @@ void GPS::applyConfiguration(void) {
 }
 
 bool GPS::sendConfigFrame(const binary_command_t &command) {
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   if (command.text) {
     return sendText(command.text_command);
   }
+#endif
   if (command.ubx) {
     return sendUbx(Ubx::frame(command.class_id, command.message_id, command.payload));
   }
@@ -3314,9 +3318,11 @@ void GPS::processSerial(const uint8_t *data, size_t length) {
         serviceUbx(bytes, piece.length);
         break;
       case GpsDemux::Kind::VENDOR:
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
         // A Quectel $PAIR/$PQTM or Unicore $CFG line: the identification answer
         // and the acknowledgement of the command in flight.
         serviceText(bytes, piece.length);
+#endif
         break;
       case GpsDemux::Kind::DROP:
         break;

@@ -106,7 +106,13 @@ void GPS::startDetect(uint32_t now) {
   m_Backend.store(static_cast<uint8_t>(backend_t::DETECTING));
   m_Detect.begin(now);
   m_TextIdentity.store(static_cast<uint8_t>(GpsText::Dialect::NONE));
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
   sendIdentifyProbes();
+#else
+  // The text probes belong to a backend this build does not have; a u-blox
+  // receiver still identifies itself over UBX.
+  sendUbx(Ubx::pollMonVer());
+#endif
 }
 
 bool GPS::serviceDetect(uint32_t now) {
@@ -134,7 +140,11 @@ bool GPS::serviceDetect(uint32_t now) {
   const Ubx::Detect::Result result = m_Detect.service(now, poll);
   if (result == Ubx::Detect::Result::WAITING) {
     if (poll) {
+#if !defined(FURBLE_GPS_TEXT) || FURBLE_GPS_TEXT
       sendIdentifyProbes();
+#else
+      sendUbx(Ubx::pollMonVer());
+#endif
     }
     return false;
   }
