@@ -1,4 +1,4 @@
-# 376: a configured Shutter of 0
+# 389: a configured Shutter of 0
 
 **State: implemented on `fix/shutter-zero-hold`.** 2026-11-27. Fixes the defect
 recorded as finding 1 of the shutter-hold decision record. A value of 0 is now
