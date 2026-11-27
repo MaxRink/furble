@@ -83,7 +83,7 @@ The board matrix is not closed: every entry lists `m5stick-s3`, so neither
 authoring environment, which could not build a variant. `m5stack-core` is a
 different case. There `display-settings-pages.txt` cannot run at all, because
 `legendSelectable()` is false off the Stick boards
-(`src/FurbleUI.cpp:11439-11456`): for the Core the legend is a flex child of the
+(`src/FurbleUI.cpp:11479-11496`): for the Core the legend is a flex child of the
 navigation bar, the Legend child page is never built, and `action nav legend`
 has no route. The other seven are untested on the Core; nothing in this plan
 excludes them there.
